@@ -4632,6 +4632,9 @@ class QtProtocolHost:
 
         def _open() -> None:
             """Open the Settings dialog on the Qt thread."""
+            watchdog = getattr(self, "_watchdog", None)
+            if watchdog is not None:
+                watchdog.expect_slow(10.0)
             try:
                 open_settings(
                     parent=None,
@@ -4641,6 +4644,9 @@ class QtProtocolHost:
                 )
             except Exception:
                 traceback.print_exc()
+            finally:
+                if watchdog is not None:
+                    watchdog.beat()
 
         QTimer.singleShot(0, _open)
         return {"queued": True}
