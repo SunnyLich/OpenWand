@@ -1864,6 +1864,7 @@ def test_kokoro_status_explains_gpu_install_when_gpu_spec_missing(monkeypatch):
     from core import optional_deps
     from ui.settings_panel.dialog import SettingsDialog
 
+    monkeypatch.setattr(optional_deps.sys, "platform", "win32")
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog.__new__(SettingsDialog)
     dialog._fields = {}
@@ -2199,8 +2200,10 @@ def test_kokoro_refresh_status_does_not_run_full_torch_check(monkeypatch):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QPushButton
 
+    from core import optional_deps
     from ui.settings_panel.dialog import SettingsDialog
 
+    monkeypatch.setattr(optional_deps.sys, "platform", "win32")
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog.__new__(SettingsDialog)
     dialog._fields = {}
@@ -2531,6 +2534,7 @@ def test_kokoro_reinstall_click_does_not_run_full_torch_check(monkeypatch):
     from ui.settings_panel import dialog as dialog_mod
     from ui.settings_panel.dialog import SettingsDialog
 
+    monkeypatch.setattr(optional_deps.sys, "platform", "win32")
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog.__new__(SettingsDialog)
     device = QComboBox()
@@ -3023,7 +3027,10 @@ def test_llm_model_routing_surface_translates_to_traditional_chinese(isolated_de
         assert "\u88dd\u7f6e" in label_texts
         assert "\u675f\u5bec" in label_texts
         assert "5\uff08\u5efa\u8b70\uff09" in all_combo_texts
-        assert "\u81ea\u52d5\uff08\u6709 GPU \u6642\u4f7f\u7528\uff09" in all_combo_texts
+        expected_auto_device = i18n.t(
+            "Auto (CPU)" if sys.platform == "darwin" else "Auto (GPU if available)"
+        )
+        assert expected_auto_device in all_combo_texts
         assert any("API \u5bc6\u9470\u6703\u4fdd\u5b58\u5230\u7cfb\u7d71\u9470\u5319\u4e32" in text for text in label_texts)
         assert "\u65b0\u589e\u610f\u5716\u5feb\u901f\u9375" in button_texts
         assert "\u6a21\u578b\u8def\u7531" in label_texts
