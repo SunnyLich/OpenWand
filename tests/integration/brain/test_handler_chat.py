@@ -525,13 +525,17 @@ def test_live_file_approval_callback_emits_request_and_accepts_response(record_c
     """Verify live file approval callback waits for the matching response."""
     events, ctx = record_ctx()
     decision = {"value": {}}
+    finished = threading.Event()
 
     def wait_for_approval():
         """Run the blocking approval callback in a worker thread."""
-        decision["value"] = handlers._live_file_approval_callback(ctx)({
-            "action": "edit_file",
-            "path": "note.txt",
-        })
+        try:
+            decision["value"] = handlers._live_file_approval_callback(ctx)({
+                "action": "edit_file",
+                "path": "note.txt",
+            })
+        finally:
+            finished.set()
 
     thread = threading.Thread(target=wait_for_approval, daemon=True)
     thread.start()
@@ -552,6 +556,7 @@ def test_live_file_approval_callback_emits_request_and_accepts_response(record_c
             feedback="Use a smaller patch.",
         )
         assert result == {"ok": True, "approved": False, "feedback": "Use a smaller patch."}
+        assert finished.wait(2.0)
     finally:
         ctx.cancelled = True
         thread.join(timeout=2.0)
