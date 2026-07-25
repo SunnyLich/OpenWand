@@ -31285,7 +31285,7 @@
         "tests/test_optional_deps.py::test_shared_speech_optional_installer_failure_matrix_is_persisted"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31301,7 +31301,7 @@
         "tests/test_optional_deps.py::test_shared_speech_optional_installer_failure_matrix_is_persisted"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31317,7 +31317,7 @@
         "tests/test_optional_deps.py::test_shared_speech_optional_installer_failure_matrix_is_persisted"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31333,7 +31333,7 @@
         "tests/test_optional_deps.py::test_shared_speech_optional_installer_failure_matrix_is_persisted"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31352,7 +31352,7 @@
         "tests/test_optional_deps.py::test_shared_speech_optional_installer_failure_matrix_is_persisted"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31368,7 +31368,7 @@
         "tests/test_optional_deps.py::test_shared_speech_optional_installer_failure_matrix_is_persisted"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31384,7 +31384,7 @@
         "tests/test_settings_dialog_controls.py::test_shared_speech_optional_install_cancellation_starts_no_installer"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31724,7 +31724,7 @@
         "tests/test_optional_deps.py::test_require_optional_package_runtime_rejects_invalid_managed_install"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31740,7 +31740,7 @@
         "tests/test_speech_failure_matrix.py::test_missing_speech_model_assets_are_classified_without_network"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31756,7 +31756,7 @@
         "tests/test_speech_failure_matrix.py::test_damaged_speech_model_assets_are_classified_without_network"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31772,7 +31772,7 @@
         "tests/test_speech_failure_matrix.py::test_microphone_permission_failure_resets_recording_state"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31788,7 +31788,7 @@
         "tests/test_audio_stream.py::AudioStreamTests::test_output_device_and_permission_failures_cleanup_without_completion"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31804,7 +31804,7 @@
         "tests/test_audio_stream.py::AudioStreamTests::test_output_device_and_permission_failures_cleanup_without_completion"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31820,7 +31820,7 @@
         "tests/test_speech_failure_matrix.py::test_tts_provider_auth_network_and_model_failures_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31837,7 +31837,7 @@
         "tests/test_audio_stream.py::AudioStreamTests::test_tts_producer_failure_does_not_escape_thread_or_claim_completion"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31853,7 +31853,7 @@
         "tests/test_speech_failure_matrix.py::test_tts_provider_auth_network_and_model_failures_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31869,7 +31869,7 @@
         "tests/test_optional_deps.py::test_stt_model_probe_rejects_cpu_fallback_for_explicit_cuda"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -50027,7 +50027,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_clipboard_failure_stays_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50043,7 +50043,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_clipboard_failure_stays_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50059,7 +50059,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_clipboard_failure_stays_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50075,7 +50075,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_clipboard_failure_stays_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50091,7 +50091,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_clipboard_failure_stays_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50107,7 +50107,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_log_folder_failures_stay_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50123,7 +50123,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_log_folder_failures_stay_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50139,7 +50139,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_log_folder_failures_stay_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50155,7 +50155,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_log_folder_failures_stay_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {

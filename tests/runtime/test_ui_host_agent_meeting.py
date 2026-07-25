@@ -198,12 +198,12 @@ def test_mac_ui_agent_finish_shows_prominent_banner(tmp_path):
         dialog.finish({"run_dir": str(tmp_path / "run"), "final": "All done."})
 
         assert dialog.completion_banner.isHidden() is False
-        assert dialog.completion_banner_title.text() == "Agent Task Finished"
+        assert dialog.completion_banner_title.text() == "Agent Team Finished"
         assert "Final report is ready" in dialog.completion_banner_detail.text()
         assert dialog.tabs.currentWidget() is dialog.final_view
         assert dialog.final_view.toPlainText() == "All done."
         assert host.notices
-        assert host.notices[-1][0] == "Agent Task Finished"
+        assert host.notices[-1][0] == "Agent Team Finished"
         assert host.notices[-1][1] is True
     finally:
         dialog.close()
