@@ -36,6 +36,7 @@ import time
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from socketserver import TCPServer
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from core.system.native_locks import keychain_lock
@@ -50,6 +51,7 @@ _CLIENT_ID    = "app_EMoamEEZ73f0CkXaXp7hrann"
 _ISSUER       = "https://auth.openai.com"
 _OAUTH_PORT   = 1455
 _REDIRECT_URI = f"http://localhost:{_OAUTH_PORT}/auth/callback"
+_OAUTH_BIND_HOST = "127.0.0.1"
 
 _KEYRING_SERVICE = "python-ai-overlay"
 _KEYRING_ACCOUNT = "chatgpt-oauth"
@@ -431,6 +433,18 @@ def get_account_id() -> str | None:
 # Browser-based PKCE flow
 # ---------------------------------------------------------------------------
 
+
+class _OAuthCallbackServer(HTTPServer):
+    """HTTP server that binds locally without a blocking FQDN lookup."""
+
+    def server_bind(self) -> None:
+        """Bind the socket while avoiding ``HTTPServer``'s reverse DNS lookup."""
+        TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = host
+        self.server_port = port
+
+
 def start_browser_login(
     on_success: Callable[[dict], None],
     on_error: Callable[[str], None],
@@ -539,7 +553,7 @@ def start_browser_login(
                 self.wfile.write(body)
 
         try:
-            server = HTTPServer(("localhost", _OAUTH_PORT), _Handler)
+            server = _OAuthCallbackServer((_OAUTH_BIND_HOST, _OAUTH_PORT), _Handler)
         except OSError as exc:
             on_error(f"Cannot bind to port {_OAUTH_PORT}: {exc}")
             return

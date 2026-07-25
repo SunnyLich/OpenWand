@@ -1,5 +1,6 @@
 """Tests for ChatGPT OAuth callback and credential contracts."""
 
+import http.server
 import json
 import logging
 import os
@@ -49,6 +50,24 @@ def _free_local_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def test_oauth_callback_server_does_not_resolve_fqdn(monkeypatch):
+    """Starting the local callback must not depend on reverse DNS."""
+    monkeypatch.setattr(
+        http.server.socket,
+        "getfqdn",
+        lambda *_args: pytest.fail("OAuth callback startup must not resolve an FQDN"),
+    )
+
+    server = chatgpt_auth._OAuthCallbackServer(
+        (chatgpt_auth._OAUTH_BIND_HOST, 0),
+        http.server.BaseHTTPRequestHandler,
+    )
+    try:
+        assert server.server_name == chatgpt_auth._OAUTH_BIND_HOST
+    finally:
+        server.server_close()
+
+
 def test_browser_oauth_reports_when_system_browser_cannot_open(monkeypatch):
     """A false/failed browser launch ends the flow instead of waiting five minutes."""
     errors: list[str] = []
@@ -61,7 +80,7 @@ def test_browser_oauth_reports_when_system_browser_cannot_open(monkeypatch):
         def server_close(self):
             self.closed = True
 
-    monkeypatch.setattr(chatgpt_auth, "HTTPServer", FakeServer)
+    monkeypatch.setattr(chatgpt_auth, "_OAuthCallbackServer", FakeServer)
     monkeypatch.setattr(webbrowser, "open", lambda _url: False)
     chatgpt_auth.start_browser_login(
         lambda _tokens: pytest.fail("browser failure must not authenticate"),
