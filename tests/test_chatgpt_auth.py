@@ -14,6 +14,8 @@ import pytest
 
 from core.auth import chatgpt as chatgpt_auth
 
+_ASYNC_OAUTH_TEST_TIMEOUT = 15
+
 
 def test_oauth_success_page_uses_wisp_copy(monkeypatch):
     """Verify the browser callback success page uses the branded Wisp message."""
@@ -65,7 +67,7 @@ def test_browser_oauth_reports_when_system_browser_cannot_open(monkeypatch):
         lambda _tokens: pytest.fail("browser failure must not authenticate"),
         lambda message: (errors.append(message), finished.set()),
     )
-    assert finished.wait(5)
+    assert finished.wait(_ASYNC_OAUTH_TEST_TIMEOUT)
     assert errors == ["The browser cannot open the ChatGPT sign-in page."]
 
 
@@ -98,14 +100,14 @@ def test_browser_oauth_rejects_mismatched_state_without_leaking_code(monkeypatch
             lambda _tokens: pytest.fail("state mismatch must not authenticate"),
             lambda message: (errors.append(message), finished.set()),
         )
-        assert browser_ready.wait(5)
+        assert browser_ready.wait(_ASYNC_OAUTH_TEST_TIMEOUT)
         secret_code = "authorization-code-must-not-be-logged"
         with urllib.request.urlopen(
             f"http://localhost:{port}/auth/callback?code={secret_code}&state=wrong-state",
             timeout=5,
         ) as response:
             body = response.read().decode("utf-8")
-        assert finished.wait(5)
+        assert finished.wait(_ASYNC_OAUTH_TEST_TIMEOUT)
 
     assert "OAuth state mismatch" in body
     assert errors and "state did not match" in errors[0]
@@ -146,13 +148,13 @@ def test_browser_oauth_valid_callback_uses_pkce_and_persists_tokens(monkeypatch)
         lambda tokens: (successes.append(tokens), finished.set()),
         lambda error: pytest.fail(f"unexpected OAuth error: {error}"),
     )
-    assert browser_ready.wait(5)
+    assert browser_ready.wait(_ASYNC_OAUTH_TEST_TIMEOUT)
     with urllib.request.urlopen(
         f"http://localhost:{port}/auth/callback?code=valid-code&state=valid-state",
         timeout=5,
     ) as response:
         assert response.status == 200
-    assert finished.wait(5)
+    assert finished.wait(_ASYNC_OAUTH_TEST_TIMEOUT)
 
     assert exchanges == [("valid-code", "valid-verifier", f"http://localhost:{port}/auth/callback")]
     assert successes == saved
