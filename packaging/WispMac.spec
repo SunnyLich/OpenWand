@@ -22,12 +22,13 @@ APP_ICON_ICNS = ROOT / "assets" / "app.icns"
 LITEPARSE_DATAS, LITEPARSE_BINARIES, LITEPARSE_HIDDENIMPORTS = collect_all("liteparse")
 LANGUAGE_TAGS_DATAS, LANGUAGE_TAGS_BINARIES, LANGUAGE_TAGS_HIDDENIMPORTS = collect_all("language_tags")
 CLAUDE_SDK_DATAS, CLAUDE_SDK_BINARIES, CLAUDE_SDK_HIDDENIMPORTS = collect_all("claude_agent_sdk")
-INSTALLER_OWNED_STT_EXCLUDES = [
+INSTALLER_OWNED_SPEECH_EXCLUDES = [
     "av",
     "ctranslate2",
     "faster_whisper",
     "flatbuffers",
     "onnxruntime",
+    "elevenlabs",
 ]
 RUNTIME_WORKER_HIDDENIMPORTS = collect_submodules("runtime.workers")
 BRAIN_HIDDENIMPORTS = collect_submodules("wisp_brain")
@@ -77,6 +78,7 @@ a = Analysis(
         (str(ROOT / "ui" / "locales"), "ui/locales"),
         (str(ROOT / ".env.example"), "."),
         (str(ROOT / "pyproject.toml"), "."),
+        (str(ROOT / "requirements" / "optional"), "requirements/optional"),
     ] + BUNDLED_ADDON_DATAS + LITEPARSE_DATAS + LANGUAGE_TAGS_DATAS + CLAUDE_SDK_DATAS,
     hiddenimports=[
         "pynput.keyboard._darwin",
@@ -88,7 +90,7 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        *INSTALLER_OWNED_STT_EXCLUDES,
+        *INSTALLER_OWNED_SPEECH_EXCLUDES,
         "pip",
         "pytest",
         "tests",

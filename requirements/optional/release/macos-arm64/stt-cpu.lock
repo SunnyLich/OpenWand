@@ -1,0 +1,151 @@
+--index-url https://pypi.org/simple
+
+annotated-doc==0.0.4
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   typer
+anyio==4.14.1
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   httpx
+av==17.1.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   faster-whisper
+certifi==2026.6.17
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   httpcore
+    #   httpx
+click==8.4.2
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   huggingface-hub
+    #   typer
+coloredlogs==15.0.1
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   onnxruntime
+ctranslate2==4.8.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   faster-whisper
+faster-whisper==1.2.1
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   -r requirements/optional/inputs/stt-cpu.in
+filelock==3.29.4
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   huggingface-hub
+flatbuffers==25.12.19
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   onnxruntime
+fsspec==2026.6.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   huggingface-hub
+h11==0.16.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   httpcore
+hf-xet==1.5.1
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   huggingface-hub
+httpcore==1.0.9
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   httpx
+httpx==0.28.1
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   huggingface-hub
+huggingface-hub==1.21.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   faster-whisper
+    #   tokenizers
+humanfriendly==10.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   coloredlogs
+idna==3.18
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   anyio
+    #   httpx
+markdown-it-py==4.2.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   rich
+mdurl==0.1.2
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   markdown-it-py
+mpmath==1.3.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   sympy
+numpy==2.5.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   ctranslate2
+    #   onnxruntime
+onnxruntime==1.23.2
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   faster-whisper
+packaging==26.2
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   huggingface-hub
+    #   onnxruntime
+protobuf==6.33.2
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   onnxruntime
+pygments==2.20.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   rich
+pyyaml==6.0.3
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   ctranslate2
+    #   huggingface-hub
+rich==15.0.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   typer
+setuptools==81.0.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   ctranslate2
+shellingham==1.5.4
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   typer
+sympy==1.14.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   onnxruntime
+tokenizers==0.22.2
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   faster-whisper
+tqdm==4.68.3
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   faster-whisper
+    #   huggingface-hub
+typer==0.25.1
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   huggingface-hub
+typing-extensions==4.15.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   anyio
+    #   huggingface-hub

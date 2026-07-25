@@ -487,9 +487,15 @@
       <translation>Ambiental</translation>
     </message>
     <message>
-      <source>Any OpenAI-compatible endpoint, including Ollama and LM Studio. Select Custom in a model row below after setting the base URL.</source>
-      <translation>Cualquier endpoint compatible con OpenAI, incluidos Ollama y LM Studio. Selecciona Personalizado en una fila de modelo despues de configurar la URL base.</translation>
+      <source>Any other OpenAI-compatible endpoint, including LM Studio. Select Custom in a model row below after setting the base URL.</source>
+      <translation>Cualquier otro endpoint compatible con OpenAI, incluido LM Studio. Selecciona Personalizado en una fila de modelo después de configurar la URL base.</translation>
     </message>
+    <message><source>Using Ollama?</source><translation>¿Usas Ollama?</translation></message>
+    <message><source>Choose Ollama directly in the Provider menu. Wisp connects to the local Ollama app and loads your installed models automatically—no API key or model name to enter.</source><translation>Selecciona Ollama directamente en el menú Proveedor. Wisp se conecta a la aplicación local de Ollama y carga automáticamente los modelos instalados, sin pedir una clave API ni un nombre de modelo.</translation></message>
+    <message><source>Finding installed Ollama models…</source><translation>Buscando modelos de Ollama instalados…</translation></message>
+    <message><source>Fetching model names…</source><translation>Obteniendo nombres de modelos…</translation></message>
+    <message><source>Couldn't reach Ollama. Start Ollama, then try again. ({error})</source><translation>No se pudo conectar con Ollama. Inicia Ollama y vuelve a intentarlo. ({error})</translation></message>
+    <message><source>Save changes to make {profile} the active profile.</source><translation>Guarda los cambios para activar el perfil {profile}.</translation></message>
     <message>
       <source>App</source>
       <translation>Aplicación</translation>
@@ -3920,6 +3926,8 @@ Preguntar antes de escribir — mostrar las diferencias antes de editar o crear.
 Escribir automáticamente — aplicar las ediciones sin preguntar.</translation></message>
     <message><source>Open the intent overlay for selected text or the active project.</source><translation>Abre el selector de intenciones para el texto seleccionado o el proyecto activo.</translation></message>
     <message><source>Select a screen region, attach it, and open the intent overlay.</source><translation>Selecciona una región de la pantalla, adjúntala y abre el selector de intenciones.</translation></message>
+    <message><source>ElevenLabs is downloaded only when you install it, keeping release downloads smaller. Source checkouts may use the SDK from their Python environment.</source><translation>ElevenLabs se descarga solo cuando lo instalas, lo que mantiene más pequeñas las descargas de versiones. Los repositorios de código fuente pueden usar el SDK de su entorno de Python.</translation></message>
+    <message><source>Packages are downloaded and staged. Restart Wisp to apply and verify them.</source><translation>Los paquetes se descargaron y quedaron preparados. Reinicia Wisp para aplicarlos y verificarlos.</translation></message>
   </context>
   <context>
     <name>Wisp</name>
@@ -5283,7 +5291,7 @@ En Windows, Kokoro también puede necesitar eSpeak NG instalado por separado si 
     </message>
     <message>
       <source>Install or repair faster-whisper, then download and load the speech model so the first hold-to-talk does not stall. The first download needs an internet connection.</source>
-      <translation>Install or repair faster-whisper, then download and load the speech model so the first hold-to-talk does not stall. The first download needs an internet connection.</translation>
+      <translation>Instala o repara faster-whisper y, a continuación, descarga y carga el modelo de voz para que la primera pulsación para hablar no se bloquee. La primera descarga requiere conexión a Internet.</translation>
     </message>
     <message>
       <source>Wisp will install or repair local speech-to-text support in its user-writable optional packages folder.
@@ -5298,18 +5306,18 @@ Beam size: {beam_size}
 The installer will then load the selected Whisper model in a separate process. The first model download needs internet access and may take a while.
 
 Continue?</source>
-      <translation>Wisp will install or repair local speech-to-text support in its user-writable optional packages folder.
+      <translation>Wisp instalará o reparará la compatibilidad local de voz a texto en su carpeta de paquetes opcionales con permisos de escritura para el usuario.
 
-Package: {package}
-Model: {model}
-Device: {device}
-Compute type: {compute_type}
-Speech language: {language}
-Beam size: {beam_size}
+Paquete: {package}
+Modelo: {model}
+Dispositivo: {device}
+Tipo de cálculo: {compute_type}
+Idioma de voz: {language}
+Tamaño del haz: {beam_size}
 
-The installer will then load the selected Whisper model in a separate process. The first model download needs internet access and may take a while.
+A continuación, el instalador cargará el modelo Whisper seleccionado en un proceso separado. La primera descarga del modelo requiere acceso a Internet y puede tardar un poco.
 
-Continue?</translation>
+¿Continuar?</translation>
     </message>
     <message>
       <source>
@@ -5321,7 +5329,7 @@ La compatibilidad Auto/GPU también descarga los paquetes NVIDIA CUDA Runtime y 
     </message>
     <message>
       <source>preparing local assets for {elapsed}</source>
-      <translation>preparing local assets for {elapsed}</translation>
+      <translation>preparando recursos locales durante {elapsed}</translation>
     </message>
     <message>
       <source>downloading or loading Whisper model for {elapsed}</source>
@@ -5342,20 +5350,20 @@ Before installing, Wisp will remove any previous STT package files from its opti
 The installer will then load the selected Whisper model in a separate process. The first model download needs internet access and may take a while.
 
 Continue?</source>
-      <translation>Wisp will install or repair local speech-to-text support in its user-writable optional packages folder.
+      <translation>Wisp instalará o reparará la compatibilidad local de voz a texto en su carpeta de paquetes opcionales con permisos de escritura para el usuario.
 
-Package: {package}
-Model: {model}
-Device: {device}
-Compute type: {compute_type}
-Speech language: {language}
-Beam size: {beam_size}
+Paquete: {package}
+Modelo: {model}
+Dispositivo: {device}
+Tipo de cálculo: {compute_type}
+Idioma de voz: {language}
+Tamaño del haz: {beam_size}
 
-Before installing, Wisp will remove any previous STT package files from its optional packages folder so a broken build cannot be reused.
+Antes de instalar, Wisp eliminará los archivos anteriores del paquete STT de su carpeta de paquetes opcionales para evitar reutilizar una compilación dañada.
 
-The installer will then load the selected Whisper model in a separate process. The first model download needs internet access and may take a while.
+A continuación, el instalador cargará el modelo Whisper seleccionado en un proceso separado. La primera descarga del modelo requiere acceso a Internet y puede tardar un poco.
 
-Continue?</translation>
+¿Continuar?</translation>
     </message>
     <message>
       <source>removing previous install</source>
@@ -5761,6 +5769,10 @@ No se eliminarán las cachés compartidas de uv/pip ni los modelos de Hugging Fa
     <message><source>Profile</source><translation>Perfil</translation></message>
     <message><source>Profile settings could not be saved: {error}</source><translation>No se pudo guardar la configuración del perfil: {error}</translation></message>
     <message><source>Rename conversation failed</source><translation>Error al cambiar el nombre de la conversación</translation></message>
+    <message><source>Search conversations</source><translation>Buscar conversaciones</translation></message>
+    <message><source>Search conversations...</source><translation>Buscar conversaciones...</translation></message>
+    <message><source>Search titles, projects, and messages (Ctrl+K)</source><translation>Buscar en títulos, proyectos y mensajes (Ctrl+K)</translation></message>
+    <message><source>No matching conversations.</source><translation>No hay conversaciones coincidentes.</translation></message>
     <message><source>Rename profile failed</source><translation>Error al cambiar el nombre del perfil</translation></message>
     <message><source>Settings cannot close while {child} is active.</source><translation>La configuración no se puede cerrar mientras {child} esté activo.</translation></message>
     <message><source>That fact is invalid or duplicates an existing fact.</source><translation>Ese dato no es válido o duplica un dato existente.</translation></message>
@@ -5770,5 +5782,60 @@ No se eliminarán las cachés compartidas de uv/pip ni los modelos de Hugging Fa
     <message><source>an installer</source><translation>un instalador</translation></message>
     <message><source>the profile setup wizard</source><translation>el asistente de configuración de perfiles</translation></message>
     <message><source>usage credits required</source><translation>se requieren créditos de uso</translation></message>
+    <message><source>Copy current app context</source><translation>Copiar el contexto actual de la aplicación</translation></message>
+    <message><source>Append readable text and window details from the application behind Wisp.</source><translation>Añade texto legible y detalles de la ventana de la aplicación situada detrás de Wisp.</translation></message>
+    <message><source>minutes</source><translation>minutos</translation></message>
+    <message><source>Local voice — Kokoro (installer opens after setup)</source><translation>Voz local — Kokoro (el instalador se abrirá después de la configuración)</translation></message>
+    <message><source>Local speech recognition — Whisper (installer opens after setup)</source><translation>Reconocimiento de voz local — Whisper (el instalador se abrirá después de la configuración)</translation></message>
+    <message><source>Provider connections</source><translation>Conexiones de proveedores</translation></message>
+    <message><source>Stored in OS keychain (blank if not needed)</source><translation>Guardada en el llavero del sistema operativo (déjala en blanco si no es necesaria)</translation></message>
+    <message><source>{label} key stored in OS keychain</source><translation>Clave de {label} guardada en el llavero del sistema operativo</translation></message>
+    <message><source>Couldn't fetch — showing built-ins ({error})</source><translation>No se pudieron obtener los modelos — se muestran los integrados ({error})</translation></message>
+    <message><source>Provider returned no models — showing built-ins</source><translation>El proveedor no devolvió modelos — se muestran los integrados</translation></message>
+    <message><source>Live: {count} models</source><translation>En vivo: {count} modelos</translation></message>
+    <message><source>{prefix} provider {index}</source><translation>{prefix} proveedor {index}</translation></message>
+    <message><source>{prefix} model {index}</source><translation>{prefix} modelo {index}</translation></message>
+    <message><source>Undo</source><translation>Deshacer</translation></message>
+    <message><source>Replacement pasted.</source><translation>Reemplazo pegado.</translation></message>
+    <message><source>Last Wisp edit undone.</source><translation>Se deshizo la última edición de Wisp.</translation></message>
+    <message><source>There is no recent Wisp edit to undo.</source><translation>No hay ninguna edición reciente de Wisp que deshacer.</translation></message>
+    <message><source>The undo window expired. Original text copied to clipboard.</source><translation>El plazo para deshacer ha vencido. El texto original se copió al portapapeles.</translation></message>
+    <message><source>The undo window expired and the original text could not be copied.</source><translation>El plazo para deshacer ha vencido y no se pudo copiar el texto original.</translation></message>
+    <message><source>Couldn't safely undo in the app. Original text copied to clipboard.</source><translation>No se pudo deshacer de forma segura en la aplicación. El texto original se copió al portapapeles.</translation></message>
+    <message><source>Couldn't undo the last Wisp edit or copy the original text.</source><translation>No se pudo deshacer la última edición de Wisp ni copiar el texto original.</translation></message>
+    <message><source>Delegate</source><translation>Delegar</translation></message>
+    <message><source>Turn this prompt into a background agent task</source><translation>Convertir este mensaje en una tarea de agentes en segundo plano</translation></message>
+    <message><source>Delegate to background agents</source><translation>Delegar a agentes en segundo plano</translation></message>
+    <message><source>Create a scoped background task with collaborating agents. You can close the activity window and keep using Wisp while they work. The selected folder is their filesystem boundary.</source><translation>Crea una tarea delimitada en segundo plano con agentes que colaboran. Puedes cerrar la ventana de actividad y seguir usando Wisp mientras trabajan. La carpeta seleccionada es el límite de su sistema de archivos.</translation></message>
+    <message><source>New background agent task...</source><translation>Nueva tarea de agentes en segundo plano...</translation></message>
+    <message><source>Background agent activity...</source><translation>Actividad de agentes en segundo plano...</translation></message>
+    <message><source>Agent Team</source><translation>Equipo de agentes</translation></message>
+    <message><source>Start Agent Team...</source><translation>Iniciar equipo de agentes...</translation></message>
+    <message><source>Agent Team Activity...</source><translation>Actividad del equipo de agentes...</translation></message>
+    <message><source>Start Agent Team</source><translation>Iniciar equipo de agentes</translation></message>
+    <message><source>Create a scoped Agent Team that keeps working in the background. You can close the activity window and keep using Wisp while the team works. The selected folder is its filesystem boundary.</source><translation>Crea un equipo de agentes con un alcance delimitado que siga trabajando en segundo plano. Puedes cerrar la ventana de actividad y seguir usando Wisp mientras el equipo trabaja. La carpeta seleccionada es el límite de su sistema de archivos.</translation></message>
+    <message><source>Invalid Agent Team</source><translation>Equipo de agentes no válido</translation></message>
+    <message><source>Agent Team Spec</source><translation>Especificación del equipo de agentes</translation></message>
+    <message><source>Agent Team Running</source><translation>Equipo de agentes en ejecución</translation></message>
+    <message><source>Agent Team Finished</source><translation>Equipo de agentes finalizado</translation></message>
+    <message><source>Agent Team Failed</source><translation>El equipo de agentes ha fallado</translation></message>
+    <message><source>Agent Team Cancelled</source><translation>Equipo de agentes cancelado</translation></message>
+    <message><source>Agent Team cancelled.</source><translation>Equipo de agentes cancelado.</translation></message>
+    <message><source>Agent Team History</source><translation>Historial del equipo de agentes</translation></message>
+    <message><source>No Agent Team runs yet.</source><translation>Aún no hay ejecuciones del equipo de agentes.</translation></message>
+    <message><source>Turn this prompt into an Agent Team task</source><translation>Convertir este mensaje en una tarea del equipo de agentes</translation></message>
+    <message><source>Delegate to Agent Team</source><translation>Delegar al equipo de agentes</translation></message>
+    <message><source>Agent Team spec was empty.</source><translation>La especificación del equipo de agentes estaba vacía.</translation></message>
+    <message><source>No Agent Team is running.</source><translation>No hay ningún equipo de agentes en ejecución.</translation></message>
+    <message><source>Agent Team cancellation requested.</source><translation>Se solicitó cancelar el equipo de agentes.</translation></message>
+    <message><source>Agent Team was not running.</source><translation>El equipo de agentes no estaba en ejecución.</translation></message>
+    <message><source>Could not load that Agent Team spec.</source><translation>No se pudo cargar esa especificación del equipo de agentes.</translation></message>
+    <message><source>Agent Team was cancelled by the user.</source><translation>El usuario canceló el equipo de agentes.</translation></message>
+    <message><source>Background task finished</source><translation>Tarea en segundo plano finalizada</translation></message>
+    <message><source>Background task failed</source><translation>La tarea en segundo plano ha fallado</translation></message>
+    <message><source>The background task finished without a report.</source><translation>La tarea en segundo plano terminó sin un informe.</translation></message>
+    <message><source>Run details</source><translation>Detalles de la ejecución</translation></message>
+    <message><source>Wisp pasted the rewrite</source><translation>Wisp pegó la reescritura</translation></message>
+    <message><source>The text was replaced, but Wisp couldn't restore your previous clipboard.</source><translation>El texto se reemplazó, pero Wisp no pudo restaurar el contenido anterior del portapapeles.</translation></message>
   </context>
 </TS>

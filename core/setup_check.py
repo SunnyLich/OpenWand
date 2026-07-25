@@ -1,7 +1,6 @@
 """Lightweight setup checks safe to run from the Settings UI."""
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 from core.error_recommendations import recommendation_for
@@ -66,94 +65,35 @@ def run_setup_check() -> list[dict[str, str]]:
         }
     )
 
-    tts_provider = str(getattr(config, "TTS_PROVIDER", "none") or "none").strip().lower()
-    tts_ok = tts_provider == "none"
-    tts_recommendation = ""
-    if tts_provider == "cartesia":
-        tts_ok = bool(getattr(config, "CARTESIA_API_KEY", ""))
-    elif tts_provider == "elevenlabs":
-        has_key = bool(getattr(config, "ELEVENLABS_API_KEY", ""))
-        try:
-            from core import optional_deps
+    from core import speech_status
 
-            has_package = optional_deps.is_importable("elevenlabs")
-        except Exception:
-            has_package = False
-        tts_ok = has_key and has_package
-        if has_key and not has_package:
-            tts_recommendation = (
-                "Recommendation: ElevenLabs support is not installed. Open Settings > Voice and click "
-                "Install ElevenLabs, or rebuild from a shorter path."
-            )
-    elif tts_provider == "openai":
-        tts_ok = bool(getattr(config, "OPENAI_API_KEY", ""))
-    elif tts_provider == "openai_compatible":
-        tts_ok = bool(getattr(config, "TTS_CUSTOM_BASE_URL", ""))
-    elif tts_provider == "gpt_sovits":
-        tts_ok = bool(
-            getattr(config, "GPT_SOVITS_URL", "")
-            and getattr(config, "GPT_SOVITS_REF_AUDIO_PATH", "")
-        )
-    elif tts_provider == "kokoro":
-        tts_ok = bool(getattr(config, "KOKORO_VOICE", ""))
+    speech = speech_status.speech_status(config, verify_runtime=True)
+    tts = dict(speech["tts"])
+    tts_disabled = tts.get("state") == "disabled"
+    tts_ok = bool(tts.get("usable")) or tts_disabled
+    tts_recommendation = str(tts.get("action") or "")
+    if tts_recommendation:
+        tts_recommendation = f"Recommendation: {tts_recommendation}"
     rows.append(
         {
             "name": "TTS",
-            "status": _status(tts_ok, warning=tts_provider == "none"),
-            "message": "TTS is off." if tts_provider == "none" else f"TTS provider configured: {tts_provider}.",
+            "status": _status(tts_ok, warning=tts_disabled),
+            "message": str(tts.get("summary") or "TTS status is unavailable."),
             "recommendation": "" if tts_ok else (tts_recommendation or recommendation_for("tts no audio")),
         }
     )
 
-    stt_model = str(getattr(config, "STT_MODEL", "") or "").strip()
-    stt_package_ok = False
-    stt_import_error = ""
-    stt_recommendation = ""
-    if stt_model:
-        try:
-            from core import optional_deps
-
-            requested_device = str(getattr(config, "STT_DEVICE", "auto") or "auto").strip().lower()
-            spec_status = optional_deps.optional_package_spec_status("stt", device=requested_device)
-            stt_status = optional_deps.stt_runtime_import_status_subprocess()
-            stt_package_ok = bool(
-                spec_status.get("valid")
-                and stt_status.get("installed")
-                and stt_status.get("valid")
-            )
-            stt_import_error = str(stt_status.get("error") or spec_status.get("message") or "").strip()
-            if stt_package_ok and sys.platform == "win32" and requested_device == "cuda":
-                from core.stt_device import windows_cuda_runtime_status
-
-                cuda_status = windows_cuda_runtime_status()
-                if cuda_status.get("checked") and not cuda_status.get("valid"):
-                    stt_package_ok = False
-                    names = ", ".join(sorted(str(name) for name in dict(cuda_status.get("errors") or {})))
-                    stt_import_error = (
-                        "Windows CUDA runtime is incomplete or unloadable"
-                        + (f": {names}" if names else "")
-                    )
-        except Exception:
-            stt_package_ok = False
-            stt_import_error = ""
-        if not stt_package_ok:
-            stt_recommendation = (
-                "Recommendation: STT support is not working. Open Settings > Voice and click "
-                "Install STT."
-            )
+    stt = dict(speech["stt"])
+    stt_model = str(stt.get("model") or "")
+    stt_package_ok = bool(stt.get("usable"))
+    stt_recommendation = str(stt.get("action") or "")
+    if stt_recommendation:
+        stt_recommendation = f"Recommendation: {stt_recommendation}"
     rows.append(
         {
             "name": "Speech to text",
             "status": "pass" if not stt_model else _status(stt_package_ok),
-            "message": (
-                f"STT model configured: {stt_model}. faster-whisper is installed."
-                if stt_model and stt_package_ok
-                else f"STT model configured: {stt_model}, but STT verification failed: {stt_import_error}"
-                if stt_model and stt_import_error
-                else f"STT model configured: {stt_model}, but faster-whisper is not installed."
-                if stt_model
-                else "STT is not configured; voice and dictation can stay off."
-            ),
+            "message": str(stt.get("summary") or "STT status is unavailable."),
             "recommendation": (
                 ""
                 if not stt_model or stt_package_ok

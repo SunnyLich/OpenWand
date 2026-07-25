@@ -1,12 +1,20 @@
-ast-serialize==0.5.0
+ast-serialize==0.6.0
     # via mypy
 colorama==0.4.6 ; sys_platform == 'win32'
     # via pytest
 iniconfig==2.3.0
     # via pytest
-librt==0.11.0 ; platform_python_implementation != 'PyPy'
+jinja2==3.1.6
+    # via pdoc
+librt==0.13.0 ; platform_python_implementation != 'PyPy'
     # via mypy
-mypy==2.1.0
+markdown2==2.5.5
+    # via pdoc
+markupsafe==3.0.3
+    # via
+    #   jinja2
+    #   pdoc
+mypy==2.3.0
     # via -r requirements/requirements-dev.txt
 mypy-extensions==1.1.0
     # via mypy
@@ -14,13 +22,19 @@ packaging==26.2
     # via pytest
 pathspec==1.1.1
     # via mypy
+pdoc==16.0.0
+    # via -r requirements/requirements-dev.txt
 pluggy==1.6.0
     # via pytest
 pygments==2.20.0
-    # via pytest
+    # via
+    #   pdoc
+    #   pytest
 pytest==9.1.1
     # via -r requirements/requirements-dev.txt
-ruff==0.15.20
+ruff==0.16.0
     # via -r requirements/requirements-dev.txt
 typing-extensions==4.15.0
-    # via mypy
+    # via
+    #   -r requirements/requirements-dev.txt
+    #   mypy

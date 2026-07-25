@@ -338,6 +338,23 @@ def test_stt_prewarm_is_unavailable_when_voice_and_dictation_are_disabled(monkey
     assert audio_host._stt_prewarm_available() is False
 
 
+def test_stt_prewarm_silently_rejects_incomplete_runtime(monkeypatch):
+    """Broken transitive imports must be rejected before startup reports warm-up failure."""
+    import config
+    from core import optional_deps
+
+    monkeypatch.setattr(config, "HOTKEY_VOICE", "ctrl+space", raising=False)
+    monkeypatch.setattr(
+        optional_deps,
+        "require_optional_package_runtime",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("STT install is incomplete: missing av.about")
+        ),
+    )
+
+    assert audio_host._stt_prewarm_available() is False
+
+
 def test_tts_synthesize_raises_while_local_voice_is_warming(monkeypatch):
     """A user TTS request should not sit behind a stuck local warmup forever."""
     import config

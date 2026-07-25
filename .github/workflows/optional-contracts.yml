@@ -1,0 +1,57 @@
+name: Optional dependency contracts
+
+on:
+  push:
+    paths:
+      - "core/optional_deps.py"
+      - "scripts/optional_tts_installer.py"
+      - "scripts/verify_optional_contract_installs.py"
+      - "scripts/compile_dependency_locks.ps1"
+      - "scripts/compile_dependency_locks.sh"
+      - "requirements/optional/**"
+      - ".github/workflows/optional-contracts.yml"
+  pull_request:
+    paths:
+      - "core/optional_deps.py"
+      - "scripts/optional_tts_installer.py"
+      - "scripts/verify_optional_contract_installs.py"
+      - "scripts/compile_dependency_locks.ps1"
+      - "scripts/compile_dependency_locks.sh"
+      - "requirements/optional/**"
+      - ".github/workflows/optional-contracts.yml"
+  workflow_dispatch:
+
+jobs:
+  native-cpu-contracts:
+    name: Native CPU contracts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: ".python-version"
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "requirements/optional/**/*.lock"
+
+      - name: Install Linux native libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsndfile1 espeak-ng
+
+      - name: Install macOS native libraries
+        if: runner.os == 'macOS'
+        run: brew install espeak-ng
+
+      - name: Install and import every CPU Release contract
+        run: python scripts/verify_optional_contract_installs.py

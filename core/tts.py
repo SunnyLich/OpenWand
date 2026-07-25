@@ -359,7 +359,7 @@ def _stream_elevenlabs(text: str) -> Generator[bytes, None, None]:
     try:
         from core import optional_deps
 
-        optional_deps.add_optional_packages_to_path(prepend=True)
+        optional_deps.require_optional_package_runtime("elevenlabs")
         sdk_clients.install_proxy_guard()
         from elevenlabs.client import ElevenLabs  # type: ignore
     except ImportError as exc:
@@ -390,13 +390,14 @@ def _stream_elevenlabs(text: str) -> Generator[bytes, None, None]:
 # ------------------------------------------------------------------
 
 def kokoro_installed() -> bool:
-    """Return whether the optional Kokoro package can be imported."""
+    """Return whether the installer-owned Kokoro package layer is complete."""
     try:
         from core import optional_deps
 
-        optional_deps.add_optional_packages_to_path()
-        importlib.invalidate_caches()
-        available = importlib.util.find_spec("kokoro") is not None
+        requested = str(getattr(config, "KOKORO_DEVICE", "auto") or "auto")
+        install_device = "cuda" if optional_deps.kokoro_install_mode_for_device(requested) == "gpu" else "cpu"
+        status = optional_deps.optional_package_spec_status("kokoro", device=install_device)
+        available = bool(status.get("valid"))
         _kokoro_diag(
             "Kokoro import check "
             f"available={available} optional_dir={str(optional_deps.OPTIONAL_PACKAGES_DIR)!r} "
@@ -622,7 +623,9 @@ def _import_kokoro_pipeline():
         from core import optional_deps
 
         _set_kokoro_stage("adding optional package path")
-        optional_deps.add_optional_packages_to_path(prepend=True)
+        requested = str(getattr(config, "KOKORO_DEVICE", "auto") or "auto")
+        install_device = "cuda" if optional_deps.kokoro_install_mode_for_device(requested) == "gpu" else "cpu"
+        optional_deps.require_optional_package_runtime("kokoro", device=install_device)
         importlib.invalidate_caches()
         _kokoro_diag(f"Kokoro import starting {_kokoro_runtime_context()}")
         _set_kokoro_stage("importing kokoro.KPipeline")
@@ -644,6 +647,11 @@ def _import_kokoro_pipeline():
         raise RuntimeError(
             f"Kokoro support failed to import: {exc}. Open Settings > Voice and reinstall Kokoro."
         ) from exc
+    except RuntimeError as exc:
+        # Package-contract failures already carry the precise missing/mismatch
+        # diagnosis. Do not flatten them into a generic Kokoro import error.
+        _kokoro_diag(f"Kokoro runtime check failed: {exc}")
+        raise
     except Exception as exc:
         _kokoro_diag(f"Kokoro import failed: {type(exc).__name__}: {exc}")
         raise RuntimeError(
@@ -998,7 +1006,7 @@ def test_connection(
                 raise ValueError("ELEVENLABS_API_KEY is not configured.")
             from core import optional_deps
 
-            optional_deps.add_optional_packages_to_path(prepend=True)
+            optional_deps.require_optional_package_runtime("elevenlabs")
             sdk_clients.install_proxy_guard()
             from elevenlabs.client import ElevenLabs  # type: ignore
 

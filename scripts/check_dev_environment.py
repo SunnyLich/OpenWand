@@ -16,7 +16,7 @@ except ModuleNotFoundError:
     from scripts.check_python_version import parse_version, version_matches, version_text
 
 DEFAULT_DEV_MODULES = ("pytest", "ruff", "mypy")
-RUNTIME_MODULES = ("PySide6", "dotenv", "PIL", "numpy")
+RUNTIME_MODULES = ("PySide6", "dotenv", "PIL", "numpy", "av.about")
 REQUIREMENT_NAME_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)")
 EXACT_REQUIREMENT_RE = re.compile(r"^\s*[A-Za-z0-9_.-]+(?:\[[^\]]+\])?==[^,\s]+$")
 REQUIRES_PYTHON_LINE_RE = re.compile(r"^\s*requires-python\s*=\s*(['\"])(.*?)\1\s*(?:#.*)?$")

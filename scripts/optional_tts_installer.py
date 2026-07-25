@@ -198,6 +198,77 @@ def _spec_key_for_display_name(display_name: str) -> str:
     return "live_voice" if key == "live-voice" else key
 
 
+def _plan_contract_records(plan: dict[str, Any]) -> list[dict[str, object]]:
+    """Return complete Release contract provenance for an installer plan."""
+    from core import optional_deps
+
+    # Current Settings/onboarding plans always carry the release contract.
+    # A missing field identifies a legacy/test plan that cannot honestly claim
+    # provenance for a complete manifest.
+    if not str(plan.get("install_contract") or "").strip():
+        return []
+    if str(plan.get("post_install") or "") == "speech_prepare":
+        pairs = (
+            ("kokoro", str(plan.get("kokoro_install_device") or "cuda")),
+            ("stt", str(plan.get("stt_device") or "auto")),
+        )
+    else:
+        display_name = str(plan.get("display_name") or "Optional package")
+        spec_key = str(plan.get("spec_key") or _spec_key_for_display_name(display_name))
+        device = (
+            str(plan.get("kokoro_install_device") or "")
+            if spec_key == "kokoro"
+            else str(plan.get("stt_device") or "")
+            if spec_key == "stt"
+            else ""
+        )
+        pairs = ((spec_key, device),)
+    records: list[dict[str, object]] = []
+    for key, device in pairs:
+        if not key:
+            continue
+        record = optional_deps.optional_dependency_contract_record(
+            key,
+            device=device or None,
+            kind="release",
+        )
+        if record:
+            records.append(record)
+    return records
+
+
+def _validate_staged_contracts(
+    plan: dict[str, Any],
+    staging_path: Path,
+) -> list[dict[str, object]]:
+    """Require staging to match every complete Release contract in the plan."""
+    from core import optional_deps
+
+    records = _plan_contract_records(plan)
+    failures: list[str] = []
+    for record in records:
+        result = optional_deps.optional_dependency_record_status(record, staging_path)
+        if result.get("valid"):
+            continue
+        details: list[str] = []
+        missing = list(result.get("missing") or [])
+        mismatched = dict(result.get("mismatched") or {})
+        duplicates = dict(result.get("duplicates") or {})
+        if missing:
+            details.append(f"missing {', '.join(missing)}")
+        if mismatched:
+            details.append(f"version mismatch for {', '.join(sorted(mismatched))}")
+        if duplicates:
+            details.append(f"duplicate metadata for {', '.join(sorted(duplicates))}")
+        failures.append(
+            f"{record.get('key') or 'optional package'} Release contract: "
+            f"{'; '.join(details) or 'empty or invalid contract'}"
+        )
+    if failures:
+        raise RuntimeError("Staged packages do not match a complete Release contract: " + " | ".join(failures))
+    return records
+
+
 def _load_plan(path: Path) -> dict[str, Any]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
@@ -500,6 +571,14 @@ def _post_install_result(log, prefix: str, plan: dict[str, Any], status_path: Pa
             )
         return True, f"STT installed and model ready: {resolved}."
 
+    if spec_key == "elevenlabs":
+        _write_status(status_path, ok=None, message="ElevenLabs package installed; verifying SDK import.")
+        runtime_status = optional_deps.elevenlabs_runtime_import_status_subprocess()
+        if runtime_status.get("error") or runtime_status.get("valid") is False:
+            detail = str(runtime_status.get("error") or "ElevenLabs SDK import failed.")
+            return False, f"ElevenLabs installed, but runtime verification failed: {detail}"
+        return True, "ElevenLabs installed and SDK import verified."
+
     return True, f"{display_name} installed successfully."
 
 
@@ -587,7 +666,14 @@ def _move_staged_entry(source: Path, destination: Path) -> None:
     _retry_file_operation(lambda: shutil.move(str(source), str(destination)))
 
 
-def _apply_staging(staging: Path, target: Path, log, prefix: str) -> None:
+def _apply_staging(
+    staging: Path,
+    target: Path,
+    log,
+    prefix: str,
+    *,
+    contract_records: list[dict[str, object]] | None = None,
+) -> None:
     if not staging.is_dir():
         raise RuntimeError(f"Staged package directory is missing: {staging}")
     target_parent = target.parent
@@ -611,6 +697,11 @@ def _apply_staging(staging: Path, target: Path, log, prefix: str) -> None:
         _move_staged_entry(child, replacement / child.name)
         moved.append(child.name)
     _log(log, prefix, f"Prepared staged package files: {', '.join(moved) if moved else '(none)'}")
+    if contract_records:
+        from core import optional_deps
+
+        manifest = optional_deps.write_optional_layer_contracts(replacement, contract_records)
+        _log(log, prefix, f"Recorded dependency contract provenance before activation: {manifest.name}")
     target_moved = False
     try:
         if target.exists():
@@ -753,7 +844,19 @@ def _run_staged_apply(plan_path: Path) -> int:
                 extra=_status_extra(plan, progress_percent=45),
             )
             _launch_apply_status_window(display_name, status_path, log_path, app_language=_plan_app_language(plan))
-            _apply_staging(staging_path, _path_from_plan(plan, "target_path"), log, prefix)
+            # Re-check after Wisp closes as well as after download. A partial,
+            # damaged, or modified staging tree must never be activated.
+            records = _validate_staged_contracts(plan, staging_path)
+            if records:
+                _apply_staging(
+                    staging_path,
+                    _path_from_plan(plan, "target_path"),
+                    log,
+                    prefix,
+                    contract_records=records,
+                )
+            else:
+                _apply_staging(staging_path, _path_from_plan(plan, "target_path"), log, prefix)
             consumed = True
             _write_status(
                 status_path,
@@ -836,19 +939,28 @@ def pending_apply_plan_paths() -> list[Path]:
     from core import optional_deps
 
     bases = [
-        optional_deps.OPTIONAL_PACKAGES_DIR.parent / "installers",
+        optional_deps.optional_installer_dir(),
         optional_deps.OPTIONAL_PACKAGES_DIR / "_logs",
     ]
     run_root = os.environ.get("WISP_RUN_LOG_DIR")
     if run_root:
-        bases.append(Path(run_root).expanduser() / "installers")
-    plans: list[Path] = []
+        legacy_run_root = Path(run_root).expanduser()
+        bases.append(legacy_run_root / "installers")
+    plans: set[Path] = set()
     for base in bases:
         try:
-            plans.extend(sorted(base.glob("*.apply-plan.json")))
+            plans.update(base.glob("*.apply-plan.json"))
         except OSError:
             continue
-    return plans
+    if run_root:
+        # Older builds wrote control files under timestamped per-run folders.
+        # Search sibling run folders once so an interrupted legacy download can
+        # still be resumed after upgrading to the durable installer directory.
+        try:
+            plans.update(Path(run_root).expanduser().parent.glob("*/installers/*.apply-plan.json"))
+        except OSError:
+            pass
+    return sorted(plans)
 
 
 def cleanup_stale_optional_package_swaps() -> tuple[list[Path], dict[Path, str]]:
@@ -1068,6 +1180,21 @@ def _run_staged_restart_install(
                 extra=_status_extra(plan, progress_percent=90),
             )
 
+        # Validate before persisting an apply plan, then validate again in the
+        # apply helper immediately before the atomic directory swap.
+        try:
+            _validate_staged_contracts(plan, staging_path)
+        except RuntimeError as exc:
+            _log(log, prefix, str(exc))
+            _write_status(
+                status_path,
+                ok=False,
+                message=f"{display_name} staged install failed contract validation: {exc}",
+                extra=_plan_status_metadata(plan),
+            )
+            shutil.rmtree(staging_path, ignore_errors=True)
+            return 1
+
         apply_plan_path = log_path.with_suffix(".apply-plan.json")
         apply_plan = {
             **plan,
@@ -1122,6 +1249,21 @@ def main() -> int:
     prefix = f"[{display_name.lower()} install]"
 
     with log_path.open("a", encoding="utf-8") as log:
+        from core import optional_deps
+
+        if not optional_deps.optional_contract_target_supported():
+            message = (
+                f"{display_name} has no supported Release dependency contract for this operating system and "
+                "architecture. Source checkouts may use their own Python environment as best effort."
+            )
+            _log(log, prefix, message)
+            _write_status(
+                status_path,
+                ok=False,
+                message=message,
+                extra=_plan_status_metadata(plan),
+            )
+            return 1
         if bool(plan.get("restart_apply")):
             return _run_staged_restart_install(
                 plan=plan,
@@ -1167,6 +1309,11 @@ def main() -> int:
         _warn_duplicate_dist_infos(log, prefix)
         ok, message = _post_install_result(log, prefix, plan, status_path)
         if ok:
+            records = _plan_contract_records(plan)
+            if records:
+                from core import optional_deps
+
+                optional_deps.write_optional_layer_contracts(optional_deps.OPTIONAL_PACKAGES_DIR, records)
             settings_error = _apply_post_install_settings(log, prefix, plan)
             if settings_error:
                 ok = False

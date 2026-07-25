@@ -128,7 +128,10 @@ class DevEnvironmentCheckTests(unittest.TestCase):
     def test_dev_modules_follow_requirements_dev(self) -> None:
         root = Path(__file__).resolve().parents[1]
 
-        self.assertEqual(check_dev_environment.dev_modules(root), ("pytest", "ruff", "mypy"))
+        self.assertEqual(
+            check_dev_environment.dev_modules(root),
+            ("pytest", "ruff", "mypy", "pdoc", "typing_extensions"),
+        )
 
     def test_dev_modules_rejects_missing_requirements_dev(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from core import ollama_manager
+
+
+@pytest.fixture(autouse=True)
+def _forget_in_flight_starts():
+    """Keep one test's background start watcher out of the next test."""
+    ollama_manager._reset_pending_starts()
+    yield
+    ollama_manager._reset_pending_starts()
 
 
 def test_ensure_ollama_running_leaves_ready_server_alone(monkeypatch):
@@ -36,6 +46,39 @@ def test_ensure_ollama_running_starts_installed_server_and_waits(monkeypatch, tm
     assert started == [executable]
 
 
+def test_slow_start_waits_on_a_thread_instead_of_blocking_other_callers(monkeypatch, tmp_path):
+    """One caller's start wait must not serialize every other Ollama call."""
+    executable = tmp_path / "ollama.exe"
+    executable.touch()
+    launches: list[Path] = []
+    monkeypatch.setattr(ollama_manager, "ollama_is_running", lambda base_url=None: False)
+    monkeypatch.setattr(ollama_manager, "find_ollama_executable", lambda: executable)
+    monkeypatch.setattr(ollama_manager, "_start_ollama", launches.append)
+    monkeypatch.setattr(ollama_manager, "_READY_WATCH_SECONDS", 2.0)
+
+    failures: list[str] = []
+
+    def wait_for_ollama() -> None:
+        try:
+            ollama_manager.ensure_ollama_running(timeout_seconds=0.5)
+        except RuntimeError as exc:
+            failures.append(str(exc))
+
+    callers = [threading.Thread(target=wait_for_ollama) for _ in range(3)]
+    started = time.monotonic()
+    for caller in callers:
+        caller.start()
+    for caller in callers:
+        caller.join(timeout=5)
+    elapsed = time.monotonic() - started
+
+    assert launches == [executable], "one shared server, not one per caller"
+    assert len(failures) == 3
+    # Serialized waits would take three timeouts; overlapping ones take about one.
+    assert elapsed < 1.0
+    assert not any(caller.is_alive() for caller in callers)
+
+
 def test_ensure_ollama_running_explains_when_not_installed(monkeypatch):
     monkeypatch.setattr(ollama_manager, "ollama_is_running", lambda base_url=None: False)
     monkeypatch.setattr(ollama_manager, "find_ollama_executable", lambda: None)
@@ -51,11 +94,13 @@ def test_ollama_runtime_failure_matrix_is_controlled(monkeypatch, tmp_path):
     monkeypatch.setattr(ollama_manager, "ollama_is_running", lambda base_url=None: False)
     monkeypatch.setattr(ollama_manager, "find_ollama_executable", lambda: executable)
     monkeypatch.setattr(ollama_manager.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(ollama_manager, "_READY_WATCH_SECONDS", 0.0)
     monkeypatch.setattr(ollama_manager, "_start_ollama", lambda _path: None)
 
     with pytest.raises(RuntimeError, match="did not become ready"):
         ollama_manager.ensure_ollama_running(timeout_seconds=0)
 
+    ollama_manager._reset_pending_starts()
     monkeypatch.setattr(
         ollama_manager,
         "_start_ollama",

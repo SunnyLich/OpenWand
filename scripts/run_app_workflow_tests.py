@@ -27,6 +27,7 @@ from pathlib import Path
 
 WORKFLOW_TESTS = (
     "tests/test_app_user_workflows.py",
+    "tests/test_background_task_app_acceptance.py",
     "tests/test_profile_user_workflows.py",
     "tests/catalog/test_workflow_manifest.py",
     "tests/catalog/test_feature_acceptance_manifest.py",

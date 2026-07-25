@@ -76,8 +76,9 @@ Notes:
   build Python first if needed, and PyInstaller bundles it with Wisp. If you
   build without the script, place `uv.exe` at `bin\uv.exe` or `tools\uv.exe`
   before running PyInstaller.
-- Packaged builds deliberately exclude faster-whisper, CTranslate2, PyAV, and
-  ONNX Runtime. STT has one authoritative pinned installation under Wisp's
+- Packaged builds deliberately exclude faster-whisper, CTranslate2, PyAV,
+  ONNX Runtime, and the ElevenLabs SDK. Releases therefore stay small; speech
+  providers have one authoritative pinned installation under Wisp's
   user-writable `python_packages` directory, created or repaired by
   Settings > Voice > Install STT; packages present in the build environment do
   not become a second bundled STT backend. The build scripts also filter the
@@ -88,11 +89,16 @@ Notes:
   frozen app; source checkouts retain their normal `pip` fallback.
 - If packaging fails on a missing required dependency, rerun without
   `-SkipInstall` so the build script can install it into `.venv-build`.
-- On Windows, if the repo path is long enough to trip the OS path limit during
-  `elevenlabs` install, the build script skips that optional package instead of
-  failing the whole build. The packaged app still builds. Users who select the
-  ElevenLabs TTS provider will see an in-app warning and can install ElevenLabs
-  from Settings > Voice into Wisp's user-writable optional packages folder.
+- ElevenLabs is deliberately installer-owned in packaged releases, like local
+  STT. PyInstaller excludes its SDK so a bundled copy cannot enlarge the ZIP or disagree with the
+  Settings status checker or the user-writable runtime layer. Settings > Voice
+  installs the pinned ElevenLabs SDK and its exact dependency closure, verifies
+  the real SDK import, and asks for a repair if any part is stale or broken.
+  Source checkouts may instead use the pinned SDK installed in their Python
+  environment; status and runtime checks explicitly report which layer won.
+
+The complete source/release transaction and status-state contract is documented
+in [SPEECH_INSTALLATION.md](SPEECH_INSTALLATION.md).
 
 ## Cross-Platform Portable Builds
 

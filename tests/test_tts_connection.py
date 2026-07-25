@@ -24,6 +24,15 @@ def _tiny_wav() -> bytes:
 
 
 class TtsConnectionTests(unittest.TestCase):
+    def setUp(self):
+        """Provider unit tests fake SDKs; package-contract behavior is tested separately."""
+        self._managed_package = patch(
+            "core.optional_deps.require_optional_package_runtime",
+            return_value={"valid": True},
+        )
+        self._managed_package.start()
+        self.addCleanup(self._managed_package.stop)
+
     def test_tts_connection_failure_matrix_returns_controlled_diagnostic(self):
         """Provider test faults are returned to Settings instead of escaping."""
         failures = (

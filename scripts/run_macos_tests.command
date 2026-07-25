@@ -136,6 +136,7 @@ import PySide6
 import dotenv
 import PIL
 import numpy
+import av.about
 PY
 }
 

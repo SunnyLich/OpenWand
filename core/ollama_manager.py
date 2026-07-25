@@ -19,10 +19,17 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 _DEFAULT_BASE_URL = "http://localhost:11434/v1"
-_START_TIMEOUT_SECONDS = 12.0
+# How long one caller waits for a server it did not find running.
+_START_TIMEOUT_SECONDS = 45.0
+# A cold `ollama serve` on Windows regularly needs more than 15s before it binds
+# its port, so the background watcher keeps waiting after a caller gives up: the
+# retry the failure message asks for then meets a server that is already ready.
+_READY_WATCH_SECONDS = 120.0
 _PROBE_TIMEOUT_SECONDS = 0.75
 _POLL_INTERVAL_SECONDS = 0.2
 _start_lock = threading.Lock()
+# Probe URL -> (ready event, watcher thread) for the launch currently in flight.
+_pending_starts: dict[str, tuple[threading.Event, threading.Thread]] = {}
 
 
 def resolve_ollama_base_url() -> str:
@@ -90,9 +97,12 @@ def find_ollama_executable() -> Path | None:
         program_files = os.environ.get("ProgramFiles", "")
         program_files_x86 = os.environ.get("ProgramFiles(x86)", "")
         candidates.extend(
-            Path(folder) / "Ollama" / "ollama.exe"
+            Path(folder) / subfolder / "Ollama" / "ollama.exe"
             for folder in (local_app_data, program_files, program_files_x86)
             if folder
+            # The Windows installer puts Ollama under "Programs"; older and
+            # system-wide installs sit directly in the parent folder.
+            for subfolder in ("Programs", ".")
         )
     elif sys.platform == "darwin":
         candidates.append(Path("/Applications/Ollama.app/Contents/Resources/ollama"))
@@ -121,6 +131,63 @@ def _start_ollama(executable: Path) -> None:
     subprocess.Popen([str(executable), "serve"], **kwargs)  # noqa: S603 -- executable is locally discovered.
 
 
+def _watch_until_ready(base_url: str | None, ready: threading.Event) -> None:
+    """Poll a just-launched server until it answers, off every caller's thread."""
+    deadline = time.monotonic() + _READY_WATCH_SECONDS
+    while time.monotonic() < deadline:
+        if ollama_is_running(base_url):
+            ready.set()
+            return
+        time.sleep(_POLL_INTERVAL_SECONDS)
+
+
+def _begin_start(base_url: str | None) -> tuple[threading.Event, bool]:
+    """Launch Ollama once and return the readiness event callers can wait on.
+
+    The lock covers only the launch, never the wait, so a caller that waits out
+    a slow start does not hold back other route probes or model listings.
+    """
+    key = _api_probe_url(base_url)
+    with _start_lock:
+        pending = _pending_starts.get(key)
+        if pending is not None:
+            event, watcher = pending
+            if watcher.is_alive():
+                # A concurrent caller already launched this server; join its wait
+                # instead of starting a second one.
+                return event, False
+            # The previous watcher gave up, so this call may launch again.
+            del _pending_starts[key]
+
+        executable = find_ollama_executable()
+        if executable is None:
+            raise RuntimeError(
+                "Ollama is not running and Wisp could not find an installed Ollama application. "
+                "Install Ollama, then try again."
+            )
+        try:
+            _start_ollama(executable)
+        except OSError as exc:
+            raise RuntimeError(f"Wisp could not start Ollama from {executable}: {exc}") from exc
+
+        ready = threading.Event()
+        watcher = threading.Thread(
+            target=_watch_until_ready,
+            args=(base_url, ready),
+            name="ollama-start-watch",
+            daemon=True,
+        )
+        _pending_starts[key] = (ready, watcher)
+        watcher.start()
+        return ready, True
+
+
+def _reset_pending_starts() -> None:
+    """Forget in-flight launches.  Test hook; production code never calls it."""
+    with _start_lock:
+        _pending_starts.clear()
+
+
 def ensure_ollama_running(
     *,
     timeout_seconds: float = _START_TIMEOUT_SECONDS,
@@ -142,30 +209,11 @@ def ensure_ollama_running(
             "Ollama server, so start or check that server, then try again."
         )
 
-    with _start_lock:
-        # A concurrent Wisp request, or the Ollama tray app, may have started it
-        # while this call waited for the lock.
-        if ollama_is_running(base_url):
-            return False
-
-        executable = find_ollama_executable()
-        if executable is None:
-            raise RuntimeError(
-                "Ollama is not running and Wisp could not find an installed Ollama application. "
-                "Install Ollama, then try again."
-            )
-        try:
-            _start_ollama(executable)
-        except OSError as exc:
-            raise RuntimeError(f"Wisp could not start Ollama from {executable}: {exc}") from exc
-
-        deadline = time.monotonic() + max(0.0, timeout_seconds)
-        while time.monotonic() < deadline:
-            if ollama_is_running(base_url):
-                return True
-            time.sleep(_POLL_INTERVAL_SECONDS)
+    ready, launched = _begin_start(base_url)
+    if ready.wait(max(0.0, timeout_seconds)):
+        return launched
 
     raise RuntimeError(
-        "Wisp started Ollama, but its local server did not become ready. "
-        "Open Ollama once to check it, then try again."
+        "Wisp started Ollama, but its local server did not become ready in time. "
+        "It may still be starting — try again in a moment, or open Ollama once to check it."
     )

@@ -1673,7 +1673,7 @@ def test_visible_speech_install_and_kokoro_asset_actions_reach_runtime_boundarie
         driver.click(dialog._elevenlabs_install_btn)
         assert len(installs) == 1
         elevenlabs_plan = installs[-1]
-        assert elevenlabs_plan["packages"] == [optional_deps.ELEVENLABS_PACKAGE]
+        assert elevenlabs_plan["packages"] == optional_deps.ELEVENLABS_INSTALL_PACKAGES
         assert elevenlabs_plan["reinstall"] is False
         assert elevenlabs_plan["external_plan_extra"]["settings_updates"] == {
             "TTS_PROVIDER": "elevenlabs",
@@ -2222,14 +2222,15 @@ def test_builtin_profile_action_saves_and_reopens_as_the_active_runtime_profile(
         action.trigger()
         driver.pump()
         assert profile_button.text() == "Low setup"
-        assert dialog._active_preset_slug == "low_setup"
+        assert dialog._active_preset_slug == ""
+        assert dialog._pending_active_profile == "low_setup"
 
         save = dialog.findChild(QPushButton, "settingsApplyButton")
         assert save is not None and save.isEnabled()
         driver.click(save)
         saved = settings_env.read_settings_env()
-        assert saved["WISP_SETTINGS_PRESET"] == "low_setup"
-        assert saved["ACTIVE_PROFILE"] == "default"
+        assert "WISP_SETTINGS_PRESET" not in saved
+        assert saved["ACTIVE_PROFILE"] == "low_setup"
         assert config.SETTINGS.chat_llm.provider == "chatgpt"
 
         reopened = SettingsDialog()

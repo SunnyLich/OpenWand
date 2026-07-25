@@ -38,14 +38,14 @@ def test_macos_agent_dialogs_use_qt_catalog_chrome():
         run_buttons = {button.text() for button in run.dialog.findChildren(QPushButton)}
         run_tabs = {run.tabs.tabText(i) for i in range(run.tabs.count())}
 
-        assert history.dialog.windowTitle() == i18n.t("Agent Task History")
-        assert "Agent Task History" not in history.dialog.windowTitle()
+        assert history.dialog.windowTitle() == i18n.t("Agent Team History")
+        assert "Agent Team History" not in history.dialog.windowTitle()
         assert i18n.t("Refresh") in history_buttons
         assert "Refresh" not in history_buttons
         assert i18n.t("Open Run Folder") in history_buttons
         assert "Open Run Folder" not in history_buttons
 
-        assert run.dialog.windowTitle().startswith(i18n.t("Agent Task"))
+        assert run.dialog.windowTitle().startswith(i18n.t("Agent Team"))
         assert i18n.t("Approve") in run_buttons
         assert "Approve" not in run_buttons
         assert i18n.t("Meeting Room") in run_tabs

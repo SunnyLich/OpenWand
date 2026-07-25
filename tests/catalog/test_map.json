@@ -334,7 +334,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 19
+      "node_count": 20
     },
     {
       "path": "tests/runtime/test_bootstrap.py",
@@ -589,7 +589,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 5
+      "node_count": 7
     },
     {
       "path": "tests/support/test_docs_setup_guidance.py",
@@ -1554,7 +1554,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 3
+      "node_count": 4
     },
     {
       "path": "tests/test_linux_atspi.py",
@@ -1769,7 +1769,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 10
+      "node_count": 11
     },
     {
       "path": "tests/test_onboarding.py",
@@ -1814,7 +1814,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 86
+      "node_count": 100
     },
     {
       "path": "tests/test_optional_install_acceptance.py",
@@ -2172,7 +2172,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 163
+      "node_count": 169
     },
     {
       "path": "tests/test_settings_env.py",
@@ -2187,7 +2187,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 1
+      "node_count": 4
     },
     {
       "path": "tests/test_settings_failure_matrix.py",
@@ -2293,6 +2293,21 @@
       ],
       "schedule": "github-actions",
       "node_count": 4
+    },
+    {
+      "path": "tests/test_speech_status.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 8
     },
     {
       "path": "tests/test_ssl_init_concurrency.py",

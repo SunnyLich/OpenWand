@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import queue
 import threading
+from collections.abc import Callable
 
 import numpy as np
 
@@ -196,7 +197,7 @@ _run_on_main = _main_thread.run_on_main
 set_main_thread_runner = _main_thread.set_main_thread_runner
 
 
-def play_tts_stream(text: str, on_done: callable | None = None):
+def play_tts_stream(text: str, on_done: Callable | None = None):
     """
     Stream TTS for `text` and play it as chunks arrive.
     Non-blocking — runs in a daemon thread.
@@ -204,10 +205,10 @@ def play_tts_stream(text: str, on_done: callable | None = None):
     play_tts_stream_from_chunks(iter([text]), on_done=on_done)
 
 
-def play_tts_stream_from_chunks(text_chunks, on_done: callable | None = None,
-                                on_audio_start: callable | None = None,
-                                on_word_timestamps: callable | None = None,
-                                on_amplitude: callable | None = None):
+def play_tts_stream_from_chunks(text_chunks, on_done: Callable | None = None,
+                                on_audio_start: Callable | None = None,
+                                on_word_timestamps: Callable | None = None,
+                                on_amplitude: Callable | None = None):
     """
     Stream TTS from an iterable of text chunks (e.g. live LLM stream) and play.
     Non-blocking — runs in a daemon thread.
@@ -224,10 +225,10 @@ def play_tts_stream_from_chunks(text_chunks, on_done: callable | None = None,
     ).start()
 
 
-def _stream_and_play_chunks(text_chunks, on_done: callable | None,
-                            on_audio_start: callable | None,
-                            on_word_timestamps: callable | None,
-                            on_amplitude: callable | None):
+def _stream_and_play_chunks(text_chunks, on_done: Callable | None,
+                            on_audio_start: Callable | None,
+                            on_word_timestamps: Callable | None,
+                            on_amplitude: Callable | None):
     """Stream and play chunks."""
     configured_provider = config.TTS_PROVIDER.lower()
     provider = configured_provider

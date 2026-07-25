@@ -267,6 +267,7 @@ def test_switch_save_reopen_and_edit_only_the_selected_custom_profile(profile_wo
         assert _main_model(reopened) == "claude-work"
 
         _replace_main_model(reopened, "claude-work-edited")
+        reopened._fields["BUBBLE_WIDTH"].setText("411")
         profile_workflow.app.processEvents()
         profile_workflow.save_changes(reopened)
     finally:
@@ -281,6 +282,25 @@ def test_switch_save_reopen_and_edit_only_the_selected_custom_profile(profile_wo
     assert profile_workflow.config.ACTIVE_PROFILE == "work"
     assert profile_workflow.config.LLM_MODEL == "claude-work-edited"
 
+    personal = profile_workflow.open_settings()
+    try:
+        profile_workflow.choose_profile(personal, "Personal")
+        assert _main_model(personal) == "gpt-personal"
+        assert personal._fields["BUBBLE_WIDTH"].text() != "411"
+        personal._fields["BUBBLE_WIDTH"].setText("377")
+        profile_workflow.app.processEvents()
+        profile_workflow.save_changes(personal)
+    finally:
+        profile_workflow.close_settings(personal)
+
+    work_again = profile_workflow.open_settings()
+    try:
+        profile_workflow.choose_profile(work_again, "Work")
+        assert _main_model(work_again) == "claude-work-edited"
+        assert work_again._fields["BUBBLE_WIDTH"].text() == "411"
+    finally:
+        profile_workflow.close_settings(work_again)
+
 
 def test_low_setup_switch_survives_save_reopen_and_switch_back(profile_workflow: ProfileWorkflow):
     """The built-in profile behaves like a real selectable profile across reloads."""
@@ -292,15 +312,26 @@ def test_low_setup_switch_survives_save_reopen_and_switch_back(profile_workflow:
         profile_workflow.choose_profile(dialog, "Low setup")
         assert dialog._profiles_btn.text() == "Low setup"
         assert _main_model(dialog) == "gpt-5.5"
+        assert dialog._apply_btn.isEnabled()
+        assert "detected" not in dialog._status_lbl.text().casefold()
+        assert "selected" not in dialog._status_lbl.text().casefold()
+        assert "low setup" not in dialog._status_lbl.text().casefold()
+        assert dialog._status_lbl.toolTip() == ""
+        staged = profile_workflow.saved()
+        assert staged["ACTIVE_PROFILE"] == "work"
+        assert staged["SETTINGS_PROFILE"] == "work"
+        assert profile_workflow.config.ACTIVE_PROFILE == "work"
+        dialog._fields["BUBBLE_WIDTH"].setText("333")
+        profile_workflow.app.processEvents()
         profile_workflow.save_changes(dialog)
     finally:
         profile_workflow.close_settings(dialog)
 
     saved = profile_workflow.saved()
-    assert saved["ACTIVE_PROFILE"] == "default"
-    assert saved["SETTINGS_PROFILE"] == "default"
-    assert saved["WISP_SETTINGS_PRESET"] == "low_setup"
-    assert profile_workflow.config.ACTIVE_PROFILE == "default"
+    assert saved["ACTIVE_PROFILE"] == "low_setup"
+    assert saved["SETTINGS_PROFILE"] == "low_setup"
+    assert "WISP_SETTINGS_PRESET" not in saved
+    assert profile_workflow.config.ACTIVE_PROFILE == "low_setup"
     assert profile_workflow.config.LLM_PROVIDER == "chatgpt"
     assert profile_workflow.config.LLM_MODEL == "gpt-5.5"
 
@@ -310,6 +341,15 @@ def test_low_setup_switch_survives_save_reopen_and_switch_back(profile_workflow:
         profile_workflow.choose_profile(reopened, "Work")
         assert reopened._profiles_btn.text() == "Work"
         assert _main_model(reopened) == "claude-work"
+        assert reopened._fields["BUBBLE_WIDTH"].text() != "333"
+        profile_workflow.choose_profile(reopened, "Low setup")
+        assert reopened._profiles_btn.text() == "Low setup"
+        assert _main_model(reopened) == "gpt-5.5"
+        assert reopened._fields["BUBBLE_WIDTH"].text() == "333"
+        profile_workflow.choose_profile(reopened, "Work")
+        assert reopened._profiles_btn.text() == "Work"
+        assert _main_model(reopened) == "claude-work"
+        assert reopened._fields["BUBBLE_WIDTH"].text() != "333"
         profile_workflow.save_changes(reopened)
     finally:
         profile_workflow.close_settings(reopened)

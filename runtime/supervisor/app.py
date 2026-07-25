@@ -28,6 +28,249 @@ RUNTIME_LOG_RETENTION_DAYS = 7
 _RUNTIME_LOG_DIR_PREFIXES = ("wisp_runtime_", "wisp_crash_")
 
 
+def _run_real_settings_smoke(supervisor: WispSupervisor) -> dict[str, object] | None:
+    """Exercise the production Settings dialog when launcher acceptance opts in."""
+    if os.environ.get("WISP_LAUNCH_SMOKE_SETTINGS_PROFILE") != "1":
+        return None
+
+    def call(action: str, **params: str) -> dict[str, object]:
+        result = supervisor.call(
+            "ui",
+            "ui.debug.settings.action",
+            {"action": action, **params},
+            timeout=45.0,
+        )
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            raise RuntimeError(f"real Settings action {action!r} failed: {result!r}")
+        return result
+
+    def wait_open(expected: bool, timeout: float = 30.0) -> None:
+        deadline = time.monotonic() + timeout
+        last: object = None
+        while time.monotonic() < deadline:
+            last = supervisor.call("ui", "ui.settings.is_open", timeout=10.0)
+            if isinstance(last, dict) and bool(last.get("open")) is expected:
+                return
+            time.sleep(0.05)
+        raise RuntimeError(f"real Settings open state did not become {expected}: {last!r}")
+
+    def open_settings() -> dict[str, object]:
+        supervisor.call("ui", "ui.show_settings", timeout=10.0)
+        wait_open(True)
+        return call("snapshot")
+
+    def close_settings() -> None:
+        call("close")
+        wait_open(False)
+
+    def require(condition: bool, message: str, evidence: object) -> None:
+        if not condition:
+            raise RuntimeError(f"{message}: {evidence!r}")
+
+    initial = open_settings()
+    require(initial.get("profile_id") == "a", "Settings did not open on profile A", initial)
+    require(initial.get("save_enabled") is False, "clean profile A unexpectedly enabled Save", initial)
+
+    import config as runtime_config
+
+    runtime_before_selection = {
+        "active_profile": str(getattr(runtime_config, "ACTIVE_PROFILE", "")),
+        "bubble_width": str(getattr(runtime_config, "BUBBLE_WIDTH", "")),
+    }
+    low_selected = call("select_profile", profile_id="low_setup")
+    require(
+        low_selected.get("profile_id") == "low_setup",
+        "Low setup selection did not become active in Settings",
+        low_selected,
+    )
+    require(
+        low_selected.get("save_enabled") is True,
+        "profile-only selection did not enable Save",
+        low_selected,
+    )
+    forbidden_status_words = ("low setup", "selected", "detected", "profile")
+    require(
+        not any(
+            word in str(low_selected.get("status") or "").casefold()
+            for word in forbidden_status_words
+        )
+        and not str(low_selected.get("status_tooltip") or ""),
+        "Settings displayed redundant profile-selection status",
+        low_selected,
+    )
+    require(
+        low_selected.get("stt_beam_size") == "1"
+        and low_selected.get("memory_top_k") == "2"
+        and low_selected.get("context_browser_max_chars") == "3000",
+        "Low setup did not repopulate Settings fields across pages",
+        low_selected,
+    )
+
+    from core.system.env_utils import read_env_file
+
+    env_path = Path(str(os.environ["WISP_SETTINGS_ENV_PATH"])).resolve()
+    staged_root_values = read_env_file(env_path)
+    staged_before_save = {
+        "disk_active_profile": staged_root_values.get("ACTIVE_PROFILE"),
+        "disk_settings_profile": staged_root_values.get("SETTINGS_PROFILE"),
+        "disk_bubble_width": staged_root_values.get("BUBBLE_WIDTH"),
+        "runtime_before_selection": runtime_before_selection,
+        "runtime_after_selection": {
+            "active_profile": str(getattr(runtime_config, "ACTIVE_PROFILE", "")),
+            "bubble_width": str(getattr(runtime_config, "BUBBLE_WIDTH", "")),
+        },
+    }
+    require(
+        staged_before_save["disk_active_profile"] == "a"
+        and staged_before_save["disk_settings_profile"] == "a"
+        and staged_before_save["disk_bubble_width"] == "340"
+        and staged_before_save["runtime_after_selection"] == runtime_before_selection,
+        "selecting a profile applied it before Save changes",
+        staged_before_save,
+    )
+
+    call("select_provider", provider="ollama")
+    expected_models = {
+        item.strip()
+        for item in str(os.environ.get("WISP_LAUNCH_SMOKE_OLLAMA_MODELS") or "").split(",")
+        if item.strip()
+    }
+    deadline = time.monotonic() + 30.0
+    ollama_loaded: dict[str, object] = {}
+    while time.monotonic() < deadline:
+        ollama_loaded = call("snapshot")
+        choices = {str(item) for item in ollama_loaded.get("model_choices") or []}
+        if (
+            ollama_loaded.get("provider") == "ollama"
+            and not ollama_loaded.get("model_refresh_busy")
+            and expected_models.issubset(choices)
+        ):
+            break
+        time.sleep(0.05)
+    choices = {str(item) for item in ollama_loaded.get("model_choices") or []}
+    require(
+        bool(expected_models) and expected_models.issubset(choices),
+        "real Settings did not fetch the installed Ollama model list",
+        ollama_loaded,
+    )
+    require(
+        "ollama" not in set(ollama_loaded.get("connection_providers") or []),
+        "Ollama was incorrectly represented as a credential connection",
+        ollama_loaded,
+    )
+
+    selected_model = sorted(expected_models)[0]
+    call("select_model", model=selected_model)
+    call("set_bubble_width", value="222")
+    low_saved = call("save")
+    require(
+        low_saved.get("save_was_enabled") is True and low_saved.get("save_enabled") is False,
+        "Save did not persist and clear the Low setup dirty state",
+        low_saved,
+    )
+
+    close_settings()
+    reopened_low = open_settings()
+    require(
+        reopened_low.get("profile_id") == "low_setup",
+        "Settings bounced back to profile A after saving Low setup",
+        reopened_low,
+    )
+    require(
+        reopened_low.get("provider") == "ollama"
+        and reopened_low.get("model") == selected_model
+        and reopened_low.get("bubble_width") == "222",
+        "saved Low setup values did not survive a real dialog reopen",
+        reopened_low,
+    )
+
+    profile_a = call("select_profile", profile_id="a")
+    require(
+        profile_a.get("bubble_width") == "340",
+        "profile A did not retain its isolated value",
+        profile_a,
+    )
+    call("set_bubble_width", value="444")
+    profile_a_saved = call("save")
+    require(
+        profile_a_saved.get("profile_id") == "a"
+        and profile_a_saved.get("save_enabled") is False,
+        "profile A did not save as the active profile",
+        profile_a_saved,
+    )
+
+    close_settings()
+    reopened_a = open_settings()
+    require(
+        reopened_a.get("profile_id") == "a"
+        and reopened_a.get("bubble_width") == "444",
+        "profile A did not survive a real dialog reopen",
+        reopened_a,
+    )
+    low_again = call("select_profile", profile_id="low_setup")
+    require(
+        low_again.get("bubble_width") == "222"
+        and low_again.get("provider") == "ollama"
+        and low_again.get("model") == selected_model,
+        "Low setup was contaminated by profile A",
+        low_again,
+    )
+    a_again = call("select_profile", profile_id="a")
+    from core import settings_profiles
+
+    final_profile_files = {
+        "a": settings_profiles.read_profile(env_path, "a"),
+        "low_setup": settings_profiles.read_profile(env_path, "low_setup"),
+    }
+    require(
+        a_again.get("bubble_width") == "444",
+        "profile A was contaminated by Low setup",
+        {"ui": a_again, "disk": final_profile_files},
+    )
+
+    root_values = read_env_file(env_path)
+    a_values = final_profile_files["a"]
+    low_values = final_profile_files["low_setup"]
+    require(
+        root_values.get("ACTIVE_PROFILE") == "a"
+        and root_values.get("SETTINGS_PROFILE") == "a",
+        "root config did not persist profile A as active",
+        root_values,
+    )
+    require(
+        a_values.get("BUBBLE_WIDTH") == "444"
+        and low_values.get("BUBBLE_WIDTH") == "222",
+        "profile files did not remain isolated",
+        {"a": a_values, "low_setup": low_values},
+    )
+    close_settings()
+    return {
+        "real_process_ui": True,
+        "initial": initial,
+        "low_selected": low_selected,
+        "staged_before_save": staged_before_save,
+        "ollama_loaded": ollama_loaded,
+        "low_saved": low_saved,
+        "reopened_low": reopened_low,
+        "profile_a_saved": profile_a_saved,
+        "reopened_a": reopened_a,
+        "low_again": low_again,
+        "a_again": a_again,
+        "persisted": {
+            "active_profile": root_values.get("ACTIVE_PROFILE"),
+            "settings_profile": root_values.get("SETTINGS_PROFILE"),
+            "a_bubble_width": a_values.get("BUBBLE_WIDTH"),
+            "low_setup_bubble_width": low_values.get("BUBBLE_WIDTH"),
+            "low_setup_provider": low_values.get("LLM_PROVIDER"),
+            "low_setup_model": low_values.get("LLM_MODEL"),
+            "profile_files": sorted(
+                path.name
+                for path in settings_profiles.profiles_directory(env_path).glob("*.env")
+            ),
+        },
+    }
+
+
 def _write_launch_smoke_ready(
     supervisor: WispSupervisor,
     startup_results: dict[str, object],
@@ -39,6 +282,7 @@ def _write_launch_smoke_ready(
         return False
     path = Path(configured).expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
+    settings_smoke = _run_real_settings_smoke(supervisor)
     payload = {
         "schema_version": 1,
         "ready": True,
@@ -55,6 +299,8 @@ def _write_launch_smoke_ready(
             for name, worker in supervisor.workers.items()
         },
     }
+    if settings_smoke is not None:
+        payload["settings_profile_smoke"] = settings_smoke
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     temporary.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
     temporary.replace(path)

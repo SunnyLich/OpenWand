@@ -57,6 +57,55 @@ function Compile-UniversalLock {
     Write-Host "Updated $OutputFile for Python $WantMinor."
 }
 
+function Compile-OptionalLock {
+    param(
+        [string]$Platform,
+        [string]$ConstraintFile,
+        [string]$InputFile,
+        [string]$OutputFile
+    )
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $OutputFile) | Out-Null
+    $UvArgs = @(
+        "pip", "compile", $InputFile,
+        "--upgrade", "--no-header", "--emit-index-url",
+        "--python-version", $WantMinor,
+        "--python-platform", $Platform,
+        "--constraint", $ConstraintFile,
+        "--output-file", $OutputFile
+    )
+    if ($InputFile -like "*kokoro-gpu.in") {
+        $UvArgs += @("--index-strategy", "unsafe-best-match")
+    }
+    & uv @UvArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to compile optional dependency lock $OutputFile."
+    }
+    Write-Host "Updated $OutputFile for $Platform / Python $WantMinor."
+}
+
+function Compile-OptionalLocks {
+    $Matrix = @(
+        @{ Name = "windows-x64"; Platform = "x86_64-pc-windows-msvc"; Constraint = "requirements/requirements-windows.lock"; Variants = @("stt-cpu", "stt-cuda", "kokoro-cpu", "kokoro-gpu", "elevenlabs", "live-voice") },
+        @{ Name = "linux-x64"; Platform = "x86_64-manylinux_2_34"; Constraint = "requirements/requirements-linux.lock"; Variants = @("stt-cpu", "kokoro-cpu", "kokoro-gpu", "elevenlabs", "live-voice") },
+        @{ Name = "macos-arm64"; Platform = "aarch64-apple-darwin"; Constraint = "requirements/requirements-macos.lock"; Variants = @("stt-cpu", "kokoro-cpu", "elevenlabs", "live-voice") }
+    )
+    foreach ($ContractTarget in $Matrix) {
+        foreach ($Kind in @("source", "release")) {
+            foreach ($Variant in $ContractTarget.Variants) {
+                $InputVariant = $Variant
+                if ($Kind -eq "source" -and $Variant -eq "stt-cuda") {
+                    $InputVariant = "stt-cpu"
+                }
+                Compile-OptionalLock `
+                    $ContractTarget.Platform `
+                    $ContractTarget.Constraint `
+                    "requirements/optional/inputs/$InputVariant.in" `
+                    "requirements/optional/$Kind/$($ContractTarget.Name)/$Variant.lock"
+            }
+        }
+    }
+}
+
 $Targets = $args
 if ($Targets.Count -eq 0) {
     $Targets = @("all")
@@ -70,12 +119,14 @@ foreach ($Target in $Targets) {
             Compile-RuntimeLock "aarch64-apple-darwin" "requirements/requirements-macos.lock"
             Compile-UniversalLock "requirements/requirements-dev.txt" "requirements/requirements-dev.lock"
             Compile-UniversalLock "requirements/requirements-build.txt" "requirements/requirements-build.lock"
+            Compile-OptionalLocks
         }
         "windows" { Compile-RuntimeLock "x86_64-pc-windows-msvc" "requirements/requirements-windows.lock" }
         "linux" { Compile-RuntimeLock "x86_64-manylinux_2_34" "requirements/requirements-linux.lock" }
         "macos" { Compile-RuntimeLock "aarch64-apple-darwin" "requirements/requirements-macos.lock" }
         "dev" { Compile-UniversalLock "requirements/requirements-dev.txt" "requirements/requirements-dev.lock" }
         "build" { Compile-UniversalLock "requirements/requirements-build.txt" "requirements/requirements-build.lock" }
-        default { throw "Unknown lock target '$Target'. Use all, windows, linux, macos, dev, or build." }
+        "optional" { Compile-OptionalLocks }
+        default { throw "Unknown lock target '$Target'. Use all, windows, linux, macos, dev, build, or optional." }
     }
 }

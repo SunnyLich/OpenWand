@@ -4,6 +4,7 @@ config.py — Central configuration loaded from .env
 import json
 import os
 import sys
+from pathlib import Path
 
 from dotenv import dotenv_values, load_dotenv
 
@@ -68,7 +69,7 @@ __all__ = [
     "_intent_template_language",
 ]
 
-_ENV_FILE = REPO_ROOT / ".env"
+_ENV_FILE = Path(os.environ.get("WISP_SETTINGS_ENV_PATH") or REPO_ROOT / ".env")
 _LOADED_DOTENV_KEYS: set[str] = set()
 
 
@@ -187,6 +188,27 @@ _PROFILE_DEFAULTS: list[dict] = [
             "browser": "off",
             "github": "off",
             "memory": "off",
+            "screenshot": "off",
+            "file_access": "off",
+        },
+        "tool": {
+            "max_calls": 25,
+            "max_result_chars": 120000,
+            "max_total_chars": 300000,
+        },
+    },
+    {
+        # File-backed Settings profiles mirror their active values into the
+        # normal environment. Keeping this id in the runtime catalogue lets the
+        # Low setup profile remain the selected profile after config.reload()
+        # instead of silently collapsing back to "default".
+        "id": "low_setup",
+        "label": "Low setup",
+        "context": {
+            "documents": "off",
+            "browser": "off",
+            "github": "off",
+            "memory": "on",
             "screenshot": "off",
             "file_access": "off",
         },

@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 from dotenv import dotenv_values
+from dotenv.variables import parse_variables
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
 FALSE_VALUES = {"0", "false", "no", "off"}
@@ -73,6 +74,8 @@ def env_file_access_mode(name: str, default: str = "off") -> str:
 TOOL_OVERRIDE_MODES = ("on", "model", "off")
 MCP_SERVER_OVERRIDE_PREFIX = "mcp_server."
 CONTEXT_GOVERNED_TOOL_NAMES = {
+    "background_task_status",
+    "delegate_background_task",
     "web_search",
     "get_context",
     "get_context.browser",
@@ -185,14 +188,33 @@ def read_env_file(path: Path) -> dict[str, str]:
     if not path.exists():
         return {}
     try:
-        values = dotenv_values(path)
+        values = dotenv_values(path, interpolate=False)
     except (OSError, UnicodeError):
         return {}
     return {
         key: value
-        for key, value in values.items()
+        for key, value in _resolve_env_variables(values).items()
         if key is not None and value is not None
     }
+
+
+def _resolve_env_variables(values: dict[str, str | None]) -> dict[str, str | None]:
+    """Expand ``${VAR}`` references the way python-dotenv's interpolation does.
+
+    dotenv's own implementation copies the whole of ``os.environ`` into a fresh
+    dict for every single entry, making the cost of reading a file quadratic in
+    its size for no benefit (~4x slower on Wisp's own settings file). Semantics
+    are unchanged -- later entries still shadow the process environment, and only
+    values that actually contain a reference pay for a lookup table.
+    """
+    base = dict(os.environ)
+    resolved: dict[str, str | None] = {}
+    for name, value in values.items():
+        if value is not None and "${" in value:
+            env: dict[str, str | None] = {**base, **resolved}
+            value = "".join(atom.resolve(env) for atom in parse_variables(value))
+        resolved[name] = value
+    return resolved
 
 
 def format_env_value(value: str) -> str:

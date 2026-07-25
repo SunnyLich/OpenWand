@@ -58,6 +58,59 @@ compile_universal_lock() {
   echo "Updated $output for Python $WANT_MM."
 }
 
+compile_optional_lock() {
+  local platform="$1"
+  local constraint="$2"
+  local input="$3"
+  local output="$4"
+  mkdir -p "$(dirname "$output")"
+  local extra=()
+  if [[ "$input" == *kokoro-gpu.in ]]; then
+    extra=(--index-strategy unsafe-best-match)
+  fi
+  uv pip compile "$input" \
+    --upgrade \
+    --no-header \
+    --emit-index-url \
+    --python-version "$WANT_MM" \
+    --python-platform "$platform" \
+    --constraint "$constraint" \
+    --output-file "$output" \
+    "${extra[@]}"
+  echo "Updated $output for $platform / Python $WANT_MM."
+}
+
+compile_optional_target() {
+  local name="$1"
+  local platform="$2"
+  local constraint="$3"
+  shift 3
+  local variants=("$@")
+  local kind variant input_variant
+  for kind in source release; do
+    for variant in "${variants[@]}"; do
+      input_variant="$variant"
+      if [[ "$kind" == source && "$variant" == stt-cuda ]]; then
+        input_variant=stt-cpu
+      fi
+      compile_optional_lock \
+        "$platform" \
+        "$constraint" \
+        "requirements/optional/inputs/$input_variant.in" \
+        "requirements/optional/$kind/$name/$variant.lock"
+    done
+  done
+}
+
+compile_optional_locks() {
+  compile_optional_target windows-x64 x86_64-pc-windows-msvc requirements/requirements-windows.lock \
+    stt-cpu stt-cuda kokoro-cpu kokoro-gpu elevenlabs live-voice
+  compile_optional_target linux-x64 x86_64-manylinux_2_34 requirements/requirements-linux.lock \
+    stt-cpu kokoro-cpu kokoro-gpu elevenlabs live-voice
+  compile_optional_target macos-arm64 aarch64-apple-darwin requirements/requirements-macos.lock \
+    stt-cpu kokoro-cpu elevenlabs live-voice
+}
+
 targets=("$@")
 if [ "${#targets[@]}" -eq 0 ]; then
   targets=(all)
@@ -71,6 +124,7 @@ for target in "${targets[@]}"; do
       compile_runtime_lock aarch64-apple-darwin requirements/requirements-macos.lock
       compile_universal_lock requirements/requirements-dev.txt requirements/requirements-dev.lock
       compile_universal_lock requirements/requirements-build.txt requirements/requirements-build.lock
+      compile_optional_locks
       ;;
     windows)
       compile_runtime_lock x86_64-pc-windows-msvc requirements/requirements-windows.lock
@@ -87,8 +141,11 @@ for target in "${targets[@]}"; do
     build)
       compile_universal_lock requirements/requirements-build.txt requirements/requirements-build.lock
       ;;
+    optional)
+      compile_optional_locks
+      ;;
     *)
-      echo "ERROR: unknown lock target '$target'. Use all, windows, linux, macos, dev, or build." >&2
+      echo "ERROR: unknown lock target '$target'. Use all, windows, linux, macos, dev, build, or optional." >&2
       exit 1
       ;;
   esac

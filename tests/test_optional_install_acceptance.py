@@ -109,7 +109,8 @@ def test_optional_installer_real_ui_terminal_outcome_matrix(
             driver.wait(lambda: dialog.exit_code is not None, f"{outcome} installer to finish")
             if outcome == "success":
                 assert dialog.exit_code == 0
-                assert "Installer completed successfully." in dialog._status.text()
+                assert "downloaded and staged" in dialog._status.text()
+                assert "completed successfully" not in dialog._status.text()
                 retained_marker = "verification complete"
             else:
                 assert dialog.exit_code == 7

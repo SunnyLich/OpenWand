@@ -3,16 +3,77 @@
 from __future__ import annotations
 
 import argparse
+import http.server
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any
 
 EXPECTED_WORKERS = frozenset({"native", "ui", "brain", "audio"})
+SETTINGS_SMOKE_OLLAMA_MODELS = ("qwen2.5:7b", "llama3.2:3b")
+
+
+class _FakeOllamaServer:
+    """Small local API used to prove Settings fetches Ollama models live."""
+
+    def __init__(self) -> None:
+        models = SETTINGS_SMOKE_OLLAMA_MODELS
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802 - stdlib handler contract
+                if self.path.rstrip("/") == "/api/tags":
+                    payload = {
+                        "models": [{"name": model, "model": model} for model in models],
+                    }
+                elif self.path.rstrip("/") == "/v1/models":
+                    payload = {
+                        "object": "list",
+                        "data": [
+                            {
+                                "id": model,
+                                "object": "model",
+                                "created": 0,
+                                "owned_by": "ollama",
+                            }
+                            for model in models
+                        ],
+                    }
+                else:
+                    self.send_error(404)
+                    return
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, _format: str, *_args: object) -> None:
+                return
+
+        self._server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self._thread = threading.Thread(
+            target=self._server.serve_forever,
+            daemon=True,
+            name="launcher-smoke-fake-ollama",
+        )
+
+    @property
+    def host(self) -> str:
+        return f"127.0.0.1:{self._server.server_port}"
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._server.shutdown()
+        self._server.server_close()
+        self._thread.join(timeout=5.0)
 
 
 def _repo_root() -> Path:
@@ -117,6 +178,7 @@ def run_launcher_smoke(
     executable: Path | None = None,
     source_python: Path | None = None,
     timeout: float = 180.0,
+    settings_profile_smoke: bool = False,
 ) -> dict[str, Any]:
     """Run one real launcher in isolated state and return readiness evidence."""
     root = (root or _repo_root()).resolve()
@@ -135,6 +197,42 @@ def run_launcher_smoke(
     with tempfile.TemporaryDirectory(prefix=f"wisp-{kind}-smoke-") as temporary:
         state = Path(temporary)
         ready_file = state / "ready.json"
+        settings_env_path = state / "config" / ".env"
+        fake_ollama = _FakeOllamaServer() if settings_profile_smoke else None
+        if fake_ollama is not None:
+            fake_ollama.start()
+            settings_env_path.parent.mkdir(parents=True, exist_ok=True)
+            settings_env_path.write_text(
+                "\n".join(
+                    (
+                        "WISP_ONBOARDING_COMPLETE=True",
+                        "START_ON_LOGIN=False",
+                        "PROFILE_COUNT=1",
+                        "PROFILE_1_ID=a",
+                        "PROFILE_1_LABEL=A",
+                        "PROFILE_1_LLM_PROVIDER=chatgpt",
+                        "PROFILE_1_LLM_MODEL=gpt-5.5",
+                        "PROFILE_1_BUBBLE_WIDTH=340",
+                        "PROFILE_1_STT_BEAM_SIZE=4",
+                        "PROFILE_1_MEMORY_TOP_K=9",
+                        "PROFILE_1_CONTEXT_BROWSER_MAX_CHARS=9999",
+                        "ACTIVE_PROFILE=a",
+                        "SETTINGS_PROFILE=a",
+                        "LLM_PROVIDER=chatgpt",
+                        "LLM_MODEL=gpt-5.5",
+                        "VISION_LLM_PROVIDER=chatgpt",
+                        "VISION_LLM_MODEL=gpt-5.5",
+                        "MEMORY_LLM_PROVIDER=chatgpt",
+                        "MEMORY_LLM_MODEL=gpt-5.5",
+                        "BUBBLE_WIDTH=340",
+                        "STT_BEAM_SIZE=4",
+                        "MEMORY_TOP_K=9",
+                        "CONTEXT_BROWSER_MAX_CHARS=9999",
+                        "",
+                    )
+                ),
+                encoding="utf-8",
+            )
         env = os.environ.copy()
         env.update(
             {
@@ -152,51 +250,65 @@ def run_launcher_smoke(
                 "WISP_USER_DATA_DIR": str(state / "user-data"),
             }
         )
+        if fake_ollama is not None:
+            env.update(
+                {
+                    "OLLAMA_HOST": fake_ollama.host,
+                    "WISP_LAUNCH_SMOKE_OLLAMA_MODELS": ",".join(SETTINGS_SMOKE_OLLAMA_MODELS),
+                    "WISP_LAUNCH_SMOKE_SETTINGS_PROFILE": "1",
+                    "WISP_SETTINGS_ENV_PATH": str(settings_env_path),
+                    "WISP_UI_DEBUG_METHODS": "1",
+                }
+            )
         if kind == "source":
             env["WISP_LAUNCH_PYTHON"] = str((source_python or Path(sys.executable)).resolve())
-        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
-        process = subprocess.Popen(
-            command,
-            cwd=root,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            creationflags=creationflags,
-            start_new_session=sys.platform != "win32",
-        )
         try:
-            output, _ = process.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired as exc:
-            _stop_process_tree(process)
-            output, _ = process.communicate(timeout=10)
-            raise RuntimeError(
-                f"{kind} launcher did not reach readiness within {timeout:.0f}s\n{output[-8000:]}"
-            ) from exc
-        if process.returncode != 0:
-            diagnostics = _state_diagnostics(state)
-            raise RuntimeError(
-                f"{kind} launcher exited {process.returncode}\n{output[-8000:]}{diagnostics}"
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
+            process = subprocess.Popen(
+                command,
+                cwd=root,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                creationflags=creationflags,
+                start_new_session=sys.platform != "win32",
             )
-        if not ready_file.is_file():
-            diagnostics = _state_diagnostics(state)
-            raise RuntimeError(
-                f"{kind} launcher exited without readiness evidence\n{output[-8000:]}{diagnostics}"
-            )
-        payload = json.loads(ready_file.read_text(encoding="utf-8"))
-        pids = _validate_ready(payload, frozen=frozen)
-        deadline = time.monotonic() + 10.0
-        survivors = [pid for pid in pids if _process_alive(pid)]
-        while survivors and time.monotonic() < deadline:
-            time.sleep(0.1)
-            survivors = [pid for pid in survivors if _process_alive(pid)]
-        if survivors:
-            raise RuntimeError(f"{kind} launcher left managed processes running: {survivors}")
-        payload["clean_shutdown"] = True
-        payload["launcher_kind"] = kind
-        return payload
+            try:
+                output, _ = process.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired as exc:
+                _stop_process_tree(process)
+                output, _ = process.communicate(timeout=10)
+                raise RuntimeError(
+                    f"{kind} launcher did not reach readiness within {timeout:.0f}s\n{output[-8000:]}"
+                ) from exc
+            if process.returncode != 0:
+                diagnostics = _state_diagnostics(state)
+                raise RuntimeError(
+                    f"{kind} launcher exited {process.returncode}\n{output[-8000:]}{diagnostics}"
+                )
+            if not ready_file.is_file():
+                diagnostics = _state_diagnostics(state)
+                raise RuntimeError(
+                    f"{kind} launcher exited without readiness evidence\n{output[-8000:]}{diagnostics}"
+                )
+            payload = json.loads(ready_file.read_text(encoding="utf-8"))
+            pids = _validate_ready(payload, frozen=frozen)
+            deadline = time.monotonic() + 10.0
+            survivors = [pid for pid in pids if _process_alive(pid)]
+            while survivors and time.monotonic() < deadline:
+                time.sleep(0.1)
+                survivors = [pid for pid in survivors if _process_alive(pid)]
+            if survivors:
+                raise RuntimeError(f"{kind} launcher left managed processes running: {survivors}")
+            payload["clean_shutdown"] = True
+            payload["launcher_kind"] = kind
+            return payload
+        finally:
+            if fake_ollama is not None:
+                fake_ollama.stop()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -205,12 +317,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--executable", type=Path)
     parser.add_argument("--source-python", type=Path)
     parser.add_argument("--timeout", type=float, default=180.0)
+    parser.add_argument(
+        "--settings-profile-smoke",
+        action="store_true",
+        help="Drive the real Settings dialog through profile save/reopen and Ollama model fetch.",
+    )
     args = parser.parse_args(argv)
     payload = run_launcher_smoke(
         args.kind,
         executable=args.executable,
         source_python=args.source_python,
         timeout=args.timeout,
+        settings_profile_smoke=args.settings_profile_smoke,
     )
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0

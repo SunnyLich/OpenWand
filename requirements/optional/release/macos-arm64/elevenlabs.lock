@@ -1,0 +1,75 @@
+--index-url https://pypi.org/simple
+
+annotated-types==0.7.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   pydantic
+anyio==4.14.1
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   httpx
+certifi==2026.6.17
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   httpcore
+    #   httpx
+    #   requests
+charset-normalizer==3.4.7
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   requests
+elevenlabs==2.55.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   -r requirements/optional/inputs/elevenlabs.in
+h11==0.16.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   httpcore
+httpcore==1.0.9
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   httpx
+httpx==0.28.1
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   elevenlabs
+idna==3.18
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   anyio
+    #   httpx
+    #   requests
+pydantic==2.13.4
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   elevenlabs
+pydantic-core==2.46.4
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   elevenlabs
+    #   pydantic
+requests==2.34.2
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   elevenlabs
+typing-extensions==4.15.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   anyio
+    #   elevenlabs
+    #   pydantic
+    #   pydantic-core
+    #   typing-inspection
+typing-inspection==0.4.2
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   pydantic
+urllib3==2.7.0
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   requests
+websockets==15.0.1
+    # via
+    #   -c requirements/requirements-macos.lock
+    #   elevenlabs

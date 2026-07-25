@@ -357,6 +357,7 @@ class OptionalInstallDialog(QDialog):
             code = 1
         self._exit_code = code
         self._set_running(False)
+        restart_required = code == 0 and self._restart_apply_ready()
         if self._cancel_requested:
             self._spinner.stop("×")
             self._status.setText(t("Installer cancelled."))
@@ -365,14 +366,19 @@ class OptionalInstallDialog(QDialog):
             self._spinner.stop("✓")
             self._set_progress_percent(100)
             self._elapsed.setText("")
-            self._status.setText(t("Installer completed successfully."))
-            self._append_line(t("Installer completed successfully."))
+            message = (
+                t("Packages are downloaded and staged. Restart Wisp to apply and verify them.")
+                if restart_required
+                else t("Installer completed successfully.")
+            )
+            self._status.setText(message)
+            self._append_line(message)
         else:
             self._spinner.stop("×")
             message = self._persisted_failure_message() or t("Installer failed with exit code {code}.").format(code=code)
             self._status.setText(message)
             self._append_line(message)
-        if code == 0 and self._restart_apply_ready():
+        if restart_required:
             self._restart_btn.setVisible(True)
             self._restart_btn.setDefault(True)
         self.install_finished.emit(code)
@@ -434,7 +440,7 @@ class OptionalInstallDialog(QDialog):
             folder.mkdir(parents=True, exist_ok=True)
             opened = QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
             if not opened:
-                self._status.setText(f"{t('Open log folder')}: unavailable")
+                self._status.setText(f"{t('Open log folder')}: {t('unavailable')}")
         except Exception as exc:  # noqa: BLE001 - desktop/path backends are external
             self._status.setText(f"{t('Open log folder')}: {type(exc).__name__}")
 

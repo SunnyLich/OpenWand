@@ -1,10 +1,13 @@
 ﻿"""Environment file helpers for the settings dialog."""
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from core.system.env_utils import format_env_value, read_env_file, write_env_file
 from core.system.paths import REPO_ROOT
 
-ENV_PATH = REPO_ROOT / ".env"
+ENV_PATH = Path(os.environ.get("WISP_SETTINGS_ENV_PATH") or REPO_ROOT / ".env")
 
 
 def read_settings_env() -> dict[str, str]:
@@ -20,4 +23,3 @@ def format_settings_env_value(value: str) -> str:
 def write_settings_env(vals: dict[str, str], remove_keys: set[str] | None = None) -> None:
     """Write settings env."""
     write_env_file(ENV_PATH, vals, remove_keys=remove_keys)
-

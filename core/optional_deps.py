@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import importlib.metadata
 import importlib.util
 import json
 import os
+import platform
 import re
 import shutil
 import site
@@ -143,11 +145,45 @@ def speech_shared_locked_packages(platform_name: str | None = None) -> list[str]
 STT_LOCKED_PACKAGES = stt_locked_packages()
 SPEECH_SHARED_LOCKED_PACKAGES = speech_shared_locked_packages()
 OPTIONAL_AI_COMPAT_PACKAGES = SPEECH_SHARED_LOCKED_PACKAGES[:len(_OPTIONAL_AI_COMPAT_PACKAGE_NAMES)]
+_ELEVENLABS_LOCKED_VERSIONS = {
+    "anyio": "4.14.1",
+    "annotated-types": "0.7.0",
+    "certifi": "2026.6.17",
+    "charset-normalizer": "3.4.7",
+    "h11": "0.16.0",
+    "httpcore": "1.0.9",
+    "httpx": "0.28.1",
+    "idna": "3.18",
+    "pydantic": "2.13.4",
+    "pydantic-core": "2.46.4",
+    "requests": "2.34.2",
+    "sniffio": "1.3.1",
+    "typing-extensions": "4.15.0",
+    "typing-inspection": "0.4.2",
+    "urllib3": "2.7.0",
+    "websockets": "15.0.1",
+}
+ELEVENLABS_INSTALL_PACKAGES = [
+    ELEVENLABS_PACKAGE,
+    *(f"{name}=={version}" for name, version in _ELEVENLABS_LOCKED_VERSIONS.items()),
+]
 STT_WINDOWS_CUDA_PACKAGES = [
     "nvidia-cuda-runtime-cu12==12.8.90",
     "nvidia-cublas-cu12==12.8.4.1",
 ]
-OPTIONAL_INSTALL_CONTRACT_SCHEMA = 3
+OPTIONAL_INSTALL_CONTRACT_SCHEMA = 5
+OPTIONAL_LAYER_MANIFEST_SCHEMA = 1
+OPTIONAL_LAYER_MANIFEST_NAME = ".wisp-contract.json"
+_SUPPORTED_CONTRACT_TARGETS = {
+    "win32": {"amd64", "x86_64"},
+    "linux": {"amd64", "x86_64"},
+    "darwin": {"arm64", "aarch64"},
+}
+_CONTRACT_TARGET_SLUGS = {
+    "win32": "windows-x64",
+    "linux": "linux-x64",
+    "darwin": "macos-arm64",
+}
 KOKORO_BASE_INSTALL_PACKAGES = [
     KOKORO_PACKAGE,
     SOUNDFILE_PACKAGE,
@@ -224,9 +260,146 @@ class OptionalPackageSpec:
     remove_artifacts: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class OptionalDependencyContract:
+    """One complete, immutable dependency set accepted as a unit."""
+
+    kind: str
+    key: str
+    device: str
+    packages: tuple[str, ...]
+    fingerprint: str
+
+
 def _is_frozen() -> bool:
     """Return whether Wisp is running from a packaged executable."""
     return bool(getattr(sys, "frozen", False))
+
+
+def _normalized_machine(machine: str | None = None) -> str:
+    value = str(machine if machine is not None else platform.machine()).strip().lower()
+    aliases = {
+        "x64": "amd64",
+        "x86-64": "x86_64",
+        "x86_64h": "x86_64",
+        "arm64e": "arm64",
+    }
+    return aliases.get(value, value)
+
+
+def optional_contract_target_supported(
+    *,
+    platform_name: str | None = None,
+    machine: str | None = None,
+) -> bool:
+    """Return whether Wisp builds and tests dependency contracts for a target."""
+    selected_platform = str(platform_name or sys.platform).strip().lower()
+    return _normalized_machine(machine) in _SUPPORTED_CONTRACT_TARGETS.get(selected_platform, set())
+
+
+def _optional_contract_variant(key: str, device: str | None, platform_name: str) -> str:
+    normalized = str(key or "").strip().lower().replace("_", "-")
+    selected = str(device or "").strip().lower()
+    if normalized == "stt":
+        return "stt-cuda" if platform_name == "win32" and selected in {"auto", "cuda"} else "stt-cpu"
+    if normalized == "kokoro":
+        gpu = platform_name != "darwin" and selected in {"auto", "cuda"}
+        return "kokoro-gpu" if gpu else "kokoro-cpu"
+    if normalized == "elevenlabs":
+        return "elevenlabs"
+    if normalized in {"live-voice", "live_voice"}:
+        return "live-voice"
+    raise KeyError(f"Unknown optional package contract: {key}")
+
+
+def optional_contract_lock_path(
+    kind: str,
+    key: str,
+    *,
+    device: str | None = None,
+    platform_name: str | None = None,
+    machine: str | None = None,
+) -> Path | None:
+    """Return the checked-in lock for one supported whole contract."""
+    selected_platform = str(platform_name or sys.platform).strip().lower()
+    if machine is not None and not optional_contract_target_supported(
+        platform_name=selected_platform,
+        machine=machine,
+    ):
+        return None
+    target = _CONTRACT_TARGET_SLUGS.get(selected_platform)
+    normalized_kind = str(kind or "").strip().lower()
+    if not target or normalized_kind not in {"source", "release"}:
+        return None
+    variant = _optional_contract_variant(key, device, selected_platform)
+    return REPO_ROOT / "requirements" / "optional" / normalized_kind / target / f"{variant}.lock"
+
+
+def _optional_contract_lock_packages(
+    kind: str,
+    key: str,
+    *,
+    device: str | None = None,
+    platform_name: str | None = None,
+    machine: str | None = None,
+) -> tuple[str, ...]:
+    path = optional_contract_lock_path(
+        kind,
+        key,
+        device=device,
+        platform_name=platform_name,
+        machine=machine,
+    )
+    if path is None:
+        return ()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ()
+    packages: list[str] = []
+    for line in lines:
+        text = line.strip()
+        if not text or text.startswith("#"):
+            continue
+        # uv emits requirements-file options as one textual line, while
+        # subprocess argv requires the flag and value as separate items.
+        if text.startswith("--") and " " in text:
+            option, value = text.split(None, 1)
+            packages.extend((option, value))
+        else:
+            packages.append(text)
+    return tuple(packages)
+
+
+def _runtime_lock_path(platform_name: str) -> Path | None:
+    filenames = {
+        "win32": "requirements-windows.lock",
+        "linux": "requirements-linux.lock",
+        "darwin": "requirements-macos.lock",
+    }
+    filename = filenames.get(str(platform_name).strip().lower())
+    return REPO_ROOT / "requirements" / filename if filename else None
+
+
+def _runtime_lock_versions(platform_name: str) -> dict[str, str]:
+    """Read exact versions from one checked-in source runtime lock."""
+    path = _runtime_lock_path(platform_name)
+    if path is None:
+        return {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+    versions: dict[str, str] = {}
+    for line in lines:
+        text = line.strip()
+        if not text or text.startswith(("#", "-")) or "==" not in text:
+            continue
+        name, version = text.split("==", 1)
+        version = version.split(";", 1)[0].strip()
+        if name.strip() and version:
+            versions[_canonical_package_name(name)] = version
+    return versions
 
 
 def _find_uv() -> str:
@@ -288,12 +461,19 @@ def is_importable(module_name: str) -> bool:
 def stt_install_packages(device: str | None = None, *, platform_name: str | None = None) -> list[str]:
     """Return the exact packages for the selected STT platform/device."""
     platform_name = platform_name or sys.platform
+    locked = _optional_contract_lock_packages(
+        "release",
+        "stt",
+        device=device,
+        platform_name=platform_name,
+    )
+    if locked:
+        return list(locked)
+    # Unsupported source targets do not have a release lock. Keep the old
+    # source-install recipe available as best effort without calling it a
+    # supported contract.
     packages = stt_locked_packages(platform_name)
-    selected = str(device or "").strip().lower()
-    # The faster-whisper/ctranslate2 stack already supports CPU execution.
-    # Auto must also provision the optional CUDA DLLs so the first install can
-    # use either backend instead of permanently reflecting a missed GPU probe.
-    if platform_name == "win32" and selected in {"auto", "cuda"}:
+    if platform_name == "win32" and str(device or "").strip().lower() in {"auto", "cuda"}:
         packages.extend(STT_WINDOWS_CUDA_PACKAGES)
     return packages
 
@@ -316,7 +496,7 @@ def optional_package_spec(key: str, *, device: str | None = None) -> OptionalPac
             key="stt",
             display_name="STT",
             packages=tuple(stt_install_packages(device)),
-            required_modules=("faster_whisper",),
+            required_modules=("faster_whisper", "av.about", "ctranslate2"),
             remove_artifacts=tuple(stt_remove_artifacts()),
         )
     if normalized == "kokoro":
@@ -329,20 +509,146 @@ def optional_package_spec(key: str, *, device: str | None = None) -> OptionalPac
             remove_artifacts=tuple(kokoro_remove_artifacts()),
         )
     if normalized == "elevenlabs":
+        packages = _optional_contract_lock_packages("release", "elevenlabs")
         return OptionalPackageSpec(
             key="elevenlabs",
             display_name="ElevenLabs",
-            packages=(ELEVENLABS_PACKAGE,),
+            packages=packages or tuple(ELEVENLABS_INSTALL_PACKAGES),
             required_modules=("elevenlabs",),
         )
     if normalized in {"live-voice", "live_voice"}:
+        packages = _optional_contract_lock_packages("release", "live_voice")
         return OptionalPackageSpec(
             key="live_voice",
             display_name="Live voice",
-            packages=(GOOGLE_GENAI_PACKAGE,),
+            packages=packages or (GOOGLE_GENAI_PACKAGE,),
             required_modules=("google.genai",),
         )
     raise KeyError(f"Unknown optional package spec: {key}")
+
+
+def _dependency_contract_fingerprint(
+    *,
+    kind: str,
+    key: str,
+    device: str,
+    packages: tuple[str, ...],
+    platform_name: str,
+    machine: str,
+) -> str:
+    payload = {
+        "schema": OPTIONAL_INSTALL_CONTRACT_SCHEMA,
+        "kind": kind,
+        "key": key,
+        "device": device,
+        "platform": platform_name,
+        "machine": machine,
+        "python_implementation": sys.implementation.name,
+        "python_cache_tag": str(getattr(sys.implementation, "cache_tag", "") or ""),
+        "packages": list(packages),
+    }
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+    return f"{OPTIONAL_INSTALL_CONTRACT_SCHEMA}:{kind}:{digest[:24]}"
+
+
+def optional_dependency_contracts(
+    key: str,
+    *,
+    device: str | None = None,
+    platform_name: str | None = None,
+    machine: str | None = None,
+) -> tuple[OptionalDependencyContract, ...]:
+    """Return the whole Source and Release contracts accepted for one feature.
+
+    Contracts exist only for Wisp's supported release targets. Unsupported
+    operating-system/architecture combinations remain source-only best effort
+    and deliberately do not acquire an implied compatibility promise.
+    """
+    selected_platform = str(platform_name or sys.platform).strip().lower()
+    selected_machine = _normalized_machine(machine)
+    if not optional_contract_target_supported(
+        platform_name=selected_platform,
+        machine=selected_machine,
+    ):
+        return ()
+    spec = optional_package_spec(key, device=device)
+    selected_device = str(device or "").strip().lower()
+    contracts: list[OptionalDependencyContract] = []
+    source_packages = _optional_contract_lock_packages(
+        "source",
+        spec.key,
+        device=device,
+        platform_name=selected_platform,
+        machine=selected_machine,
+    )
+    if source_packages:
+        contracts.append(
+            OptionalDependencyContract(
+                kind="source",
+                key=spec.key,
+                device=selected_device,
+                packages=source_packages,
+                fingerprint=_dependency_contract_fingerprint(
+                    kind="source",
+                    key=spec.key,
+                    device=selected_device,
+                    packages=source_packages,
+                    platform_name=selected_platform,
+                    machine=selected_machine,
+                ),
+            )
+        )
+    release_packages = _optional_contract_lock_packages(
+        "release",
+        spec.key,
+        device=device,
+        platform_name=selected_platform,
+        machine=selected_machine,
+    )
+    if not release_packages:
+        return tuple(contracts)
+    contracts.append(
+        OptionalDependencyContract(
+            kind="release",
+            key=spec.key,
+            device=selected_device,
+            packages=release_packages,
+            fingerprint=_dependency_contract_fingerprint(
+                kind="release",
+                key=spec.key,
+                device=selected_device,
+                packages=release_packages,
+                platform_name=selected_platform,
+                machine=selected_machine,
+            ),
+        )
+    )
+    return tuple(contracts)
+
+
+def optional_dependency_contract_record(
+    key: str,
+    *,
+    device: str | None = None,
+    kind: str = "release",
+) -> dict[str, object]:
+    """Return atomic provenance data for a selected complete contract."""
+    contracts = optional_dependency_contracts(key, device=device)
+    contract = next((item for item in contracts if item.kind == kind), None)
+    if contract is None:
+        return {}
+    return {
+        "schema": OPTIONAL_LAYER_MANIFEST_SCHEMA,
+        "kind": contract.kind,
+        "key": contract.key,
+        "device": contract.device,
+        "fingerprint": contract.fingerprint,
+        "packages": _expected_package_versions(contract.packages),
+        "platform": sys.platform,
+        "machine": _normalized_machine(),
+        "python_implementation": sys.implementation.name,
+        "python_cache_tag": str(getattr(sys.implementation, "cache_tag", "") or ""),
+    }
 
 
 def optional_package_contract(key: str, *, device: str | None = None) -> str:
@@ -352,16 +658,23 @@ def optional_package_contract(key: str, *, device: str | None = None) -> str:
     this fingerprint matches.  Changing package pins or checker semantics then
     makes an application update revalidate instead of trusting stale state.
     """
+    contracts = optional_dependency_contracts(key, device=device)
+    release = next((contract for contract in contracts if contract.kind == "release"), None)
+    if release is not None:
+        return release.fingerprint
+    # Unsupported source-only targets do not gain a release contract. Return a
+    # stable unsupported marker so installer plans cannot masquerade as supported.
     spec = optional_package_spec(key, device=device)
     payload = {
         "schema": OPTIONAL_INSTALL_CONTRACT_SCHEMA,
+        "kind": "unsupported",
         "platform": sys.platform,
+        "machine": _normalized_machine(),
         "key": spec.key,
         "packages": list(spec.packages),
-        "required_modules": list(spec.required_modules),
     }
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
-    return f"{OPTIONAL_INSTALL_CONTRACT_SCHEMA}:{digest[:24]}"
+    return f"{OPTIONAL_INSTALL_CONTRACT_SCHEMA}:unsupported:{digest[:24]}"
 
 
 def local_speech_install_contract(*, kokoro_device: str, stt_device: str) -> str:
@@ -369,12 +682,119 @@ def local_speech_install_contract(*, kokoro_device: str, stt_device: str) -> str
     payload = {
         "schema": OPTIONAL_INSTALL_CONTRACT_SCHEMA,
         "platform": sys.platform,
+        "machine": platform.machine().lower(),
+        "python_implementation": sys.implementation.name,
+        "python_cache_tag": str(getattr(sys.implementation, "cache_tag", "") or ""),
         "key": "local-speech",
         "kokoro": optional_package_contract("kokoro", device=kokoro_device),
         "stt": optional_package_contract("stt", device=stt_device),
     }
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
     return f"{OPTIONAL_INSTALL_CONTRACT_SCHEMA}:{digest[:24]}"
+
+
+def optional_installer_dir() -> Path:
+    """Return the durable control/log directory for optional installs.
+
+    Installer plans must survive a Wisp restart. Per-run diagnostic directories
+    deliberately do not, so they can never own apply plans or status files.
+    """
+    return OPTIONAL_PACKAGES_DIR.parent / "installers"
+
+
+def optional_layer_manifest_path(target_dir: Path | str | None = None) -> Path:
+    target = Path(target_dir) if target_dir is not None else OPTIONAL_PACKAGES_DIR
+    return target / OPTIONAL_LAYER_MANIFEST_NAME
+
+
+def read_optional_layer_manifest(target_dir: Path | str | None = None) -> dict[str, object]:
+    """Read optional-layer provenance without treating it as package evidence."""
+    try:
+        data = json.loads(optional_layer_manifest_path(target_dir).read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(data, dict) or int(data.get("schema") or 0) != OPTIONAL_LAYER_MANIFEST_SCHEMA:
+        return {}
+    return data
+
+
+def write_optional_layer_contracts(
+    target_dir: Path | str,
+    records: list[dict[str, object]],
+) -> Path:
+    """Atomically merge verified contract provenance into an inactive layer."""
+    target = Path(target_dir)
+    target.mkdir(parents=True, exist_ok=True)
+    existing = read_optional_layer_manifest(target)
+    existing_contracts = existing.get("contracts")
+    contracts = dict(existing_contracts) if isinstance(existing_contracts, dict) else {}
+    for record in records:
+        key = str(record.get("key") or "").strip()
+        if key:
+            contracts[key] = dict(record)
+    payload = {
+        "schema": OPTIONAL_LAYER_MANIFEST_SCHEMA,
+        "contracts": contracts,
+    }
+    path = optional_layer_manifest_path(target)
+    temp = path.with_suffix(path.suffix + ".tmp")
+    temp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    temp.replace(path)
+    return path
+
+
+def optional_install_log_path(display_name: str) -> Path:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(display_name).lower()).strip("-") or "optional-package"
+    return optional_installer_dir() / f"{slug}-install.log"
+
+
+def optional_install_status_path(display_name: str) -> Path:
+    return optional_install_log_path(display_name).with_suffix(".status.json")
+
+
+def read_optional_install_status(display_name: str) -> dict[str, object]:
+    """Read one durable installer status document without trusting its result."""
+    try:
+        data = json.loads(optional_install_status_path(display_name).read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def current_optional_install_status(
+    display_name: str,
+    key: str,
+    *,
+    device: str | None = None,
+) -> dict[str, object]:
+    """Return installer state only when it belongs to the current contract."""
+    from core import updater
+
+    status = read_optional_install_status(display_name)
+    if (
+        str(status.get("install_contract") or "") != optional_package_contract(key, device=device)
+        or str(status.get("app_version") or "") != updater.current_version()
+    ):
+        return {}
+    return status
+
+
+def current_local_speech_install_status(
+    *,
+    kokoro_device: str,
+    stt_device: str,
+) -> dict[str, object]:
+    """Return the setup wizard's combined status for the current contract."""
+    from core import updater
+
+    status = read_optional_install_status("Local speech")
+    if (
+        str(status.get("install_contract") or "")
+        != local_speech_install_contract(kokoro_device=kokoro_device, stt_device=stt_device)
+        or str(status.get("app_version") or "") != updater.current_version()
+    ):
+        return {}
+    return status
 
 
 def _expected_package_versions(packages: list[str] | tuple[str, ...]) -> dict[str, str]:
@@ -386,6 +806,16 @@ def _expected_package_versions(packages: list[str] | tuple[str, ...]) -> dict[st
         name, version = parsed
         expected[name] = version
     return expected
+
+
+def _primary_package_name(key: str) -> str:
+    normalized = str(key or "").strip().lower().replace("_", "-")
+    return {
+        "stt": "faster-whisper",
+        "kokoro": "kokoro",
+        "elevenlabs": "elevenlabs",
+        "live-voice": "google-genai",
+    }.get(normalized, normalized)
 
 
 def _dist_info_groups_for_root(root: Path) -> dict[str, list[Path]]:
@@ -406,16 +836,124 @@ def _dist_info_groups_for_root(root: Path) -> dict[str, list[Path]]:
     return groups
 
 
+def _installed_versions_from_groups(groups: dict[str, list[Path]]) -> dict[str, list[str]]:
+    return {
+        package: sorted({(_dist_info_metadata(path)[1] or "") for path in paths})
+        for package, paths in groups.items()
+    }
+
+
+def _installed_versions_from_distributions(paths: list[str]) -> dict[str, list[str]]:
+    # Import resolution uses the first matching sys.path root. Compare the
+    # contract with that active layer and ignore shadowed user/global installs
+    # from later roots; duplicate metadata inside the selected root still fails.
+    versions: dict[str, set[str]] = {}
+    selected_root: dict[str, str] = {}
+    for raw_path in paths:
+        try:
+            root = str(Path(raw_path).resolve())
+            distributions = importlib.metadata.distributions(path=[raw_path])
+            for distribution in distributions:
+                name = _canonical_package_name(str(distribution.metadata.get("Name") or ""))
+                if not name:
+                    continue
+                if name in selected_root and selected_root[name] != root:
+                    continue
+                selected_root.setdefault(name, root)
+                versions.setdefault(name, set()).add(str(distribution.version or ""))
+        except Exception:
+            continue
+    return {name: sorted(found) for name, found in versions.items()}
+
+
+def _dependency_contract_result(
+    contract: OptionalDependencyContract,
+    installed_versions: dict[str, list[str]],
+) -> dict[str, object]:
+    """Compare one installed layer with one complete contract, without mixing."""
+    expected = _expected_package_versions(contract.packages)
+    missing: list[str] = []
+    mismatched: dict[str, object] = {}
+    duplicates: dict[str, list[str]] = {}
+    for package, expected_version in expected.items():
+        found = installed_versions.get(package) or []
+        if not found:
+            missing.append(package)
+            continue
+        if len(found) > 1:
+            duplicates[package] = list(found)
+        if found != [expected_version]:
+            mismatched[package] = {
+                "expected": expected_version,
+                "installed": list(found),
+            }
+    return {
+        "kind": contract.kind,
+        "fingerprint": contract.fingerprint,
+        "expected": expected,
+        "missing": missing,
+        "mismatched": mismatched,
+        "duplicates": duplicates,
+        "valid": bool(expected) and not missing and not mismatched and not duplicates,
+    }
+
+
+def optional_dependency_record_status(
+    record: dict[str, object],
+    target_dir: Path | str,
+) -> dict[str, object]:
+    """Validate an inactive layer against one serialized whole contract.
+
+    Installer helpers use this immediately before activation so a damaged,
+    partial, or subsequently modified staging directory can never receive
+    valid provenance or replace the active dependency layer.
+    """
+    raw_packages = record.get("packages")
+    packages = dict(raw_packages) if isinstance(raw_packages, dict) else {}
+    expected = {
+        _canonical_package_name(str(name)): str(version)
+        for name, version in packages.items()
+        if str(name).strip() and str(version).strip()
+    }
+    synthetic = OptionalDependencyContract(
+        kind=str(record.get("kind") or "release"),
+        key=str(record.get("key") or ""),
+        device=str(record.get("device") or ""),
+        packages=tuple(f"{name}=={version}" for name, version in expected.items()),
+        fingerprint=str(record.get("fingerprint") or ""),
+    )
+    groups = _dist_info_groups_for_root(Path(target_dir))
+    result = _dependency_contract_result(synthetic, _installed_versions_from_groups(groups))
+    result["key"] = synthetic.key
+    return result
+
+
+def _matching_dependency_contract(
+    contracts: tuple[OptionalDependencyContract, ...],
+    installed_versions: dict[str, list[str]],
+    *,
+    preferred_kind: str,
+) -> tuple[OptionalDependencyContract | None, list[dict[str, object]]]:
+    results = [_dependency_contract_result(contract, installed_versions) for contract in contracts]
+    ordered_kinds = (preferred_kind, *(kind for kind in ("source", "release") if kind != preferred_kind))
+    for kind in ordered_kinds:
+        for contract, result in zip(contracts, results, strict=True):
+            if contract.kind == kind and result["valid"]:
+                return contract, results
+    return None, results
+
+
 def optional_package_spec_status(
     key: str,
     *,
     device: str | None = None,
     target_dir: Path | str | None = None,
 ) -> dict[str, object]:
-    """Return whether the optional package layer matches this release spec."""
+    """Return whether the managed layer matches a whole Source or Release contract."""
     spec = optional_package_spec(key, device=device)
     target = Path(target_dir) if target_dir is not None else OPTIONAL_PACKAGES_DIR
     expected = _expected_package_versions(spec.packages)
+    contracts = optional_dependency_contracts(key, device=device)
     status: dict[str, object] = {
         "key": spec.key,
         "display_name": spec.display_name,
@@ -425,6 +963,11 @@ def optional_package_spec_status(
         "missing": [],
         "mismatched": {},
         "duplicates": {},
+        "contract_kind": "",
+        "contract_fingerprint": "",
+        "contract_results": [],
+        "supported_target": bool(contracts),
+        "provenance": {},
         "message": "",
     }
     try:
@@ -432,69 +975,232 @@ def optional_package_spec_status(
     except Exception:
         root = target
     groups = _dist_info_groups_for_root(root)
-    missing: list[str] = []
-    mismatched: dict[str, object] = {}
-    duplicates: dict[str, list[str]] = {}
-    for package, expected_version in expected.items():
-        dist_infos = groups.get(package) or []
-        if not dist_infos:
-            missing.append(package)
-            continue
-        if len(dist_infos) > 1:
-            duplicates[package] = sorted(path.name for path in dist_infos)
-        installed_versions = sorted({(_dist_info_metadata(path)[1] or "") for path in dist_infos})
-        if installed_versions != [expected_version]:
-            mismatched[package] = {
-                "expected": expected_version,
-                "installed": installed_versions,
-            }
-    status["missing"] = missing
-    status["mismatched"] = mismatched
-    status["duplicates"] = duplicates
-    status["installed"] = bool(expected) and not missing
-    status["valid"] = bool(expected) and not missing and not mismatched and not duplicates
-    if status["valid"]:
-        status["message"] = f"{spec.display_name} package files match this Wisp release."
+    installed_versions = _installed_versions_from_groups(groups)
+    manifest = read_optional_layer_manifest(root)
+    manifest_contracts = manifest.get("contracts")
+    provenance = (
+        dict(manifest_contracts.get(spec.key) or {})
+        if isinstance(manifest_contracts, dict)
+        else {}
+    )
+    status["provenance"] = provenance
+    match, results = _matching_dependency_contract(
+        contracts,
+        installed_versions,
+        preferred_kind="release",
+    )
+    status["contract_results"] = results
+    primary_name = _primary_package_name(spec.key)
+    status["installed"] = bool(primary_name and installed_versions.get(primary_name))
+    if match is not None:
+        matched_result = next(result for result in results if result["fingerprint"] == match.fingerprint)
+        recorded_fingerprint = str(provenance.get("fingerprint") or "")
+        provenance_valid = not recorded_fingerprint or recorded_fingerprint == match.fingerprint
+        status["valid"] = provenance_valid
+        status["expected"] = dict(matched_result["expected"])
+        status["contract_kind"] = match.kind
+        status["contract_fingerprint"] = match.fingerprint
+        status["message"] = (
+            f"{spec.display_name} package files match the complete {match.kind} contract."
+            if provenance_valid
+            else f"{spec.display_name} package versions match, but recorded contract provenance differs. Repair it."
+        )
     else:
+        preferred_result = next(
+            (result for result in results if result["kind"] == "release"),
+            results[0] if results else None,
+        )
+        missing = list(preferred_result["missing"]) if preferred_result else list(expected)
+        mismatched = dict(preferred_result["mismatched"]) if preferred_result else {}
+        duplicates = dict(preferred_result["duplicates"]) if preferred_result else {}
+        status["missing"] = missing
+        status["mismatched"] = mismatched
+        status["duplicates"] = duplicates
         parts: list[str] = []
+        if not contracts:
+            parts.append("unsupported operating-system or architecture target")
         if missing:
             parts.append(f"missing {', '.join(missing)}")
         if mismatched:
             parts.append(f"version mismatch for {', '.join(sorted(mismatched))}")
         if duplicates:
             parts.append(f"duplicate metadata for {', '.join(sorted(duplicates))}")
-        status["message"] = f"{spec.display_name} package files do not match this Wisp release: {'; '.join(parts)}."
+        status["message"] = (
+            f"{spec.display_name} package files do not match a complete Source or Release contract: "
+            f"{'; '.join(parts)}."
+        )
     return status
 
 
-def require_optional_package_runtime(key: str, *, device: str | None = None) -> dict[str, object]:
-    """Prepare one valid installer-owned dependency layer for runtime use.
+def _source_environment_paths() -> list[str]:
+    """Return import paths for a source checkout, excluding the managed layer."""
+    try:
+        optional_root = OPTIONAL_PACKAGES_DIR.resolve()
+    except Exception:
+        optional_root = OPTIONAL_PACKAGES_DIR
+    paths: list[str] = []
+    for raw_path in sys.path:
+        if not raw_path:
+            raw_path = os.getcwd()
+        try:
+            if Path(raw_path).resolve() == optional_root:
+                continue
+        except Exception:
+            pass
+        paths.append(raw_path)
+    return paths
 
-    Runtime consumers must not fall through to a package from the build
-    environment or PyInstaller bundle when the managed install is missing or
-    stale. The same exact contract therefore owns both Settings detection and
-    the actual import path.
+
+def _find_module_spec(module_name: str, search_paths: list[str]):
+    """Find a top-level or dotted module without importing its parent package."""
+    parts = [part for part in str(module_name or "").split(".") if part]
+    if not parts:
+        return None
+    fullname = parts[0]
+    spec = importlib.machinery.PathFinder.find_spec(fullname, search_paths)
+    for part in parts[1:]:
+        if spec is None:
+            return None
+        locations = getattr(spec, "submodule_search_locations", None)
+        if locations is None:
+            return None
+        fullname = f"{fullname}.{part}"
+        spec = importlib.machinery.PathFinder.find_spec(fullname, list(locations))
+    return spec
+
+
+def _source_environment_spec_status(key: str, *, device: str | None = None) -> dict[str, object]:
+    """Check the provider installed by a source checkout's Python environment.
+
+    Supported targets must match one complete Source or Release dependency
+    contract. Unsupported targets are explicitly source-only best effort: the
+    provider and required imports must work, but Wisp makes no version promise.
     """
-    status = optional_package_spec_status(key, device=device)
+    spec = optional_package_spec(key, device=device)
+    paths = _source_environment_paths()
+    installed = _installed_versions_from_distributions(paths)
+    primary_name = _primary_package_name(spec.key)
+    primary_versions = installed.get(primary_name) or []
+    contracts = optional_dependency_contracts(key, device=device)
+    match, contract_results = _matching_dependency_contract(
+        contracts,
+        installed,
+        preferred_kind="source",
+    )
+    missing_modules = []
+    for module_name in spec.required_modules:
+        try:
+            found = _find_module_spec(module_name, paths) is not None
+        except Exception:
+            found = False
+        if not found:
+            missing_modules.append(module_name)
+    supported_target = bool(contracts)
+    # Unsupported platforms/architectures are source-only and intentionally
+    # best effort. Do not manufacture or persist a compatibility contract.
+    valid = bool(match) and not missing_modules if supported_target else bool(primary_versions) and not missing_modules
+    detail: list[str] = []
+    if not primary_versions:
+        detail.append(f"missing {primary_name}")
+    elif supported_target and match is None:
+        detail.append("installed versions mix or differ from the complete Source and Release contracts")
+    if missing_modules:
+        detail.append(f"missing import {', '.join(missing_modules)}")
+    if not supported_target:
+        detail.append("unsupported target; source dependencies are best effort")
+    matched_result = (
+        next(result for result in contract_results if result["fingerprint"] == match.fingerprint)
+        if match is not None
+        else None
+    )
+    preferred_result = next(
+        (result for result in contract_results if result["kind"] == "source"),
+        contract_results[0] if contract_results else None,
+    )
+    return {
+        "key": spec.key,
+        "display_name": spec.display_name,
+        "source": "environment",
+        "installed": bool(primary_versions),
+        "valid": valid,
+        "expected": dict(
+            matched_result["expected"]
+            if matched_result is not None
+            else preferred_result["expected"]
+            if preferred_result is not None
+            else {}
+        ),
+        "missing": list(preferred_result["missing"]) if preferred_result is not None else [],
+        "mismatched": dict(preferred_result["mismatched"]) if preferred_result is not None else {},
+        "duplicates": dict(preferred_result["duplicates"]) if preferred_result is not None else {},
+        "contract_kind": match.kind if match is not None else "unsupported-source" if not supported_target else "",
+        "contract_fingerprint": match.fingerprint if match is not None else "",
+        "contract_results": contract_results,
+        "supported_target": supported_target,
+        "message": (
+            f"{spec.display_name} is provided by the complete {match.kind} contract in the source environment."
+            if valid and match is not None
+            else f"{spec.display_name} is usable from an unsupported source target without a support contract."
+            if valid
+            else f"{spec.display_name} is not usable from the source Python environment: {'; '.join(detail)}."
+        ),
+    }
+
+
+def optional_package_runtime_status(key: str, *, device: str | None = None) -> dict[str, object]:
+    """Return the dependency layer the current source/release runtime can use."""
+    managed = dict(optional_package_spec_status(key, device=device))
+    managed["source"] = "managed"
+    if managed.get("valid") or _is_frozen():
+        return managed
+
+    environment = _source_environment_spec_status(key, device=device)
+    if environment.get("valid"):
+        environment["managed"] = managed
+        return environment
+    if managed.get("installed"):
+        managed["environment"] = environment
+        return managed
+    environment["managed"] = managed
+    return environment
+
+
+def require_optional_package_runtime(key: str, *, device: str | None = None) -> dict[str, object]:
+    """Prepare one valid dependency layer for runtime use.
+
+    Frozen releases must use the installer-owned layer because speech SDKs are
+    deliberately excluded from the ZIP. Source checkouts may use the provider
+    installed by their locked Python environment, while a valid managed repair
+    install still takes precedence.
+    """
+    status = optional_package_runtime_status(key, device=device)
     if not status.get("valid"):
         display_name = str(status.get("display_name") or key)
-        detail = str(status.get("message") or "managed package files are missing or invalid")
+        detail = str(status.get("message") or "package files are missing or invalid")
         raise RuntimeError(
             f"{display_name} is not installed for this Wisp release. "
             f"Open Settings > Voice and install it. {detail}"
         )
 
-    add_optional_packages_to_path(prepend=True)
+    source = str(status.get("source") or "managed")
+    if source == "managed":
+        add_optional_packages_to_path(prepend=True)
+        search_paths = [str(OPTIONAL_PACKAGES_DIR)]
+    else:
+        optional_path = str(OPTIONAL_PACKAGES_DIR)
+        while optional_path in sys.path:
+            sys.path.remove(optional_path)
+        search_paths = _source_environment_paths()
     importlib.invalidate_caches()
     spec = optional_package_spec(key, device=device)
     missing_modules = [
         module_name
         for module_name in spec.required_modules
-        if importlib.machinery.PathFinder.find_spec(module_name, [str(OPTIONAL_PACKAGES_DIR)]) is None
+        if _find_module_spec(module_name, search_paths) is None
     ]
     if missing_modules:
         raise RuntimeError(
-            f"{spec.display_name} install is incomplete in Wisp's managed package folder: "
+            f"{spec.display_name} install is incomplete in the selected {source} dependency layer: "
             f"missing {', '.join(missing_modules)}. Open Settings > Voice and reinstall it."
         )
     return status
@@ -698,6 +1404,15 @@ def _install_requirement_name_version(spec: str) -> tuple[str, str] | None:
     if wheel_name.endswith(".whl") and "-" in wheel_name:
         name, version, *_rest = wheel_name[:-4].split("-")
         return _canonical_package_name(name), version
+    direct = re.match(
+        r"^\s*([A-Za-z0-9][A-Za-z0-9_.-]*)(?:\[[^\]]+\])?\s*@\s*(\S+)",
+        text,
+    )
+    if direct:
+        direct_wheel = Path(direct.group(2).split("?", 1)[0].rstrip("/")).name
+        if direct_wheel.endswith(".whl") and "-" in direct_wheel:
+            _wheel_package, version, *_rest = direct_wheel[:-4].split("-")
+            return _canonical_package_name(direct.group(1)), version
     match = re.match(
         r"^\s*([A-Za-z0-9][A-Za-z0-9_.-]*)(?:\[[^\]]+\])?\s*==\s*([^;,\s]+)",
         text,
@@ -786,9 +1501,14 @@ def system_cuda_available() -> bool:
     return result.returncode == 0 and "GPU" in (result.stdout or "")
 
 
-def kokoro_install_mode_for_device(device: str | None) -> str:
+def kokoro_install_mode_for_device(
+    device: str | None,
+    *,
+    platform_name: str | None = None,
+) -> str:
     """Return cpu/gpu install mode for the selected Kokoro device."""
-    if sys.platform == "darwin":
+    selected_platform = platform_name or sys.platform
+    if selected_platform == "darwin":
         return "cpu"
     selected = "cpu" if device is None else str(device or "auto").strip().lower()
     if selected == "cpu":
@@ -801,16 +1521,33 @@ def kokoro_install_mode_for_device(device: str | None) -> str:
     return "cpu"
 
 
-def kokoro_install_packages(device: str | None) -> list[str]:
+def kokoro_install_packages(
+    device: str | None,
+    *,
+    platform_name: str | None = None,
+) -> list[str]:
     """Return packages/flags for the selected Kokoro device install."""
-    if kokoro_install_mode_for_device(device) == "gpu":
+    selected_platform = platform_name or sys.platform
+    locked = _optional_contract_lock_packages(
+        "release",
+        "kokoro",
+        device=device,
+        platform_name=selected_platform,
+    )
+    if locked:
+        return list(locked)
+    if kokoro_install_mode_for_device(device, platform_name=platform_name) == "gpu":
         return list(KOKORO_GPU_INSTALL_PACKAGES)
     return list(KOKORO_BASE_INSTALL_PACKAGES)
 
 
-def kokoro_torch_install_packages(device: str | None) -> list[str]:
+def kokoro_torch_install_packages(
+    device: str | None,
+    *,
+    platform_name: str | None = None,
+) -> list[str]:
     """Return an optional first install phase for Kokoro's Torch backend."""
-    if kokoro_install_mode_for_device(device) == "gpu":
+    if kokoro_install_mode_for_device(device, platform_name=platform_name) == "gpu":
         return list(KOKORO_GPU_TORCH_INSTALL_PACKAGES)
     return []
 
@@ -902,6 +1639,7 @@ def _optional_probe_status(
     default: dict[str, object],
     *,
     extra_args: list[str] | None = None,
+    dependency_source: str = "managed",
     timeout: float | None = 30,
     progress: Callable[[int], None] | None = None,
 ) -> dict[str, object]:
@@ -916,12 +1654,14 @@ def _optional_probe_status(
         ]
         if extra_args:
             command.extend(extra_args)
+        probe_env = pip_install_env()
+        probe_env["WISP_OPTIONAL_PROBE_SOURCE"] = dependency_source
         common_kwargs = {
             "text": True,
             "encoding": "utf-8",
             "errors": "replace",
             "cwd": str(REPO_ROOT),
-            "env": pip_install_env(),
+            "env": probe_env,
             **subprocess_no_window_kwargs(),
         }
         if progress is None:
@@ -964,6 +1704,7 @@ def _optional_probe_status(
             return status
         data = json.loads(text[-1])
         if isinstance(data, dict):
+            data.setdefault("source", dependency_source)
             return data
         status = dict(default)
         status["error"] = f"{probe} subprocess returned invalid JSON."
@@ -1018,6 +1759,23 @@ def stt_runtime_import_status_subprocess() -> dict[str, object]:
             "error": "",
             "subprocess": True,
         },
+        dependency_source=str(optional_package_runtime_status("stt").get("source") or "managed"),
+    )
+
+
+def elevenlabs_runtime_import_status_subprocess() -> dict[str, object]:
+    """Return ElevenLabs SDK import status without polluting the caller process."""
+    return _optional_probe_status(
+        "elevenlabs-runtime-status",
+        {
+            "installed": False,
+            "valid": False,
+            "version": "",
+            "origin": "",
+            "error": "",
+            "subprocess": True,
+        },
+        dependency_source=str(optional_package_runtime_status("elevenlabs").get("source") or "managed"),
     )
 
 
@@ -1051,6 +1809,7 @@ def stt_model_status_subprocess(
             "subprocess": True,
         },
         extra_args=[model, device, compute_type],
+        dependency_source=str(optional_package_runtime_status("stt", device=device).get("source") or "managed"),
         timeout=timeout,
         progress=progress,
     )

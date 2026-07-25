@@ -983,10 +983,10 @@ class MacAgentRunDialog:
             for name in self._agent_names
         }
 
-        title = str(self._spec.get("title") or "Agent Task")
+        title = str(self._spec.get("title") or "Agent Team")
         self.dialog = QDialog()
         self.dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        self.dialog.setWindowTitle(f"{t('Agent Task')} - {title}")
+        self.dialog.setWindowTitle(f"{t('Agent Team')} - {title}")
         self.dialog.setMinimumSize(1100, 700)
         from ui.shared.window_utils import enable_standard_window_controls
         enable_standard_window_controls(self.dialog)
@@ -1004,7 +1004,7 @@ class MacAgentRunDialog:
         banner_layout = QVBoxLayout(self.completion_banner)
         banner_layout.setContentsMargins(14, 10, 14, 10)
         banner_layout.setSpacing(2)
-        self.completion_banner_title = QLabel(t("Agent Task Running"))
+        self.completion_banner_title = QLabel(t("Agent Team Running"))
         self.completion_banner_title.setObjectName("agentCompletionBannerTitle")
         self.completion_banner_detail = QLabel(t("The run is still working."))
         self.completion_banner_detail.setWordWrap(True)
@@ -1184,26 +1184,28 @@ class MacAgentRunDialog:
         final_text = str(payload.get("final") or "")
         error_text = str(payload.get("error") or "")
         if final_text:
-            self.final_view.setPlainText(final_text)
+            self.final_view.setPlainText(
+                t(final_text) if final_text == "Agent Team was cancelled by the user." else final_text
+            )
         elif error_text:
             self.final_view.setPlainText(error_text)
         elif payload.get("cancelled"):
-            self.final_view.setPlainText(t("Agent task cancelled."))
+            self.final_view.setPlainText(t("Agent Team cancelled."))
         else:
             self.final_view.setPlainText(t("(no final report)"))
 
         if error_text:
             self.status_label.setText(t("Failed"))
-            self._show_completion_banner(t("Agent Task Failed"), error_text, "failed")
+            self._show_completion_banner(t("Agent Team Failed"), error_text, "failed")
             self._set_agent_status(self._active_agent, "Failed", error_text)
         elif payload.get("cancelled"):
             self.status_label.setText(t("Cancelled"))
-            self._show_completion_banner(t("Agent Task Cancelled"), t("Agent task cancelled."), "cancelled")
-            self._set_agent_status(self._active_agent, "Cancelled", "Agent task cancelled.")
+            self._show_completion_banner(t("Agent Team Cancelled"), t("Agent Team cancelled."), "cancelled")
+            self._set_agent_status(self._active_agent, "Cancelled", "Agent Team cancelled.")
         else:
             self.status_label.setText(t("Finished"))
             self._show_completion_banner(
-                t("Agent Task Finished"),
+                t("Agent Team Finished"),
                 f"{t('Final report is ready. Log:')} {self._run_dir}" if self._run_dir else t("Final report is ready."),
                 "success",
             )
@@ -1223,7 +1225,7 @@ class MacAgentRunDialog:
         self._refresh_meeting_room()
         self.show()
         self._QApplication.alert(self.dialog, 0)
-        notice_title = t("Agent Task Failed") if error_text else t("Agent Task Cancelled") if payload.get("cancelled") else t("Agent Task Finished")
+        notice_title = t("Agent Team Failed") if error_text else t("Agent Team Cancelled") if payload.get("cancelled") else t("Agent Team Finished")
         if hasattr(self._host, "_agent_notify_approval"):
             self._host._agent_notify_approval(notice_title, True, {"run_dir": self._run_dir})
 
@@ -1897,7 +1899,7 @@ class MacAgentHistoryDialog:
 
         self.dialog = QDialog()
         self.dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        self.dialog.setWindowTitle(t("Agent Task History"))
+        self.dialog.setWindowTitle(t("Agent Team History"))
         self.dialog.setMinimumSize(960, 620)
         from ui.shared.window_utils import enable_standard_window_controls
         enable_standard_window_controls(self.dialog)
@@ -1975,7 +1977,7 @@ class MacAgentHistoryDialog:
             self.run_list.setCurrentRow(0)
         else:
             self._current_run_dir = ""
-            self._clear_views(t("No agent task runs yet."))
+            self._clear_views(t("No Agent Team runs yet."))
 
     def update_detail(self, data: dict[str, Any]) -> None:
         """Update detail."""
@@ -2379,6 +2381,8 @@ class QtProtocolHost:
             overlay = self._intent
             if overlay is None or not overlay.isVisible():
                 return {"submitted": False, "reason": "no_visible_intent"}
+            if not overlay.isEnabled():
+                return {"submitted": False, "reason": "context_capture_pending"}
             text = str(params.get("text") or "").strip()
             if not text:
                 return {"submitted": False, "reason": "empty_text"}
@@ -2407,6 +2411,8 @@ class QtProtocolHost:
                 ),
                 "visible_window_titles": [widget.windowTitle() for widget in visible],
             }
+        if method == "ui.debug.settings.action" and os.environ.get("WISP_UI_DEBUG_METHODS"):
+            return self._debug_settings_action(**params)
         if method == "ui.reload_config":
             return self._reload_config()
         if method == "ui.show_overlay":
@@ -2417,6 +2423,8 @@ class QtProtocolHost:
             return self._show_intent(**params)
         if method == "ui.intent.context_items":
             return self._update_intent_context_items(**params)
+        if method == "ui.intent.activate":
+            return self._activate_intent()
         if method == "ui.show_snip":
             return self._show_snip()
         if method == "ui.overlay.state":
@@ -2457,6 +2465,8 @@ class QtProtocolHost:
             return self._reply_image(**params)
         if method == "ui.reply.done":
             return self._reply_done(**params)
+        if method == "ui.reply.undo_ready":
+            return self._reply_undo_ready(**params)
         if method == "ui.live_voice.session":
             return self._live_voice_session(**params)
         if method == "ui.live_voice.transcript":
@@ -2473,6 +2483,8 @@ class QtProtocolHost:
             return self._chat_chunk(**params)
         if method == "ui.chat.done":
             return self._chat_done(**params)
+        if method == "ui.chat.background_result":
+            return self._chat_background_result(**params)
         if method == "ui.chat.error":
             return self._chat_error(**params)
         if method == "ui.chat.context_preview":
@@ -2692,6 +2704,7 @@ class QtProtocolHost:
         context_items: list[dict[str, Any]] | None = None,
         initial_custom_text: str = "",
         focus_overlay: bool = False,
+        defer_focus: bool = False,
     ) -> dict[str, Any]:
         """Show intent."""
         from ui.intent_overlay import IntentOverlay
@@ -2709,6 +2722,7 @@ class QtProtocolHost:
             conversation_namespace_label=self._intent_conversation_namespace_label(),
             initial_custom_text=initial_custom_text,
             focus_overlay=focus_overlay,
+            defer_focus=defer_focus,
         )
         def _chosen(intent: str, custom: str) -> None:
             overlay = self._intent
@@ -2792,9 +2806,21 @@ class QtProtocolHost:
         self._intent.show()
         self._intent.raise_()
         if sys.platform != "win32":
-            self._intent.activateWindow()
-            self._intent.setFocus()
-        return {"shown": True, "caller_idx": caller_idx}
+            if not defer_focus:
+                self._intent.activateWindow()
+                self._intent.setFocus()
+        return {"shown": True, "caller_idx": caller_idx, "focus_deferred": bool(defer_focus)}
+
+    def _activate_intent(self) -> dict[str, Any]:
+        """Make a visible deferred picker interactive after context capture."""
+        if self._intent is None:
+            return {"activated": False, "reason": "no_intent"}
+        try:
+            self._intent.activate_after_context()
+        except RuntimeError:
+            self._intent = None
+            return {"activated": False, "reason": "closed"}
+        return {"activated": True}
 
     def _apply_cancelled_intent_conversation_choice(self, overlay) -> None:
         """Preserve only explicit chat-target changes from a canceled picker."""
@@ -3063,6 +3089,16 @@ class QtProtocolHost:
         else:
             self._active_notice_key = ""
         return {"shown": True, "text": translated, "key": notice_key} if notice_key else {"shown": True, "text": translated}
+
+    def _reply_undo_ready(self, text: str = "", timeout_ms: int = 30000) -> dict[str, Any]:
+        """Show a completed rewrite with a one-click undo action."""
+        translated = _translate_notice_text(text)
+        self._ensure_bubble().show_notice(
+            translated,
+            timeout_ms=max(0, int(timeout_ms or 0)),
+            actions=[(t("Undo"), lambda: self.emit("ui.rewrite.undo", {}))],
+        )
+        return {"shown": True, "text": translated, "action": "undo"}
 
     def _reply_transcript(self, text: str = "") -> dict[str, Any]:
         """Handle reply transcript for qt protocol host."""
@@ -3809,6 +3845,61 @@ class QtProtocolHost:
         if stream is not None:
             stream.put(("error", error))
         return {"queued": stream is not None}
+
+    def _chat_background_result(
+        self,
+        conversation_id: str = "",
+        job_id: str = "",
+        status: str = "completed",
+        title: str = "Background task",
+        text: str = "",
+        run_dir: str = "",
+    ) -> dict[str, Any]:
+        """Persist a detached task result in the chat that launched it."""
+        import uuid as _uuid
+        from datetime import datetime
+
+        target = next(
+            (
+                (idx, conv)
+                for idx, conv in enumerate(self._all_conversations)
+                if str(conv.get("id") or "") == str(conversation_id or "")
+            ),
+            None,
+        )
+        if target is None:
+            return {"appended": False, "reason": "conversation_not_found"}
+        idx, conv = target
+        for message in conv.get("messages") or []:
+            metadata = message.get("background_task") if isinstance(message, dict) else None
+            if isinstance(metadata, dict) and str(metadata.get("job_id") or "") == str(job_id or ""):
+                return {"appended": False, "duplicate": True}
+
+        failed = str(status or "").lower() != "completed"
+        heading = t("Background task failed") if failed else t("Background task finished")
+        body = str(text or "").strip() or t("The background task finished without a report.")
+        content = f"**{heading}: {title}**\n\n{body}"
+        if run_dir:
+            content += f"\n\n{t('Run details')}: `{run_dir}`"
+        now = datetime.now(UTC).isoformat()
+        conv.setdefault("messages", []).append(
+            {
+                "id": str(_uuid.uuid4()),
+                "role": "assistant",
+                "content": content,
+                "created_at": now,
+                "background_task": {
+                    "job_id": str(job_id or ""),
+                    "status": str(status or ""),
+                    "run_dir": str(run_dir or ""),
+                },
+            }
+        )
+        conv["updated_at"] = now
+        self._persist_conversations()
+        if self._chat_is_visible() and self._active_conversation_idx == idx:
+            self._chat.sync_conversation(idx)
+        return {"appended": True, "conversation_index": idx}
 
     def _live_file_approval_request(self, **params: Any) -> dict[str, Any]:
         """Ask the user to approve a live model file write/edit."""
@@ -4564,6 +4655,174 @@ class QtProtocolHost:
         except Exception:
             return {"open": False}
 
+    def _debug_settings_action(
+        self,
+        action: str = "snapshot",
+        profile_id: str = "",
+        provider: str = "",
+        model: str = "",
+        value: str = "",
+    ) -> dict[str, Any]:
+        """Drive the real Settings dialog for opt-in process-level acceptance tests."""
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication, QComboBox, QLineEdit
+
+        from ui.settings_panel import dialog as settings_dialog
+
+        dialog = getattr(settings_dialog, "_settings_dialog", None)
+        if dialog is None or not dialog.isVisible():
+            return {"ok": False, "reason": "settings_not_open"}
+
+        def snapshot() -> dict[str, Any]:
+            dialog._refresh_dirty_state()
+            rows = list(getattr(dialog, "_model_section_rows", {}).get("LLM", []))
+            primary = rows[0] if rows else None
+            model_choices: list[str] = []
+            current_provider = ""
+            current_model = ""
+            refresh_busy = False
+            refresh_tooltip = ""
+            if primary is not None:
+                provider_combo = primary["api_key_combo"]
+                model_combo = primary["model_combo"]
+                current_provider = str(provider_combo.currentData() or "")
+                current_model = str(dialog._model_value(primary) or "")
+                model_choices = [
+                    str(model_combo.itemData(index) or "")
+                    for index in range(model_combo.count())
+                    if str(model_combo.itemData(index) or "")
+                    not in {"", settings_dialog._CUSTOM_MODEL_SENTINEL}
+                ]
+                refresh_busy = not bool(primary["refresh_btn"].isEnabled())
+                refresh_tooltip = str(primary["refresh_btn"].toolTip() or "")
+            connection_providers = [
+                str(row["provider"].currentData() or "")
+                for row in getattr(dialog, "_api_key_rows", [])
+                if str(row["provider"].currentData() or "")
+            ]
+            bubble_width = dialog._fields.get("BUBBLE_WIDTH")
+            return {
+                "ok": True,
+                "open": bool(dialog.isVisible()),
+                "profile_id": str(dialog._selected_profile_id() or ""),
+                "profile_label": str(dialog._profiles_btn.text() or ""),
+                "status": str(dialog._status_lbl.text() or ""),
+                "status_tooltip": str(dialog._status_lbl.toolTip() or ""),
+                "save_enabled": bool(dialog._apply_btn.isEnabled()),
+                "provider": current_provider,
+                "model": current_model,
+                "model_choices": model_choices,
+                "model_refresh_busy": refresh_busy,
+                "model_refresh_tooltip": refresh_tooltip,
+                "connection_providers": connection_providers,
+                "bubble_width": (
+                    str(bubble_width.text() or "")
+                    if isinstance(bubble_width, QLineEdit)
+                    else ""
+                ),
+                "stt_beam_size": str(settings_dialog._get(dialog._fields["STT_BEAM_SIZE"]) or ""),
+                "memory_top_k": str(settings_dialog._get(dialog._fields["MEMORY_TOP_K"]) or ""),
+                "context_browser_max_chars": str(
+                    settings_dialog._get(dialog._fields["CONTEXT_BROWSER_MAX_CHARS"]) or ""
+                ),
+            }
+
+        requested = str(action or "snapshot").strip().lower()
+        if requested == "snapshot":
+            return snapshot()
+        if requested == "select_profile":
+            target = str(profile_id or "").strip()
+            if not target:
+                return {"ok": False, "reason": "missing_profile_id"}
+            expected_label = ""
+            if target in settings_dialog._PRESET_LABELS:
+                expected_label = settings_dialog.t(settings_dialog._PRESET_LABELS[target])
+            else:
+                for _slot, saved_id, saved_label in dialog._saved_custom_profile_entries():
+                    if saved_id == target:
+                        expected_label = dialog._custom_profile_display_label(
+                            saved_id,
+                            saved_label,
+                            dialog._saved_custom_profile_entries(),
+                        )
+                        break
+            menu = dialog._profiles_btn.menu()
+            available = [
+                item.text()
+                for item in (menu.actions() if menu is not None else [])
+                if item.text()
+            ]
+            menu_action = next(
+                (
+                    item
+                    for item in (menu.actions() if menu is not None else [])
+                    if expected_label and item.text().casefold() == expected_label.casefold()
+                ),
+                None,
+            )
+            if menu_action is None:
+                return {
+                    "ok": False,
+                    "reason": "profile_action_not_found",
+                    "profile_id": target,
+                    "available": available,
+                }
+            menu_action.trigger()
+            QApplication.processEvents()
+            return snapshot()
+        if requested == "select_provider":
+            rows = list(getattr(dialog, "_model_section_rows", {}).get("LLM", []))
+            if not rows:
+                return {"ok": False, "reason": "missing_primary_model_row"}
+            combo = rows[0]["api_key_combo"]
+            if not isinstance(combo, QComboBox):
+                return {"ok": False, "reason": "missing_provider_combo"}
+            index = combo.findData(str(provider or "").strip())
+            if index < 0:
+                return {"ok": False, "reason": "provider_not_available", "provider": provider}
+            combo.setCurrentIndex(index)
+            QApplication.processEvents()
+            return snapshot()
+        if requested == "select_model":
+            rows = list(getattr(dialog, "_model_section_rows", {}).get("LLM", []))
+            if not rows:
+                return {"ok": False, "reason": "missing_primary_model_row"}
+            combo = rows[0]["model_combo"]
+            if not isinstance(combo, QComboBox):
+                return {"ok": False, "reason": "missing_model_combo"}
+            index = combo.findData(str(model or "").strip())
+            if index < 0:
+                result = snapshot()
+                result.update({"ok": False, "reason": "model_not_available", "requested_model": model})
+                return result
+            combo.setCurrentIndex(index)
+            QApplication.processEvents()
+            return snapshot()
+        if requested == "set_bubble_width":
+            field = dialog._fields.get("BUBBLE_WIDTH")
+            if not isinstance(field, QLineEdit):
+                return {"ok": False, "reason": "missing_bubble_width"}
+            field.setFocus()
+            field.selectAll()
+            QTest.keyClicks(field, str(value or ""))
+            QApplication.processEvents()
+            return snapshot()
+        if requested == "save":
+            before_enabled = bool(dialog._apply_btn.isEnabled())
+            dialog._apply_btn.click()
+            QApplication.processEvents()
+            for warning_box in list(getattr(dialog, "_open_warning_boxes", [])):
+                warning_box.close()
+            result = snapshot()
+            result["save_clicked"] = True
+            result["save_was_enabled"] = before_enabled
+            return result
+        if requested == "close":
+            dialog.close()
+            QApplication.processEvents()
+            return {"ok": True, "open": False}
+        return {"ok": False, "reason": "unknown_action", "action": requested}
+
     def _format_status_rows(self, rows: list[dict[str, Any]] | None) -> str:
         """Format health/privacy rows for a compact QMessageBox."""
         lines: list[str] = []
@@ -4665,6 +4924,33 @@ class QtProtocolHost:
         while tree.topLevelItemCount() > 600:
             tree.takeTopLevelItem(0)
 
+    @staticmethod
+    def _runtime_status_selected_text(tree: Any) -> str:
+        """Return selected runtime rows in display order, including collapsed details."""
+        selected = {id(item) for item in tree.selectedItems()}
+        lines: list[str] = []
+        for top_index in range(tree.topLevelItemCount()):
+            item = tree.topLevelItem(top_index)
+            if id(item) in selected:
+                lines.append(item.text(0))
+                lines.extend(f"    {item.child(index).text(0)}" for index in range(item.childCount()))
+                continue
+            lines.extend(
+                f"    {item.child(index).text(0)}"
+                for index in range(item.childCount())
+                if id(item.child(index)) in selected
+            )
+        return "\n".join(lines)
+
+    def _runtime_status_copy_selected(self, tree: Any) -> None:
+        """Copy selected runtime rows and their detail lines to the clipboard."""
+        from PySide6.QtWidgets import QApplication
+
+        text = self._runtime_status_selected_text(tree)
+        clipboard = QApplication.clipboard()
+        if text and clipboard is not None:
+            clipboard.setText(text)
+
     def _runtime_status_show(
         self,
         workers: list[dict[str, Any]] | None = None,
@@ -4673,6 +4959,7 @@ class QtProtocolHost:
     ) -> dict[str, Any]:
         """Show or refresh the runtime status diagnostics window."""
         from PySide6.QtCore import Qt, QTimer
+        from PySide6.QtGui import QAction, QKeySequence
         from PySide6.QtWidgets import (
             QDialog,
             QHBoxLayout,
@@ -4729,14 +5016,37 @@ class QtProtocolHost:
                 tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
                 tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
                 tree.setTextElideMode(Qt.TextElideMode.ElideNone)
+                tree.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
+                copy_selected_action = QAction(t("Copy selected"), tree)
+                copy_selected_action.setObjectName("runtimeCopySelectedAction")
+                copy_selected_action.setShortcut(QKeySequence.StandardKey.Copy)
+                copy_selected_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+                copy_selected_action.setEnabled(False)
+                copy_selected_action.triggered.connect(lambda: self._runtime_status_copy_selected(tree))
+                tree.addAction(copy_selected_action)
+                copy_all_action = QAction(t("Copy all"), tree)
+                copy_all_action.triggered.connect(self._runtime_status_copy_all)
+                tree.addAction(copy_all_action)
                 root.addWidget(tree, 1)
                 footer = QHBoxLayout()
                 refresh = QPushButton(t("Refresh"))
                 refresh.clicked.connect(lambda: self.emit("ui.runtime_status.open_requested", {}))
                 footer.addWidget(refresh)
+                copy_selected = QPushButton(t("Copy selected"))
+                copy_selected.setObjectName("runtimeCopySelectedButton")
+                copy_selected.setEnabled(False)
+                copy_selected.clicked.connect(lambda: self._runtime_status_copy_selected(tree))
+                footer.addWidget(copy_selected)
                 copy_all = QPushButton(t("Copy all"))
                 copy_all.clicked.connect(lambda: self._runtime_status_copy_all())
                 footer.addWidget(copy_all)
+
+                def _update_copy_selected() -> None:
+                    enabled = bool(tree.selectedItems())
+                    copy_selected.setEnabled(enabled)
+                    copy_selected_action.setEnabled(enabled)
+
+                tree.itemSelectionChanged.connect(_update_copy_selected)
                 if log_dir:
                     open_logs = QPushButton(t("Open log folder"))
                     open_logs.clicked.connect(lambda checked=False, path=log_dir: _open_folder(path))

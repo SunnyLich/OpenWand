@@ -55,7 +55,7 @@ from PySide6.QtWidgets import (
 )
 
 import ui.settings_panel.env as settings_env
-from core import secret_store
+from core import secret_store, settings_profiles
 from core.system.env_utils import (
     format_tool_modes,
     normalize_file_access_mode,
@@ -124,6 +124,158 @@ _SETTINGS_PAGE_META: tuple[tuple[str, str, str], ...] = (
 )
 
 
+# Instance attributes created by the page builders that run after the window is
+# shown. Any read of one of these before its page exists forces the remaining
+# pages to be built, so callers never see a half-constructed dialog. Kept
+# explicit rather than "any missing attribute" so that the many
+# ``getattr(self, "_optional", default)`` probes elsewhere stay cheap.
+_DEFERRED_PAGE_ATTRS = frozenset({
+    "_active_model_route", "_active_voice_feature", "_api_key_rows_container",
+    "_api_key_rows_layout", "_caller_blocks", "_callers_container", "_callers_vlayout",
+    "_cgpt_login_btn", "_cgpt_logout_btn", "_chatgpt_status_lbl", "_connections_empty_lbl",
+    "_connections_expanded", "_connections_filter", "_connections_page",
+    "_connections_search", "_connections_show_more_btn", "_copilot_clear_btn",
+    "_copilot_connect_btn", "_copilot_status_lbl", "_copilot_test_btn",
+    "_elevenlabs_install_btn", "_elevenlabs_install_status_lbl", "_expanded_shortcut_detail",
+    "_github_login_btn", "_github_logout_btn", "_github_status_lbl", "_global_shortcut_rows",
+    "_kokoro_assets_btn", "_kokoro_assets_mode", "_kokoro_assets_update_revision",
+    "_kokoro_install_btn", "_kokoro_install_status_lbl", "_live_voice_install_btn",
+    "_live_voice_install_status_lbl", "_live_voice_key_note_lbl", "_live_voice_model_row",
+    "_live_voice_voice_row", "_llm_test_status_lbl", "_memory_test_status_lbl",
+    "_model_route_add_buttons", "_model_route_button_group", "_model_route_buttons",
+    "_model_route_cards", "_shortcut_rows", "_shortcut_search", "_shortcut_sections",
+    "_snip_block", "_stt_active_lbl", "_stt_download_btn", "_stt_install_status_lbl",
+    "_system_prompt_tabs", "_tts_provider_details", "_tts_provider_groups", "_tts_test_row",
+    "_tts_test_status_lbl", "_tts_timing_notice_lbl", "_tts_volume_value_lbl",
+    "_vision_test_status_lbl", "_voice_block", "_voice_feature_button_group",
+    "_voice_feature_buttons", "_voice_feature_cards", "_voice_playback_card",
+})
+
+
+class _DeferredPageRows(list):
+    """Row list whose contents only exist once its page has been built.
+
+    ``_api_key_rows`` and friends are created in ``__init__`` and filled by a page
+    builder, so an early read sees an empty list rather than a missing attribute
+    and cannot go through ``SettingsDialog.__getattr__``. Reading one finishes the
+    outstanding build first, which keeps the deferral invisible to callers.
+    """
+
+    def __init__(self, dialog: SettingsDialog) -> None:
+        """Initialize the row list bound to its dialog."""
+        super().__init__()
+        self._dialog = dialog
+
+    def _materialize(self) -> None:
+        """Finish building the outstanding pages, if any are still pending."""
+        dialog = self._dialog
+        if dialog is not None:
+            dialog._build_deferred_pages()
+
+    def __getitem__(self, index):
+        """Return a row, building the pending pages that would create it."""
+        self._materialize()
+        return list.__getitem__(self, index)
+
+    def __len__(self) -> int:
+        """Report the real row count rather than a pre-build zero."""
+        self._materialize()
+        return list.__len__(self)
+
+    def __iter__(self):
+        """Iterate real rows rather than a pre-build empty list."""
+        self._materialize()
+        return list.__iter__(self)
+
+    def __bool__(self) -> bool:
+        """Truthiness must reflect the built page, not the pending one."""
+        self._materialize()
+        return list.__len__(self) > 0
+
+
+class _DeferredPageRowGroups(dict):
+    """Per-section row lists that materialize their page on first read."""
+
+    def __init__(self, dialog: SettingsDialog, sections) -> None:
+        """Initialize one deferred row list per section key."""
+        super().__init__({key: _DeferredPageRows(dialog) for key in sections})
+        self._dialog = dialog
+
+    def __getitem__(self, key):
+        """Return a section's rows, building its page first when pending."""
+        dialog = self._dialog
+        if dialog is not None:
+            dialog._build_deferred_pages()
+        return dict.__getitem__(self, key)
+
+
+class _DeferredPageFields(dict):
+    """Settings field map that materializes not-yet-built pages on demand.
+
+    Only the General page exists when the window first appears. Reading a field
+    that lives on a later page -- from a test, a save, or any code that has no
+    reason to care about build order -- transparently finishes building the rest
+    instead of raising, so deferral stays invisible to every existing caller.
+    """
+
+    def __init__(self, dialog: SettingsDialog) -> None:
+        """Initialize the field map bound to its dialog."""
+        super().__init__()
+        self._dialog = dialog
+
+    def _materialize(self) -> None:
+        """Finish building the outstanding pages, if any are still pending."""
+        dialog = self._dialog
+        if dialog is not None:
+            dialog._build_deferred_pages()
+
+    def __missing__(self, key):
+        """Build the outstanding pages, then retry the lookup once."""
+        dialog = self._dialog
+        if dialog is not None and dialog._build_deferred_pages():
+            return dict.__getitem__(self, key)
+        raise KeyError(key)
+
+    def __contains__(self, key) -> bool:
+        """Membership must reflect every page, not just the ones built so far."""
+        if dict.__contains__(self, key):
+            return True
+        self._materialize()
+        return dict.__contains__(self, key)
+
+    def get(self, key, default=None):
+        """Mirror __missing__: a key absent only because its page is pending."""
+        if dict.__contains__(self, key):
+            return dict.__getitem__(self, key)
+        self._materialize()
+        return dict.get(self, key, default)
+
+    def __iter__(self):
+        """Iterating the field map must never expose a half-built dialog."""
+        self._materialize()
+        return dict.__iter__(self)
+
+    def __len__(self) -> int:
+        """Report the full field count, building pending pages if needed."""
+        self._materialize()
+        return dict.__len__(self)
+
+    def keys(self):
+        """Return every field key, including those on not-yet-built pages."""
+        self._materialize()
+        return dict.keys(self)
+
+    def values(self):
+        """Return every field widget, including those on not-yet-built pages."""
+        self._materialize()
+        return dict.values(self)
+
+    def items(self):
+        """Return every field pair, including those on not-yet-built pages."""
+        self._materialize()
+        return dict.items(self)
+
+
 def _disconnect_clicked_handlers(button: QPushButton) -> None:
     """Disconnect a button's clicked handlers without warning when none exist."""
     with warnings.catch_warnings():
@@ -145,7 +297,7 @@ _CONNECTION_PROVIDER_IDS: tuple[str, ...] = (
     "groq", "openai", "anthropic", "google", "deepseek", "openrouter",
     "mistral", "xai", "together", "cerebras", "zai", "nvidia",
     "sambanova", "github_models", "huggingface", "chutes", "vercel",
-    "fireworks", "cohere", "ai21", "nebius", "ollama", "custom", "copilot",
+    "fireworks", "cohere", "ai21", "nebius", "custom", "copilot",
 )
 # Fixed width of the leading drag-handle/priority column beside each model row.
 _MODEL_PRIORITY_COL_W = 72
@@ -548,18 +700,28 @@ class SettingsDialog(QDialog):
         self.setModal(False)
         enable_standard_window_controls(self)
         self._env = _read_env()
-        self._fields: dict[str, QLineEdit | QComboBox | QCheckBox | QTextEdit | QSlider] = {}
+        self._fields: dict[str, QLineEdit | QComboBox | QCheckBox | QTextEdit | QSlider] = (
+            _DeferredPageFields(self)
+        )
+        # Pages after the first are built once the window is on screen. Until then
+        # _pending_page_builds holds the outstanding steps and _values_loaded says
+        # whether the full _load_values pass has run.
+        self._pending_page_builds: list = []
+        self._page_hosts: list[QWidget] = []
+        self._building_deferred_pages = False
+        self._deferred_build_scheduled = False
+        self._values_loaded = False
         # Theme color templates: {"light": {bg,surface,text,accent}, "dark": {...}}.
         # The four App-tab swatches edit whichever mode is selected in the Theme
         # combo; switching modes swaps these without losing the other mode's edits.
         self._theme_templates: dict[str, dict[str, str]] = {}
         self._theme_shown_mode: str = ""
         self._theme_syncing: bool = False
-        self._api_key_rows: list[dict] = []
+        self._api_key_rows: list[dict] = _DeferredPageRows(self)
         self._removed_connection_providers: set[str] = set()
-        self._model_section_rows: dict[str, list[dict]] = {
-            "LLM": [], "VISION_LLM": [], "MEMORY_LLM": []
-        }
+        self._model_section_rows: dict[str, list[dict]] = _DeferredPageRowGroups(
+            self, ("LLM", "VISION_LLM", "MEMORY_LLM")
+        )
         self._model_section_layouts: dict[str, QVBoxLayout] = {}
         self._model_route_rows_containers: dict[str, _ModelRouteRowsWidget] = {}
         self._warning_headers: dict[str, QLabel] = {}
@@ -569,11 +731,13 @@ class SettingsDialog(QDialog):
         self._loading_values = False
         self._saving_settings = False
         self._dirty_refresh_scheduled = False
+        self._search_index_refresh_scheduled = False
         self._dirty_baseline: dict[str, str] = {}
         self._dirty_keys: set[str] = set()
         self._tab_base_names: list[str] = []
         self._tab_dirty_names: set[str] = set()
         self._tab_search_text: dict[str, str] = {}
+        self._settings_search_visibility: dict[QWidget, bool] = {}
         self._active_preset_slug = self._env.get(_SETTINGS_PRESET_KEY, "")
         self._pending_active_profile = ""
         self._pending_test_results: list[tuple[str, int, bool, str]] = []
@@ -617,12 +781,109 @@ class SettingsDialog(QDialog):
         self._warning_header_uppercase_keys: set[str] = set()
         self.finished.connect(self._dispose_after_finished)
         self._build_ui()
-        self._load_values()
+        # Only the first page is ready at this point. Populate it so the window can
+        # be shown immediately with correct values; the remaining pages and the full
+        # _load_values pass run from showEvent, once the user can see something.
+        self._active_preset_slug = self._env.get(_SETTINGS_PRESET_KEY, "")
+        self._loading_values = True
+        try:
+            self._load_general_page_values()
+        finally:
+            self._loading_values = False
+        localize_widget_tree(self)
+        self._refresh_tab_labels()
+        fit_window_to_screen(self, preferred_width=980, preferred_height=760)
+
+    def _page_widget(self, index: int) -> QWidget | None:
+        """Return the real page at ``index``.
+
+        Each tab holds a permanent host widget so that deferring page
+        construction cannot shift tab indices; the page itself is its only child.
+        """
+        self._build_deferred_pages()
+        hosts = self.__dict__.get("_page_hosts") or []
+        if not 0 <= index < len(hosts):
+            return None
+        layout = hosts[index].layout()
+        item = layout.itemAt(0) if layout is not None else None
+        return item.widget() if item is not None else None
+
+    def _set_page_widget(self, internal_name: str, page: QWidget) -> None:
+        """Drop a freshly built page into its permanent host slot."""
+        try:
+            index = [meta[0] for meta in _SETTINGS_PAGE_META].index(internal_name)
+        except ValueError:
+            return
+        host = self._page_hosts[index]
+        layout = host.layout()
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+        layout.addWidget(page)
+
+    def __getattr__(self, name: str):
+        """Materialize deferred pages when one of their widgets is read early.
+
+        Only consulted when normal attribute lookup fails, and only for the known
+        page-owned names, so this cannot turn an ordinary typo or an optional
+        ``getattr(self, ..., default)`` probe into a page build.
+        """
+        if name in _DEFERRED_PAGE_ATTRS and self.__dict__.get("_pending_page_builds"):
+            if self._build_deferred_pages():
+                try:
+                    return self.__dict__[name]
+                except KeyError:
+                    pass
+        raise AttributeError(name)
+
+    def _build_deferred_pages(self) -> bool:
+        """Build the remaining pages and load their values. True if work was done.
+
+        Deliberately one atomic step rather than one page per event loop turn: a
+        page that existed but had not been loaded yet would be interactive, and the
+        later ``_load_values`` pass would silently revert whatever the user typed
+        into it. Callers reach this either from ``showEvent`` -- just after the
+        first page is on screen -- or from the first read of a deferred field.
+        """
+        if self.__dict__.get("_building_deferred_pages"):
+            return False
+        if getattr(self, "_disposing", False):
+            # Closed before the build ran; loading values into a dying dialog would
+            # only risk touching widgets Qt is already tearing down.
+            return False
+        pending = self.__dict__.get("_pending_page_builds") or []
+        if not pending:
+            return False
+        self._building_deferred_pages = True
+        try:
+            while pending:
+                pending.pop(0)()
+
+            self._values_loaded = True
+            legacy_preset = self._preset_slug(self._active_preset_slug)
+            # The General page was loaded during __init__ and may already carry
+            # edits, so this pass covers only the pages built just now.
+            self._load_values(include_general=False)
+            if (
+                legacy_preset
+                and not settings_profiles.profile_path(ENV_PATH, legacy_preset).is_file()
+            ):
+                # Stage the one-time conversion from the old preset overlay to a
+                # normal profile. Nothing touches disk until Save changes.
+                self._apply_preset(legacy_preset)
+        finally:
+            self._building_deferred_pages = False
         localize_widget_tree(self)
         self._refresh_tab_labels()
         self._refresh_search_index()
+        self._apply_dialog_theme()
+        # Targets sign-in labels on the Connections page, so it has to wait until
+        # that page exists.
         self._schedule_open_status_refresh()
-        fit_window_to_screen(self, preferred_width=980, preferred_height=760)
+        return True
 
     def keyPressEvent(self, event):  # noqa: N802 - Qt override
         """Keep Escape from dismissing the entire non-modal Settings window."""
@@ -665,6 +926,10 @@ class SettingsDialog(QDialog):
 
     def _on_settings_tab_changed(self, index: int) -> None:
         """Run page-specific deferred checks after the user opens that page."""
+        if index != self._app_tab_index:
+            # The user navigated off the first page before the background build
+            # reached it; finish now so they never land on an empty page.
+            self._build_deferred_pages()
         nav = getattr(self, "_settings_nav", None)
         if isinstance(nav, QListWidget) and nav.currentRow() != index:
             nav.blockSignals(True)
@@ -791,7 +1056,7 @@ class SettingsDialog(QDialog):
                 self._fields[name].clear()  # type: ignore[attr-defined]
                 self._set_secret_placeholder(
                     self._fields[name],  # type: ignore[arg-type]
-                    f"{label} key stored in OS keychain",
+                    t("{label} key stored in OS keychain").format(label=label),
                     stored=True,
                 )
 
@@ -829,6 +1094,29 @@ class SettingsDialog(QDialog):
         super().showEvent(event)
         fit_window_to_screen(self, preferred_width=980, preferred_height=760)
         self._refresh_current_install_status(force_tts=True)
+
+    def paintEvent(self, event):  # noqa: N802 - Qt override
+        """Build the remaining pages once the first page has actually been drawn.
+
+        Deliberately keyed off the first paint rather than showEvent: a zero-delay
+        timer started from showEvent still runs ahead of the initial frame, so the
+        user would keep staring at nothing for the whole build.
+        """
+        super().paintEvent(event)
+        if self._pending_page_builds and not self._deferred_build_scheduled:
+            self._deferred_build_scheduled = True
+            QTimer.singleShot(0, self._build_deferred_pages_from_timer)
+
+    def _build_deferred_pages_from_timer(self) -> None:
+        """Run the background build without letting errors escape into Qt.
+
+        This runs from a timer rather than a call stack we control, so an
+        exception here would surface inside an unrelated event handler.
+        """
+        try:
+            self._build_deferred_pages()
+        except Exception:  # noqa: BLE001 - logged; the dialog stays usable
+            _settings_log.exception("Could not finish building the Settings pages")
 
     def hideEvent(self, event):                 # noqa: N802
         """Hide event."""
@@ -1091,24 +1379,38 @@ class SettingsDialog(QDialog):
         tabs.tabBar().setExpanding(True)
         tabs.setElideMode(Qt.TextElideMode.ElideNone)
 
-        app_page = self._tab_app()
-        llm_page = self._tab_llm()
-        pages = (
-            (app_page, "App"),
-            (self._connections_page, "Connections"),
-            (llm_page, "LLM"),
-            (self._tab_tts(), "TTS / Voice"),
-            (self._tab_keybinds(), "Keybinds"),
-            (self._tab_prompt(), "Prompts"),
-            (self._tab_advanced(), "Advanced"),
-            (self._tab_about(), "About"),
-        )
-        for page, internal_name in pages:
-            index = tabs.addTab(page, internal_name)
+        # Every page gets a permanent host widget so tab indices never move. Only
+        # the first page's contents are built now; the rest are filled in after the
+        # window is visible, which is what keeps opening Settings from stalling.
+        self._page_hosts = []
+        for internal_name in [meta[0] for meta in _SETTINGS_PAGE_META]:
+            host = QWidget()
+            host_layout = QVBoxLayout(host)
+            host_layout.setContentsMargins(0, 0, 0, 0)
+            host_layout.setSpacing(0)
+            self._page_hosts.append(host)
+            index = tabs.addTab(host, internal_name)
             if internal_name == "App":
                 self._app_tab_index = index
             if internal_name == "TTS / Voice":
                 self._tts_tab_index = index
+
+        self._set_page_widget("App", self._tab_app())
+
+        def _build_llm_pages() -> None:
+            """Build the LLM page, which also produces the Connections page."""
+            llm_page = self._tab_llm()
+            self._set_page_widget("Connections", self._connections_page)
+            self._set_page_widget("LLM", llm_page)
+
+        self._pending_page_builds = [
+            _build_llm_pages,
+            lambda: self._set_page_widget("TTS / Voice", self._tab_tts()),
+            lambda: self._set_page_widget("Keybinds", self._tab_keybinds()),
+            lambda: self._set_page_widget("Prompts", self._tab_prompt()),
+            lambda: self._set_page_widget("Advanced", self._tab_advanced()),
+            lambda: self._set_page_widget("About", self._tab_about()),
+        ]
         tabs.currentChanged.connect(self._on_settings_tab_changed)
         self._tabs = tabs
         self._tab_base_names = [tabs.tabText(i) for i in range(tabs.count())]
@@ -1207,9 +1509,14 @@ class SettingsDialog(QDialog):
 
     def _selected_profile_id(self) -> str:
         """Return the profile currently selected for Settings/runtime use."""
+        pending = str(getattr(self, "_pending_active_profile", "") or "").strip()
+        if pending:
+            return pending
+        legacy_preset = self._preset_slug(self._env.get(_SETTINGS_PRESET_KEY, ""))
+        if legacy_preset:
+            return legacy_preset
         return str(
-            getattr(self, "_pending_active_profile", "")
-            or self._env.get("SETTINGS_PROFILE", "")
+            self._env.get("SETTINGS_PROFILE", "")
             or self._env.get("ACTIVE_PROFILE", "")
             or "default"
         ).strip()
@@ -1240,7 +1547,9 @@ class SettingsDialog(QDialog):
         profile_id = self._selected_profile_id()
         preset_slug = self._preset_slug(getattr(self, "_active_preset_slug", ""))
         selected = self._selected_custom_profile_entry()
-        if preset_slug and profile_id == "default":
+        if profile_id in _PRESET_LABELS:
+            label = t(_PRESET_LABELS[profile_id])
+        elif preset_slug and profile_id == "default":
             label = t(_PRESET_LABELS[preset_slug])
         elif selected is not None:
             label = self._custom_profile_display_label(
@@ -1334,6 +1643,7 @@ class SettingsDialog(QDialog):
         base = self._profile_id(label)
         existing = {
             "default", "fast", "balanced", "deep", "private", "coding",
+            *_PRESET_LABELS,
             *(profile_id for _idx, profile_id, _label in self._saved_custom_profile_entries()),
         }
         if base not in existing:
@@ -1472,6 +1782,8 @@ class SettingsDialog(QDialog):
         vals = {f"PROFILE_{slot}_LABEL": label}
         try:
             _write_env(vals)
+            if settings_profiles.profile_path(ENV_PATH, profile_id).is_file():
+                settings_profiles.rename_profile(ENV_PATH, profile_id, label)
         except Exception as exc:  # noqa: BLE001 - preserve the old profile label
             QMessageBox.warning(
                 self,
@@ -1521,6 +1833,7 @@ class SettingsDialog(QDialog):
             vals.update({f"PROFILE_{index}_{key}": value for key, value in profile.items()})
         try:
             _write_env(vals, remove_keys=remove_keys - set(vals))
+            settings_profiles.delete_profile(ENV_PATH, profile_id)
         except Exception as exc:  # noqa: BLE001 - keep the selected profile intact
             QMessageBox.warning(
                 self,
@@ -1547,6 +1860,11 @@ class SettingsDialog(QDialog):
             for key, value in self._env.items()
             if key.startswith(prefix)
         }
+        profile_id = str(profile_values.get("ID") or "").strip()
+        if profile_id:
+            isolated = settings_profiles.read_profile(ENV_PATH, profile_id)
+            if isolated:
+                profile_values.update(isolated)
         mapping = {
             "LLM_PROVIDER": "LLM_PROVIDER",
             "LLM_MODEL": "LLM_MODEL",
@@ -1570,6 +1888,10 @@ class SettingsDialog(QDialog):
             return
         profile_id = str(self._env.get(f"PROFILE_{slot}_ID", "") or "").strip()
         label = str(self._env.get(f"PROFILE_{slot}_LABEL", "") or profile_id).strip()
+        isolated = settings_profiles.read_profile(ENV_PATH, profile_id)
+        if isolated:
+            self._load_isolated_profile(profile_id, label, isolated)
+            return
         self._active_preset_slug = ""
         self._apply_env_values_to_ui(values)
         self._set_context_modes(
@@ -1585,9 +1907,31 @@ class SettingsDialog(QDialog):
         self._refresh_stt_active_backend()
         self._schedule_warning_marker_refresh()
         self._schedule_dirty_refresh()
-        self._status_lbl.setText(
-            t("{profile} profile selected. Review changes, then Save changes.").format(profile=label)
-        )
+        self._status_lbl.clear()
+
+    def _load_isolated_profile(
+        self,
+        profile_id: str,
+        label: str,
+        values: dict[str, str],
+    ) -> None:
+        """Load a complete profile file while preserving the pre-switch baseline."""
+        previous_baseline = dict(getattr(self, "_dirty_baseline", {}))
+        merged = dict(_read_env())
+        merged.update({str(key): str(value) for key, value in values.items()})
+        merged["ACTIVE_PROFILE"] = profile_id
+        merged["SETTINGS_PROFILE"] = profile_id
+        merged.pop(_SETTINGS_PRESET_KEY, None)
+        self._env = merged
+        self._active_preset_slug = ""
+        self._load_values()
+        self._pending_active_profile = profile_id
+        self._dirty_baseline = previous_baseline
+        self._refresh_profile_button_text()
+        self._refresh_stt_active_backend()
+        self._schedule_warning_marker_refresh()
+        self._refresh_dirty_state()
+        self._status_lbl.setToolTip("")
 
     def _run_setup_check(self) -> None:
         """Run lightweight setup checks and show a reusable report."""
@@ -1711,6 +2055,8 @@ class SettingsDialog(QDialog):
             return "LLM"
         if key in {"ACTIVE_PROFILE", "SETTINGS_PROFILE"}:
             return "App"
+        if key == "_PROFILE_STORAGE_MODE":
+            return "App"
         if key.startswith("THEME_") or key.startswith("BUBBLE_") or key.startswith("TTS_PLAYBACK"):
             return self._field_page_map().get(key, "App")
         return self._field_page_map().get(key, "")
@@ -1767,9 +2113,11 @@ class SettingsDialog(QDialog):
     def _snapshot_settings(self) -> dict[str, str]:
         """Handle snapshot settings for settings dialog."""
         snapshot: dict[str, str] = {}
-        snapshot["ACTIVE_PROFILE"] = (
-            str(getattr(self, "_pending_active_profile", "") or "").strip()
-            or str(self._env.get("ACTIVE_PROFILE", "") or "").strip()
+        snapshot["ACTIVE_PROFILE"] = self._selected_profile_id()
+        snapshot["_PROFILE_STORAGE_MODE"] = (
+            "legacy-preset"
+            if self._preset_slug(getattr(self, "_active_preset_slug", ""))
+            else "profile-file"
         )
 
         for key, widget in self._fields.items():
@@ -1905,6 +2253,10 @@ class SettingsDialog(QDialog):
     def _refresh_dirty_state(self) -> None:
         """Refresh dirty state."""
         self._dirty_refresh_scheduled = False
+        if not self._values_loaded:
+            # Pages are still being built, so a snapshot would be missing fields and
+            # read as spurious edits. The pass at the end of _load_values covers it.
+            return
         current = self._snapshot_settings()
         baseline = getattr(self, "_dirty_baseline", {})
         keys = {key for key, value in current.items() if baseline.get(key) != value}
@@ -1956,18 +2308,26 @@ class SettingsDialog(QDialog):
                 if idx < len(_SETTINGS_PAGE_META):
                     nav.item(idx).setToolTip(t(_SETTINGS_PAGE_META[idx][2]))
 
+    def _schedule_search_index_refresh(self) -> None:
+        """Coalesce many index rebuilds into one pass on the next event loop turn.
+
+        Rebuilding the index walks every widget on every page, so the dynamic row
+        helpers calling it directly made opening Settings rebuild it more than a
+        dozen times. Callers that only need the index eventually should use this.
+        """
+        if getattr(self, "_disposing", False):
+            return
+        if getattr(self, "_search_index_refresh_scheduled", False):
+            return
+        self._search_index_refresh_scheduled = True
+        QTimer.singleShot(0, self._refresh_search_index)
+
     def _refresh_search_index(self) -> None:
         """Refresh search index."""
+        self._search_index_refresh_scheduled = False
         tabs = getattr(self, "_tabs", None)
         if tabs is None:
             return
-
-        def _original_text(widget: QWidget, prop_name: str) -> str:
-            """Handle original text for settings dialog."""
-            try:
-                return str(widget.property(f"_wisp_i18n_{prop_name}") or "")
-            except Exception:
-                return ""
 
         field_pages = self._field_page_map()
         per_page_fields: dict[str, list[str]] = {}
@@ -1976,43 +2336,206 @@ class SettingsDialog(QDialog):
         text_by_page: dict[str, str] = {}
         for idx, page in enumerate(self._tab_base_names):
             tab_widget = tabs.widget(idx)
-            parts = [page, *per_page_fields.get(page, [])]
+            meta = _SETTINGS_PAGE_META[idx] if idx < len(_SETTINGS_PAGE_META) else (page, page, "")
+            parts = [
+                page,
+                *per_page_fields.get(page, []),
+                *(str(part) for part in meta),
+                *(t(str(part)) for part in meta),
+            ]
             for widget in tab_widget.findChildren(QWidget):
-                if isinstance(widget, QLabel):
-                    parts.extend([widget.text(), _original_text(widget, "text")])
-                elif isinstance(widget, QLineEdit):
-                    parts.extend([
-                        widget.placeholderText(), _original_text(widget, "placeholder"),
-                        widget.toolTip(), _original_text(widget, "tooltip"),
-                        widget.text(),
-                    ])
-                elif isinstance(widget, QTextEdit):
-                    parts.extend([
-                        widget.placeholderText(), _original_text(widget, "placeholder"),
-                        widget.toolTip(), _original_text(widget, "tooltip"),
-                    ])
-                elif isinstance(widget, QComboBox):
-                    parts.extend([widget.toolTip(), _original_text(widget, "tooltip")])
-                    parts.extend(widget.itemText(i) for i in range(widget.count()))
-                elif isinstance(widget, QCheckBox):
-                    parts.extend([
-                        widget.text(), _original_text(widget, "text"),
-                        widget.toolTip(), _original_text(widget, "tooltip"),
-                    ])
-                elif isinstance(widget, QPushButton):
-                    parts.extend([
-                        widget.text(), _original_text(widget, "text"),
-                        widget.toolTip(), _original_text(widget, "tooltip"),
-                    ])
+                parts.extend(self._settings_search_widget_parts(widget))
             text_by_page[page] = " ".join(part for part in parts if part).lower()
         self._tab_search_text = text_by_page
         self._apply_settings_search()
+
+    @staticmethod
+    def _settings_search_original_text(widget: QWidget, prop_name: str) -> str:
+        """Return text saved before runtime localization changed a widget property."""
+        try:
+            return str(widget.property(f"_wisp_i18n_{prop_name}") or "")
+        except Exception:
+            return ""
+
+    def _settings_search_widget_parts(self, widget: QWidget) -> list[str]:
+        """Return user-facing and stable search terms for one settings widget."""
+        original = self._settings_search_original_text
+        parts = [widget.objectName(), widget.accessibleName()]
+        if isinstance(widget, QLabel):
+            parts.extend([widget.text(), original(widget, "text"), widget.toolTip()])
+        elif isinstance(widget, QLineEdit):
+            parts.extend([
+                widget.placeholderText(), original(widget, "placeholder"),
+                widget.toolTip(), original(widget, "tooltip"),
+                widget.text(),
+            ])
+        elif isinstance(widget, QTextEdit):
+            parts.extend([
+                widget.placeholderText(), original(widget, "placeholder"),
+                widget.toolTip(), original(widget, "tooltip"),
+            ])
+        elif isinstance(widget, QComboBox):
+            parts.extend([widget.toolTip(), original(widget, "tooltip")])
+            parts.extend(widget.itemText(i) for i in range(widget.count()))
+        elif isinstance(widget, (QCheckBox, QPushButton)):
+            parts.extend([
+                widget.text(), original(widget, "text"),
+                widget.toolTip(), original(widget, "tooltip"),
+            ])
+        else:
+            parts.extend([widget.toolTip(), original(widget, "tooltip")])
+        return [str(part) for part in parts if part]
+
+    @staticmethod
+    def _settings_search_layout_widgets(item) -> list[QWidget]:
+        """Return the top-level widgets represented by one layout item."""
+        widget = item.widget()
+        if widget is not None:
+            return [widget]
+        layout = item.layout()
+        if layout is None:
+            return []
+        widgets: list[QWidget] = []
+        for idx in range(layout.count()):
+            widgets.extend(SettingsDialog._settings_search_layout_widgets(layout.itemAt(idx)))
+        return widgets
+
+    def _settings_search_unit_text(self, widgets: list[QWidget]) -> str:
+        """Build searchable text for a complete setting row or card block."""
+        parts: list[str] = []
+        field_items = list(self._fields.items())
+        for root in widgets:
+            parts.extend(self._settings_search_widget_parts(root))
+            for child in root.findChildren(QWidget):
+                parts.extend(self._settings_search_widget_parts(child))
+            parts.extend(
+                key
+                for key, field in field_items
+                if root is field or root.isAncestorOf(field)
+            )
+        return " ".join(parts).lower()
+
+    def _settings_search_card_units(self, card: QFrame) -> list[tuple[list[QWidget], str]]:
+        """Return independently filterable rows/blocks inside one settings card."""
+        layout = card.layout()
+        if layout is None:
+            return []
+        units: list[tuple[list[QWidget], str]] = []
+        for idx in range(layout.count()):
+            item = layout.itemAt(idx)
+            widget = item.widget()
+            if widget is not None and widget.objectName() == "sectionHeader":
+                continue
+            form = widget.layout() if widget is not None else None
+            if isinstance(form, QFormLayout):
+                for row in range(form.rowCount()):
+                    row_widgets: list[QWidget] = []
+                    for role in (
+                        QFormLayout.ItemRole.LabelRole,
+                        QFormLayout.ItemRole.FieldRole,
+                        QFormLayout.ItemRole.SpanningRole,
+                    ):
+                        row_item = form.itemAt(row, role)
+                        if row_item is not None:
+                            row_widgets.extend(self._settings_search_layout_widgets(row_item))
+                    row_widgets = list(dict.fromkeys(row_widgets))
+                    if row_widgets:
+                        units.append((row_widgets, self._settings_search_unit_text(row_widgets)))
+                continue
+            widgets = self._settings_search_layout_widgets(item)
+            if widgets:
+                units.append((widgets, self._settings_search_unit_text(widgets)))
+        return units
+
+    def _settings_search_hide(self, widget: QWidget) -> None:
+        """Hide a search result unit while remembering its non-search state."""
+        if widget not in self._settings_search_visibility:
+            self._settings_search_visibility[widget] = widget.isHidden()
+        widget.hide()
+
+    def _restore_settings_search_visibility(self) -> None:
+        """Restore only visibility changes made by the global settings search."""
+        for widget, was_hidden in self._settings_search_visibility.items():
+            try:
+                widget.setHidden(was_hidden)
+            except RuntimeError:
+                pass
+        self._settings_search_visibility.clear()
+
+    @staticmethod
+    def _settings_search_card_title(card: QFrame) -> str:
+        """Return the card's own header text, excluding nested controls."""
+        return " ".join(
+            label.text()
+            for label in card.findChildren(QLabel)
+            if label.objectName() == "sectionHeader"
+        ).lower()
+
+    def _filter_settings_page(self, idx: int, page: str, query: str) -> None:
+        """Hide unrelated cards and form rows within one matching settings page."""
+        tabs = self._tabs
+        tab_widget = tabs.widget(idx)
+        meta = _SETTINGS_PAGE_META[idx] if idx < len(_SETTINGS_PAGE_META) else (page, page, "")
+        page_title_text = " ".join(
+            [*(str(part) for part in meta), *(t(str(part)) for part in meta)]
+        ).lower()
+        if query in page_title_text:
+            return
+
+        cards = [
+            card
+            for card in tab_widget.findChildren(QFrame)
+            if card.objectName() == "card"
+        ]
+        groups = tab_widget.findChildren(QWidget, "settingsAreaGroup")
+        matched_groups = {
+            group
+            for group in groups
+            if query in " ".join(
+                label.text()
+                for label in group.findChildren(QLabel)
+                if label.objectName() in {"areaHeader", "areaSubheader"}
+            ).lower()
+        }
+
+        for card in cards:
+            if query in self._settings_search_card_title(card):
+                continue
+            if any(group.isAncestorOf(card) for group in matched_groups):
+                continue
+            units = self._settings_search_card_units(card)
+            matching_units = [unit for unit in units if query in unit[1]]
+            if not matching_units:
+                self._settings_search_hide(card)
+                continue
+            matching_widgets = {
+                widget
+                for widgets, _text in matching_units
+                for widget in widgets
+            }
+            for widgets, _text in units:
+                if any(widget in matching_widgets for widget in widgets):
+                    continue
+                for widget in widgets:
+                    self._settings_search_hide(widget)
+
+        for group in groups:
+            if group in matched_groups:
+                continue
+            group_cards = [card for card in cards if group.isAncestorOf(card)]
+            if group_cards and all(card.isHidden() for card in group_cards):
+                self._settings_search_hide(group)
 
     def _apply_settings_search(self) -> None:
         """Apply settings search."""
         tabs = getattr(self, "_tabs", None)
         if tabs is None:
             return
+        search_box = getattr(self, "_settings_search", None)
+        if search_box is not None and search_box.text().strip():
+            # Searching spans every page, so none of them may still be pending.
+            self._build_deferred_pages()
+        self._restore_settings_search_visibility()
         search = getattr(self, "_settings_search", None)
         query = search.text().strip().lower() if search is not None else ""
         visible: list[int] = []
@@ -2024,6 +2547,8 @@ class SettingsDialog(QDialog):
                 nav.item(idx).setHidden(not match)
             if match:
                 visible.append(idx)
+                if query:
+                    self._filter_settings_page(idx, page, query)
         if query and visible and not tabs.isTabVisible(tabs.currentIndex()):
             tabs.setCurrentIndex(visible[0])
         if query:
@@ -2185,42 +2710,35 @@ class SettingsDialog(QDialog):
                 blk["tool_overrides"] = {}
 
     def _apply_preset(self, preset: str) -> None:
-        """Apply preset."""
+        """Load a built-in file-backed profile into Settings."""
         preset_key = self._preset_slug(preset)
         if not preset_key:
             return
-        self._active_preset_slug = preset_key
-        # Built-in Settings presets use the default runtime profile. Leaving a
-        # custom profile active would make config.reload() immediately replace
-        # the selected preset's model and context values with PROFILE_N_* values.
-        self._pending_active_profile = "default"
-        values = self._preset_effective_values(preset_key)
+        self._build_deferred_pages()
+        isolated = settings_profiles.read_profile(ENV_PATH, preset_key)
+        if isolated:
+            self._load_isolated_profile(preset_key, t(_PRESET_LABELS[preset_key]), isolated)
+            return
+        self._active_preset_slug = ""
+        self._pending_active_profile = preset_key
+        values = dict(_PRESET_DEFAULTS.get(preset_key, {}))
         self._apply_env_values_to_ui(values)
         self._rebuild_stt_languages()
-        saved_values = self._preset_saved_values(preset_key)
-        has_saved_context = any(
-            key.startswith("CALLER_") or key.startswith("VOICE_")
-            for key in saved_values
+        context_defaults = _PRESET_CONTEXT_DEFAULTS.get(preset_key, {})
+        self._set_context_modes(
+            documents=context_defaults.get("documents"),
+            browser=context_defaults.get("browser"),
+            github=context_defaults.get("github"),
+            memory=context_defaults.get("memory"),
+            screenshot=context_defaults.get("screenshot"),
+            clear_tools=context_defaults.get("clear_tools", "").lower() == "true",
         )
-        if not has_saved_context:
-            context_defaults = _PRESET_CONTEXT_DEFAULTS.get(preset_key, {})
-            self._set_context_modes(
-                documents=context_defaults.get("documents"),
-                browser=context_defaults.get("browser"),
-                github=context_defaults.get("github"),
-                memory=context_defaults.get("memory"),
-                screenshot=context_defaults.get("screenshot"),
-                clear_tools=context_defaults.get("clear_tools", "").lower() == "true",
-            )
         self._refresh_stt_active_backend()
         self._refresh_profile_button_text()
         self._schedule_warning_marker_refresh()
         self._schedule_dirty_refresh()
-        self._status_lbl.setText(
-            t("{profile} profile selected. Edits saved with Save changes will update this profile.").format(
-                profile=t(_PRESET_LABELS[preset_key])
-            )
-        )
+        self._status_lbl.clear()
+        self._status_lbl.setToolTip("")
 
     def _tab_llm(self) -> QWidget:
         """Build separate connection and model-routing pages over one config model."""
@@ -2385,7 +2903,7 @@ class SettingsDialog(QDialog):
 
         custom_card, custom_cv = self._card("Custom provider")
         custom_note = QLabel(
-            f"<small>{t('Any OpenAI-compatible endpoint, including Ollama and LM Studio. Select Custom in a model row below after setting the base URL.')}</small>"
+            f"<small>{t('Any other OpenAI-compatible endpoint, including LM Studio. Select Custom in a model row below after setting the base URL.')}</small>"
         )
         custom_note.setWordWrap(True)
         custom_cv.addWidget(custom_note)
@@ -2417,6 +2935,12 @@ class SettingsDialog(QDialog):
             "Model routing",
             "Choose which saved credential and model powers each purpose.",
         )
+        ollama_note = QLabel(
+            f"<small><b>{t('Using Ollama?')}</b> "
+            f"{t('Choose Ollama directly in the Provider menu. Wisp connects to the local Ollama app and loads your installed models automatically—no API key or model name to enter.')}</small>"
+        )
+        ollama_note.setWordWrap(True)
+        model_layout.addWidget(ollama_note)
 
         # ── MODEL SECTIONS ─────────────────────────────────────────────────
         section_configs = [
@@ -2787,7 +3311,7 @@ class SettingsDialog(QDialog):
         self._removed_connection_providers.discard(provider)
         self._refresh_model_api_key_combos()
         self._wire_change_tracking(row_w)
-        self._refresh_search_index()
+        self._schedule_search_index_refresh()
         self._refresh_connection_rows_filter()
         self._schedule_dirty_refresh()
         return row_info
@@ -2837,7 +3361,7 @@ class SettingsDialog(QDialog):
         row_info["widget"].deleteLater()
         self._refresh_model_api_key_combos()
         self._refresh_connection_rows_filter()
-        self._refresh_search_index()
+        self._schedule_search_index_refresh()
         self._schedule_dirty_refresh()
 
     def _get_api_key_display_options(self) -> list[tuple[str, str]]:
@@ -2849,7 +3373,11 @@ class SettingsDialog(QDialog):
             label = t(_PROVIDER_LABELS.get(provider, provider))
             display = f"{label} ({alias})" if alias else label
             options.append((display, provider))
-        # OAuth/keychain providers — always available regardless of API key rows
+        # Local/OAuth/keychain providers are always available regardless of API
+        # key rows. In particular, Ollama must not require the user to create a
+        # fake credential before it appears in Model routing.
+        if not any(provider == "ollama" for _display, provider in options):
+            options.append((t(_PROVIDER_LABELS["ollama"]), "ollama"))
         options.append((t(_PROVIDER_LABELS.get("chatgpt", "ChatGPT Plus/Pro (OAuth subscription)")), "chatgpt"))
         if not any(provider == "copilot" for _display, provider in options):
             options.append((t(_PROVIDER_LABELS.get("copilot", "GitHub Copilot") + " (keychain token)"), "copilot"))
@@ -3019,7 +3547,8 @@ class SettingsDialog(QDialog):
             "refresh_btn":   refresh_btn,
         }
 
-        # Populate with the curated list for this provider; refresh fetches live.
+        # Populate with the curated list for this provider. Ollama replaces this
+        # automatically with the models installed in the user's local app.
         # For a blank "+ Add row" the combo still defaults to the first provider,
         # so fall back to its current selection rather than leaving the list empty.
         effective_provider = provider or (api_key_combo.currentData() or "")
@@ -3034,10 +3563,17 @@ class SettingsDialog(QDialog):
         def _on_key_change():
             """Handle key change events."""
             p = api_key_combo.currentData() or ""
+            selected = self._model_value(row_info)
+            row_info["_fetch_token"] = int(row_info.get("_fetch_token", 0)) + 1
+            refresh_btn.setEnabled(True)
+            refresh_btn.setText("↻")
+            refresh_btn.setToolTip(t("Fetch the latest model names from the provider"))
             self._fill_model_combo(
-                row_info, _PROVIDER_MODELS.get(p, []), p, self._model_value(row_info)
+                row_info, _PROVIDER_MODELS.get(p, []), p, selected
             )
             self._schedule_warning_marker_refresh()
+            if p == "ollama":
+                self._refresh_models_for_row(row_info, automatic=True)
 
         api_key_combo.currentIndexChanged.connect(lambda _: _on_key_change())
         model_combo.currentIndexChanged.connect(lambda _: self._schedule_warning_marker_refresh())
@@ -3051,8 +3587,14 @@ class SettingsDialog(QDialog):
         self._model_section_rows[section_key].append(row_info)
         self._relabel_section_priorities(section_key)
         self._wire_change_tracking(row_w)
-        self._refresh_search_index()
+        self._schedule_search_index_refresh()
         self._schedule_dirty_refresh()
+        if effective_provider == "ollama" and not (model or "").strip():
+            # Let construction/loading finish before starting the local probe.
+            QTimer.singleShot(
+                0,
+                lambda ri=row_info: self._refresh_models_for_row(ri, automatic=True),
+            )
         return row_info
 
     def _reorder_model_section_row(
@@ -3145,22 +3687,42 @@ class SettingsDialog(QDialog):
             return row_info["model_edit"].text().strip()
         return (combo.currentData() or "").strip()
 
-    def _refresh_models_for_row(self, row_info: dict) -> None:
+    def _refresh_models_for_row(self, row_info: dict, *, automatic: bool = False) -> None:
         """Fetch live model names for the row's provider on a background thread."""
-        provider = (row_info["api_key_combo"].currentData() or "").strip()
+        if getattr(self, "_disposing", False):
+            return
+        try:
+            provider = (row_info["api_key_combo"].currentData() or "").strip()
+        except RuntimeError:
+            # The row/dialog can be closed while a zero-delay automatic fetch is
+            # still queued in Qt's event loop.
+            return
         refresh_btn = row_info["refresh_btn"]
         if not provider:
             refresh_btn.setToolTip(t("Pick a provider first"))
             return
+        if automatic and provider != "ollama":
+            return
         api_key = self._effective_secret_value_from_provider(provider)
         base_url = _get(self._fields["CUSTOM_BASE_URL"]).strip() if provider == "custom" else ""
 
+        # A quick provider change can leave an earlier request in flight. The
+        # token prevents an old response from filling the new provider's combo.
+        fetch_token = int(row_info.get("_fetch_token", 0)) + 1
+        row_info["_fetch_token"] = fetch_token
         refresh_btn.setEnabled(False)
         refresh_btn.setText("…")
+        refresh_btn.setToolTip(
+            t("Finding installed Ollama models…")
+            if provider == "ollama"
+            else t("Fetching model names…")
+        )
 
         carrier = _ModelFetchSignals()
         carrier.done.connect(
-            lambda models, err, ri=row_info: self._on_models_fetched(ri, models, err)
+            lambda models, err, ri=row_info, p=provider, token=fetch_token: self._on_models_fetched(
+                ri, models, err, provider=p, fetch_token=token
+            )
         )
         row_info["_fetch_carrier"] = carrier  # keep alive until fetch completes
 
@@ -3172,22 +3734,53 @@ class SettingsDialog(QDialog):
 
         threading.Thread(target=_worker, daemon=True, name="model-list-fetch").start()
 
-    def _on_models_fetched(self, row_info: dict, models, err: str) -> None:
+    def _on_models_fetched(
+        self,
+        row_info: dict,
+        models,
+        err: str,
+        *,
+        provider: str | None = None,
+        fetch_token: int | None = None,
+    ) -> None:
         """Handle models fetched events."""
+        if getattr(self, "_disposing", False):
+            return
+        requested_provider = (provider or "").strip()
+        try:
+            current_provider = (row_info["api_key_combo"].currentData() or "").strip()
+        except RuntimeError:
+            # Background results may arrive after the owning Qt row was removed.
+            return
+        if fetch_token is not None and fetch_token != row_info.get("_fetch_token"):
+            return
         refresh_btn = row_info["refresh_btn"]
+        if requested_provider and requested_provider != current_provider:
+            # Some internal combo refreshes intentionally block change signals.
+            # If that happened without starting a newer request, restore the
+            # control while discarding this now-irrelevant result.
+            refresh_btn.setEnabled(True)
+            refresh_btn.setText("↻")
+            refresh_btn.setToolTip(t("Fetch the latest model names from the provider"))
+            row_info.pop("_fetch_carrier", None)
+            return
         refresh_btn.setEnabled(True)
         refresh_btn.setText("↻")
         row_info.pop("_fetch_carrier", None)
-        provider = (row_info["api_key_combo"].currentData() or "").strip()
         if err or not models:
             refresh_btn.setToolTip(
-                f"Couldn't fetch — showing built-ins ({err})" if err
-                else "Provider returned no models — showing built-ins"
+                t("Couldn't reach Ollama. Start Ollama, then try again. ({error})").format(error=err)
+                if current_provider == "ollama" and err
+                else t("Couldn't fetch — showing built-ins ({error})").format(error=err)
+                if err
+                else t("Provider returned no models — showing built-ins")
             )
             return
         # Live list only; preserve the row's current selection.
-        self._fill_model_combo(row_info, list(models), provider, self._model_value(row_info))
-        refresh_btn.setToolTip(f"Live: {len(models)} models")
+        self._fill_model_combo(
+            row_info, list(models), current_provider, self._model_value(row_info)
+        )
+        refresh_btn.setToolTip(t("Live: {count} models").format(count=len(models)))
 
     def _remove_model_section_row(self, section_key: str, row_info: dict) -> None:
         """Remove model section row."""
@@ -3196,7 +3789,7 @@ class SettingsDialog(QDialog):
             rows.remove(row_info)
         row_info["widget"].deleteLater()
         self._relabel_section_priorities(section_key)
-        self._refresh_search_index()
+        self._schedule_search_index_refresh()
         self._schedule_dirty_refresh()
 
     def _apply_model_section_to_all(self, source_key: str) -> None:
@@ -3261,7 +3854,6 @@ class SettingsDialog(QDialog):
         ("Nebius",       "https://api.studio.nebius.com/v1",     "meta-llama/Meta-Llama-3.1-8B-Instruct", ""),
         ("Cloudflare Workers AI", "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1", "@cf/meta/llama-3.1-8b-instruct", ""),
         ("Baseten",      "https://model-{model_id}.api.baseten.co/environments/production/sync/v1", "model-name", ""),
-        ("Ollama (local)", "http://localhost:11434/v1",           "llama3", "ollama"),
         ("LM Studio (local)", "http://localhost:1234/v1",        "local-model", ""),
     ]
 
@@ -3693,7 +4285,7 @@ class SettingsDialog(QDialog):
         # that pulls in NumPy/faster-whisper and can freeze the Qt UI thread.
         # If STT is already loaded in this process, the label below can still
         # show the live backend; otherwise it shows the configured request.
-        self._stt_active_lbl = QLabel()
+        self._stt_active_lbl = QLabel(t("Checking speech recognition setup..."))
         self._stt_active_lbl.setWordWrap(True)
         self._stt_install_status_lbl = self._stt_active_lbl
         self._stt_download_btn = QPushButton(t("Install STT"))
@@ -3712,7 +4304,10 @@ class SettingsDialog(QDialog):
             self._stt_active_lbl,
             self._stt_download_btn,
         ))
-        self._refresh_stt_active_backend()
+        # Resolving the active backend scans every installed distribution, which
+        # costs a quarter second of disk I/O. Leave the label on its placeholder:
+        # opening this page runs _refresh_current_install_status, which fills it
+        # in. Probing here would block the Settings window from appearing at all.
 
         outer.addWidget(stt_card)
         self._voice_feature_cards["stt"] = stt_card
@@ -3870,7 +4465,7 @@ class SettingsDialog(QDialog):
         ef.setContentsMargins(0, 0, 0, 0)
         ef.setSpacing(8)
         eleven_note = QLabel(
-            f"<small>{t('ElevenLabs support can be installed after setup if it was skipped during the exe build because the build path was too long.')}</small>"
+            f"<small>{t('ElevenLabs is downloaded only when you install it, keeping release downloads smaller. Source checkouts may use the SDK from their Python environment.')}</small>"
         )
         eleven_note.setWordWrap(True)
         self._elevenlabs_install_btn = QPushButton(t("Install ElevenLabs"))
@@ -4296,7 +4891,7 @@ class SettingsDialog(QDialog):
         try:
             from core import optional_deps
 
-            return bool(optional_deps.optional_package_spec_status("elevenlabs").get("valid"))
+            return bool(optional_deps.optional_package_runtime_status("elevenlabs").get("valid"))
         except Exception:
             pass
         return self._optional_package_installed("elevenlabs")
@@ -4359,7 +4954,18 @@ class SettingsDialog(QDialog):
         try:
             from core import optional_deps
 
-            install_status = _read_optional_install_status("Kokoro", optional_deps.OPTIONAL_PACKAGES_DIR)
+            mode = self._kokoro_install_mode()
+            install_status = optional_deps.current_optional_install_status(
+                "Kokoro",
+                "kokoro",
+                device="cuda" if mode == "gpu" else "cpu",
+            )
+            if not install_status:
+                stt_device = _get(self._fields["STT_DEVICE"]).strip() or "auto"
+                install_status = optional_deps.current_local_speech_install_status(
+                    kokoro_device="cuda" if mode == "gpu" else "cpu",
+                    stt_device=stt_device,
+                )
         except Exception:
             install_status = {}
         result = getattr(self, "_tts_install_status_result", None)
@@ -4441,6 +5047,7 @@ class SettingsDialog(QDialog):
         if self._tts_install_status_checked:
             return
         label_pairs = (
+            ("_stt_install_status_lbl", "Checking STT install status..."),
             ("_elevenlabs_install_status_lbl", "Checking ElevenLabs install status..."),
             ("_kokoro_install_status_lbl", "Checking Kokoro install status..."),
         )
@@ -4448,7 +5055,7 @@ class SettingsDialog(QDialog):
             label = getattr(self, attr, None)
             if isinstance(label, QLabel):
                 self._set_status_label(label, None, message)
-        for attr in ("_elevenlabs_install_btn", "_kokoro_install_btn"):
+        for attr in ("_stt_download_btn", "_elevenlabs_install_btn", "_kokoro_install_btn"):
             button = getattr(self, attr, None)
             if isinstance(button, QPushButton):
                 button.setEnabled(False)
@@ -4462,6 +5069,9 @@ class SettingsDialog(QDialog):
         token = self._tts_install_status_token
         selected_device = _get(self._fields["KOKORO_DEVICE"]).strip() or "auto"
         kokoro_voice = _get(self._fields["KOKORO_VOICE"]).strip() or "af_heart"
+        stt_model = _get(self._fields["STT_MODEL"]).strip() or "base"
+        stt_device = _get(self._fields["STT_DEVICE"]).strip() or "auto"
+        stt_compute = _get(self._fields["STT_COMPUTE_TYPE"]).strip() or "int8"
         # Do not parent the carrier to the dialog. The probe can legitimately
         # outlive a window that the user closes immediately; parenting it to
         # ``self`` destroys its C++ signal source while the worker still owns
@@ -4475,17 +5085,50 @@ class SettingsDialog(QDialog):
             try:
                 from core import optional_deps
 
-                elevenlabs_spec_status = optional_deps.optional_package_spec_status("elevenlabs")
-                elevenlabs_installed = bool(elevenlabs_spec_status.get("valid"))
-                elevenlabs_install_status = _read_optional_install_status("ElevenLabs", optional_deps.OPTIONAL_PACKAGES_DIR)
-                kokoro_install_status = _read_optional_install_status("Kokoro", optional_deps.OPTIONAL_PACKAGES_DIR)
+                stt_spec_status = optional_deps.optional_package_runtime_status("stt", device=stt_device)
+                stt_package_installed = bool(stt_spec_status.get("valid"))
+                stt_runtime_status = (
+                    optional_deps.stt_runtime_import_status_subprocess()
+                    if stt_package_installed
+                    else {}
+                )
+                elevenlabs_spec_status = optional_deps.optional_package_runtime_status("elevenlabs")
+                elevenlabs_package_installed = bool(elevenlabs_spec_status.get("valid"))
+                elevenlabs_runtime_status = (
+                    optional_deps.elevenlabs_runtime_import_status_subprocess()
+                    if elevenlabs_package_installed
+                    else {}
+                )
+                elevenlabs_installed = bool(
+                    elevenlabs_package_installed
+                    and elevenlabs_runtime_status.get("valid") is True
+                )
                 system_has_cuda = optional_deps.system_cuda_available()
                 mode = optional_deps.kokoro_install_mode_for_device(selected_device)
+                elevenlabs_install_status = optional_deps.current_optional_install_status(
+                    "ElevenLabs",
+                    "elevenlabs",
+                )
+                kokoro_install_status = optional_deps.current_optional_install_status(
+                    "Kokoro",
+                    "kokoro",
+                    device="cuda" if mode == "gpu" else "cpu",
+                )
+                if not kokoro_install_status:
+                    kokoro_install_status = optional_deps.current_local_speech_install_status(
+                        kokoro_device="cuda" if mode == "gpu" else "cpu",
+                        stt_device=stt_device,
+                    )
                 kokoro_spec_status = optional_deps.optional_package_spec_status(
                     "kokoro",
                     device="cuda" if mode == "gpu" else "cpu",
                 )
                 kokoro_installed = bool(kokoro_spec_status.get("valid"))
+                kokoro_runtime_status = (
+                    optional_deps.kokoro_runtime_import_status_subprocess()
+                    if kokoro_installed
+                    else {}
+                )
                 needs_cuda_status = mode == "gpu"
                 torch_status = (
                     optional_deps.kokoro_torch_status_subprocess()
@@ -4518,9 +5161,18 @@ class SettingsDialog(QDialog):
                         kokoro_assets = {}
                 result: dict[str, object] = {
                     "ok": True,
+                    "stt_model": stt_model,
+                    "stt_device": stt_device,
+                    "stt_compute": stt_compute,
+                    "stt_package_installed": stt_package_installed,
+                    "stt_spec_status": stt_spec_status,
+                    "stt_runtime_status": stt_runtime_status,
                     "elevenlabs_installed": elevenlabs_installed,
+                    "elevenlabs_package_installed": elevenlabs_package_installed,
+                    "elevenlabs_runtime_status": elevenlabs_runtime_status,
                     "elevenlabs_install_status": elevenlabs_install_status,
                     "kokoro_installed": kokoro_installed,
+                    "kokoro_runtime_status": kokoro_runtime_status,
                     "kokoro_mode": mode,
                     "kokoro_install_status": kokoro_install_status,
                     "kokoro_torch_status": torch_status,
@@ -4555,11 +5207,11 @@ class SettingsDialog(QDialog):
             self._tts_install_status_result = None
             message = f"Install status check failed: {result.get('error') if isinstance(result, dict) else result}"
             log_event("installer", "error", message)
-            for attr in ("_elevenlabs_install_status_lbl", "_kokoro_install_status_lbl"):
+            for attr in ("_stt_install_status_lbl", "_elevenlabs_install_status_lbl", "_kokoro_install_status_lbl"):
                 label = getattr(self, attr, None)
                 if isinstance(label, QLabel):
                     self._set_test_status(label, False, message)
-            for attr in ("_elevenlabs_install_btn", "_kokoro_install_btn"):
+            for attr in ("_stt_download_btn", "_elevenlabs_install_btn", "_kokoro_install_btn"):
                 button = getattr(self, attr, None)
                 if isinstance(button, QPushButton):
                     button.setEnabled(True)
@@ -4568,7 +5220,8 @@ class SettingsDialog(QDialog):
         # staged installs that failed while Wisp was closed used to be visible
         # only in this Settings label.
         summary = (
-            f"Install status: ElevenLabs {'installed' if result.get('elevenlabs_installed') else 'not installed'}; "
+            f"Install status: STT {'installed' if result.get('stt_package_installed') else 'not installed'}; "
+            f"ElevenLabs {'installed' if result.get('elevenlabs_installed') else 'not installed'}; "
             f"Kokoro {'installed (' + str(result.get('kokoro_mode') or 'cpu') + ')' if result.get('kokoro_installed') else 'not installed'}."
         )
         log_event("installer", "info", summary)
@@ -4581,11 +5234,52 @@ class SettingsDialog(QDialog):
             if failed_message:
                 log_event("installer", "error", f"{package_name} last install failed: {failed_message}")
         self._tts_install_status_result = dict(result)
+        self._apply_stt_runtime_status(result)
         self._apply_elevenlabs_install_status(
             bool(result.get("elevenlabs_installed")),
             install_status=result.get("elevenlabs_install_status") if isinstance(result.get("elevenlabs_install_status"), dict) else {},
+            runtime_status=result.get("elevenlabs_runtime_status") if isinstance(result.get("elevenlabs_runtime_status"), dict) else {},
         )
         self._apply_cached_kokoro_install_status()
+
+    def _apply_stt_runtime_status(self, result: dict[str, object]) -> None:
+        """Apply the background STT package + import probe to the Voice page."""
+        label = getattr(self, "_stt_install_status_lbl", None)
+        button = getattr(self, "_stt_download_btn", None)
+        if not isinstance(label, QLabel) or not isinstance(button, QPushButton):
+            return
+        self._connect_button_action(button, self._preload_stt_model)
+        button.setEnabled(True)
+        package_installed = bool(result.get("stt_package_installed"))
+        runtime = result.get("stt_runtime_status") if isinstance(result.get("stt_runtime_status"), dict) else {}
+        model = str(result.get("stt_model") or "base")
+        device = str(result.get("stt_device") or "auto")
+        compute = str(result.get("stt_compute") or "int8")
+        summary = f"{model} · {device} / {compute}"
+        if not package_installed:
+            button.setText(t("Install STT"))
+            self._set_test_status(
+                label,
+                "warn",
+                "STT package is not installed. Click Install STT to install and verify it.",
+            )
+            return
+        runtime_error = str(runtime.get("error") or "").strip()
+        if runtime_error or runtime.get("valid") is False:
+            button.setText(t("Reinstall STT"))
+            self._set_test_status(
+                label,
+                "warn",
+                f"STT package files are installed, but faster-whisper cannot load: "
+                f"{runtime_error or 'runtime import verification failed.'}",
+            )
+            return
+        button.setText(t("Reinstall STT"))
+        self._set_test_status(
+            label,
+            True,
+            f"STT package and runtime verified. Configured backend: {summary}; model loads on first use.",
+        )
 
     def _apply_cached_kokoro_install_status(self) -> bool:
         """Reapply Kokoro install controls from the one Voice-page status check."""
@@ -4617,6 +5311,7 @@ class SettingsDialog(QDialog):
             torch_status=torch_status,
             needs_gpu=needs_gpu,
             assets=result.get("kokoro_assets") if isinstance(result.get("kokoro_assets"), dict) else None,
+            runtime_status=result.get("kokoro_runtime_status") if isinstance(result.get("kokoro_runtime_status"), dict) else {},
         )
         return True
 
@@ -4655,6 +5350,7 @@ class SettingsDialog(QDialog):
         installed: bool,
         *,
         install_status: dict[str, object] | None = None,
+        runtime_status: dict[str, object] | None = None,
     ) -> None:
         """Apply ElevenLabs install state to the settings controls."""
         label = getattr(self, "_elevenlabs_install_status_lbl", None)
@@ -4675,6 +5371,17 @@ class SettingsDialog(QDialog):
             button.setText(t("Install ElevenLabs"))
             self._set_test_status(label, "warn", failed_install_message)
             return
+        runtime_error = str((runtime_status or {}).get("error") or "").strip()
+        if runtime_status and (runtime_error or runtime_status.get("valid") is False):
+            button.setEnabled(True)
+            button.setText(t("Reinstall ElevenLabs"))
+            detail = runtime_error or "SDK import verification failed."
+            self._set_test_status(
+                label,
+                "warn",
+                f"ElevenLabs package files are installed, but the SDK cannot load: {detail}",
+            )
+            return
         if installed:
             button.setEnabled(True)
             button.setText(t("Reinstall ElevenLabs"))
@@ -4685,7 +5392,7 @@ class SettingsDialog(QDialog):
             self._set_test_status(
                 label,
                 "warn",
-                "ElevenLabs is not installed. If the exe build skipped it because the build path was too long, install it here.",
+                "ElevenLabs is not installed. Release builds keep it optional to reduce download size; install it here.",
             )
 
     def _refresh_elevenlabs_install_status(self) -> None:
@@ -4694,7 +5401,10 @@ class SettingsDialog(QDialog):
         try:
             from core import optional_deps
 
-            install_status = _read_optional_install_status("ElevenLabs", optional_deps.OPTIONAL_PACKAGES_DIR)
+            install_status = optional_deps.current_optional_install_status(
+                "ElevenLabs",
+                "elevenlabs",
+            )
         except Exception:
             install_status = {}
         self._apply_elevenlabs_install_status(self._elevenlabs_installed(), install_status=install_status)
@@ -4851,6 +5561,7 @@ class SettingsDialog(QDialog):
         needs_gpu: bool,
         install_status: dict[str, object] | None = None,
         assets: dict[str, object] | None = None,
+        runtime_status: dict[str, object] | None = None,
     ) -> None:
         """Apply Kokoro install state to the settings controls."""
         label = getattr(self, "_kokoro_install_status_lbl", None)
@@ -4871,6 +5582,17 @@ class SettingsDialog(QDialog):
             button.setEnabled(True)
             button.setText(t("Install Kokoro GPU support") if mode == "gpu" else t("Install Kokoro"))
             self._set_test_status(label, "warn", failed_install_message)
+        elif installed and runtime_status and (
+            runtime_status.get("error") or runtime_status.get("valid") is False
+        ):
+            button.setEnabled(True)
+            button.setText(t("Reinstall Kokoro"))
+            detail = str(runtime_status.get("error") or "runtime import verification failed")
+            self._set_test_status(
+                label,
+                "warn",
+                f"Kokoro package files are installed, but the runtime cannot load: {detail}",
+            )
         elif installed and torch_status and torch_status.get("timed_out"):
             button.setEnabled(True)
             button.setText(t("Reinstall Kokoro"))
@@ -5202,15 +5924,15 @@ class SettingsDialog(QDialog):
         message_source = (
             "Wisp will reinstall ElevenLabs support in its user-writable optional packages folder.\n\n"
             "Package: {package}\n\n"
-            "Use this when the packaged exe skipped ElevenLabs because the build path was too long. "
-            "The install may need internet access and will survive Wisp rebuilds.\n\n"
+            "Release builds do not bundle ElevenLabs, keeping downloads smaller. "
+            "The install may need internet access and will survive Wisp updates.\n\n"
             "Continue?"
             if installed
             else (
                 "Wisp will install ElevenLabs support into its user-writable optional packages folder.\n\n"
                 "Package: {package}\n\n"
-                "Use this when the packaged exe skipped ElevenLabs because the build path was too long. "
-                "The install may need internet access and will survive Wisp rebuilds.\n\n"
+                "Release builds do not bundle ElevenLabs, keeping downloads smaller. "
+                "The install may need internet access and will survive Wisp updates.\n\n"
                 "Continue?"
             )
         )
@@ -5230,7 +5952,7 @@ class SettingsDialog(QDialog):
         self._install_optional_tts_package(
             test_key="elevenlabs_install",
             display_name="ElevenLabs",
-            packages=[optional_deps.ELEVENLABS_PACKAGE],
+            packages=list(optional_deps.ELEVENLABS_INSTALL_PACKAGES),
             button_attr="_elevenlabs_install_btn",
             status_attr="_elevenlabs_install_status_lbl",
             success_message=(
@@ -6483,7 +7205,7 @@ class SettingsDialog(QDialog):
         )
         self._caller_blocks.append(blk)
         self._wire_change_tracking(wrapper)
-        self._refresh_search_index()
+        self._schedule_search_index_refresh()
         search = getattr(self, "_shortcut_search", None)
         if isinstance(search, QLineEdit):
             self._filter_shortcut_rows(search.text())
@@ -6535,7 +7257,7 @@ class SettingsDialog(QDialog):
         blk["intents_layout"].addWidget(row_w)
         blk["intent_rows"].append(row_info)
         self._wire_change_tracking(row_w)
-        self._refresh_search_index()
+        self._schedule_search_index_refresh()
         self._schedule_dirty_refresh()
 
     def _add_caller_custom_prompt_row(
@@ -6577,7 +7299,7 @@ class SettingsDialog(QDialog):
         if row_info in blk["intent_rows"]:
             blk["intent_rows"].remove(row_info)
         row_info["widget"].deleteLater()
-        self._refresh_search_index()
+        self._schedule_search_index_refresh()
         self._schedule_dirty_refresh()
 
     def _delete_caller_block(self, blk: dict) -> None:
@@ -6598,7 +7320,7 @@ class SettingsDialog(QDialog):
         search = getattr(self, "_shortcut_search", None)
         if isinstance(search, QLineEdit):
             self._filter_shortcut_rows(search.text())
-        self._refresh_search_index()
+        self._schedule_search_index_refresh()
         self._schedule_dirty_refresh()
 
     def _tab_memory(self) -> QWidget:
@@ -8283,7 +9005,7 @@ class SettingsDialog(QDialog):
         self._fallback_rows[key].append(row_info)
         self._renumber_fallback_rows(key)
         self._wire_change_tracking(model_row)
-        self._refresh_search_index()
+        self._schedule_search_index_refresh()
         self._schedule_dirty_refresh()
 
     def _remove_fallback_row(self, key: str, row_info: dict) -> None:
@@ -8294,15 +9016,19 @@ class SettingsDialog(QDialog):
         form.removeRow(row_info["provider_label"])
         form.removeRow(row_info["model_label"])
         self._renumber_fallback_rows(key)
-        self._refresh_search_index()
+        self._schedule_search_index_refresh()
         self._schedule_dirty_refresh()
 
     def _renumber_fallback_rows(self, key: str) -> None:
         """Handle renumber fallback rows for settings dialog."""
         prefix = self._fallback_rows[f"{key}__prefix"]  # type: ignore[index]
         for idx, row in enumerate(self._fallback_rows[key], 1):
-            row["provider_label"].setText(f"{prefix} provider {idx}")
-            row["model_label"].setText(f"{prefix} model {idx}")
+            row["provider_label"].setText(
+                t("{prefix} provider {index}").format(prefix=prefix, index=idx)
+            )
+            row["model_label"].setText(
+                t("{prefix} model {index}").format(prefix=prefix, index=idx)
+            )
 
     def _set_fallback_rows(self, key: str, raw: str) -> None:
         """Set fallback rows."""
@@ -8329,11 +9055,17 @@ class SettingsDialog(QDialog):
         """Handle secret configured fast for settings dialog."""
         return bool((self._env.get(name) or "").strip()) or secret_store.has_secret(name)
 
-    def _load_values(self):
-        """Load values."""
+    def _load_general_page_values(self) -> None:
+        """Populate the General page, which is the only page built before showing.
+
+        Every field touched here belongs to ``_tab_app``. Keeping it separate lets
+        the window open with its first page already correct while the remaining
+        pages and their values are built in the background -- see
+        ``_build_deferred_pages``. ``_load_values`` calls this first, so the two
+        never disagree.
+        """
         import config as cfg
-        self._loading_values = True
-        self._active_preset_slug = self._env.get(_SETTINGS_PRESET_KEY, "")
+
         _set(
             self._fields["CHAT_EXECUTION_MODE"],
             self._env.get("CHAT_EXECUTION_MODE", getattr(cfg, "CHAT_EXECUTION_MODE", "wisp")),
@@ -8347,6 +9079,101 @@ class SettingsDialog(QDialog):
         )
         if self._fields["CHAT_EXECUTION_MODE"].currentData() == "wisp":  # type: ignore[attr-defined]
             _set(self._fields["CHAT_CONVERSATION_OWNER"], "wisp")
+
+        # Read ICON_AUTO_HIDE, falling back to the legacy DOLL_AUTO_HIDE key.
+        auto_hide = self._env.get(
+            "ICON_AUTO_HIDE",
+            self._env.get("DOLL_AUTO_HIDE", str(cfg.ICON_AUTO_HIDE)),
+        ).lower() == "true"
+        theme_mode = self._env.get("THEME_MODE", getattr(cfg, "THEME_MODE", "system"))
+        combo = self._fields["THEME_MODE"]
+        idx = combo.findData(theme_mode)  # type: ignore[attr-defined]
+        combo.setCurrentIndex(idx if idx >= 0 else 0)  # type: ignore[attr-defined]
+        # Load both theme templates from env/config, then show the one for the
+        # currently selected mode in the four swatches.
+        self._theme_templates = {}
+        for mode in ("light", "dark"):
+            self._theme_templates[mode] = {
+                role: self._env.get(
+                    f"THEME_{mode.upper()}_{role.upper()}",
+                    getattr(cfg, f"THEME_{mode.upper()}_{role.upper()}", ""),
+                )
+                for role in self._THEME_ROLES
+            }
+        self._theme_shown_mode = ""
+        self._show_theme_template(self._theme_edit_mode())
+        self._fields["ICON_AUTO_HIDE"].setChecked(auto_hide)  # type: ignore
+        self._fields["START_ON_LOGIN"].setChecked(  # type: ignore
+            self._env.get("START_ON_LOGIN", str(getattr(cfg, "START_ON_LOGIN", False))).lower()
+            == "true"
+        )
+        privacy_mode = self._env.get("PRIVACY_MODE", "").strip().lower()
+        if privacy_mode not in {"off", "builtin", "advanced"}:
+            legacy_enabled = self._env.get(
+                "TRUST_PRIVACY_MODE",
+                str(getattr(cfg, "TRUST_PRIVACY_MODE", True)),
+            ).lower() == "true"
+            legacy_advanced = self._env.get(
+                "PRIVACY_AI_ENABLED",
+                str(getattr(cfg, "PRIVACY_AI_ENABLED", False)),
+            ).lower() == "true"
+            privacy_mode = (
+                "advanced" if legacy_enabled and legacy_advanced
+                else "builtin" if legacy_enabled
+                else "off"
+            )
+        if privacy_mode == "advanced" and not bool(getattr(self, "_privacy_model_ready", False)):
+            privacy_mode = "builtin"
+        privacy_combo = self._fields["PRIVACY_MODE"]
+        privacy_combo.blockSignals(True)  # type: ignore[attr-defined]
+        privacy_combo.setCurrentIndex(max(0, privacy_combo.findData(privacy_mode)))  # type: ignore[attr-defined]
+        privacy_combo.blockSignals(False)  # type: ignore[attr-defined]
+        self._fields["PRIVACY_REVIEW_BEFORE_SEND"].setChecked(
+            self._env.get(
+                "PRIVACY_REVIEW_BEFORE_SEND",
+                str(getattr(cfg, "PRIVACY_REVIEW_BEFORE_SEND", True)),
+            ).lower() == "true"
+        )
+        self._on_privacy_mode_changed()
+
+        _set(
+            self._fields["APP_LANGUAGE"],
+            self._env.get("APP_LANGUAGE", getattr(cfg, "APP_LANGUAGE", "")),
+        )
+        _set(
+            self._fields["ASSISTANT_LANGUAGE"],
+            self._env.get("ASSISTANT_LANGUAGE", getattr(cfg, "ASSISTANT_LANGUAGE", "")),
+        )
+
+        _set(self._fields["ICON_SIZE"],    self._env.get("ICON_SIZE", self._env.get("DOLL_SIZE", str(cfg.ICON_SIZE))))
+        _set(self._fields["BUBBLE_WIDTH"], self._env.get("BUBBLE_WIDTH", str(cfg.BUBBLE_WIDTH)))
+        _set(self._fields["BUBBLE_LINES"], self._env.get("BUBBLE_LINES", str(cfg.BUBBLE_LINES)))
+        _set(self._fields["BUBBLE_FONT_SIZE"], self._env.get("BUBBLE_FONT_SIZE", str(cfg.BUBBLE_FONT_SIZE)))
+        self._fields["BUBBLE_SCROLL_ENABLED"].setChecked(  # type: ignore
+            self._env.get(
+                "BUBBLE_SCROLL_ENABLED",
+                str(getattr(cfg, "BUBBLE_SCROLL_ENABLED", True)),
+            ).lower()
+            == "true"
+        )
+        self._fields["BUBBLE_SCROLL_SNAP_ENABLED"].setChecked(  # type: ignore
+            self._env.get(
+                "BUBBLE_SCROLL_SNAP_ENABLED",
+                str(getattr(cfg, "BUBBLE_SCROLL_SNAP_ENABLED", True)),
+            ).lower()
+            == "true"
+        )
+        _set(self._fields["BUBBLE_COLOR"], self._env.get("BUBBLE_COLOR", cfg.BUBBLE_COLOR))
+        _set(self._fields["BUBBLE_TEXT_COLOR"], self._env.get("BUBBLE_TEXT_COLOR", cfg.BUBBLE_TEXT_COLOR))
+        _set(self._fields["BUBBLE_READ_WORD_COLOR"], self._env.get("BUBBLE_READ_WORD_COLOR", cfg.BUBBLE_READ_WORD_COLOR))
+
+    def _load_values(self, *, include_general: bool = True):
+        """Load values."""
+        import config as cfg
+        self._loading_values = True
+        self._active_preset_slug = self._env.get(_SETTINGS_PRESET_KEY, "")
+        if include_general:
+            self._load_general_page_values()
         self._pending_active_profile = ""
 
         # ── API key rows ──────────────────────────────────────────────────
@@ -8672,8 +9499,24 @@ class SettingsDialog(QDialog):
         _set(self._fields["MEMORY_STM_TOKEN_BUDGET"], self._env.get("MEMORY_STM_TOKEN_BUDGET", str(cfg.MEMORY_STM_TOKEN_BUDGET)))
 
         # Build caller blocks from CALLER_ROWS + any env overrides
-        for blk in list(self._caller_blocks):
-            blk["widget"].deleteLater()
+        caller_widgets = [
+            blk.get("widget")
+            for blk in self._caller_blocks
+            if blk.get("widget") is not None
+        ]
+        self._shortcut_rows = [
+            entry
+            for entry in getattr(self, "_shortcut_rows", [])
+            if all(entry.get("widget") is not widget for widget in caller_widgets)
+        ]
+        for section in getattr(self, "_shortcut_sections", []):
+            section["entries"] = [
+                entry
+                for entry in section["entries"]
+                if all(entry.get("widget") is not widget for widget in caller_widgets)
+            ]
+        for widget in caller_widgets:
+            widget.deleteLater()
         self._caller_blocks.clear()
 
         caller_count = int(self._env.get("CALLER_COUNT", str(len(cfg.CALLER_ROWS))))
@@ -8833,62 +9676,6 @@ class SettingsDialog(QDialog):
             else dict(vc.get("tools") or {})
         )
 
-        # Read ICON_AUTO_HIDE, falling back to the legacy DOLL_AUTO_HIDE key.
-        auto_hide = self._env.get(
-            "ICON_AUTO_HIDE",
-            self._env.get("DOLL_AUTO_HIDE", str(cfg.ICON_AUTO_HIDE)),
-        ).lower() == "true"
-        theme_mode = self._env.get("THEME_MODE", getattr(cfg, "THEME_MODE", "system"))
-        combo = self._fields["THEME_MODE"]
-        idx = combo.findData(theme_mode)  # type: ignore[attr-defined]
-        combo.setCurrentIndex(idx if idx >= 0 else 0)  # type: ignore[attr-defined]
-        # Load both theme templates from env/config, then show the one for the
-        # currently selected mode in the four swatches.
-        self._theme_templates = {}
-        for mode in ("light", "dark"):
-            self._theme_templates[mode] = {
-                role: self._env.get(
-                    f"THEME_{mode.upper()}_{role.upper()}",
-                    getattr(cfg, f"THEME_{mode.upper()}_{role.upper()}", ""),
-                )
-                for role in self._THEME_ROLES
-            }
-        self._theme_shown_mode = ""
-        self._show_theme_template(self._theme_edit_mode())
-        self._fields["ICON_AUTO_HIDE"].setChecked(auto_hide)  # type: ignore
-        self._fields["START_ON_LOGIN"].setChecked(  # type: ignore
-            self._env.get("START_ON_LOGIN", str(getattr(cfg, "START_ON_LOGIN", False))).lower()
-            == "true"
-        )
-        privacy_mode = self._env.get("PRIVACY_MODE", "").strip().lower()
-        if privacy_mode not in {"off", "builtin", "advanced"}:
-            legacy_enabled = self._env.get(
-                "TRUST_PRIVACY_MODE",
-                str(getattr(cfg, "TRUST_PRIVACY_MODE", True)),
-            ).lower() == "true"
-            legacy_advanced = self._env.get(
-                "PRIVACY_AI_ENABLED",
-                str(getattr(cfg, "PRIVACY_AI_ENABLED", False)),
-            ).lower() == "true"
-            privacy_mode = (
-                "advanced" if legacy_enabled and legacy_advanced
-                else "builtin" if legacy_enabled
-                else "off"
-            )
-        if privacy_mode == "advanced" and not bool(getattr(self, "_privacy_model_ready", False)):
-            privacy_mode = "builtin"
-        privacy_combo = self._fields["PRIVACY_MODE"]
-        privacy_combo.blockSignals(True)  # type: ignore[attr-defined]
-        privacy_combo.setCurrentIndex(max(0, privacy_combo.findData(privacy_mode)))  # type: ignore[attr-defined]
-        privacy_combo.blockSignals(False)  # type: ignore[attr-defined]
-        self._fields["PRIVACY_REVIEW_BEFORE_SEND"].setChecked(
-            self._env.get(
-                "PRIVACY_REVIEW_BEFORE_SEND",
-                str(getattr(cfg, "PRIVACY_REVIEW_BEFORE_SEND", True)),
-            ).lower() == "true"
-        )
-        self._on_privacy_mode_changed()
-
         auto_elab = self._env.get("CHAT_AUTO_ELABORATE", str(cfg.CHAT_AUTO_ELABORATE)).lower() == "true"
         self._fields["CHAT_AUTO_ELABORATE"].setChecked(auto_elab)  # type: ignore
         assistant_language = self._env.get("ASSISTANT_LANGUAGE", getattr(cfg, "ASSISTANT_LANGUAGE", ""))
@@ -8898,36 +9685,7 @@ class SettingsDialog(QDialog):
         )
         _set(self._fields["CHAT_ELABORATE_PROMPT"],
              default_elaborate_prompt)
-        _set(
-            self._fields["APP_LANGUAGE"],
-            self._env.get("APP_LANGUAGE", getattr(cfg, "APP_LANGUAGE", "")),
-        )
-        _set(
-            self._fields["ASSISTANT_LANGUAGE"],
-            assistant_language,
-        )
 
-        _set(self._fields["ICON_SIZE"],    self._env.get("ICON_SIZE", self._env.get("DOLL_SIZE", str(cfg.ICON_SIZE))))
-        _set(self._fields["BUBBLE_WIDTH"], self._env.get("BUBBLE_WIDTH", str(cfg.BUBBLE_WIDTH)))
-        _set(self._fields["BUBBLE_LINES"], self._env.get("BUBBLE_LINES", str(cfg.BUBBLE_LINES)))
-        _set(self._fields["BUBBLE_FONT_SIZE"], self._env.get("BUBBLE_FONT_SIZE", str(cfg.BUBBLE_FONT_SIZE)))
-        self._fields["BUBBLE_SCROLL_ENABLED"].setChecked(  # type: ignore
-            self._env.get(
-                "BUBBLE_SCROLL_ENABLED",
-                str(getattr(cfg, "BUBBLE_SCROLL_ENABLED", True)),
-            ).lower()
-            == "true"
-        )
-        self._fields["BUBBLE_SCROLL_SNAP_ENABLED"].setChecked(  # type: ignore
-            self._env.get(
-                "BUBBLE_SCROLL_SNAP_ENABLED",
-                str(getattr(cfg, "BUBBLE_SCROLL_SNAP_ENABLED", True)),
-            ).lower()
-            == "true"
-        )
-        _set(self._fields["BUBBLE_COLOR"], self._env.get("BUBBLE_COLOR", cfg.BUBBLE_COLOR))
-        _set(self._fields["BUBBLE_TEXT_COLOR"], self._env.get("BUBBLE_TEXT_COLOR", cfg.BUBBLE_TEXT_COLOR))
-        _set(self._fields["BUBBLE_READ_WORD_COLOR"], self._env.get("BUBBLE_READ_WORD_COLOR", cfg.BUBBLE_READ_WORD_COLOR))
         _set(self._fields["BUBBLE_REVEAL_WPM"], self._env.get("BUBBLE_REVEAL_WPM", str(cfg.BUBBLE_REVEAL_WPM)))
         _set(self._fields["BUBBLE_HOLD_REVEAL_WPM"], self._env.get("BUBBLE_HOLD_REVEAL_WPM", str(cfg.BUBBLE_HOLD_REVEAL_WPM)))
         _set(
@@ -9164,9 +9922,16 @@ class SettingsDialog(QDialog):
 
     def _apply_status_result(self, attr: str, ok, message: str) -> None:
         """Apply one queued auth result and update provider-specific controls."""
+        if getattr(self, "_disposing", False):
+            return
         label = getattr(self, attr, None)
         if isinstance(label, QLabel):
-            self._set_status_label(label, ok, message)
+            try:
+                self._set_status_label(label, ok, message)
+            except RuntimeError:
+                # A single-shot timeout can outlive a dialog deleted directly
+                # by a host or test without emitting ``finished`` first.
+                return
         if attr != "_harness_auth_status_lbl":
             return
         target = getattr(self, "_harness_auth_poll_target", None)
@@ -9205,16 +9970,22 @@ class SettingsDialog(QDialog):
             self._pending_status_attrs.discard(attr)
         if not self._pending_status_attrs:
             self._status_refresh_running = False
-            if self._status_result_timer.isActive():
-                self._status_result_timer.stop()
+            try:
+                if self._status_result_timer.isActive():
+                    self._status_result_timer.stop()
+            except RuntimeError:
+                pass
             return
         message = t("Status check timed out. Sign-in may still work; try again or restart Wisp.")
         for attr in tuple(self._pending_status_attrs):
             self._apply_status_result(attr, False, message)
         self._pending_status_attrs = set()
         self._status_refresh_running = False
-        if self._status_result_timer.isActive():
-            self._status_result_timer.stop()
+        try:
+            if self._status_result_timer.isActive():
+                self._status_result_timer.stop()
+        except RuntimeError:
+            pass
 
     def _drain_status_results(self) -> None:
         """Handle drain status results for settings dialog."""
@@ -9517,6 +10288,8 @@ class SettingsDialog(QDialog):
 
     def _refresh_stt_active_backend(self) -> None:
         """Update the STT backend label without importing the heavy STT stack."""
+        if getattr(self, "_disposing", False):
+            return
         lbl = getattr(self, "_stt_active_lbl", None)
         if lbl is None:
             return
@@ -9551,20 +10324,26 @@ class SettingsDialog(QDialog):
             install_status: dict[str, object] = {}
             cuda_runtime_error = ""
             try:
-                from core import optional_deps, updater
+                from core import optional_deps
 
-                spec_status = optional_deps.optional_package_spec_status("stt", device=device)
+                spec_status = optional_deps.optional_package_runtime_status("stt", device=device)
                 installed = bool(spec_status.get("valid"))
-                install_status = _read_optional_install_status("STT", optional_deps.OPTIONAL_PACKAGES_DIR)
-                if install_status and (
-                    str(install_status.get("install_contract") or "")
-                    != optional_deps.optional_package_contract("stt", device=device)
-                    or str(install_status.get("app_version") or "") != updater.current_version()
-                ):
-                    # A status produced by an older app/checker must not keep a
-                    # green result after an update. The live package contract
-                    # below remains authoritative.
-                    install_status = {}
+                install_status = optional_deps.current_optional_install_status(
+                    "STT",
+                    "stt",
+                    device=device,
+                )
+                if not install_status:
+                    kokoro_requested = _get(self._fields.get("KOKORO_DEVICE")) or "auto"
+                    kokoro_device = (
+                        "cuda"
+                        if optional_deps.kokoro_install_mode_for_device(kokoro_requested) == "gpu"
+                        else "cpu"
+                    )
+                    install_status = optional_deps.current_local_speech_install_status(
+                        kokoro_device=kokoro_device,
+                        stt_device=device,
+                    )
                 if sys.platform == "win32" and device.strip().lower() == "cuda":
                     from core.stt_device import windows_cuda_runtime_status
 
@@ -9978,6 +10757,8 @@ class SettingsDialog(QDialog):
 
     def _confirm(self):
         """Save and apply changed settings while keeping the window open."""
+        # Saving reads every field, so a page must never still be pending here.
+        self._build_deferred_pages()
         self._refresh_dirty_state()
         if not self._dirty_keys:
             # Nothing changed since the dialog opened or the last save, so skip
@@ -10104,6 +10885,7 @@ class SettingsDialog(QDialog):
         tabs = getattr(self, "_tabs", None)
         if tabs is None:
             return
+        self._build_deferred_pages()
         page = self._current_tab_name()
         display_page = next(
             (title for internal, title, _subtitle in _SETTINGS_PAGE_META if internal == page),
@@ -10194,6 +10976,7 @@ class SettingsDialog(QDialog):
         secrets from the OS keychain, wipes the .env file (and the matching values
         from this process), reloads config + live app, and refreshes the dialog.
         """
+        self._build_deferred_pages()
         confirm = QMessageBox(self)
         confirm.setIcon(QMessageBox.Icon.Warning)
         confirm.setWindowTitle(t("Reset all settings?"))
@@ -10509,10 +11292,9 @@ class SettingsDialog(QDialog):
             for row in self._api_key_rows
             if _get(row["provider"]).strip() and row["alias"].text().strip()
         })
-        pending_active_profile = str(getattr(self, "_pending_active_profile", "") or "").strip()
-        if pending_active_profile:
-            vals["ACTIVE_PROFILE"] = pending_active_profile
-            vals["SETTINGS_PROFILE"] = pending_active_profile
+        selected_profile_id = self._selected_profile_id()
+        vals["ACTIVE_PROFILE"] = selected_profile_id
+        vals["SETTINGS_PROFILE"] = selected_profile_id
         vb = self._voice_block
         vals.update({
             "HOTKEY_VOICE": _get(self._fields["HOTKEY_VOICE"]),
@@ -10622,20 +11404,46 @@ class SettingsDialog(QDialog):
             slot, profile_id, label = selected_profile
             profile_values = self._current_profile_values(label, profile_id)
             vals.update({f"PROFILE_{slot}_{key}": value for key, value in profile_values.items()})
-        vals.update(self._preset_values_to_persist(vals))
-        startup_error = ""
-        try:
-            from core.system.autostart import sync_start_on_login
-
-            sync_start_on_login(str(vals.get("START_ON_LOGIN", "")).lower() == "true")
-        except Exception as exc:  # noqa: BLE001 - settings still save; startup can be retried.
-            startup_error = str(exc) or type(exc).__name__
-        active_preset = self._preset_slug(getattr(self, "_active_preset_slug", ""))
-        remove_keys = (
-            set()
-            if active_preset
-            else {_SETTINGS_PRESET_KEY}
+        # Profiles now have one isolated file each. Copy legacy records into
+        # files before updating the selected profile, then store the complete
+        # current Settings snapshot in that profile only.
+        migration_baseline = {
+            key: value
+            for key, value in getattr(self, "_dirty_baseline", {}).items()
+            if key in vals
+        }
+        settings_profiles.migrate_legacy_profiles(
+            ENV_PATH,
+            {**vals, **migration_baseline, **self._env},
         )
+        selected_label = (
+            t(_PRESET_LABELS[selected_profile_id])
+            if selected_profile_id in _PRESET_LABELS
+            else (
+                selected_profile[2]
+                if selected_profile is not None
+                else selected_profile_id.replace("-", " ").title()
+            )
+        )
+        settings_profiles.save_profile(
+            ENV_PATH,
+            selected_profile_id,
+            selected_label,
+            vals,
+        )
+        startup_error = ""
+        if os.environ.get("WISP_LAUNCH_SMOKE_DISABLE_AUTOSTART_SYNC") != "1":
+            try:
+                from core.system.autostart import sync_start_on_login
+
+                sync_start_on_login(str(vals.get("START_ON_LOGIN", "")).lower() == "true")
+            except Exception as exc:  # noqa: BLE001 - settings still save; startup can be retried.
+                startup_error = str(exc) or type(exc).__name__
+        remove_keys = {
+            key
+            for key in self._env
+            if key == _SETTINGS_PRESET_KEY or key.startswith(_PRESET_ENV_PREFIX)
+        }
         _write_env(
             vals,
             remove_keys=set(secret_store.API_KEY_NAMES)
@@ -11179,14 +11987,14 @@ def _optional_install_elapsed_text(display_name: str, elapsed_seconds: int, quie
 
 
 def _optional_install_log_path(display_name: str, optional_packages_dir: Path) -> Path:
-    """Return a writable installer log path for optional dependency installs."""
-    root = os.environ.get("WISP_RUN_LOG_DIR")
-    if root:
-        base = Path(root).expanduser() / "installers"
-    else:
-        base = optional_packages_dir.parent / "installers"
-    slug = re.sub(r"[^a-z0-9]+", "-", display_name.lower()).strip("-") or "optional-package"
-    return base / f"{slug}-install.log"
+    """Return the stable installer log path that survives app restarts."""
+    from core import optional_deps
+
+    # Preserve temporary-root injection used by tests and diagnostics.
+    if Path(optional_packages_dir) != Path(optional_deps.OPTIONAL_PACKAGES_DIR):
+        slug = re.sub(r"[^a-z0-9]+", "-", display_name.lower()).strip("-") or "optional-package"
+        return Path(optional_packages_dir).parent / "installers" / f"{slug}-install.log"
+    return optional_deps.optional_install_log_path(display_name)
 
 
 def _optional_install_app_language() -> str:
@@ -11332,6 +12140,10 @@ def _write_optional_install_status(path: Path, *, ok: bool | None, message: str)
 
 def _read_optional_install_status(display_name: str, optional_packages_dir: Path) -> dict[str, object]:
     """Read the last optional installer result if one exists."""
+    from core import optional_deps
+
+    if Path(optional_packages_dir) == Path(optional_deps.OPTIONAL_PACKAGES_DIR):
+        return optional_deps.read_optional_install_status(display_name)
     path = _optional_install_status_path(display_name, optional_packages_dir)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))

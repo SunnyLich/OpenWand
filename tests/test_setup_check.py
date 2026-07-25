@@ -21,7 +21,7 @@ def _installed_stt_package(monkeypatch):
     )
     monkeypatch.setattr(
         optional_deps,
-        "optional_package_spec_status",
+        "optional_package_runtime_status",
         lambda *_args, **_kwargs: {"valid": True, "message": ""},
     )
 
@@ -209,15 +209,33 @@ def test_setup_check_accepts_gpt_sovits_when_reference_is_configured(monkeypatch
     assert "gpt_sovits" in by_name["TTS"]["message"]
 
 
-def test_setup_check_accepts_kokoro_with_voice(monkeypatch):
-    """Kokoro TTS is configured when a built-in voice is selected."""
+def test_setup_check_accepts_verified_kokoro_install(monkeypatch):
+    """Kokoro is healthy only when package, runtime, Torch, and voice assets work."""
     import config
+    from core import optional_deps, tts_assets
 
     monkeypatch.setattr(config, "reload", lambda: None)
     monkeypatch.setattr(config, "LLM_PROVIDER", "ollama", raising=False)
     monkeypatch.setattr(config, "LLM_MODEL", "llama-test", raising=False)
     monkeypatch.setattr(config, "TTS_PROVIDER", "kokoro", raising=False)
     monkeypatch.setattr(config, "KOKORO_VOICE", "af_heart", raising=False)
+    monkeypatch.setattr(config, "KOKORO_LANG_CODE", "a", raising=False)
+    monkeypatch.setattr(config, "KOKORO_DEVICE", "cpu", raising=False)
+    monkeypatch.setattr(
+        tts_assets,
+        "verify",
+        lambda *_args, **_kwargs: tts_assets.AssetStatus(state="ok"),
+    )
+    monkeypatch.setattr(
+        optional_deps,
+        "kokoro_runtime_import_status_subprocess",
+        lambda: {"installed": True, "valid": True},
+    )
+    monkeypatch.setattr(
+        optional_deps,
+        "kokoro_torch_status_subprocess",
+        lambda: {"installed": True, "valid": True, "cuda_available": False},
+    )
     monkeypatch.setattr(config, "STT_MODEL", "base", raising=False)
     monkeypatch.setattr(config, "HOTKEY_SNIP", "ctrl+alt+q", raising=False)
     monkeypatch.setattr(config, "HOTKEY_VOICE", "f9", raising=False)
@@ -242,7 +260,15 @@ def test_setup_check_warns_when_elevenlabs_package_missing(monkeypatch):
     monkeypatch.setattr(config, "LLM_MODEL", "llama-test", raising=False)
     monkeypatch.setattr(config, "TTS_PROVIDER", "elevenlabs", raising=False)
     monkeypatch.setattr(config, "ELEVENLABS_API_KEY", "eleven-key", raising=False)
-    monkeypatch.setattr(optional_deps, "is_importable", lambda module: False)
+    monkeypatch.setattr(
+        optional_deps,
+        "optional_package_runtime_status",
+        lambda *_args, **_kwargs: {
+            "installed": False,
+            "valid": False,
+            "message": "ElevenLabs package files are missing.",
+        },
+    )
     monkeypatch.setattr(config, "STT_MODEL", "base", raising=False)
     monkeypatch.setattr(config, "HOTKEY_SNIP", "ctrl+alt+q", raising=False)
     monkeypatch.setattr(config, "HOTKEY_VOICE", "f9", raising=False)

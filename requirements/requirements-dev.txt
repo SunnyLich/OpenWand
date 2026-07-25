@@ -1,4 +1,8 @@
-# Developer-only dependencies for tests, linting, and type checking.
+# Developer-only dependencies for tests, linting, type checking, and API docs.
 pytest>=8.0.0
 ruff>=0.8.0
 mypy>=1.13.0
+pdoc>=15.0.0
+# Developer and runtime locks are installed together. Keep this shared runtime
+# dependency identical so pip never receives two contradictory exact pins.
+typing-extensions==4.15.0

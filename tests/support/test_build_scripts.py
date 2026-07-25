@@ -134,12 +134,12 @@ class BuildScriptTests(unittest.TestCase):
         self.assertLess(shell.index('require_file "$BUILD_REQUIREMENTS_FILE" "requirements/requirements-build.lock"'), shell.index('"$CREATE_PYTHON" -m venv'))
         self.assertLess(shell.index('require_file "$BUILD_REQUIREMENTS_FILE" "requirements/requirements-build.lock"'), shell.index("clean_build_outputs"))
 
-    def test_windows_build_warns_loudly_when_elevenlabs_is_skipped(self) -> None:
+    def test_windows_build_always_filters_elevenlabs_from_release_environment(self) -> None:
         powershell = (ROOT / "tools" / "build_exe.ps1").read_text(encoding="utf-8")
 
-        self.assertIn("IMPORTANT: ElevenLabs will not be bundled in this build.", powershell)
-        self.assertIn("Settings > Voice > Install ElevenLabs", powershell)
-        self.assertIn("Windows long paths enabled", powershell)
+        self.assertIn("av|ctranslate2|elevenlabs|faster-whisper|flatbuffers|onnxruntime", powershell)
+        self.assertIn("Optional speech SDKs are installer-owned", powershell)
+        self.assertNotIn("Test-LongPathRisk", powershell)
 
     def test_build_scripts_check_packaging_inputs_before_mutating_outputs(self) -> None:
         powershell = (ROOT / "tools" / "build_exe.ps1").read_text(encoding="utf-8")
@@ -379,15 +379,15 @@ class BuildScriptTests(unittest.TestCase):
                 excludes = spec[spec.index("    excludes=[") : spec.index("    ],", spec.index("    excludes=["))]
                 self.assertIn('"pip"', excludes)
 
-    def test_specs_keep_stt_installer_owned_in_release_bundles(self) -> None:
-        """Lazy STT imports must not create a second PyInstaller-owned stack."""
+    def test_specs_keep_speech_sdks_installer_owned_in_release_bundles(self) -> None:
+        """Lazy speech imports must not inflate the ZIP with a second SDK stack."""
         for spec_name in ("Wisp.spec", "WispLinux.spec", "WispMac.spec"):
             with self.subTest(spec=spec_name):
                 spec = (ROOT / "packaging" / spec_name).read_text(encoding="utf-8")
                 self.assertNotIn('collect_all("faster_whisper")', spec)
-                self.assertIn("INSTALLER_OWNED_STT_EXCLUDES", spec)
-                self.assertIn("*INSTALLER_OWNED_STT_EXCLUDES", spec)
-                for module_name in ("av", "ctranslate2", "faster_whisper", "flatbuffers", "onnxruntime"):
+                self.assertIn("INSTALLER_OWNED_SPEECH_EXCLUDES", spec)
+                self.assertIn("*INSTALLER_OWNED_SPEECH_EXCLUDES", spec)
+                for module_name in ("av", "ctranslate2", "elevenlabs", "faster_whisper", "flatbuffers", "onnxruntime"):
                     self.assertIn(f'"{module_name}"', spec)
 
         docs = (ROOT / "docs" / "BUILDING_EXE.md").read_text(encoding="utf-8")
@@ -395,7 +395,7 @@ class BuildScriptTests(unittest.TestCase):
 
     def test_builds_do_not_install_discarded_stt_native_wheels(self) -> None:
         """Build environments should not download packages excluded from the bundle."""
-        package_pattern = "av|ctranslate2|faster-whisper|flatbuffers|onnxruntime"
+        package_pattern = "av|ctranslate2|elevenlabs|faster-whisper|flatbuffers|onnxruntime"
         powershell = (ROOT / "tools" / "build_exe.ps1").read_text(encoding="utf-8")
         self.assertIn(package_pattern, powershell)
         self.assertIn("New-BuildRequirementsFile -SourcePath $RequirementsFile", powershell)

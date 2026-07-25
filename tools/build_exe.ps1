@@ -303,13 +303,6 @@ function New-BuildVenv {
     Invoke-Native "uv build virtual environment creation" $Uv @("venv", "--seed", "--python", $ExpectedPython, $VenvDir)
 }
 
-function Test-LongPathRisk {
-    param([string]$BaseDir)
-
-    $KnownLongWheelPath = Join-Path $BaseDir "Lib\site-packages\elevenlabs\pronunciation_dictionaries\rules\types\body_set_rules_on_the_pronunciation_dictionary_v_1_pronunciation_dictionaries_pronunciation_dictionary_id_set_rules_post_rules_item.py"
-    return $KnownLongWheelPath.Length -ge 240
-}
-
 function Clear-BuildOutputs {
     $CleanPaths = @(
         "build",
@@ -330,16 +323,12 @@ function Clear-BuildOutputs {
 }
 
 function New-BuildRequirementsFile {
-    param(
-        [string]$SourcePath,
-        [switch]$ExcludeElevenLabs
-    )
+    param([string]$SourcePath)
 
     $TempPath = Join-Path $env:TEMP "wisp-build-requirements.txt"
-    $InstallerOwnedSttPattern = '^\s*(av|ctranslate2|faster-whisper|flatbuffers|onnxruntime)\s*=='
+    $InstallerOwnedSpeechPattern = '^\s*(av|ctranslate2|elevenlabs|faster-whisper|flatbuffers|onnxruntime)\s*=='
     Get-Content $SourcePath |
-        Where-Object { $_ -notmatch $InstallerOwnedSttPattern } |
-        Where-Object { (-not $ExcludeElevenLabs) -or ($_ -notmatch '^\s*elevenlabs\b') } |
+        Where-Object { $_ -notmatch $InstallerOwnedSpeechPattern } |
         Set-Content -Path $TempPath -Encoding ascii
     return $TempPath
 }
@@ -377,14 +366,8 @@ if (-not $SkipInstall) {
     Write-Host "  $Python"
     Write-Host "(already-satisfied packages are skipped automatically)"
 
-    $ExcludeElevenLabs = (-not $UseGlobalPython) -and (Test-LongPathRisk $VenvDir)
-    if ($ExcludeElevenLabs) {
-        Write-Warning "IMPORTANT: ElevenLabs will not be bundled in this build."
-        Write-Warning "Reason: this project path is long enough to hit Windows path limits while installing the ElevenLabs wheel."
-        Write-Warning "Recovery: users can open Settings > Voice > Install ElevenLabs after startup, or rebuild from a shorter path / with Windows long paths enabled."
-    }
-    Write-Host "STT native packages are installer-owned and will not be installed into the build environment."
-    $FilteredRequirements = New-BuildRequirementsFile -SourcePath $RequirementsFile -ExcludeElevenLabs:$ExcludeElevenLabs
+    Write-Host "Optional speech SDKs are installer-owned and will not be installed into the build environment."
+    $FilteredRequirements = New-BuildRequirementsFile -SourcePath $RequirementsFile
     $BuildRequirements = $FilteredRequirements
 
     Ensure-Pip -Python $Python

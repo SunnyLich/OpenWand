@@ -8,21 +8,33 @@ process after install verification.
 from __future__ import annotations
 
 import importlib
+import importlib.metadata
 import json
+import os
 import sys
 from pathlib import Path
 
+_USE_MANAGED_LAYER = True
 
-def _add_optional_path(path: str) -> None:
+
+def _configure_dependency_path(path: str) -> None:
+    global _USE_MANAGED_LAYER
     optional_dir = str(Path(path).expanduser())
     while optional_dir in sys.path:
         sys.path.remove(optional_dir)
-    sys.path.insert(0, optional_dir)
+    _USE_MANAGED_LAYER = os.environ.get("WISP_OPTIONAL_PROBE_SOURCE", "managed") != "environment"
+    if _USE_MANAGED_LAYER:
+        sys.path.insert(0, optional_dir)
     importlib.invalidate_caches()
 
 
-def _managed_distribution_version(package_name: str) -> str:
-    """Read a version only from the managed directory, never bundled metadata."""
+def _distribution_version(package_name: str) -> str:
+    """Read a version from the dependency layer selected by the parent."""
+    if not _USE_MANAGED_LAYER:
+        try:
+            return importlib.metadata.version(package_name)
+        except importlib.metadata.PackageNotFoundError:
+            return ""
     wanted = package_name.casefold().replace("_", "-")
     try:
         candidates = Path(sys.path[0]).glob("*.dist-info")
@@ -46,6 +58,12 @@ def _managed_distribution_version(package_name: str) -> str:
     return ""
 
 
+def _find_spec(module_name: str):
+    if _USE_MANAGED_LAYER:
+        return importlib.machinery.PathFinder.find_spec(module_name, [sys.path[0]])
+    return importlib.util.find_spec(module_name)
+
+
 def _torch_status() -> dict[str, object]:
     status: dict[str, object] = {
         "installed": False,
@@ -58,11 +76,12 @@ def _torch_status() -> dict[str, object]:
         "subprocess": True,
     }
     try:
-        if importlib.machinery.PathFinder.find_spec("torch", [sys.path[0]]) is None:
+        if (spec := _find_spec("torch")) is None:
             return status
+        status["installed"] = True
+        status["origin"] = str(getattr(spec, "origin", "") or "")
         import torch  # type: ignore
 
-        status["installed"] = True
         status["origin"] = str(getattr(torch, "__file__", "") or "")
         version = str(getattr(torch, "__version__", "") or "")
         if not version or not hasattr(torch, "cuda"):
@@ -97,11 +116,12 @@ def _kokoro_runtime_status() -> dict[str, object]:
         "subprocess": True,
     }
     try:
-        if (spec := importlib.machinery.PathFinder.find_spec("kokoro", [sys.path[0]])) is None:
+        if (spec := _find_spec("kokoro")) is None:
             return status
+        status["installed"] = True
+        status["origin"] = str(getattr(spec, "origin", "") or "")
         from kokoro import KPipeline  # type: ignore
 
-        status["installed"] = True
         status["valid"] = KPipeline is not None
         status["origin"] = str(getattr(spec, "origin", "") or "")
     except Exception as exc:  # noqa: BLE001
@@ -119,14 +139,42 @@ def _stt_runtime_status() -> dict[str, object]:
         "subprocess": True,
     }
     try:
-        if (spec := importlib.machinery.PathFinder.find_spec("faster_whisper", [sys.path[0]])) is None:
+        if (spec := _find_spec("faster_whisper")) is None:
             return status
+        status["installed"] = True
+        status["origin"] = str(getattr(spec, "origin", "") or "")
+        status["version"] = _distribution_version("faster-whisper")
         from faster_whisper import WhisperModel  # type: ignore
 
-        status["installed"] = True
         status["valid"] = WhisperModel is not None
         status["origin"] = str(getattr(spec, "origin", "") or "")
-        status["version"] = _managed_distribution_version("faster-whisper")
+        status["version"] = _distribution_version("faster-whisper")
+    except Exception as exc:  # noqa: BLE001
+        status["error"] = f"{type(exc).__name__}: {exc}"
+    return status
+
+
+def _elevenlabs_runtime_status() -> dict[str, object]:
+    """Verify the SDK entry point used by Wisp, not merely its package folder."""
+    status: dict[str, object] = {
+        "installed": False,
+        "valid": False,
+        "version": "",
+        "origin": "",
+        "error": "",
+        "subprocess": True,
+    }
+    try:
+        if (spec := _find_spec("elevenlabs")) is None:
+            return status
+        status["installed"] = True
+        status["origin"] = str(getattr(spec, "origin", "") or "")
+        status["version"] = _distribution_version("elevenlabs")
+        from elevenlabs.client import ElevenLabs  # type: ignore
+
+        status["valid"] = ElevenLabs is not None
+        status["origin"] = str(getattr(spec, "origin", "") or "")
+        status["version"] = _distribution_version("elevenlabs")
     except Exception as exc:  # noqa: BLE001
         status["error"] = f"{type(exc).__name__}: {exc}"
     return status
@@ -147,15 +195,14 @@ def _stt_model_status(model_name: str, requested_device: str, requested_compute:
     }
     diagnostics: list[str] = []
     try:
-        if importlib.machinery.PathFinder.find_spec("faster_whisper", [sys.path[0]]) is None:
-            status["error"] = f"faster_whisper was not found in Wisp's optional package directory: {sys.path[0]}"
+        if _find_spec("faster_whisper") is None:
+            status["error"] = "faster_whisper was not found in Wisp's selected dependency layer"
             status["diagnostics"] = [str(status["error"])]
             return status
+        status["installed"] = True
         from faster_whisper import WhisperModel  # type: ignore
 
         from core.stt_device import build_model, resolve_compute_type, resolve_device
-
-        status["installed"] = True
 
         def _log(message: str) -> None:
             diagnostics.append(str(message))
@@ -189,18 +236,26 @@ def _stt_model_status(model_name: str, requested_device: str, requested_compute:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    valid_probes = {"torch-status", "kokoro-runtime-status", "stt-runtime-status", "stt-model-status"}
+    valid_probes = {
+        "torch-status",
+        "kokoro-runtime-status",
+        "stt-runtime-status",
+        "stt-model-status",
+        "elevenlabs-runtime-status",
+    }
     if len(args) < 2 or args[0] not in valid_probes:
         print(json.dumps({"error": "usage: optional_deps_probe <probe> <optional-packages-dir> [args...]"}))
         return 2
     probe, optional_dir = args[:2]
-    _add_optional_path(optional_dir)
+    _configure_dependency_path(optional_dir)
     if probe == "torch-status":
         status = _torch_status()
     elif probe == "kokoro-runtime-status":
         status = _kokoro_runtime_status()
     elif probe == "stt-runtime-status":
         status = _stt_runtime_status()
+    elif probe == "elevenlabs-runtime-status":
+        status = _elevenlabs_runtime_status()
     else:
         if len(args) != 5:
             print(json.dumps({"error": "usage: optional_deps_probe stt-model-status <optional-packages-dir> <model> <device> <compute>"}))

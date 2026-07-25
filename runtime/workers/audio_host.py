@@ -72,7 +72,7 @@ def _stt_feature_enabled() -> bool:
 
 
 def _stt_prewarm_available() -> bool:
-    """Return whether STT is enabled and its managed package is usable.
+    """Return whether STT is enabled and its selected package layer is usable.
 
     Startup warmup is opportunistic. A missing or stale optional package should
     stay silent until the user actually invokes a speech feature, where the
@@ -84,7 +84,7 @@ def _stt_prewarm_available() -> bool:
         import config
         from core import optional_deps
 
-        status = optional_deps.optional_package_spec_status(
+        status = optional_deps.require_optional_package_runtime(
             "stt",
             device=str(getattr(config, "STT_DEVICE", "auto") or "auto"),
         )
@@ -488,6 +488,22 @@ def stt_is_ready() -> dict[str, Any]:
     return stt_handlers.stt_is_ready()
 
 
+def speech_status() -> dict[str, Any]:
+    """Return one authoritative package/configuration/live speech snapshot."""
+    import config
+    from core import speech_status as speech
+    from core.macos_helper import handlers as stt_handlers
+
+    stt_live = stt_handlers.stt_is_ready()
+    with _warmup_lock:
+        tts_live = {
+            "ready": _local_tts_ready if _local_tts_provider(config.TTS_PROVIDER.lower()) else None,
+            "warming": _local_tts_warming,
+            "error": _local_tts_error,
+        }
+    return speech.speech_status(config, stt_live=stt_live, tts_live=tts_live)
+
+
 def _write_empty_wav(path: Path, *, sample_rate: int = 22_050) -> dict[str, Any]:
     """Write empty wav."""
     with wave.open(str(path), "wb") as wf:
@@ -771,6 +787,7 @@ HANDLERS = {
     "audio.record.start": record_start,
     "audio.record.stop_transcribe": record_stop_transcribe,
     "audio.stt.is_ready": stt_is_ready,
+    "audio.speech.status": speech_status,
     "audio.tts.synthesize": tts_synthesize,
     "audio.play_file": play_file,
     "audio.stop": audio_stop,

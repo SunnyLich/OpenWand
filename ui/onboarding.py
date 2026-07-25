@@ -83,7 +83,7 @@ _PROVIDER_SECRET_NAMES: dict[str, str] = {
     "custom": "CUSTOM_API_KEY",
 }
 
-_BUILTIN_PROFILE_IDS = {"default", "fast", "balanced", "deep", "private", "coding"}
+_BUILTIN_PROFILE_IDS = {"default", "low_setup", "fast", "balanced", "deep", "private", "coding"}
 _PERSONAL_PROFILE_DEFAULTS = {
     "LLM_PROVIDER": "openai",
     "LLM_MODEL": "gpt-5.5",
@@ -619,12 +619,15 @@ class OnboardingWizard(QDialog):
         tts_label = QLabel("Would you like Wisp to speak replies?")
         self._tts = QComboBox()
         self._tts.addItem("Not now", "none")
-        self._tts.addItem("Local voice — Kokoro (installer opens after setup)", "local")
+        self._tts.addItem(t("Local voice — Kokoro (installer opens after setup)"), "local")
         self._tts.addItem("Cloud voice — configure in Settings", "cloud")
         stt_label = QLabel("Would you like to speak to Wisp?")
         self._stt = QComboBox()
         self._stt.addItem("Not now", "none")
-        self._stt.addItem("Local speech recognition — Whisper (installer opens after setup)", "local")
+        self._stt.addItem(
+            t("Local speech recognition — Whisper (installer opens after setup)"),
+            "local",
+        )
         self._stt.addItem("Cloud/live voice — configure in Settings", "cloud")
         layout.addWidget(tts_label)
         layout.addWidget(self._tts)

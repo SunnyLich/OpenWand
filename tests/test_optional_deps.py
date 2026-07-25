@@ -6,6 +6,7 @@ import importlib
 import json
 import os
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -325,8 +326,9 @@ def test_optional_package_spec_status_checks_release_dist_infos(monkeypatch, tmp
     assert missing["valid"] is False
     assert "faster-whisper" in missing["missing"]
 
-    for requirement in optional_deps.stt_install_packages():
-        name, version = requirement.split("==", 1)
+    for name, version in optional_deps._expected_package_versions(  # type: ignore[attr-defined]
+        optional_deps.stt_install_packages()
+    ).items():
         dist(name, version)
     valid = optional_deps.optional_package_spec_status("stt")
     assert valid["valid"] is True
@@ -352,6 +354,120 @@ def test_optional_package_contract_changes_with_checker_or_platform(monkeypatch)
 
     assert current != changed_checker
     assert current.split(":", 1)[0] != changed_checker.split(":", 1)[0]
+
+
+def test_optional_package_contract_changes_with_machine_abi(monkeypatch):
+    """A stage downloaded for another CPU architecture must never be applied."""
+    from core import optional_deps
+
+    current = optional_deps.optional_package_contract("stt")
+    monkeypatch.setattr(optional_deps.platform, "machine", lambda: "different-machine")
+
+    assert optional_deps.optional_package_contract("stt") != current
+
+
+def test_dependency_contract_matrix_is_explicit_for_supported_targets():
+    """The three release targets expose only their supported device variants."""
+    from core import optional_deps
+
+    windows = optional_deps.optional_dependency_contracts(
+        "stt",
+        device="auto",
+        platform_name="win32",
+        machine="AMD64",
+    )
+    linux = optional_deps.optional_dependency_contracts(
+        "stt",
+        device="cuda",
+        platform_name="linux",
+        machine="x86_64",
+    )
+    macos = optional_deps.optional_dependency_contracts(
+        "stt",
+        device="cuda",
+        platform_name="darwin",
+        machine="arm64",
+    )
+
+    assert [contract.kind for contract in windows] == ["source", "release"]
+    assert "nvidia-cuda-runtime-cu12==12.8.90" not in windows[0].packages
+    assert "nvidia-cuda-runtime-cu12==12.8.90" in windows[1].packages
+    assert all("nvidia-cuda-runtime-cu12" not in package for contract in linux for package in contract.packages)
+    assert all("nvidia-cuda-runtime-cu12" not in package for contract in macos for package in contract.packages)
+    assert "onnxruntime==1.23.2" in macos[0].packages
+    assert "onnxruntime==1.23.2" in macos[1].packages
+
+
+def test_unsupported_architecture_has_no_release_contract():
+    """Intel macOS and ARM Linux remain source-only best effort, not supported releases."""
+    from core import optional_deps
+
+    assert optional_deps.optional_dependency_contracts(
+        "stt",
+        platform_name="darwin",
+        machine="x86_64",
+    ) == ()
+    assert optional_deps.optional_dependency_contracts(
+        "stt",
+        platform_name="linux",
+        machine="aarch64",
+    ) == ()
+
+
+def test_whole_contract_matcher_accepts_source_or_release_and_rejects_hybrid():
+    """Allowed versions are complete manifests, never per-package alternatives."""
+    from core import optional_deps
+
+    source = optional_deps.OptionalDependencyContract(
+        kind="source",
+        key="stt",
+        device="cpu",
+        packages=("alpha==1", "bravo==1"),
+        fingerprint="source-fingerprint",
+    )
+    release = optional_deps.OptionalDependencyContract(
+        kind="release",
+        key="stt",
+        device="cpu",
+        packages=("alpha==2", "bravo==2"),
+        fingerprint="release-fingerprint",
+    )
+    contracts = (source, release)
+
+    source_match, _ = optional_deps._matching_dependency_contract(
+        contracts,
+        {"alpha": ["1"], "bravo": ["1"]},
+        preferred_kind="source",
+    )
+    release_match, _ = optional_deps._matching_dependency_contract(
+        contracts,
+        {"alpha": ["2"], "bravo": ["2"]},
+        preferred_kind="release",
+    )
+    hybrid_match, results = optional_deps._matching_dependency_contract(
+        contracts,
+        {"alpha": ["1"], "bravo": ["2"]},
+        preferred_kind="source",
+    )
+
+    assert source_match is source
+    assert release_match is release
+    assert hybrid_match is None
+    assert all(result["valid"] is False for result in results)
+
+
+def test_optional_installer_paths_ignore_ephemeral_run_log_dir(monkeypatch, tmp_path):
+    """Restart-resumable plans and statuses must live in stable user data."""
+    from core import optional_deps
+
+    optional_root = tmp_path / "user-data" / "python_packages"
+    monkeypatch.setattr(optional_deps, "OPTIONAL_PACKAGES_DIR", optional_root)
+    monkeypatch.setenv("WISP_RUN_LOG_DIR", str(tmp_path / "run-123"))
+
+    path = optional_deps.optional_install_status_path("Local speech")
+
+    assert path == tmp_path / "user-data" / "installers" / "local-speech-install.status.json"
+    assert "run-123" not in str(path)
 
 
 def test_windows_cuda_stt_contract_includes_nvidia_runtime(monkeypatch):
@@ -707,7 +823,6 @@ def test_optional_tts_installer_allows_pre_install_only_plan(monkeypatch, tmp_pa
         "optional_package_spec_status",
         lambda *_args, **_kwargs: {"valid": True},
     )
-
     assert optional_tts_installer.main() == 0
     assert calls == [(["--index-url", "https://download.pytorch.org/whl/cu128", "torch==2.11.0+cu128"], True)]
 
@@ -742,9 +857,43 @@ def test_optional_tts_installer_can_reinstall_packages(monkeypatch, tmp_path):
         "optional_package_spec_status",
         lambda *_args, **_kwargs: {"valid": True},
     )
+    monkeypatch.setattr(
+        optional_deps,
+        "elevenlabs_runtime_import_status_subprocess",
+        lambda: {"installed": True, "valid": True},
+    )
 
     assert optional_tts_installer.main() == 0
     assert calls == [(["elevenlabs==2.55.0"], True)]
+
+
+def test_optional_tts_installer_rejects_broken_elevenlabs_runtime(monkeypatch, tmp_path):
+    """An installed wheel is not a successful install when its SDK entry point fails."""
+    from core import optional_deps
+    from scripts import optional_tts_installer
+
+    monkeypatch.setattr(
+        optional_deps,
+        "optional_package_spec_status",
+        lambda *_args, **_kwargs: {"valid": True},
+    )
+    monkeypatch.setattr(
+        optional_deps,
+        "elevenlabs_runtime_import_status_subprocess",
+        lambda: {"installed": True, "valid": False, "error": "ImportError: broken dependency"},
+    )
+
+    with (tmp_path / "install.log").open("w", encoding="utf-8") as log:
+        ok, message = optional_tts_installer._post_install_result(
+            log,
+            "[elevenlabs install]",
+            {"display_name": "ElevenLabs", "spec_key": "elevenlabs"},
+            tmp_path / "install.status.json",
+        )
+
+    assert ok is False
+    assert "runtime verification failed" in message
+    assert "broken dependency" in message
 
 
 def test_shared_speech_optional_installer_failure_matrix_is_persisted(monkeypatch, tmp_path):
@@ -1315,6 +1464,76 @@ def test_optional_install_apply_replaces_active_av_artifacts(tmp_path):
     assert not (target / "av.libs").exists()
     assert (target / "av-17.0.0.dist-info").exists()
     assert not staging.exists() or not any(staging.iterdir())
+
+
+def test_optional_install_records_provenance_before_activation(monkeypatch, tmp_path):
+    """The replacement must contain its verified contract before it becomes active."""
+    from core import optional_deps
+    from scripts import optional_tts_installer
+
+    target = tmp_path / "python_packages"
+    target.mkdir()
+    staging = tmp_path / "stage"
+    dist_info = staging / "av-17.1.0.dist-info"
+    dist_info.mkdir(parents=True)
+    (dist_info / "METADATA").write_text("Name: av\nVersion: 17.1.0\n", encoding="utf-8")
+    record = {
+        "schema": optional_deps.OPTIONAL_LAYER_MANIFEST_SCHEMA,
+        "kind": "release",
+        "key": "stt",
+        "device": "cpu",
+        "fingerprint": "test-release-contract",
+        "packages": {"av": "17.1.0"},
+    }
+    real_rename = Path.rename
+    observed = {"manifest_before_activation": False}
+
+    def checked_rename(path: Path, destination: Path):
+        if Path(destination) == target and ".replacement-" in path.name:
+            observed["manifest_before_activation"] = (
+                path / optional_deps.OPTIONAL_LAYER_MANIFEST_NAME
+            ).is_file()
+        return real_rename(path, destination)
+
+    monkeypatch.setattr(Path, "rename", checked_rename)
+    with (tmp_path / "install.log").open("w", encoding="utf-8") as log:
+        optional_tts_installer._apply_staging(
+            staging,
+            target,
+            log,
+            "[stt install]",
+            contract_records=[record],
+        )
+
+    manifest = optional_deps.read_optional_layer_manifest(target)
+    assert observed["manifest_before_activation"] is True
+    assert manifest["contracts"]["stt"]["fingerprint"] == "test-release-contract"
+
+
+def test_staged_contract_validation_rejects_partial_or_mismatched_layer(monkeypatch, tmp_path):
+    """A staged hybrid/partial tree must fail before an apply plan can activate it."""
+    from scripts import optional_tts_installer
+
+    staging = tmp_path / "stage"
+    alpha = staging / "alpha-1.0.dist-info"
+    alpha.mkdir(parents=True)
+    (alpha / "METADATA").write_text("Name: alpha\nVersion: 1.0\n", encoding="utf-8")
+    record = {
+        "kind": "release",
+        "key": "test",
+        "fingerprint": "test-release-contract",
+        "packages": {"alpha": "1.0", "bravo": "2.0"},
+    }
+    monkeypatch.setattr(optional_tts_installer, "_plan_contract_records", lambda _plan: [record])
+
+    with pytest.raises(RuntimeError, match="missing bravo"):
+        optional_tts_installer._validate_staged_contracts({}, staging)
+
+    bravo = staging / "bravo-1.0.dist-info"
+    bravo.mkdir()
+    (bravo / "METADATA").write_text("Name: bravo\nVersion: 1.0\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="version mismatch for bravo"):
+        optional_tts_installer._validate_staged_contracts({}, staging)
 
 
 def test_optional_install_apply_merges_shared_namespace_dirs(tmp_path):
@@ -1989,6 +2208,21 @@ def test_kokoro_install_includes_persistent_english_g2p_model():
     )
 
 
+def test_elevenlabs_install_uses_release_locked_dependency_closure():
+    """A later PyPI dependency release must not silently break local speech."""
+    from core import optional_deps
+
+    packages = optional_deps.ELEVENLABS_INSTALL_PACKAGES
+
+    assert packages[0] == optional_deps.ELEVENLABS_PACKAGE
+    assert "httpx==0.28.1" in packages
+    assert "pydantic==2.13.4" in packages
+    assert "requests==2.34.2" in packages
+    assert "typing-extensions==4.15.0" in packages
+    assert "websockets==15.0.1" in packages
+    assert all("==" in package for package in packages)
+
+
 def test_kokoro_gpu_install_includes_cuda_torch_index():
     """GPU Kokoro installs must request CUDA Torch wheels explicitly."""
     from core import optional_deps
@@ -2007,14 +2241,14 @@ def test_kokoro_gpu_install_includes_cuda_torch_index():
     assert optional_deps.KOKORO_PACKAGE in packages
     # kokoro depends on torch and pip --target cannot see the staged CUDA
     # build, so the Kokoro phase must pin the same +cu128 build itself.
-    assert packages == [
-        "--extra-index-url",
-        optional_deps.PYTORCH_CUDA_WHEEL_INDEX,
-        "torch==2.11.0+cu128",
-        *optional_deps.KOKORO_BASE_INSTALL_PACKAGES,
-    ]
-    assert "torch==2.11.0+cu128" not in optional_deps.kokoro_install_packages("cpu")
-    assert any(str(item).endswith("/en_core_web_sm-3.8.0-py3-none-any.whl") for item in packages)
+    assert packages == list(
+        optional_deps._optional_contract_lock_packages(  # type: ignore[attr-defined]
+            "release", "kokoro", device="cuda"
+        )
+    )
+    assert "torch==2.11.0+cu128" in packages
+    assert "torch==2.13.0" in optional_deps.kokoro_install_packages("cpu")
+    assert any("en_core_web_sm-3.8.0-py3-none-any.whl" in str(item) for item in packages)
 
 
 def test_kokoro_auto_install_does_not_depend_on_cuda_probe(monkeypatch):
@@ -2201,6 +2435,63 @@ def test_kokoro_torch_status_subprocess_parses_status(monkeypatch):
     assert captured["capture_output"] is True
 
 
+def test_source_stt_probe_uses_environment_dependency_layer(monkeypatch):
+    """The deep source probe must not prepend a stale managed release repair."""
+    from types import SimpleNamespace
+
+    from core import optional_deps
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        optional_deps,
+        "optional_package_runtime_status",
+        lambda *_args, **_kwargs: {"source": "environment", "valid": True},
+    )
+
+    def fake_run(_command, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"installed": true, "valid": true, "version": "1.2.1"}\n',
+            stderr="",
+        )
+
+    monkeypatch.setattr(optional_deps.subprocess, "run", fake_run)
+
+    status = optional_deps.stt_runtime_import_status_subprocess()
+
+    assert status["valid"] is True
+    assert captured["env"]["WISP_OPTIONAL_PROBE_SOURCE"] == "environment"
+
+
+def test_stt_probe_marks_present_but_broken_package_installed(monkeypatch):
+    """A dependency import failure is repair-required, not not-installed."""
+    import builtins
+
+    from runtime.workers import optional_deps_probe
+
+    monkeypatch.setattr(
+        optional_deps_probe,
+        "_find_spec",
+        lambda _name: SimpleNamespace(origin="python_packages/faster_whisper/__init__.py"),
+    )
+    monkeypatch.setattr(optional_deps_probe, "_distribution_version", lambda _name: "1.2.1")
+    real_import = builtins.__import__
+
+    def broken_import(name, *args, **kwargs):
+        if name == "faster_whisper":
+            raise ModuleNotFoundError("No module named 'av.about'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", broken_import)
+
+    status = optional_deps_probe._stt_runtime_status()
+
+    assert status["installed"] is True
+    assert status["valid"] is False
+    assert "av.about" in status["error"]
+
+
 def test_kokoro_torch_status_subprocess_marks_timeout(monkeypatch):
     """A slow packaged Torch probe is inconclusive, not package metadata damage."""
     from core import optional_deps
@@ -2361,9 +2652,10 @@ def test_kokoro_runtime_import_status_flags_broken_dependency(monkeypatch):
 
 
 def test_require_optional_package_runtime_rejects_invalid_managed_install(monkeypatch):
-    """Runtime imports must not fall through to a bundled or global STT copy."""
+    """Frozen imports must not fall through to a bundled or global STT copy."""
     from core import optional_deps
 
+    monkeypatch.setattr(optional_deps.sys, "frozen", True, raising=False)
     monkeypatch.setattr(
         optional_deps,
         "optional_package_spec_status",
@@ -2391,18 +2683,124 @@ def test_require_optional_package_runtime_prepares_only_the_managed_layer(monkey
     )
     monkeypatch.setattr(
         optional_deps,
-        "add_optional_packages_to_path",
-        lambda *, prepend=False: calls.append(("path", prepend)),
+        "_find_module_spec",
+        lambda module_name, paths: calls.append((module_name, paths)) or object(),
     )
     monkeypatch.setattr(
-        optional_deps.importlib.machinery.PathFinder,
-        "find_spec",
-        lambda module_name, paths: calls.append((module_name, paths)) or object(),
+        optional_deps,
+        "add_optional_packages_to_path",
+        lambda *, prepend=False: calls.append(("path", prepend)),
     )
 
     result = optional_deps.require_optional_package_runtime("stt", device="cuda")
 
-    assert result is status
+    assert result["valid"] is True
+    assert result["source"] == "managed"
     assert calls[0] == ("stt", "cuda")
     assert ("path", True) in calls
     assert any(call[0] == "faster_whisper" for call in calls if isinstance(call, tuple))
+
+
+def test_source_runtime_can_use_locked_python_environment(monkeypatch):
+    """A source checkout need not duplicate speech SDKs into AppData."""
+    from core import optional_deps
+
+    monkeypatch.delattr(optional_deps.sys, "frozen", raising=False)
+    monkeypatch.setattr(
+        optional_deps,
+        "optional_package_spec_status",
+        lambda *_args, **_kwargs: {"display_name": "ElevenLabs", "installed": False, "valid": False},
+    )
+    monkeypatch.setattr(
+        optional_deps,
+        "_source_environment_spec_status",
+        lambda *_args, **_kwargs: {
+            "display_name": "ElevenLabs",
+            "source": "environment",
+            "installed": True,
+            "valid": True,
+        },
+    )
+    monkeypatch.setattr(
+        optional_deps,
+        "_find_module_spec",
+        lambda _module_name, _paths: object(),
+    )
+
+    status = optional_deps.require_optional_package_runtime("elevenlabs")
+
+    assert status["valid"] is True
+    assert status["source"] == "environment"
+
+
+def test_source_stt_status_rejects_missing_pyav_about_module(monkeypatch, tmp_path):
+    """Distribution metadata alone must not make a physically incomplete PyAV usable."""
+    from core import optional_deps
+
+    site_packages = tmp_path / "site-packages"
+    faster_whisper = site_packages / "faster_whisper"
+    av_package = site_packages / "av"
+    ctranslate2 = site_packages / "ctranslate2"
+    for package in (faster_whisper, av_package, ctranslate2):
+        package.mkdir(parents=True)
+        package.joinpath("__init__.py").write_text("", encoding="utf-8")
+    source_contract = next(
+        contract
+        for contract in optional_deps.optional_dependency_contracts("stt")
+        if contract.kind == "source"
+    )
+    for name, version in optional_deps._expected_package_versions(  # type: ignore[attr-defined]
+        source_contract.packages
+    ).items():
+        metadata = site_packages / f"{name.replace('-', '_')}-{version}.dist-info"
+        metadata.mkdir()
+        metadata.joinpath("METADATA").write_text(
+            f"Name: {name}\nVersion: {version}\n",
+            encoding="utf-8",
+        )
+    monkeypatch.setattr(optional_deps, "_source_environment_paths", lambda: [str(site_packages)])
+
+    broken = optional_deps._source_environment_spec_status("stt")
+
+    assert broken["valid"] is False
+    assert "av.about" in broken["message"]
+
+    av_package.joinpath("about.py").write_text("__version__ = '17.1.0'\n", encoding="utf-8")
+    repaired = optional_deps._source_environment_spec_status("stt")
+
+    assert repaired["valid"] is True
+
+
+def test_broken_source_stt_never_hides_an_installed_managed_layer(monkeypatch):
+    """A stale app install must remain the repair target when source PyAV is incomplete."""
+    from core import optional_deps
+
+    monkeypatch.delattr(optional_deps.sys, "frozen", raising=False)
+    monkeypatch.setattr(
+        optional_deps,
+        "optional_package_spec_status",
+        lambda *_args, **_kwargs: {
+            "display_name": "STT",
+            "installed": True,
+            "valid": False,
+            "message": "STT package versions require repair.",
+        },
+    )
+    monkeypatch.setattr(
+        optional_deps,
+        "_source_environment_spec_status",
+        lambda *_args, **_kwargs: {
+            "display_name": "STT",
+            "source": "environment",
+            "installed": True,
+            "valid": False,
+            "message": "missing import av.about",
+        },
+    )
+
+    status = optional_deps.optional_package_runtime_status("stt")
+
+    assert status["source"] == "managed"
+    assert status["installed"] is True
+    assert status["valid"] is False
+    assert status["environment"]["message"] == "missing import av.about"

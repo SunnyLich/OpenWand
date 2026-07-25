@@ -487,9 +487,15 @@
       <translation>环境</translation>
     </message>
     <message>
-      <source>Any OpenAI-compatible endpoint, including Ollama and LM Studio. Select Custom in a model row below after setting the base URL.</source>
-      <translation>任何兼容 OpenAI 的端点，包括 Ollama 和 LM Studio。设置基础 URL 后，在下方模型行中选择自定义。</translation>
+      <source>Any other OpenAI-compatible endpoint, including LM Studio. Select Custom in a model row below after setting the base URL.</source>
+      <translation>任何兼容 OpenAI 的其他端点，包括 LM Studio。设置基础 URL 后，在下方模型行中选择自定义。</translation>
     </message>
+    <message><source>Using Ollama?</source><translation>使用 Ollama？</translation></message>
+    <message><source>Choose Ollama directly in the Provider menu. Wisp connects to the local Ollama app and loads your installed models automatically—no API key or model name to enter.</source><translation>在“提供商”菜单中直接选择 Ollama。Wisp 会连接到本地 Ollama 应用并自动加载已安装的模型，无需输入 API 密钥或模型名称。</translation></message>
+    <message><source>Finding installed Ollama models…</source><translation>正在查找已安装的 Ollama 模型…</translation></message>
+    <message><source>Fetching model names…</source><translation>正在获取模型名称…</translation></message>
+    <message><source>Couldn't reach Ollama. Start Ollama, then try again. ({error})</source><translation>无法连接到 Ollama。请启动 Ollama，然后重试。（{error}）</translation></message>
+    <message><source>Save changes to make {profile} the active profile.</source><translation>保存更改以将 {profile} 设为活动配置文件。</translation></message>
     <message>
       <source>App</source>
       <translation>程序</translation>
@@ -5340,7 +5346,7 @@ Continue?</source>
     </message>
     <message>
       <source>Install or repair faster-whisper, then download and load the speech model so the first hold-to-talk does not stall. The first download needs an internet connection.</source>
-      <translation>Install or repair faster-whisper, then download and load the speech model so the first hold-to-talk does not stall. The first download needs an internet connection.</translation>
+      <translation>安装或修复 faster-whisper，然后下载并加载语音模型，以免首次按住说话时出现卡顿。首次下载需要互联网连接。</translation>
     </message>
     <message>
       <source>Wisp will install or repair local speech-to-text support in its user-writable optional packages folder.
@@ -5355,18 +5361,18 @@ Beam size: {beam_size}
 The installer will then load the selected Whisper model in a separate process. The first model download needs internet access and may take a while.
 
 Continue?</source>
-      <translation>Wisp will install or repair local speech-to-text support in its user-writable optional packages folder.
+      <translation>Wisp 将在用户可写的可选软件包文件夹中安装或修复本地语音转文字支持。
 
-Package: {package}
-Model: {model}
-Device: {device}
-Compute type: {compute_type}
-Speech language: {language}
-Beam size: {beam_size}
+软件包：{package}
+模型：{model}
+设备：{device}
+计算类型：{compute_type}
+语音语言：{language}
+束搜索大小：{beam_size}
 
-The installer will then load the selected Whisper model in a separate process. The first model download needs internet access and may take a while.
+安装程序随后将在单独的进程中加载所选 Whisper 模型。首次下载模型需要互联网连接，可能需要一些时间。
 
-Continue?</translation>
+是否继续？</translation>
     </message>
     <message>
       <source>
@@ -5378,7 +5384,7 @@ Auto/GPU support also downloads NVIDIA CUDA runtime and cuBLAS packages (approxi
     </message>
     <message>
       <source>preparing local assets for {elapsed}</source>
-      <translation>preparing local assets for {elapsed}</translation>
+      <translation>正在准备本地资源（已用时 {elapsed}）</translation>
     </message>
     <message>
       <source>downloading or loading Whisper model for {elapsed}</source>
@@ -5399,20 +5405,20 @@ Before installing, Wisp will remove any previous STT package files from its opti
 The installer will then load the selected Whisper model in a separate process. The first model download needs internet access and may take a while.
 
 Continue?</source>
-      <translation>Wisp will install or repair local speech-to-text support in its user-writable optional packages folder.
+      <translation>Wisp 将在用户可写的可选软件包文件夹中安装或修复本地语音转文字支持。
 
-Package: {package}
-Model: {model}
-Device: {device}
-Compute type: {compute_type}
-Speech language: {language}
-Beam size: {beam_size}
+软件包：{package}
+模型：{model}
+设备：{device}
+计算类型：{compute_type}
+语音语言：{language}
+束搜索大小：{beam_size}
 
-Before installing, Wisp will remove any previous STT package files from its optional packages folder so a broken build cannot be reused.
+安装前，Wisp 将从可选软件包文件夹中删除之前的 STT 软件包文件，以免重复使用损坏的版本。
 
-The installer will then load the selected Whisper model in a separate process. The first model download needs internet access and may take a while.
+安装程序随后将在单独的进程中加载所选 Whisper 模型。首次下载模型需要互联网连接，可能需要一些时间。
 
-Continue?</translation>
+是否继续？</translation>
     </message>
     <message>
       <source>removing previous install</source>
@@ -5761,6 +5767,10 @@ Shared uv/pip caches and unrelated Hugging Face models will not be removed.</sou
     <message><source>Profile</source><translation>配置文件</translation></message>
     <message><source>Profile settings could not be saved: {error}</source><translation>无法保存配置文件设置：{error}</translation></message>
     <message><source>Rename conversation failed</source><translation>重命名对话失败</translation></message>
+    <message><source>Search conversations</source><translation>搜索对话</translation></message>
+    <message><source>Search conversations...</source><translation>搜索对话...</translation></message>
+    <message><source>Search titles, projects, and messages (Ctrl+K)</source><translation>搜索标题、项目和消息 (Ctrl+K)</translation></message>
+    <message><source>No matching conversations.</source><translation>没有匹配的对话。</translation></message>
     <message><source>Rename profile failed</source><translation>重命名配置文件失败</translation></message>
     <message><source>Settings cannot close while {child} is active.</source><translation>{child} 处于活动状态时无法关闭设置。</translation></message>
     <message><source>That fact is invalid or duplicates an existing fact.</source><translation>该事实无效或与现有事实重复。</translation></message>
@@ -5770,5 +5780,62 @@ Shared uv/pip caches and unrelated Hugging Face models will not be removed.</sou
     <message><source>an installer</source><translation>安装程序</translation></message>
     <message><source>the profile setup wizard</source><translation>配置文件设置向导</translation></message>
     <message><source>usage credits required</source><translation>需要使用额度</translation></message>
+    <message><source>Copy current app context</source><translation>复制当前应用上下文</translation></message>
+    <message><source>Append readable text and window details from the application behind Wisp.</source><translation>附加 Wisp 后方应用中的可读文本和窗口详细信息。</translation></message>
+    <message><source>minutes</source><translation>分钟</translation></message>
+    <message><source>Local voice — Kokoro (installer opens after setup)</source><translation>本地语音 — Kokoro（设置完成后打开安装程序）</translation></message>
+    <message><source>Local speech recognition — Whisper (installer opens after setup)</source><translation>本地语音识别 — Whisper（设置完成后打开安装程序）</translation></message>
+    <message><source>Provider connections</source><translation>提供商连接</translation></message>
+    <message><source>Stored in OS keychain (blank if not needed)</source><translation>已存储在操作系统密钥链中（如不需要请留空）</translation></message>
+    <message><source>{label} key stored in OS keychain</source><translation>{label} 密钥已存储在操作系统密钥链中</translation></message>
+    <message><source>Couldn't fetch — showing built-ins ({error})</source><translation>无法获取模型 — 正在显示内置模型（{error}）</translation></message>
+    <message><source>Provider returned no models — showing built-ins</source><translation>提供商未返回任何模型 — 正在显示内置模型</translation></message>
+    <message><source>Live: {count} models</source><translation>实时：{count} 个模型</translation></message>
+    <message><source>{prefix} provider {index}</source><translation>{prefix} 提供商 {index}</translation></message>
+    <message><source>{prefix} model {index}</source><translation>{prefix} 模型 {index}</translation></message>
+    <message><source>Undo</source><translation>撤销</translation></message>
+    <message><source>Replacement pasted.</source><translation>替换内容已粘贴。</translation></message>
+    <message><source>Last Wisp edit undone.</source><translation>已撤销 Wisp 上一次编辑。</translation></message>
+    <message><source>There is no recent Wisp edit to undo.</source><translation>没有可撤销的近期 Wisp 编辑。</translation></message>
+    <message><source>The undo window expired. Original text copied to clipboard.</source><translation>撤销时限已过。原始文本已复制到剪贴板。</translation></message>
+    <message><source>The undo window expired and the original text could not be copied.</source><translation>撤销时限已过，且无法复制原始文本。</translation></message>
+    <message><source>Couldn't safely undo in the app. Original text copied to clipboard.</source><translation>无法在应用中安全撤销。原始文本已复制到剪贴板。</translation></message>
+    <message><source>Couldn't undo the last Wisp edit or copy the original text.</source><translation>无法撤销 Wisp 上一次编辑或复制原始文本。</translation></message>
+    <message><source>Delegate</source><translation>委派</translation></message>
+    <message><source>Turn this prompt into a background agent task</source><translation>将此提示转换为后台代理任务</translation></message>
+    <message><source>Delegate to background agents</source><translation>委派给后台代理</translation></message>
+    <message><source>Create a scoped background task with collaborating agents. You can close the activity window and keep using Wisp while they work. The selected folder is their filesystem boundary.</source><translation>创建一个由多个代理协作的限定范围后台任务。代理工作时，你可以关闭活动窗口并继续使用 Wisp。所选文件夹是它们的文件系统边界。</translation></message>
+    <message><source>New background agent task...</source><translation>新建后台代理任务...</translation></message>
+    <message><source>Background agent activity...</source><translation>后台代理活动...</translation></message>
+    <message><source>Agent Team</source><translation>代理团队</translation></message>
+    <message><source>Start Agent Team...</source><translation>启动代理团队...</translation></message>
+    <message><source>Agent Team Activity...</source><translation>代理团队活动...</translation></message>
+    <message><source>Start Agent Team</source><translation>启动代理团队</translation></message>
+    <message><source>Create a scoped Agent Team that keeps working in the background. You can close the activity window and keep using Wisp while the team works. The selected folder is its filesystem boundary.</source><translation>创建一个限定范围并在后台持续工作的代理团队。团队工作时，你可以关闭活动窗口并继续使用 Wisp。所选文件夹是其文件系统边界。</translation></message>
+    <message><source>Invalid Agent Team</source><translation>无效的代理团队</translation></message>
+    <message><source>Agent Team Spec</source><translation>代理团队规格</translation></message>
+    <message><source>Agent Team Running</source><translation>代理团队运行中</translation></message>
+    <message><source>Agent Team Finished</source><translation>代理团队已完成</translation></message>
+    <message><source>Agent Team Failed</source><translation>代理团队失败</translation></message>
+    <message><source>Agent Team Cancelled</source><translation>代理团队已取消</translation></message>
+    <message><source>Agent Team cancelled.</source><translation>代理团队已取消。</translation></message>
+    <message><source>Agent Team History</source><translation>代理团队历史</translation></message>
+    <message><source>No Agent Team runs yet.</source><translation>暂无代理团队运行记录。</translation></message>
+    <message><source>Turn this prompt into an Agent Team task</source><translation>将此提示转换为代理团队任务</translation></message>
+    <message><source>Delegate to Agent Team</source><translation>委派给代理团队</translation></message>
+    <message><source>Agent Team spec was empty.</source><translation>代理团队规格为空。</translation></message>
+    <message><source>No Agent Team is running.</source><translation>没有正在运行的代理团队。</translation></message>
+    <message><source>Agent Team cancellation requested.</source><translation>已请求取消代理团队。</translation></message>
+    <message><source>Agent Team was not running.</source><translation>代理团队并未运行。</translation></message>
+    <message><source>Could not load that Agent Team spec.</source><translation>无法加载该代理团队规格。</translation></message>
+    <message><source>Agent Team was cancelled by the user.</source><translation>代理团队已被用户取消。</translation></message>
+    <message><source>Background task finished</source><translation>后台任务已完成</translation></message>
+    <message><source>Background task failed</source><translation>后台任务失败</translation></message>
+    <message><source>The background task finished without a report.</source><translation>后台任务已完成，但没有生成报告。</translation></message>
+    <message><source>Run details</source><translation>运行详情</translation></message>
+    <message><source>Wisp pasted the rewrite</source><translation>Wisp 已粘贴重写文本</translation></message>
+    <message><source>The text was replaced, but Wisp couldn't restore your previous clipboard.</source><translation>文本已替换，但 Wisp 无法恢复你之前的剪贴板内容。</translation></message>
+    <message><source>ElevenLabs is downloaded only when you install it, keeping release downloads smaller. Source checkouts may use the SDK from their Python environment.</source><translation>ElevenLabs 仅在你安装时下载，以减小发布版下载体积。源码签出可使用其 Python 环境中的 SDK。</translation></message>
+    <message><source>Packages are downloaded and staged. Restart Wisp to apply and verify them.</source><translation>软件包已下载并暂存。重启 Wisp 以应用并验证它们。</translation></message>
   </context>
 </TS>

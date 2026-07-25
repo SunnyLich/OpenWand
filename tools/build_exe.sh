@@ -342,9 +342,9 @@ if ! $SKIP_INSTALL; then
     if confirm "Install/update Python packages in $PYTHON before building?"; then
         mkdir -p "$ROOT/build"
         BUILD_RUNTIME_REQUIREMENTS="$ROOT/build/wisp-runtime-build-requirements.txt"
-        grep -Ev '^[[:space:]]*(av|ctranslate2|faster-whisper|flatbuffers|onnxruntime)[[:space:]]*==' \
+        grep -Ev '^[[:space:]]*(av|ctranslate2|elevenlabs|faster-whisper|flatbuffers|onnxruntime)[[:space:]]*==' \
             "$REQUIREMENTS_FILE" > "$BUILD_RUNTIME_REQUIREMENTS"
-        echo "STT native packages are installer-owned and will not be installed into the build environment."
+        echo "Optional speech SDKs are installer-owned and will not be installed into the build environment."
         ensure_pip "$PYTHON"
         "$PYTHON" -m pip install --upgrade pip
         "$PYTHON" -m pip install -r "$BUILD_RUNTIME_REQUIREMENTS" -r "$BUILD_REQUIREMENTS_FILE"

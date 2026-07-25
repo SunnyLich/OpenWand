@@ -216,6 +216,8 @@ def test_optional_install_dialog_offers_restart_for_staged_packages(tmp_path: Pa
         assert not dialog._restart_btn.isHidden()
         assert dialog._restart_btn.text() == "Restart app now"
         assert dialog._restart_btn.isDefault()
+        assert "downloaded and staged" in dialog._status.text()
+        assert "completed successfully" not in dialog._status.text()
     finally:
         dialog.close()
         dialog.deleteLater()

@@ -365,6 +365,11 @@ def test_tts_voice_tab_does_not_import_stt_stack(monkeypatch):
         tab = SettingsDialog._tab_tts(dialog)
 
         assert "core.stt" not in sys.modules
+        # Resolving the backend scans installed distributions, so the tab defers it
+        # off the construction path to keep the window painting; run it directly.
+        SettingsDialog._refresh_stt_active_backend(dialog)
+
+        assert "core.stt" not in sys.modules
         assert "tiny · auto / int8" in dialog._stt_active_lbl.text()
     finally:
         if tab is not None:
@@ -427,7 +432,10 @@ def test_settings_voice_tab_starts_deferred_tts_status_check(monkeypatch):
         assert calls == []
         dialog._tabs.setCurrentIndex(dialog._tts_tab_index)
         app.processEvents()
-        assert calls == ["refresh"]
+        # Count is not pinned: selecting the page can also finish the deferred
+        # page build, which reloads values. The real method dedupes via
+        # _tts_install_status_checked, so only the first call does any work.
+        assert calls and set(calls) == {"refresh"}
     finally:
         dialog.deleteLater()
         app.processEvents()
@@ -2663,6 +2671,67 @@ def test_elevenlabs_installed_status_offers_reinstall():
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_elevenlabs_installed_files_with_broken_runtime_offer_repair():
+    """Settings must not show green when the pinned SDK fails to import."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+
+    from ui.settings_panel.dialog import SettingsDialog
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    dialog = SettingsDialog.__new__(SettingsDialog)
+    dialog._elevenlabs_install_btn = QPushButton()
+    dialog._elevenlabs_install_status_lbl = QLabel()
+    try:
+        SettingsDialog._apply_elevenlabs_install_status(
+            dialog,
+            False,
+            runtime_status={"installed": True, "valid": False, "error": "ImportError: broken dependency"},
+        )
+
+        assert dialog._elevenlabs_install_btn.text() == "Reinstall ElevenLabs"
+        assert "SDK cannot load" in dialog._elevenlabs_install_status_lbl.text()
+        assert "broken dependency" in dialog._elevenlabs_install_status_lbl.text()
+    finally:
+        dialog._elevenlabs_install_btn.deleteLater()
+        dialog._elevenlabs_install_status_lbl.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_stt_installed_files_with_broken_runtime_offer_repair():
+    """The Voice page distinguishes STT package presence from runtime usability."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+
+    from ui.settings_panel.dialog import SettingsDialog
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    dialog = SettingsDialog.__new__(SettingsDialog)
+    dialog._stt_download_btn = QPushButton()
+    dialog._stt_install_status_lbl = QLabel()
+    try:
+        SettingsDialog._apply_stt_runtime_status(
+            dialog,
+            {
+                "stt_package_installed": True,
+                "stt_runtime_status": {"installed": True, "valid": False, "error": "ImportError: ctranslate2 DLL"},
+                "stt_model": "base",
+                "stt_device": "cpu",
+                "stt_compute": "int8",
+            },
+        )
+
+        assert dialog._stt_download_btn.text() == "Reinstall STT"
+        assert "faster-whisper cannot load" in dialog._stt_install_status_lbl.text()
+        assert "ctranslate2" in dialog._stt_install_status_lbl.text()
+    finally:
+        dialog._stt_download_btn.deleteLater()
+        dialog._stt_install_status_lbl.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_elevenlabs_status_preserves_staged_apply_retry():
     """ElevenLabs should show the same restart-apply state as other optional packages."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -2726,7 +2795,7 @@ def test_elevenlabs_reinstall_click_passes_reinstall(monkeypatch):
     try:
         SettingsDialog._install_elevenlabs(dialog)
 
-        assert captured["packages"] == [optional_deps.ELEVENLABS_PACKAGE]
+        assert captured["packages"] == optional_deps.ELEVENLABS_INSTALL_PACKAGES
         assert captured["reinstall"] is True
         assert captured["external_plan_extra"]["settings_updates"]["TTS_PROVIDER"] == "elevenlabs"
         assert provider.currentText() == "elevenlabs"
@@ -3065,6 +3134,9 @@ def test_app_settings_surface_translates_to_traditional_chinese():
     old_language = getattr(config, "APP_LANGUAGE", "")
     config.APP_LANGUAGE = "zh-Hant"
     dialog = SettingsDialog()
+    # Pages after the first are built on the dialog's first paint; this test
+    # inspects them directly, so materialize them up front.
+    dialog._build_deferred_pages()
 
     try:
         visible_texts = {
@@ -3153,6 +3225,7 @@ def test_elaborate_prompt_field_follows_auto_elaborate_checkbox():
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
+    dialog._build_deferred_pages()
 
     try:
         checkbox = dialog._fields["CHAT_AUTO_ELABORATE"]
@@ -3831,6 +3904,9 @@ def test_connections_page_filters_and_paginates_large_provider_lists():
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
+    # Pages after the first are built on the dialog's first paint; this test
+    # inspects them directly, so materialize them up front.
+    dialog._build_deferred_pages()
     try:
         for row in list(dialog._api_key_rows):
             dialog._remove_api_key_row(row)
@@ -3857,7 +3933,7 @@ def test_connections_page_filters_and_paginates_large_provider_lists():
             row["provider"].currentData()
             for row in rows
             if not row["widget"].isHidden()
-        } == {"ollama", "custom"}
+        } == {"custom"}
     finally:
         dialog.deleteLater()
         app.processEvents()
@@ -3875,13 +3951,16 @@ def test_connection_filter_and_expand_are_provider_failure_independent(monkeypat
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
+    # Pages after the first are built on the dialog's first paint; this test
+    # inspects them directly, so materialize them up front.
+    dialog._build_deferred_pages()
     try:
         for row in list(dialog._api_key_rows):
             dialog._remove_api_key_row(row)
         rows = [
             dialog._add_api_key_row(provider, alias=f"connection-{index}")
             for index, provider in enumerate(
-                ("openai", "anthropic", "google", "groq", "mistral", "xai", "ollama", "custom")
+                ("openai", "anthropic", "google", "groq", "mistral", "xai", "custom")
             )
         ]
 
@@ -3916,7 +3995,7 @@ def test_connection_filter_and_expand_are_provider_failure_independent(monkeypat
             row["provider"].currentData()
             for row in rows
             if not row["widget"].isHidden()
-        } == {"ollama", "custom"}
+        } == {"custom"}
     finally:
         dialog.deleteLater()
         app.processEvents()
@@ -3934,6 +4013,9 @@ def test_connection_configuration_failure_matrix_is_controlled(monkeypatch):
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
+    # Pages after the first are built on the dialog's first paint; this test
+    # inspects them directly, so materialize them up front.
+    dialog._build_deferred_pages()
     warnings: list[str] = []
     monkeypatch.setattr(QMessageBox, "warning", lambda _p, _t, message: warnings.append(message))
     try:
@@ -4014,6 +4096,63 @@ def test_unconfigured_model_provider_has_no_obsolete_api_key_below_hint():
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_ollama_is_direct_model_route_and_fetches_installed_models_automatically():
+    """Ollama needs neither a fake credential row nor a manually typed model id."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ui.settings_panel.dialog import _CONNECTION_PROVIDER_IDS, SettingsDialog
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    dialog = SettingsDialog()
+    try:
+        for connection in list(dialog._api_key_rows):
+            dialog._remove_api_key_row(connection)
+        dialog._refresh_model_api_key_combos()
+
+        row = dialog._model_section_rows["LLM"][0]
+        provider_combo = row["api_key_combo"]
+        assert provider_combo.findData("ollama") >= 0
+        assert "ollama" not in _CONNECTION_PROVIDER_IDS
+        assert all(
+            name != "Ollama (local)"
+            for name, _url, _model, _key in dialog._CUSTOM_ENDPOINTS
+        )
+
+        fetches = []
+        dialog._refresh_models_for_row = (
+            lambda fetched_row, *, automatic=False: fetches.append((fetched_row, automatic))
+        )
+        non_ollama_index = next(
+            index
+            for index in range(provider_combo.count())
+            if provider_combo.itemData(index) not in {"", "ollama"}
+        )
+        provider_combo.setCurrentIndex(non_ollama_index)
+        provider_combo.setCurrentIndex(provider_combo.findData("ollama"))
+
+        assert fetches[-1] == (row, True)
+
+        row["_fetch_token"] = 17
+        dialog._on_models_fetched(
+            row,
+            ["gemma3:latest", "qwen3:8b"],
+            "",
+            provider="ollama",
+            fetch_token=17,
+        )
+        model_ids = {
+            row["model_combo"].itemData(index)
+            for index in range(row["model_combo"].count())
+        }
+        assert {"gemma3:latest", "qwen3:8b"} <= model_ids
+        assert row["refresh_btn"].toolTip() == "Live: 2 models"
+    finally:
+        dialog.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_model_and_voice_workspaces_show_one_scalable_section_at_a_time():
     """Purpose and speech selectors keep large option groups mutually exclusive."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -4051,6 +4190,9 @@ def test_model_routes_add_inline_and_drag_to_reorder():
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
+    # Pages after the first are built on the dialog's first paint; this test
+    # inspects them directly, so materialize them up front.
+    dialog._build_deferred_pages()
     try:
         rows = dialog._model_section_rows["LLM"]
         original_count = len(rows)
@@ -4286,6 +4428,9 @@ def test_llm_tab_groups_credentials_and_models_under_full_height_rails():
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
+    # Pages after the first are built on the dialog's first paint; this test
+    # inspects them directly, so materialize them up front.
+    dialog._build_deferred_pages()
 
     try:
         groups = [
@@ -4352,6 +4497,9 @@ def test_tts_provider_timing_notice_only_for_providers_without_word_timestamps()
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
+    # Pages after the first are built on the dialog's first paint; this test
+    # inspects them directly, so materialize them up front.
+    dialog._build_deferred_pages()
 
     try:
         notice = dialog.findChild(QLabel, "ttsTimingNotice")
@@ -4375,38 +4523,61 @@ def test_tts_provider_timing_notice_only_for_providers_without_word_timestamps()
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
-def test_warning_markers_refresh_from_loaded_settings():
+def test_warning_markers_refresh_from_loaded_settings(monkeypatch, tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
+    from core import settings_profiles
+    from core.system.env_utils import read_env_file, write_env_file
+    from ui.settings_panel import dialog as dialog_mod
     from ui.settings_panel.dialog import SettingsDialog
+
+    env_path = tmp_path / ".env"
+    profile_values = {
+        "LLM_PROVIDER": "chatgpt",
+        "LLM_MODEL": "gpt-5.5",
+        "VISION_LLM_PROVIDER": "anthropic",
+        "VISION_LLM_MODEL": "claude-sonnet-4-5",
+        "CALLER_COUNT": "1",
+        "CALLER_1_CONTEXT_BROWSER_MODE": "model",
+        "CALLER_1_CONTEXT_DOCUMENTS_MODE": "off",
+        "CALLER_1_CONTEXT_GITHUB_MODE": "off",
+        "CALLER_1_CONTEXT_MEMORY_MODE": "off",
+        "CALLER_1_CONTEXT_SCREENSHOT": "off",
+        "VOICE_CONTEXT_BROWSER_MODE": "off",
+        "VOICE_CONTEXT_DOCUMENTS_MODE": "off",
+        "VOICE_CONTEXT_GITHUB_MODE": "off",
+        "VOICE_CONTEXT_MEMORY_MODE": "off",
+        "VOICE_CONTEXT_SCREENSHOT": "off",
+    }
+    write_env_file(
+        env_path,
+        {
+            "PROFILE_COUNT": "1",
+            "PROFILE_1_ID": "warning-profile",
+            "PROFILE_1_LABEL": "Warning profile",
+        },
+    )
+    settings_profiles.save_profile(
+        env_path,
+        "warning-profile",
+        "Warning profile",
+        profile_values,
+    )
+    writes, removals = settings_profiles.activation_write_plan(
+        read_env_file(env_path),
+        "warning-profile",
+        profile_values,
+    )
+    write_env_file(env_path, writes, remove_keys=removals)
+    monkeypatch.setattr(dialog_mod, "ENV_PATH", env_path)
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
+    dialog._build_deferred_pages()
 
     try:
-        dialog._env.update(
-            {
-                "LLM_PROVIDER": "chatgpt",
-                "LLM_MODEL": "gpt-5.5",
-                "VISION_LLM_PROVIDER": "anthropic",
-                "VISION_LLM_MODEL": "claude-sonnet-4-5",
-                "CALLER_COUNT": "1",
-                "CALLER_1_CONTEXT_BROWSER_MODE": "model",
-                "CALLER_1_CONTEXT_DOCUMENTS_MODE": "off",
-                "CALLER_1_CONTEXT_GITHUB_MODE": "off",
-                "CALLER_1_CONTEXT_MEMORY_MODE": "off",
-                "CALLER_1_CONTEXT_SCREENSHOT": "off",
-                "VOICE_CONTEXT_BROWSER_MODE": "off",
-                "VOICE_CONTEXT_DOCUMENTS_MODE": "off",
-                "VOICE_CONTEXT_GITHUB_MODE": "off",
-                "VOICE_CONTEXT_MEMORY_MODE": "off",
-                "VOICE_CONTEXT_SCREENSHOT": "off",
-            }
-        )
-
-        dialog._load_values()
-
+        assert dialog._selected_profile_id() == "warning-profile"
         assert dialog._warning_headers["Provider credentials"].text().startswith("\u26a0 ")
         assert dialog._warning_headers["LLM"].text().startswith("\u26a0 ")
         assert dialog._warning_headers["Global shortcuts"].text().startswith("\u26a0 ")
@@ -4545,7 +4716,7 @@ def test_settings_has_reset_page_button():
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_settings_search_filters_to_matching_page():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication, QLineEdit
+    from PySide6.QtWidgets import QApplication, QLabel, QLineEdit
 
     from ui.settings_panel.dialog import SettingsDialog
 
@@ -4567,8 +4738,47 @@ def test_settings_search_filters_to_matching_page():
         }
         assert visible_pages == {"Advanced"}
 
+        allowed_roots = dialog._fields["TOOL_FILE_ROOTS"]
+        blocked_globs = dialog._fields["TOOL_FILE_BLOCKED_GLOBS"]
+        allowed_label = allowed_roots.parentWidget().layout().labelForField(allowed_roots)
+        local_file_card = allowed_roots.parentWidget().parentWidget()
+        context_card = dialog._fields["CONTEXT_BROWSER_MAX_CHARS"].parentWidget().parentWidget()
+        assert local_file_card.objectName() == "card"
+        assert not local_file_card.isHidden()
+        assert context_card.isHidden()
+        assert not allowed_roots.isHidden()
+        assert not allowed_label.isHidden()
+        assert blocked_globs.isHidden()
+        assert any(
+            label.objectName() == "sectionHeader"
+            and label.text() == "MODEL FILE ACCESS"
+            and not label.isHidden()
+            for label in local_file_card.findChildren(QLabel)
+        )
+
+        search.setText("Model file access")
+        app.processEvents()
+        assert not allowed_roots.isHidden()
+        assert not blocked_globs.isHidden()
+
+        search.setText("Private file patterns")
+        app.processEvents()
+        assert allowed_roots.isHidden()
+        assert not blocked_globs.isHidden()
+
+        search.setText("Advanced")
+        app.processEvents()
+        assert not context_card.isHidden()
+        assert not allowed_roots.isHidden()
+        assert not blocked_globs.isHidden()
+
+        blocked_globs.hide()
+        search.setText("tool_file_roots")
+        app.processEvents()
         search.clear()
         app.processEvents()
+        assert blocked_globs.isHidden()
+        blocked_globs.show()
         assert all(tabs.isTabVisible(i) for i in range(tabs.count()))
     finally:
         dialog.deleteLater()
@@ -4668,13 +4878,21 @@ def test_settings_apply_clears_dirty_before_showing_save_warning(monkeypatch):
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
-def test_settings_do_save_localizes_qtextedit_prompt_fields(monkeypatch):
+def test_settings_do_save_localizes_qtextedit_prompt_fields(tmp_path, monkeypatch):
     """The real save path should localize WASD prompt QTextEdits without crashing."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QTextEdit
 
+    from core.system import autostart
     from ui.settings_panel import dialog as settings_dialog
+    from ui.settings_panel import env as settings_env
     from ui.settings_panel.dialog import SettingsDialog, _get, _set
+
+    env_path = tmp_path / ".env"
+    env_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(settings_dialog, "ENV_PATH", env_path)
+    monkeypatch.setattr(settings_env, "ENV_PATH", env_path)
+    monkeypatch.setattr(autostart, "sync_start_on_login", lambda _enabled: None)
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
@@ -4845,7 +5063,7 @@ def test_intent_shortcut_mutation_failure_matrix_is_controlled(monkeypatch):
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
-def test_settings_apply_real_save_clears_dirty_after_language_change(monkeypatch):
+def test_settings_apply_real_save_clears_dirty_after_language_change(tmp_path, monkeypatch):
     """Changing Assistant language should save, localize prompts, and clear dirty state."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QPushButton
@@ -4853,9 +5071,17 @@ def test_settings_apply_real_save_clears_dirty_after_language_change(monkeypatch
     import config
     from core import tts
     from core.llm_clients import client as llm_client
+    from core.system import autostart
     from ui.settings_panel import dialog as settings_dialog
+    from ui.settings_panel import env as settings_env
     from ui.settings_panel.dialog import SettingsDialog, _set
     from ui.shared import theme
+
+    env_path = tmp_path / ".env"
+    env_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(settings_dialog, "ENV_PATH", env_path)
+    monkeypatch.setattr(settings_env, "ENV_PATH", env_path)
+    monkeypatch.setattr(autostart, "sync_start_on_login", lambda _enabled: None)
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
@@ -4944,6 +5170,9 @@ def test_settings_preset_marks_reviewable_changes_without_saving(isolated_defaul
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
+    # Pages after the first are built on the dialog's first paint; this test
+    # inspects them directly, so materialize them up front.
+    dialog._build_deferred_pages()
 
     try:
         apply_btn = dialog.findChild(QPushButton, "settingsApplyButton")
@@ -4961,8 +5190,9 @@ def test_settings_preset_marks_reviewable_changes_without_saving(isolated_defaul
         assert apply_btn.isEnabled()
         assert _get(dialog._fields["STT_MODEL"]) == "base"
         assert _get(dialog._fields["CONTEXT_BROWSER_MAX_CHARS"]) == "3000"
-        assert dialog._active_preset_slug == "low_setup"
-        assert {"App", "LLM"} <= dialog._tab_dirty_names
+        assert dialog._active_preset_slug == ""
+        assert dialog._pending_active_profile == "low_setup"
+        assert "LLM" in dialog._tab_dirty_names
         assert dialog._tab_dirty_names <= {
             "App",
             "LLM",
@@ -4993,7 +5223,8 @@ def test_low_setup_preset_uses_chatgpt_oauth_routes():
         dialog._apply_preset("Low setup")
         app.processEvents()
 
-        assert dialog._active_preset_slug == "low_setup"
+        assert dialog._active_preset_slug == ""
+        assert dialog._pending_active_profile == "low_setup"
         for section in ("LLM", "VISION_LLM", "MEMORY_LLM"):
             rows = dialog._model_section_rows[section]
             assert len(rows) == 1
@@ -5073,7 +5304,7 @@ def test_builtin_profile_selection_updates_label_and_replaces_custom_runtime_pro
         app.processEvents()
 
         assert profile_btn.text() == "Low setup"
-        assert dialog._pending_active_profile == "default"
+        assert dialog._pending_active_profile == "low_setup"
         assert dialog._apply_btn.isEnabled()
 
         monkeypatch.setattr(dialog, "_save_api_keys_to_keychain", lambda: True)
@@ -5082,9 +5313,55 @@ def test_builtin_profile_selection_updates_label_and_replaces_custom_runtime_pro
         assert dialog._do_save() is True
 
         saved = settings_env.read_settings_env()
-        assert saved["ACTIVE_PROFILE"] == "default"
-        assert saved["SETTINGS_PROFILE"] == "default"
-        assert saved["WISP_SETTINGS_PRESET"] == "low_setup"
+        assert saved["ACTIVE_PROFILE"] == "low_setup"
+        assert saved["SETTINGS_PROFILE"] == "low_setup"
+        assert "WISP_SETTINGS_PRESET" not in saved
+    finally:
+        dialog.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_legacy_low_setup_is_staged_as_a_saveable_profile_without_detected_status(tmp_path, monkeypatch):
+    """The old preset marker becomes a normal pending profile migration."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    import ui.settings_panel.dialog as settings_dialog
+    from ui.settings_panel import env as settings_env
+
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "\n".join([
+            "WISP_SETTINGS_PRESET=low_setup",
+            "ACTIVE_PROFILE=default",
+            "SETTINGS_PROFILE=default",
+            "LLM_PROVIDER=chatgpt",
+            "LLM_MODEL=gpt-5.5",
+            "VISION_LLM_PROVIDER=chatgpt",
+            "VISION_LLM_MODEL=gpt-5.5",
+            "MEMORY_LLM_PROVIDER=chatgpt",
+            "MEMORY_LLM_MODEL=gpt-5.5",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(settings_dialog, "ENV_PATH", env_path)
+    monkeypatch.setattr(settings_env, "ENV_PATH", env_path)
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    dialog = settings_dialog.SettingsDialog()
+    # Pages after the first are built on the dialog's first paint; this test
+    # inspects them directly, so materialize them up front.
+    dialog._build_deferred_pages()
+    try:
+        app.processEvents()
+        assert dialog._profiles_btn.text() == "Low setup"
+        assert dialog._pending_active_profile == "low_setup"
+        assert dialog._active_preset_slug == ""
+        assert dialog._apply_btn.isEnabled()
+        assert "detected" not in dialog._status_lbl.text().casefold()
+        assert "selected" not in dialog._status_lbl.text().casefold()
     finally:
         dialog.deleteLater()
         app.processEvents()
@@ -5121,6 +5398,9 @@ def test_custom_profile_selection_clears_builtin_profile_marker(tmp_path, monkey
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = settings_dialog.SettingsDialog()
+    # Pages after the first are built on the dialog's first paint; this test
+    # inspects them directly, so materialize them up front.
+    dialog._build_deferred_pages()
     try:
         profile_btn = dialog.findChild(QPushButton, "settingsProfilesButton")
         assert profile_btn is not None
@@ -5147,7 +5427,7 @@ def test_custom_profile_selection_clears_builtin_profile_marker(tmp_path, monkey
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
-def test_settings_active_preset_persists_user_edits_as_preset_overrides():
+def test_low_setup_profile_does_not_create_a_second_preset_override_layer():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
@@ -5164,8 +5444,8 @@ def test_settings_active_preset_persists_user_edits_as_preset_overrides():
 
         persisted = dialog._preset_values_to_persist(vals)
 
-        assert persisted["WISP_SETTINGS_PRESET"] == "low_setup"
-        assert persisted["WISP_PRESET_LOW_SETUP_MEMORY_TOP_K"] == _set_value
+        assert persisted == {}
+        assert dialog._selected_profile_id() == "low_setup"
     finally:
         dialog.deleteLater()
         app.processEvents()
@@ -5289,6 +5569,9 @@ def test_settings_active_profile_controls_displayed_and_saved_model(tmp_path, mo
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = settings_dialog.SettingsDialog()
+    # Pages after the first are built on the dialog's first paint; this test
+    # inspects them directly, so materialize them up front.
+    dialog._build_deferred_pages()
     try:
         profile_btn = dialog.findChild(QPushButton, "settingsProfilesButton")
         llm_row = dialog._model_section_rows["LLM"][0]
@@ -5411,6 +5694,9 @@ def test_reset_all_settings_failure_matrix_stays_controlled(tmp_path, monkeypatc
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = settings_dialog.SettingsDialog()
+    # Pages after the first are built on the dialog's first paint; this test
+    # inspects them directly, so materialize them up front.
+    dialog._build_deferred_pages()
     try:
         dialog._reset_stt_model_in_background = lambda: None
         dialog._apply_dialog_theme = lambda: None
@@ -6183,13 +6469,17 @@ def test_settings_shortcuts_are_categorized_with_two_bindings_and_inline_details
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
+    # Pages after the first are built on the dialog's first paint; this test
+    # inspects them directly, so materialize them up front.
+    dialog._build_deferred_pages()
 
     try:
         dialog._tabs.setCurrentIndex(dialog._tab_base_names.index("Keybinds"))
         dialog.resize(760, 736)
         dialog.show()
         app.processEvents()
-        assert dialog._tabs.currentWidget().horizontalScrollBar().maximum() == 0
+        keybinds_page = dialog._page_widget(dialog._tabs.currentIndex())
+        assert keybinds_page.horizontalScrollBar().maximum() == 0
 
         all_labels = dialog.findChildren(QLabel)
         labels = {label.text() for label in all_labels}
@@ -6402,3 +6692,71 @@ def test_bubble_hide_delay_seconds_round_trip():
     assert _seconds_str_to_ms("8", 3500) == "8000"
     assert _seconds_str_to_ms("0.1", 3500) == "500"  # clamped to the 0.5s floor
     assert _seconds_str_to_ms("garbage", 3500) == "3500"
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_settings_opens_with_only_the_first_page_built():
+    """Only the General page is constructed before the window can be shown."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ui.settings_panel.dialog import SettingsDialog
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    dialog = SettingsDialog()
+    try:
+        assert dialog._pending_page_builds, "later pages should still be pending"
+        assert not dialog._values_loaded
+
+        # The visible page is nonetheless fully populated, not blank.
+        assert dialog._tabs.currentIndex() == dialog._app_tab_index
+        assert dialog._fields["THEME_MODE"].currentData()
+        assert "BUBBLE_WIDTH" in dict.keys(dialog._fields)
+
+        # Painting is what fills in the rest.
+        dialog.show()
+        for _ in range(10):
+            app.processEvents()
+            if not dialog._pending_page_builds:
+                break
+        assert not dialog._pending_page_builds
+        assert dialog._values_loaded
+    finally:
+        dialog.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_reading_a_later_page_field_materializes_every_page():
+    """Deferral stays invisible: touching any deferred state finishes the build."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ui.settings_panel.dialog import SettingsDialog
+
+    app = QApplication.instance() or QApplication(sys.argv)
+
+    reference = SettingsDialog()
+    reference._build_deferred_pages()
+    expected = dict(reference._snapshot_settings())
+
+    lazy = SettingsDialog()
+    try:
+        assert lazy._pending_page_builds
+        # A field that lives on the deferred Voice page.
+        assert lazy._fields["KOKORO_VOICE"] is not None
+        assert not lazy._pending_page_builds
+        # Same for membership tests and page-owned attributes.
+        assert "HOTKEY_VOICE" in lazy._fields
+        assert isinstance(lazy._voice_block, dict)
+        assert lazy._model_section_rows["LLM"]
+
+        # Values match a dialog that built everything up front, and nothing
+        # reads as an unsaved edit.
+        assert dict(lazy._snapshot_settings()) == expected
+        assert lazy._dirty_keys == set()
+        assert not lazy._apply_btn.isEnabled()
+    finally:
+        lazy.deleteLater()
+        reference.deleteLater()
+        app.processEvents()

@@ -13,15 +13,16 @@ LITEPARSE_DATAS, LITEPARSE_BINARIES, LITEPARSE_HIDDENIMPORTS = collect_all("lite
 LANGUAGE_TAGS_DATAS, LANGUAGE_TAGS_BINARIES, LANGUAGE_TAGS_HIDDENIMPORTS = collect_all("language_tags")
 CLAUDE_SDK_DATAS, CLAUDE_SDK_BINARIES, CLAUDE_SDK_HIDDENIMPORTS = collect_all("claude_agent_sdk")
 
-# STT is installed as one pinned, user-writable package layer from Settings.
-# These imports exist lazily in runtime workers, so exclude the provider-native
-# stack explicitly or PyInstaller will silently create a second bundled copy.
-INSTALLER_OWNED_STT_EXCLUDES = [
+# Installer-owned speech SDKs live in one pinned, user-writable package layer.
+# Exclude them explicitly or PyInstaller can create a second bundled copy that
+# disagrees with Settings and the runtime status checker.
+INSTALLER_OWNED_SPEECH_EXCLUDES = [
     "av",
     "ctranslate2",
     "faster_whisper",
     "flatbuffers",
     "onnxruntime",
+    "elevenlabs",
 ]
 
 def _repo_root() -> Path:
@@ -99,6 +100,7 @@ a = Analysis(
         (str(ROOT / "ui" / "locales"), "ui/locales"),
         (str(ROOT / ".env.example"), "."),
         (str(ROOT / "pyproject.toml"), "."),
+        (str(ROOT / "requirements" / "optional"), "requirements/optional"),
     ] + BUNDLED_ADDON_DATAS + LITEPARSE_DATAS + LANGUAGE_TAGS_DATAS + CLAUDE_SDK_DATAS,
     hiddenimports=[
         "pynput.keyboard._win32",
@@ -114,7 +116,7 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        *INSTALLER_OWNED_STT_EXCLUDES,
+        *INSTALLER_OWNED_SPEECH_EXCLUDES,
         "pip",
         "pytest",
         "tests",
