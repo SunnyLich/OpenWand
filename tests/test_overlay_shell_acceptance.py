@@ -304,7 +304,7 @@ def _run_real_worker_shell_case(
         supervisor.shutdown()
 
 
-def test_real_worker_tray_targets_and_each_provider_action_then_quit(
+def test_real_worker_tray_and_provider_actions_open_every_target_then_quit(
     tmp_path: Path,
     capfd,
 ) -> None:
