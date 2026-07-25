@@ -56,6 +56,20 @@ class CaptureTests(unittest.TestCase):
              mock.patch.object(self.capture, "_get_selected_text_clipboard", side_effect=RuntimeError("boom")):
             self.assertIsNone(self.capture.get_selected_text())
 
+    def test_supported_uia_control_without_selection_skips_slow_copy_fallback(self):
+        """A collapsed UIA selection is definitive and should summon immediately."""
+        def no_selection():
+            self.capture._uia_probe_state.selection_supported = True
+            return None
+
+        with mock.patch.object(self.capture, "_get_selected_text_uia", side_effect=no_selection), \
+             mock.patch.object(self.capture, "_IS_LINUX", False), \
+             mock.patch.object(self.capture.sys, "platform", "win32"), \
+             mock.patch.object(self.capture, "_get_selected_text_clipboard") as clipboard_fallback:
+            self.assertIsNone(self.capture.get_selected_text())
+
+        clipboard_fallback.assert_not_called()
+
     def test_clipboard_selection_fallback_restores_original_clipboard(self):
         """Verify Ctrl+C selection fallback preserves the user's next paste."""
         restored: list[str] = []

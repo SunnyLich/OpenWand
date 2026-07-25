@@ -2043,7 +2043,7 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
             "is not available on this machine.\n\n"
             f"{error}\n\n"
             "Sign in to that provider or choose a configured provider/model in the "
-            "agent task dialog, then retry the task."
+            "Agent Team dialog, then retry the task."
         )
 
     @classmethod

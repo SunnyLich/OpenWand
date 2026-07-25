@@ -13,6 +13,7 @@ import io
 import logging
 import os
 import sys
+import threading
 import time
 
 import pyperclip
@@ -38,6 +39,7 @@ _uia = None
 _UIA_TextPatternId = 10014
 _UIA_TextPatternRangeEndpoint_Start = 0
 _UIA_TextPatternRangeEndpoint_End = 1
+_uia_probe_state = threading.local()
 
 
 def _get_uia():
@@ -59,6 +61,7 @@ def _get_uia():
 
 def _get_selected_text_uia() -> str | None:
     """Read selected text via Windows UI Automation — no clipboard involved."""
+    _uia_probe_state.selection_supported = False
     uia = _get_uia()
     if uia is None:
         return None
@@ -68,6 +71,7 @@ def _get_selected_text_uia() -> str | None:
         raw_pattern = el.GetCurrentPattern(_UIA_TextPatternId)
         tp = raw_pattern.QueryInterface(uiac.IUIAutomationTextPattern)
         selections = tp.GetSelection()
+        _uia_probe_state.selection_supported = True
         if selections.Length == 0:
             return None
         start_endpoint = getattr(
@@ -94,6 +98,9 @@ def _get_selected_text_uia() -> str | None:
                 selected_parts.append(text)
         return "\n".join(selected_parts) or None
     except Exception:
+        # A partial/failed UIA read is not definitive; preserve the synthetic
+        # copy fallback for editors with incomplete accessibility support.
+        _uia_probe_state.selection_supported = False
         return None
 
 
@@ -364,6 +371,7 @@ def get_selected_text(*, allow_synthetic_copy: bool = True) -> str | None:
     context server, whose caller's own window is focused) use it so the copy
     keystroke never lands in the wrong window.
     """
+    _uia_probe_state.selection_supported = False
     try:
         text = _get_selected_text_uia()
     except Exception:
@@ -383,7 +391,16 @@ def get_selected_text(*, allow_synthetic_copy: bool = True) -> str | None:
         except Exception:
             _log.exception("Selected-text PRIMARY capture failed.")
             text = None
-    if not text and allow_synthetic_copy and not (_IS_LINUX and os.environ.get("WAYLAND_DISPLAY")):
+    uia_definitively_empty = bool(
+        sys.platform == "win32"
+        and getattr(_uia_probe_state, "selection_supported", False)
+    )
+    if (
+        not text
+        and not uia_definitively_empty
+        and allow_synthetic_copy
+        and not (_IS_LINUX and os.environ.get("WAYLAND_DISPLAY"))
+    ):
         try:
             text = _get_selected_text_clipboard()
         except Exception:

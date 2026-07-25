@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import threading
 from collections import deque
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -411,6 +412,15 @@ def _reasoning_options_rejected(exc: CodexAppServerError) -> bool:
     )
 
 
+def _image_input_items(images: Sequence[str]) -> list[dict[str, Any]]:
+    """Return this turn's screenshot attachments as localImage input items."""
+    return [
+        {"type": "localImage", "path": str(value)}
+        for value in images
+        if str(value or "").strip()
+    ]
+
+
 def _configured_reasoning_effort() -> str:
     """Read Wisp's live reasoning setting without coupling config import order."""
     try:
@@ -446,6 +456,7 @@ def _start_turn(
     model: str = "",
     fast_mode: bool = False,
     approval_mode: str = "ask",
+    images: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Start a turn with live summaries and cross-version approval support."""
     sandbox_policy: dict[str, Any]
@@ -461,7 +472,7 @@ def _start_turn(
         }
     params: dict[str, Any] = {
         "threadId": thread_id,
-        "input": [{"type": "text", "text": str(prompt)}],
+        "input": [{"type": "text", "text": str(prompt)}, *_image_input_items(images)],
         "cwd": str(workdir),
         "summary": str(reasoning_summary or _REASONING_SUMMARY),
         "approvalPolicy": (
@@ -496,8 +507,14 @@ def run_codex(
     cwd: str | Path | None = None,
     on_event: EventCallback | None = None,
     approval_callback: ApprovalCallback | None = None,
+    images: Sequence[str] = (),
 ) -> HarnessResult:
-    """Run one prompt through a local Codex app-server process."""
+    """Run one prompt through a local Codex app-server process.
+
+    ``images`` are local files attached to this turn's input. Codex embeds
+    their bytes into the thread when the turn starts, so callers may delete
+    the files once this returns.
+    """
     workdir = normalized_cwd(cwd)
     try:
         import config
@@ -564,6 +581,7 @@ def run_codex(
                 model=model,
                 fast_mode=fast_mode,
                 approval_mode=approval_mode,
+                images=images,
             )
             if not getattr(client, "_model_thinking_announced", False):
                 emit(on_event, "status", "Model is thinking...")

@@ -95,7 +95,8 @@ def translate_agent_activity_text(text: str) -> str:
     exact = {
         "Message cannot be empty.": "Message cannot be empty.",
         "No messages yet.": "No messages yet.",
-        "Agent task cancelled.": "Agent task cancelled.",
+        "Agent task cancelled.": "Agent Team cancelled.",
+        "Agent Team cancelled.": "Agent Team cancelled.",
         "Agent run finished.": "Agent run finished.",
     }
     if value in exact:

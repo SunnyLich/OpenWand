@@ -401,6 +401,89 @@ def test_codex_turn_applies_full_access_controls(tmp_path: Path) -> None:
     assert "approvalsReviewer" not in params
 
 
+def test_codex_turn_attaches_local_images(tmp_path: Path) -> None:
+    """This turn's screenshots ride along as localImage input items."""
+    calls = []
+
+    class Client:
+        on_event = None
+
+        def request(self, method, params):
+            calls.append((method, deepcopy(params)))
+            return {"turn": {"id": "turn-image"}}
+
+    image = tmp_path / "snip.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\n" + b"pixels")
+
+    _start_turn(Client(), "thread-1", "what is on screen?", tmp_path, images=[str(image)])
+
+    assert calls[0][1]["input"] == [
+        {"type": "text", "text": "what is on screen?"},
+        {"type": "localImage", "path": str(image)},
+    ]
+
+
+def test_run_codex_forwards_turn_images(monkeypatch, tmp_path: Path) -> None:
+    """run_codex threads this turn's image files into turn/start input."""
+    instances = []
+
+    class Process:
+        closed = False
+
+        def poll(self):
+            return 0 if self.closed else None
+
+    class Client:
+        def __init__(self, cwd, on_event, approval_callback):
+            self.cwd = cwd
+            self.on_event = on_event
+            self.approval_callback = approval_callback
+            self.process = Process()
+            self.backend = "codex-test"
+            self._items = {}
+            self._reply_parts = []
+            self.requests = []
+            instances.append(self)
+
+        def request(self, method, params):
+            self.requests.append((method, deepcopy(params)))
+            if method == "initialize":
+                return {}
+            if method == "thread/start":
+                return {"thread": {"id": "thread-image"}}
+            if method == "turn/start":
+                return {"turn": {"id": "turn"}}
+            raise AssertionError(method)
+
+        def send(self, message):
+            pass
+
+        def read(self):
+            return {"method": "turn/completed", "params": {"turn": {"status": "completed"}}}
+
+        def handle(self, _message):
+            return "completed"
+
+        def close(self):
+            self.process.closed = True
+
+    monkeypatch.setattr(codex, "_Client", Client)
+    monkeypatch.setattr(codex, "_PERSISTENT_CLIENT", None)
+    image = tmp_path / "snip.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\npixels")
+
+    codex.run_codex("look at this", cwd=tmp_path, images=[str(image)])
+
+    turn_params = next(
+        params for method, params in instances[0].requests if method == "turn/start"
+    )
+    assert turn_params["input"] == [
+        {"type": "text", "text": "look at this"},
+        {"type": "localImage", "path": str(image)},
+    ]
+    codex.close_persistent_codex()
+
+
 def test_claude_permission_modes_match_provider_controls() -> None:
     from core.harness_clients.claude import _permission_mode
 

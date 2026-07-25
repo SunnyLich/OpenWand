@@ -59,7 +59,8 @@ Sélectionnez du texte, appuyez sur le raccourci général, appuyez sur une touc
 - **Apportez votre propre fournisseur** — Groq, Anthropic, OpenAI, Google, DeepSeek, OpenRouter, Mistral, XAI, Together, Cerebras, serveurs compatibles OpenAI personnalisés, GitHub Copilot, et plus.
 - **Mémoire locale** — une mémoire à court et long terme optionnelle est stockée localement, avec un visualiseur pour modifier ou supprimer des faits.
 - **Extensions** — étendez Wisp avec des hooks, des actions de barre d'état, des paramètres, des outils appelables par le modèle, des actions configurables et des raccourcis.
-- **Tâches d'agent** — un cadre de tâches en bac à sable existe pour les travaux plus longs nécessitant décomposition, révision et artefacts.
+- **Tâches d’arrière-plan depuis le chat** — lorsque l’écriture locale est autorisée, le modèle du chat peut déléguer un travail de programmation conséquent, répondre immédiatement, puis ajouter le rapport final à la même conversation.
+- **Équipe d’agents** — configurez directement le projet, l’objectif, les agents, les modèles et les autorisations pour une exécution visible avec progression en direct et artefacts vérifiables.
 
 ## Démos
 
@@ -71,9 +72,9 @@ Sélectionnez du texte, appuyez sur le raccourci général, appuyez sur une touc
 
 **Réécriture contextuelle :** Wisp peut rassembler un contexte d'application utile sans prendre de capture d'écran, donc le modèle sait sur quoi vous travaillez. Puis le raccourci de réécriture réécrit uniquement le texte sélectionné et vise le collage dans le champ d'origine capturé au moment du raccourci.
 
-![Démo de tâche multi-agent Wisp](readme-assets/readme-4th-demo.gif)
+![Démo de l’équipe d’agents Wisp](readme-assets/readme-4th-demo.gif)
 
-**Exécution d'agent en bac à sable :** Le flux de tâche d'agent est conçu pour les travaux d'espace de travail plus longs. Wisp peut répartir une tâche entre les rôles de coordinateur, constructeur et réviseur, inspecter les fichiers de projet, effectuer un changement ciblé, exécuter des vérifications, et laisser un rapport final et des artefacts pour l'exécution.
+**Équipe d’agents :** Déléguez un travail plus long aux rôles de coordinateur, constructeur et réviseur. L’équipe peut inspecter les fichiers du projet, effectuer une modification ciblée, lancer des vérifications et laisser un rapport final et des artefacts vérifiables pendant que vous continuez à utiliser Wisp.
 
 ## Flux de travail
 
@@ -103,7 +104,7 @@ Il y a deux façons supportées de démarrer Wisp.
 
 Utilisez ceci si vous voulez l'application sans cloner le dépôt ou gérer les dépendances Python.
 
-1. Téléchargez le dernier artefact pour votre plateforme depuis [GitHub Releases](https://github.com/SunnyLich/Python-AI-assistant-overlay/releases).
+1. Téléchargez le dernier artefact pour votre plateforme depuis [GitHub Releases](https://github.com/SunnyLich/Wisp-AI-Assistant/releases).
 2. Décompressez l'archive et démarrez l'application packagée.
 3. Ouvrez les Paramètres pour ajouter vos clés de fournisseur de modèle, paramètres vocaux et raccourcis préférés.
 
@@ -120,8 +121,8 @@ Utilisez ceci si vous voulez exécuter depuis la source, développer Wisp, ou te
 Clonez le dépôt :
 
 ```bash
-git clone https://github.com/SunnyLich/Python-AI-assistant-overlay.git
-cd Python-AI-assistant-overlay
+git clone https://github.com/SunnyLich/Wisp-AI-Assistant.git
+cd Wisp-AI-Assistant
 ```
 
 Puis démarrez Wisp avec le lanceur de dépôt pour votre plateforme :

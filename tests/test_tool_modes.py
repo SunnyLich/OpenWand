@@ -8,6 +8,7 @@ def test_local_file_access_mode_expands_to_model_tools():
     pinned = tool_modes.pinned_model_tools(caller)
 
     assert {"list_files", "read_file", "create_file", "edit_file", "write_file"} <= set(allowed)
+    assert {"delegate_background_task", "background_task_status"} <= set(allowed)
     assert {"list_files", "read_file", "create_file", "edit_file", "write_file"} <= set(pinned)
 
 
@@ -20,6 +21,8 @@ def test_local_file_access_read_only_excludes_write_tools():
     assert "create_file" not in allowed
     assert "edit_file" not in allowed
     assert "write_file" not in allowed
+    assert "delegate_background_task" not in allowed
+    assert "background_task_status" not in allowed
 
 
 def test_mcp_server_group_override_is_not_model_tool_name():

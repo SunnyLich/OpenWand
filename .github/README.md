@@ -43,7 +43,7 @@ Highlight text, press the general hotkey, hit one action key, and Wisp asks your
 | Manually describe a browser page, document, or screenshot | Capture selection, clipboard, documents, browser pages, and screen snips |
 | Turning every thought into a typed prompt | Hold a voice hotkey, speak, and send the transcribed request |
 | Wearing yourself out reading wall after wall of text | Stream replies in the overlay or listen with TTS |
-| Give an agent broad instructions and hope it touches the right files | Run scoped agent tasks with artifacts, review, and logs |
+| Give an agent broad instructions and hope it touches the right files | Run a scoped Agent Team with artifacts, review, and logs |
 | Trust a closed assistant platform with your prompts, context, and memory | Keep data on your machine and send only the information and requests you choose to your model provider |
 
 ## Highlights
@@ -61,7 +61,8 @@ Highlight text, press the general hotkey, hit one action key, and Wisp asks your
 - **Bring your own provider** - Groq, Anthropic, OpenAI, Google, DeepSeek, OpenRouter, Mistral, XAI, Together, Cerebras, Z.AI / GLM, NVIDIA, SambaNova, GitHub Models, Hugging Face, Chutes, Vercel, Fireworks, Cohere, AI21, Nebius, custom OpenAI-compatible servers, GitHub Copilot, and more.
 - **Local memory** - optional short-term and long-term memory are stored locally, with a viewer for editing or deleting facts.
 - **Addons and MCP** - extend Wisp with hooks, tray actions, settings, model-callable tools, actions, and hotkeys; a bundled MCP bridge turns any Model Context Protocol server into tools the model can call.
-- **Agent tasks** - a sandboxed task framework exists for longer jobs that need decomposition, review, and artifacts.
+- **Chat background tasks** - with local project writes enabled, the chat model can delegate substantial coding work, reply immediately, and add the finished report back to the same conversation.
+- **Agent Team** - directly configure a project, goal, agents, models, and permissions for a visible coordinator-builder-reviewer run with live progress and reviewable artifacts.
 
 ## Demos
 
@@ -73,9 +74,9 @@ Highlight text, press the general hotkey, hit one action key, and Wisp asks your
 
 **Context-aware rewrite:** Wisp can gather useful app context without taking a screenshot, so the model knows what you are working on. Then the rewrite hotkey rewrites only the selected text and targets paste-back at the original field captured when you pressed the hotkey.
 
-![Wisp multi-agent task demo](readme-assets/readme-4th-demo.gif)
+![Wisp Agent Team demo](readme-assets/readme-4th-demo.gif)
 
-**Sandboxed agent run:** The agent task flow is for longer workspace jobs. Wisp can split a task across coordinator, builder, and reviewer roles, inspect project files, make a focused change, run checks, and leave behind a final report and artifacts for the run.
+**Agent Team:** Delegate a longer workspace job to coordinator, builder, and reviewer roles. The team can inspect project files, make a focused change, run checks, and leave behind a final report and reviewable artifacts while you keep using Wisp.
 
 ## Workflow
 
@@ -105,7 +106,7 @@ There are two supported ways to start Wisp.
 
 Use this if you want the app without cloning the repo or managing Python dependencies.
 
-1. Download the latest asset for your platform from [GitHub Releases](https://github.com/SunnyLich/Python-AI-assistant-overlay/releases).
+1. Download the latest asset for your platform from [GitHub Releases](https://github.com/SunnyLich/Wisp-AI-Assistant/releases).
 2. Unpack the archive and start the packaged app.
 3. Open Settings to add your model provider keys, voice settings, and preferred hotkeys.
 
@@ -122,10 +123,11 @@ download. On Windows, run:
 Get-FileHash .\Wisp-<tag>-windows-x64.zip -Algorithm SHA256
 ```
 
-Compare the hash with the matching line in `SHA256SUMS.txt`. Windows may still
-show a SmartScreen warning for unsigned builds from an independent open-source
-publisher; the checksum confirms the file matches the release asset uploaded by
-the project.
+Compare the hash with the matching line in `SHA256SUMS.txt`. Windows release
+builds are signed through Microsoft Artifact Signing. SmartScreen may still
+show an "unrecognized app" warning for a new signed release while its reputation
+builds; the checksum confirms the file matches the release asset uploaded by the
+project.
 
 ### Option 2: Repo Launcher
 
@@ -134,8 +136,8 @@ Use this if you want to run from source, develop Wisp, or test the latest checko
 Clone the repo:
 
 ```bash
-git clone https://github.com/SunnyLich/Python-AI-assistant-overlay.git
-cd Python-AI-assistant-overlay
+git clone https://github.com/SunnyLich/Wisp-AI-Assistant.git
+cd Wisp-AI-Assistant
 ```
 
 Then start Wisp with the repo launcher for your platform:
@@ -250,7 +252,9 @@ Wisp ships with an **MCP bridge** addon (`addons/mcp_bridge`) that acts as an MC
 
 Wisp also ships a local **MCP stdio server** called **Wisp Context Server**. Trusted MCP clients such as Claude Desktop, Cursor, and Codex can launch it to read live desktop context; the Wisp app itself does not need to stay open.
 
-It provides five read-only tools:
+## Tools
+
+Wisp Context Server provides five read-only tools:
 
 - `get_selected_text` — the text currently selected on the desktop.
 - `get_clipboard` — clipboard text.
@@ -258,7 +262,7 @@ It provides five read-only tools:
 - `read_browser_page` — text from the visible browser page.
 - `take_screen_snip` — a screenshot of the primary monitor.
 
-### Connect a client
+## Connect a client
 
 Start Wisp once, then copy the `mcpServers` entry from `addons/mcp_bridge/claude_config_snippet.json` into your MCP client's configuration. Wisp generates this snippet with the correct local path to its own Python interpreter and `addons/mcp_bridge/context_server.py`; do not substitute system Python. See the [MCP Bridge server setup guide](../addons/mcp_bridge/README.md) for platform notes and troubleshooting.
 

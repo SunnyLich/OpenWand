@@ -16,6 +16,7 @@ tested from Windows/CI without the LLM stack.
 from __future__ import annotations
 
 import ast
+import base64
 import importlib
 import json
 import os
@@ -23,7 +24,7 @@ import threading
 import time
 import uuid
 import wave
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -1487,6 +1488,81 @@ def _harness_chat_prompt(turns: list[dict[str, Any]], *, include_history: bool) 
     )
 
 
+_HARNESS_IMAGE_MAX_AGE_SECONDS = 24 * 3600
+
+
+def _harness_image_extension(data: bytes) -> str:
+    """Name an attachment after its real format; screenshots are always PNG."""
+    if data.startswith(b"\xff\xd8"):
+        return ".jpg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return ".gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    return ".png"
+
+
+def _sweep_stale_harness_images(directory: Path) -> None:
+    """Delete attachment files a crashed turn left behind."""
+    cutoff = time.time() - _HARNESS_IMAGE_MAX_AGE_SECONDS
+    try:
+        entries = list(directory.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        try:
+            if entry.is_file() and entry.stat().st_mtime < cutoff:
+                entry.unlink()
+        except OSError:
+            continue
+
+
+def _write_harness_images(images_b64: Sequence[str]) -> list[str]:
+    """Materialize captured images as files a harness ingests by path.
+
+    Codex embeds the bytes into its thread when the turn starts, so these
+    files only need to outlive the turn; callers delete them afterwards via
+    ``_delete_harness_images``.
+    """
+    from core.system.paths import USER_DATA_DIR
+
+    paths: list[str] = []
+    directory = USER_DATA_DIR / "harness_attachments"
+    for raw in images_b64:
+        value = str(raw or "").strip()
+        if not value:
+            continue
+        if value.startswith("data:"):
+            _, _, value = value.partition(",")
+        try:
+            data = base64.b64decode(value)
+        except (ValueError, TypeError):
+            _log("harness image skipped: undecodable base64")
+            continue
+        if not data:
+            continue
+        extension = _harness_image_extension(data)
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            _sweep_stale_harness_images(directory)
+            path = directory / f"wisp-{uuid.uuid4().hex}{extension}"
+            path.write_bytes(data)
+        except OSError as exc:
+            _log(f"harness image skipped: {type(exc).__name__}: {exc}")
+            continue
+        paths.append(str(path))
+    return paths
+
+
+def _delete_harness_images(paths: Sequence[str]) -> None:
+    """Remove this turn's attachment files once the harness ingested them."""
+    for value in paths:
+        try:
+            Path(value).unlink(missing_ok=True)
+        except OSError:
+            continue
+
+
 def _run_live_harness(
     ctx: StreamContext,
     provider: str,
@@ -1497,6 +1573,7 @@ def _run_live_harness(
     conversation_owner: str,
     privacy_session: Any = None,
     privacy_report: dict[str, Any] | None = None,
+    images: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Run an external harness turn and map its events onto Wisp's live stream."""
     from core.harness_clients import run_harness
@@ -1595,6 +1672,7 @@ def _run_live_harness(
         cwd=stored_cwd or requested_cwd or None,
         on_event=on_harness_event,
         approval_callback=_live_file_approval_callback(ctx),
+        images=images,
     )
     text = str(result.text or "")
     for raw_attachment in getattr(result, "attachments", ()) or ():
@@ -1781,16 +1859,23 @@ def brain_query(
         if ambient:
             prompt_parts.append(ambient)
         prompt_parts.append(str(getattr(built, "user_message", "") or ""))
-        return _run_live_harness(
-            ctx,
-            harness_mode,
-            "\n\n---\n\n".join(part for part in prompt_parts if part),
-            harness_session=harness_session,
-            harness_cwd=harness_cwd,
-            conversation_owner=owner,
-            privacy_session=privacy_session,
-            privacy_report=getattr(built, "privacy_report", None),
+        harness_images = _write_harness_images(
+            [str(getattr(built, "screenshot_b64", "") or "")]
         )
+        try:
+            return _run_live_harness(
+                ctx,
+                harness_mode,
+                "\n\n---\n\n".join(part for part in prompt_parts if part),
+                harness_session=harness_session,
+                harness_cwd=harness_cwd,
+                conversation_owner=owner,
+                privacy_session=privacy_session,
+                privacy_report=getattr(built, "privacy_report", None),
+                images=harness_images,
+            )
+        finally:
+            _delete_harness_images(harness_images)
 
     parts: list[str] = []
     file_context: list[dict[str, Any]] = []
@@ -2281,16 +2366,31 @@ def brain_chat(
         prompt = _harness_chat_prompt(turns, include_history=not bool(session_id))
         if memory_context:
             prompt = f"[Wisp memory]\n{memory_context}\n\n---\n\n{prompt}"
-        return _run_live_harness(
-            ctx,
-            harness_mode,
-            prompt,
-            harness_session=harness_session,
-            harness_cwd=harness_cwd,
-            conversation_owner=owner,
-            privacy_session=privacy_session,
-            privacy_report=privacy_report,
+        # Older turns' images stay history-only; the newest user turn's image
+        # is the one this turn is about, so it rides along as harness input.
+        newest_image = next(
+            (
+                str(message.get("image_base64") or "")
+                for message in reversed(turns)
+                if message.get("role") == "user" and message.get("image_base64")
+            ),
+            "",
         )
+        harness_images = _write_harness_images([newest_image])
+        try:
+            return _run_live_harness(
+                ctx,
+                harness_mode,
+                prompt,
+                harness_session=harness_session,
+                harness_cwd=harness_cwd,
+                conversation_owner=owner,
+                privacy_session=privacy_session,
+                privacy_report=privacy_report,
+                images=harness_images,
+            )
+        finally:
+            _delete_harness_images(harness_images)
 
     parts: list[str] = []
     file_context: list[dict[str, Any]] = []
@@ -2444,6 +2544,9 @@ def _stream_chat_reply(
     llm_client.set_live_file_access_mode(file_access_mode or None)
     llm_client.set_live_file_approval_callback(_live_file_approval_callback(ctx) if ctx is not None else None)
     llm_client.set_live_file_event_callback(_record_file_context(file_context) if file_context is not None else None)
+    llm_client.set_live_background_task_event_callback(
+        (lambda payload: ctx.emit("background_task.started", payload)) if ctx is not None else None
+    )
     if privacy_session is not None:
         from core.privacy_gateway import ai_detection_enabled, review_enabled
 
@@ -2473,6 +2576,7 @@ def _stream_chat_reply(
         llm_client.set_live_file_access_mode(None)
         llm_client.set_live_file_approval_callback(None)
         llm_client.set_live_file_event_callback(None)
+        llm_client.set_live_background_task_event_callback(None)
         llm_client.set_live_privacy_context(None)
 
 

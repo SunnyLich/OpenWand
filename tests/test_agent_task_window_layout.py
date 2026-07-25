@@ -250,7 +250,7 @@ def test_agent_run_window_shows_prominent_finished_banner(tmp_path):
         window._on_finished(str(run_dir))
 
         assert window.completion_banner.isHidden() is False
-        assert window.completion_banner_title.text() == "Agent Task Finished"
+        assert window.completion_banner_title.text() == "Agent Team Finished"
         assert "Final report is ready" in window.completion_banner_detail.text()
         assert window.tabs.currentWidget() is window.final_view
         assert window.final_view.toPlainText() == "All done."

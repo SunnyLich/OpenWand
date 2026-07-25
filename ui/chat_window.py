@@ -17,7 +17,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 
-from PySide6.QtCore import QEventLoop, QMimeData, QObject, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QEvent, QEventLoop, QMimeData, QObject, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -107,6 +108,10 @@ _ATTACHMENT_CONTEXT_CHAR_LIMIT = 40_000
 _SIDEBAR_MENU_W = 32
 _SIDEBAR_FADE_W = 34
 _SIDEBAR_GENERAL_GROUP_GAP = 8
+# History rows built before the window is first painted. Anything past this is
+# filled in straight after the first frame, so a long history cannot keep the
+# window off screen. Comfortably more than one screenful at any usable height.
+_SIDEBAR_INITIAL_ROWS = 25
 
 
 def _external_provider_display_name(provider: object) -> str:
@@ -988,6 +993,54 @@ def _segments_to_display_content(segments: list[tuple[str, bool]]) -> str:
     return "".join(f"<thought>{text}</thought>" if is_thought else text for text, is_thought in segments)
 
 
+class _PendingSidebarRows(list):
+    """History button list that finishes its queued rows before being read.
+
+    The sidebar builds only a screenful of rows up front so a long history cannot
+    delay the window appearing. Anything reading the button list -- selection
+    highlighting, renames, tests -- expects every conversation to be present, so a
+    read flushes whatever is still queued first.
+    """
+
+    def __init__(self, window: ChatWindow) -> None:
+        """Initialize the button list bound to its chat window."""
+        super().__init__()
+        self._window = window
+
+    def _flush(self) -> None:
+        """Build any history rows still waiting on the next frame."""
+        window = self._window
+        if window is not None and window.__dict__.get("_pending_sidebar_rows"):
+            window._fill_pending_sidebar_rows()
+
+    def __getitem__(self, index):
+        """Return a history button, building queued rows first."""
+        self._flush()
+        return list.__getitem__(self, index)
+
+    def __len__(self) -> int:
+        """Report the full row count rather than the pre-fill one."""
+        self._flush()
+        return list.__len__(self)
+
+    def __iter__(self):
+        """Iterate every history row, including ones still queued."""
+        self._flush()
+        return list.__iter__(self)
+
+    def __eq__(self, other) -> bool:
+        """Compare against the complete row list."""
+        self._flush()
+        return list.__eq__(self, other)
+
+    def __ne__(self, other) -> bool:
+        """Compare against the complete row list."""
+        self._flush()
+        return list.__ne__(self, other)
+
+    __hash__ = None  # type: ignore[assignment]
+
+
 class ChatWindow(QWidget):
     """Qt window for chat window."""
     def __init__(
@@ -1089,6 +1142,10 @@ class ChatWindow(QWidget):
         self._context_controls_updating = False
         self._context_preview_id = ""
         self._conversation_menu: QMenu | None = None
+        # History rows past the first screenful are queued here until the window
+        # has painted; see _rebuild_sidebar and _fill_pending_sidebar_rows.
+        self._pending_sidebar_rows: list[tuple[str, object]] = []
+        self._sidebar_fill_scheduled = False
         self.setAcceptDrops(True)
         self._opened_with_explicit_active_idx = active_idx is not None
         if active_idx is not None and 0 <= active_idx < len(conversations):
@@ -1116,6 +1173,8 @@ class ChatWindow(QWidget):
         self._center_on_screen()
         self._new_shortcut = QShortcut(QKeySequence.StandardKey.New, self)
         self._new_shortcut.activated.connect(self.start_new_conversation)
+        self._history_search_shortcut = QShortcut(QKeySequence("Ctrl+K"), self)
+        self._history_search_shortcut.activated.connect(self._focus_history_search)
         self._install_zoom_shortcuts()
         from PySide6.QtWidgets import QApplication
         _app = QApplication.instance()
@@ -1281,6 +1340,24 @@ class ChatWindow(QWidget):
         controls_l.addWidget(self._make_external_sync_button())
         vl.addWidget(controls)
 
+        self._history_search = QLineEdit()
+        self._history_search.setFixedHeight(30)
+        self._history_search.setPlaceholderText(t("Search conversations..."))
+        self._history_search.setToolTip(
+            t("Search titles, projects, and messages (Ctrl+K)")
+        )
+        self._history_search.setAccessibleName(t("Search conversations"))
+        self._history_search.setClearButtonEnabled(True)
+        self._history_search.setStyleSheet(
+            f"QLineEdit {{ background: {_ACCENT_BG_10}; color: {_TEXT};"
+            f" border: none; border-bottom: 1px solid {_BORDER};"
+            " padding: 3px 9px; font-size: 9pt; }}"
+            f"QLineEdit:focus {{ background: {_ACCENT_BG_18};"
+            f" border-bottom: 1px solid {_ACCENT}; }}"
+        )
+        self._history_search.textChanged.connect(self._rebuild_sidebar)
+        vl.addWidget(self._history_search)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -1291,7 +1368,7 @@ class ChatWindow(QWidget):
         self._sidebar_layout = QVBoxLayout(self._sidebar_items)
         self._sidebar_layout.setContentsMargins(0, 4, 0, 4)
         self._sidebar_layout.setSpacing(1)
-        self._sidebar_btns: list[tuple[int, QPushButton]] = []
+        self._sidebar_btns: list[tuple[int, QPushButton]] = _PendingSidebarRows(self)
         self._rebuild_sidebar()
 
         scroll.setWidget(self._sidebar_items)
@@ -1376,7 +1453,8 @@ class ChatWindow(QWidget):
             item = self._sidebar_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-        self._sidebar_btns.clear()
+        list.clear(self._sidebar_btns)
+        self._pending_sidebar_rows = []
 
         if not self._conversations:
             lbl = QLabel(t("  No history yet."))
@@ -1385,21 +1463,140 @@ class ChatWindow(QWidget):
             )
             self._sidebar_layout.addWidget(lbl)
         else:
-            grouped = self._grouped_sidebar_indices()
+            ops: list[tuple[str, object]] = []
             rows_added = False
-            for project_id, project_name, indices in grouped:
+            for project_id, project_name, indices in self._grouped_sidebar_indices():
+                indices = [idx for idx in indices if self._conversation_matches_search(idx)]
                 if not indices:
                     continue
                 if project_id != _GENERAL_PROJECT_ID:
-                    self._sidebar_layout.addWidget(self._make_sidebar_project_header(project_name))
+                    ops.append(("header", project_name))
                 elif rows_added:
-                    self._sidebar_layout.addSpacing(_SIDEBAR_GENERAL_GROUP_GAP)
-                for real_idx in indices:
-                    row, title_btn = self._make_sidebar_row(real_idx, self._conversations[real_idx])
-                    self._sidebar_layout.addWidget(row)
-                    self._sidebar_btns.append((real_idx, title_btn))
+                    ops.append(("spacing", None))
+                ops.extend(("row", real_idx) for real_idx in indices)
                 rows_added = True
+            if not rows_added:
+                lbl = QLabel(t("No matching conversations."))
+                lbl.setStyleSheet(
+                    f"color: {_HINT}; font-size: 9pt; padding: 8px; background: transparent;"
+                )
+                self._sidebar_layout.addWidget(lbl)
+            else:
+                # Build just enough rows to fill the visible sidebar. A long history
+                # otherwise costs seconds of widget construction before the window
+                # can appear at all; the rest lands right after the first frame.
+                built = 0
+                cut = len(ops)
+                for position, op in enumerate(ops):
+                    if op[0] == "row" and built >= _SIDEBAR_INITIAL_ROWS:
+                        cut = position
+                        break
+                    self._apply_sidebar_op(op)
+                    if op[0] == "row":
+                        built += 1
+                self._pending_sidebar_rows = ops[cut:]
         self._sidebar_layout.addStretch()
+        if self._pending_sidebar_rows and self.isVisible():
+            # Already on screen (a search, rename, or delete rebuilt the list), so
+            # there is no first frame left to wait for. On the initial build the
+            # fill is started from paintEvent instead.
+            self._schedule_sidebar_fill()
+
+    def _apply_sidebar_op(self, op: tuple[str, object]) -> None:
+        """Append one queued history entry to the sidebar."""
+        kind, value = op
+        if kind == "header":
+            self._sidebar_layout.addWidget(self._make_sidebar_project_header(str(value)))
+        elif kind == "spacing":
+            self._sidebar_layout.addSpacing(_SIDEBAR_GENERAL_GROUP_GAP)
+        else:
+            real_idx = int(value)  # type: ignore[arg-type]
+            row, title_btn = self._make_sidebar_row(real_idx, self._conversations[real_idx])
+            self._sidebar_layout.addWidget(row)
+            list.append(self._sidebar_btns, (real_idx, title_btn))
+
+    def _schedule_sidebar_fill(self) -> None:
+        """Queue the remaining history rows to be built after the next frame."""
+        if self._sidebar_fill_scheduled:
+            return
+        self._sidebar_fill_scheduled = True
+        QTimer.singleShot(0, self._fill_pending_sidebar_rows)
+
+    def _fill_pending_sidebar_rows(self) -> None:
+        """Build every history row that _rebuild_sidebar left queued."""
+        self._sidebar_fill_scheduled = False
+        ops = self._pending_sidebar_rows
+        if not ops:
+            return
+        self._pending_sidebar_rows = []
+        # The trailing stretch has to move back below the newly appended rows.
+        last = self._sidebar_layout.count() - 1
+        if last >= 0 and self._sidebar_layout.itemAt(last).spacerItem() is not None:
+            self._sidebar_layout.takeAt(last)
+        for op in ops:
+            self._apply_sidebar_op(op)
+        self._sidebar_layout.addStretch()
+
+    def _focus_history_search(self) -> None:
+        """Focus the history search without changing the selected conversation."""
+        self._history_search.setFocus()
+        self._history_search.selectAll()
+
+    def _history_search_terms(self) -> list[str]:
+        """Return case-insensitive terms from the current history query."""
+        search = getattr(self, "_history_search", None)
+        if search is None:
+            return []
+        return str(search.text() or "").casefold().split()
+
+    def _conversation_project_name(self, conv: dict) -> str:
+        """Return the searchable display name for a conversation's project."""
+        project_id = str(conv.get("project_id") or _GENERAL_PROJECT_ID)
+        project = next(
+            (item for item in self._projects if str(item.get("id") or "") == project_id),
+            None,
+        )
+        return self._project_display_name(project) if project else t("General")
+
+    def _conversation_search_messages(self, conv: dict) -> list[str]:
+        """Return plain transcript text suitable for local history filtering."""
+        return [
+            str(message.get("content") or "")
+            for message in conv.get("messages", [])
+            if isinstance(message, dict) and str(message.get("content") or "").strip()
+        ]
+
+    def _conversation_matches_search(self, idx: int) -> bool:
+        """Match every search term across title, project, and transcript text."""
+        terms = self._history_search_terms()
+        if not terms or not (0 <= idx < len(self._conversations)):
+            return not terms
+        conv = self._conversations[idx]
+        searchable = "\n".join(
+            [
+                self._conversation_title(idx, conv),
+                self._conversation_project_name(conv),
+                *self._conversation_search_messages(conv),
+            ]
+        ).casefold()
+        return all(term in searchable for term in terms)
+
+    def _conversation_search_excerpt(self, conv: dict) -> str:
+        """Return a compact transcript excerpt explaining a content match."""
+        terms = self._history_search_terms()
+        if not terms:
+            return ""
+        for raw in self._conversation_search_messages(conv):
+            text = " ".join(raw.split())
+            folded = text.casefold()
+            positions = [folded.find(term) for term in terms if folded.find(term) >= 0]
+            if not positions:
+                continue
+            start = max(0, min(positions) - 24)
+            end = min(len(text), start + 72)
+            excerpt = text[start:end].strip()
+            return ("…" if start else "") + excerpt + ("…" if end < len(text) else "")
+        return ""
 
     def _grouped_sidebar_indices(self) -> list[tuple[str, str, list[int]]]:
         """Return conversation indices grouped by project for the sidebar."""
@@ -1470,7 +1667,7 @@ class ChatWindow(QWidget):
         title = self._conversation_title(idx, conv)
         if conv.get("pinned"):
             title = "📌 " + title
-        subtitle = self._conversation_timestamp(conv)
+        subtitle = self._conversation_search_excerpt(conv) or self._conversation_timestamp(conv)
         is_latest = (idx == len(self._conversations) - 1)
         is_active = (idx == self._active_idx)
 
@@ -1986,6 +2183,9 @@ class ChatWindow(QWidget):
         if self._streaming:
             return
 
+        if self._history_search.text():
+            self._history_search.clear()
+
         was_empty = not self._conversations
         conv = {
             "id": str(uuid.uuid4()),
@@ -2295,6 +2495,7 @@ class ChatWindow(QWidget):
             f"QPushButton:disabled {{ background: {_DISABLED_BG}; color: {_DISABLED_TEXT}; }}"
         )
         self._send_btn.clicked.connect(self._on_send_clicked)
+
         h.addWidget(self._attach_btn)
         h.addWidget(self._input)
         h.addWidget(self._send_btn)
@@ -3674,7 +3875,6 @@ class ChatWindow(QWidget):
 
     def eventFilter(self, obj, event):
         """Handle event filter for chat window."""
-        from PySide6.QtCore import QEvent
         # This object is also installed on QApplication for Ctrl+wheel zoom.
         # PySide can forward model-item action events whose watched value is a
         # QStandardItem rather than a QObject. Passing that value to the base
@@ -3747,6 +3947,17 @@ class ChatWindow(QWidget):
     def _center_on_screen(self):
         """Handle center on screen for chat window."""
         fit_window_to_screen(self, preferred_width=_W, preferred_height=_H)
+
+    def paintEvent(self, event):  # noqa: N802 - Qt override
+        """Fill in the rest of the history once the window has actually drawn.
+
+        Keyed off the first paint rather than showEvent because a zero-delay timer
+        started from showEvent still runs ahead of the initial frame, which would
+        put the row building right back in front of the window appearing.
+        """
+        super().paintEvent(event)
+        if self._pending_sidebar_rows:
+            self._schedule_sidebar_fill()
 
     def showEvent(self, event):  # noqa: N802
         """Show event."""

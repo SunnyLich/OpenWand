@@ -31285,7 +31285,7 @@
         "tests/test_optional_deps.py::test_shared_speech_optional_installer_failure_matrix_is_persisted"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31301,7 +31301,7 @@
         "tests/test_optional_deps.py::test_shared_speech_optional_installer_failure_matrix_is_persisted"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31317,7 +31317,7 @@
         "tests/test_optional_deps.py::test_shared_speech_optional_installer_failure_matrix_is_persisted"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31333,7 +31333,7 @@
         "tests/test_optional_deps.py::test_shared_speech_optional_installer_failure_matrix_is_persisted"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31352,7 +31352,7 @@
         "tests/test_optional_deps.py::test_shared_speech_optional_installer_failure_matrix_is_persisted"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31368,7 +31368,7 @@
         "tests/test_optional_deps.py::test_shared_speech_optional_installer_failure_matrix_is_persisted"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31384,7 +31384,7 @@
         "tests/test_settings_dialog_controls.py::test_shared_speech_optional_install_cancellation_starts_no_installer"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31724,7 +31724,7 @@
         "tests/test_optional_deps.py::test_require_optional_package_runtime_rejects_invalid_managed_install"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31740,7 +31740,7 @@
         "tests/test_speech_failure_matrix.py::test_missing_speech_model_assets_are_classified_without_network"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31756,7 +31756,7 @@
         "tests/test_speech_failure_matrix.py::test_damaged_speech_model_assets_are_classified_without_network"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31772,7 +31772,7 @@
         "tests/test_speech_failure_matrix.py::test_microphone_permission_failure_resets_recording_state"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31788,7 +31788,7 @@
         "tests/test_audio_stream.py::AudioStreamTests::test_output_device_and_permission_failures_cleanup_without_completion"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31804,7 +31804,7 @@
         "tests/test_audio_stream.py::AudioStreamTests::test_output_device_and_permission_failures_cleanup_without_completion"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31820,7 +31820,7 @@
         "tests/test_speech_failure_matrix.py::test_tts_provider_auth_network_and_model_failures_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31837,7 +31837,7 @@
         "tests/test_audio_stream.py::AudioStreamTests::test_tts_producer_failure_does_not_escape_thread_or_claim_completion"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31853,7 +31853,7 @@
         "tests/test_speech_failure_matrix.py::test_tts_provider_auth_network_and_model_failures_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -31869,7 +31869,7 @@
         "tests/test_optional_deps.py::test_stt_model_probe_rejects_cpu_fallback_for_explicit_cuda"
       ],
       "function_workflow_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ]
     },
     {
@@ -37100,7 +37100,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
       ]
     },
     {
@@ -37116,7 +37116,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
       ]
     },
     {
@@ -37132,7 +37132,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
       ]
     },
     {
@@ -37148,7 +37148,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
       ]
     },
     {
@@ -37164,7 +37164,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
       ]
     },
     {
@@ -37180,7 +37180,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
       ]
     },
     {
@@ -43502,7 +43502,7 @@
         "tests/integration/brain/test_handler_agent.py::test_agent_requires_spec_dict"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43518,7 +43518,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_invalid_selected_model_stops_as_a_controlled_failure"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43534,7 +43534,7 @@
         "tests/test_agent_runner.py::ScopedWorkspaceTests::test_invalid_scope_folder_is_recorded_as_a_controlled_run_failure"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43550,7 +43550,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_llm_auth_failure_stops_instead_of_retrying"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43566,7 +43566,7 @@
         "tests/test_agent_runner.py::AgentToolboxTests::test_toolbox_rejects_edit_without_permission"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43582,7 +43582,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_unexpected_agent_runtime_exit_writes_failure_artifacts"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43598,7 +43598,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_mutating_tools_run_under_write_lock"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43614,7 +43614,7 @@
         "tests/test_agent_runner.py::ParallelWorkRoundTests::test_same_file_write_is_leased_to_exactly_one_agent"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43630,7 +43630,7 @@
         "tests/test_agent_task_retry.py::AgentTaskRetryTests::test_retry_spec_rejects_unavailable_task_artifact"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43934,7 +43934,7 @@
         "tests/integration/brain/test_handler_agent.py::test_agent_requires_spec_dict"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43950,7 +43950,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_invalid_selected_model_stops_as_a_controlled_failure"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43966,7 +43966,7 @@
         "tests/test_agent_runner.py::ScopedWorkspaceTests::test_invalid_scope_folder_is_recorded_as_a_controlled_run_failure"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43982,7 +43982,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_llm_auth_failure_stops_instead_of_retrying"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43998,7 +43998,7 @@
         "tests/test_agent_runner.py::AgentToolboxTests::test_toolbox_rejects_edit_without_permission"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -44014,7 +44014,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_unexpected_agent_runtime_exit_writes_failure_artifacts"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -44030,7 +44030,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_mutating_tools_run_under_write_lock"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -44048,7 +44048,7 @@
         "tests/test_agent_runner.py::ParallelWorkRoundTests::test_same_file_write_is_leased_to_exactly_one_agent"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -44064,7 +44064,7 @@
         "tests/test_agent_task_retry.py::AgentTaskRetryTests::test_retry_spec_rejects_unavailable_task_artifact"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -48864,7 +48864,7 @@
         "tests/test_settings_failure_matrix.py::test_invalid_settings_values_use_safe_widget_and_runtime_fallbacks"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -48880,7 +48880,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_write_and_resource_failures_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -48896,7 +48896,7 @@
         "tests/test_settings_failure_matrix.py::test_corrupt_settings_store_loads_safe_defaults"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -48912,7 +48912,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_write_and_resource_failures_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -48928,7 +48928,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_cancel_discards_pending_change"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -48944,7 +48944,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_failed_live_reload_does_not_claim_restart_applied"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -49158,7 +49158,7 @@
         "tests/test_settings_failure_matrix.py::test_invalid_settings_values_use_safe_widget_and_runtime_fallbacks"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -49174,7 +49174,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_write_and_resource_failures_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -49190,7 +49190,7 @@
         "tests/test_settings_failure_matrix.py::test_corrupt_settings_store_loads_safe_defaults"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -49206,7 +49206,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_write_and_resource_failures_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -49222,7 +49222,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_cancel_discards_pending_change"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -49238,7 +49238,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_failed_live_reload_does_not_claim_restart_applied"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -50027,7 +50027,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_clipboard_failure_stays_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50043,7 +50043,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_clipboard_failure_stays_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50059,7 +50059,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_clipboard_failure_stays_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50075,7 +50075,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_clipboard_failure_stays_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50091,7 +50091,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_clipboard_failure_stays_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50107,7 +50107,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_log_folder_failures_stay_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50123,7 +50123,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_log_folder_failures_stay_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50139,7 +50139,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_log_folder_failures_stay_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {
@@ -50155,7 +50155,7 @@
         "tests/test_optional_install_dialog.py::test_optional_install_dialog_log_folder_failures_stay_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ]
     },
     {

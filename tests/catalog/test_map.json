@@ -139,7 +139,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 21
+      "node_count": 22
     },
     {
       "path": "tests/integration/brain/test_handler_config.py",
@@ -229,7 +229,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 37
+      "node_count": 40
     },
     {
       "path": "tests/integration/brain/test_handler_transcribe.py",
@@ -364,7 +364,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 176
+      "node_count": 181
     },
     {
       "path": "tests/runtime/test_flows_live_voice.py",
@@ -454,7 +454,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 27
+      "node_count": 30
     },
     {
       "path": "tests/runtime/test_runtime_log.py",
@@ -514,7 +514,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 47
+      "node_count": 48
     },
     {
       "path": "tests/runtime/test_ui_host_runtime_status.py",
@@ -919,7 +919,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 94
+      "node_count": 100
     },
     {
       "path": "tests/test_assistant_text.py",
@@ -967,6 +967,21 @@
       "node_count": 4
     },
     {
+      "path": "tests/test_background_task_app_acceptance.py",
+      "kind": "pytest",
+      "scope": "e2e",
+      "behaviour": "user_path",
+      "execution": "github_safe",
+      "category": "GU",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 1
+    },
+    {
       "path": "tests/test_bubble_transcript.py",
       "kind": "pytest",
       "scope": "ui",
@@ -1009,7 +1024,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 20
+      "node_count": 21
     },
     {
       "path": "tests/test_chat_rendering.py",
@@ -1408,7 +1423,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 25
+      "node_count": 27
     },
     {
       "path": "tests/test_harness_controls.py",
@@ -1524,7 +1539,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 48
+      "node_count": 49
     },
     {
       "path": "tests/test_intent_overlay_keyboard_hook.py",
@@ -2323,6 +2338,21 @@
       ],
       "schedule": "github-actions",
       "node_count": 17
+    },
+    {
+      "path": "tests/test_standalone_background_agents.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 4
     },
     {
       "path": "tests/test_stt_macos_safety.py",

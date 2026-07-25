@@ -87,9 +87,12 @@ def allowed_model_tools(caller: dict[str, Any]) -> list[str]:
         allowed.append("memory_search")
     if memory_mode in ("on", "model"):
         allowed.append("memory_save")
-    for name in file_tools_for_access(local_file_access_mode(caller)):
+    file_access = local_file_access_mode(caller)
+    for name in file_tools_for_access(file_access):
         if name not in allowed:
             allowed.append(name)
+    if file_access in {"ask", "auto"}:
+        allowed.extend(["delegate_background_task", "background_task_status"])
     overrides = tool_overrides(caller)
     for name, mode in overrides.items():
         if is_mcp_server_override_key(name):

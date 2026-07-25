@@ -235,7 +235,7 @@ I18N.register('zh-Hans', {
     /* ── Installation ── */
     'Portable version': '便携版',
     'For most people, start with a portable package from GitHub Releases. Download the package for your OS, unzip it anywhere, and run the included Wisp app or launcher.':
-      '多数用户建议先使用 <a href="https://github.com/SunnyLich/Python-AI-assistant-overlay/releases" target="_blank">GitHub Releases</a> 上的便携包。下载适合你操作系统的包，解压到任意位置，然后运行其中的 Wisp 应用或启动器。',
+      '多数用户建议先使用 <a href="https://github.com/SunnyLich/Wisp-AI-Assistant/releases" target="_blank">GitHub Releases</a> 上的便携包。下载适合你操作系统的包，解压到任意位置，然后运行其中的 Wisp 应用或启动器。',
     'Path': '路径',
     'Use it when': '适用场景',
     'How to start': '如何启动',
@@ -307,7 +307,7 @@ I18N.register('zh-Hans', {
     'There are two ways to start Wisp.': '启动 Wisp 有两种方式。',
     'Repo version': '仓库版本',
     'Recommended: download a portable package from GitHub Releases, unzip it, and run the included Wisp app or launcher. No repo checkout is needed for that path.':
-      '建议：从 <a href="https://github.com/SunnyLich/Python-AI-assistant-overlay/releases" target="_blank">GitHub Releases</a> 下载便携包，解压后运行其中的 Wisp 应用或启动器。这条路径不需要 checkout 仓库。',
+      '建议：从 <a href="https://github.com/SunnyLich/Wisp-AI-Assistant/releases" target="_blank">GitHub Releases</a> 下载便携包，解压后运行其中的 Wisp 应用或启动器。这条路径不需要 checkout 仓库。',
     'If you are running from the repo instead, download or clone the source and use the launcher for your platform:':
       '如果你改用仓库版本，请下载或克隆源码，并使用适合你平台的启动器：',
     'For the repo version, the first run installs everything Wisp needs and then starts the app. Requires Python 3.12 (see Installation).':
@@ -392,7 +392,7 @@ I18N.register('zh-Hans', {
       '这一切你都不必只听我们一面之词。Wisp 完全开源——脱敏模式、密钥链处理、网络调用，全都在仓库中，供你（或你的安全团队）阅读与验证。',
     'Verify it yourself': '亲自验证',
     'Read the source on GitHub — start with core/context_fetcher.py for redaction and context handling.':
-      '在 <a href="https://github.com/SunnyLich/Python-AI-assistant-overlay" target="_blank">GitHub</a> 上阅读源代码——脱敏与上下文处理可从 <code>core/context_fetcher.py</code> 入手。',
+      '在 <a href="https://github.com/SunnyLich/Wisp-AI-Assistant" target="_blank">GitHub</a> 上阅读源代码——脱敏与上下文处理可从 <code>core/context_fetcher.py</code> 入手。',
 
     /* ── Overlay ── */
     'Overview': '概览',

@@ -606,6 +606,82 @@ def test_chat_real_new_send_newline_continue_and_history_controls(qapp):
         qapp.processEvents()
 
 
+def test_chat_history_search_finds_titles_projects_and_transcript_text(qapp):
+    """History search filters instantly and explains transcript-content matches."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QLabel
+
+    from ui.chat_window import ChatWindow
+
+    conversations = [
+        {
+            "id": "roadmap",
+            "project_id": "general",
+            "title_override": "Summer roadmap",
+            "messages": [
+                {"role": "user", "content": "Where did we use the violet comet launch phrase?"},
+                {"role": "assistant", "content": "It was in the June campaign."},
+            ],
+            "context_policy": {},
+        },
+        {
+            "id": "client",
+            "project_id": "client-work",
+            "title": "Invoice draft",
+            "messages": [{"role": "user", "content": "Make this more concise."}],
+            "context_policy": {},
+        },
+    ]
+    window = ChatWindow(
+        conversations,
+        lambda _messages, **_kwargs: iter(()),
+        projects=[
+            {"id": "general", "name": "General"},
+            {"id": "client-work", "name": "Client Work"},
+        ],
+    )
+    try:
+        window.show()
+        window.activateWindow()
+        qapp.processEvents()
+
+        window._history_search.setText("VIOLET launch")
+        qapp.processEvents()
+        assert [idx for idx, _button in window._sidebar_btns] == [0]
+        assert "violet comet launch" in window._sidebar_btns[0][1]._subtitle
+
+        window._history_search.setText("client")
+        qapp.processEvents()
+        assert [idx for idx, _button in window._sidebar_btns] == [1]
+
+        window._history_search.setText("summer roadmap")
+        qapp.processEvents()
+        assert [idx for idx, _button in window._sidebar_btns] == [0]
+
+        window._history_search.setText("nothing matches this")
+        qapp.processEvents()
+        assert window._sidebar_btns == []
+        assert any(
+            label.text().strip() == "No matching conversations."
+            for label in window.findChildren(QLabel)
+        )
+
+        QTest.keyClick(window, Qt.Key.Key_K, Qt.KeyboardModifier.ControlModifier)
+        qapp.processEvents()
+        assert window._history_search.hasFocus()
+        assert window._history_search.selectedText() == "nothing matches this"
+
+        window.start_new_conversation()
+        qapp.processEvents()
+        assert window._history_search.text() == ""
+        assert {idx for idx, _button in window._sidebar_btns} == {0, 1, 2}
+    finally:
+        window.close()
+        window.deleteLater()
+        qapp.processEvents()
+
+
 def test_chat_real_project_and_conversation_options_workflow(qapp, monkeypatch, tmp_path):
     """Real project selector and conversation menus mutate and persist the shown history."""
     from PySide6.QtCore import Qt
@@ -2767,6 +2843,134 @@ def test_context_disabled_sources_preview_and_os_native_contract_workflow(
     assert snapshot["browser_url"] == "https://example.test/page"
 
 
+def test_chat_has_no_manual_agent_team_delegate_button(qapp):
+    """Background work is model-invoked; the full Agent Team remains a separate UI."""
+    from PySide6.QtWidgets import QPushButton
+
+    from ui.chat_window import ChatWindow
+
+    window = ChatWindow(
+        [{"messages": []}],
+        lambda _messages, **_kwargs: iter(()),
+    )
+    try:
+        assert window.findChild(QPushButton, "chatDelegateButton") is None
+    finally:
+        window.close()
+
+
+def test_chat_model_delegates_detached_scoped_work(tmp_path: Path, monkeypatch):
+    """The model tool starts independently and emits lifecycle data for its chat."""
+    import config
+    from core.llm_clients import client as llm
+
+    started: list[dict] = []
+    events: list[dict] = []
+    monkeypatch.setattr(config, "TOOL_FILE_ROOTS", [str(tmp_path)], raising=False)
+    monkeypatch.setattr(config, "TOOL_FILE_BLOCKED_GLOBS", [".env", ".git/*"], raising=False)
+    monkeypatch.setattr(
+        "standalone.background_agents.start_payload_detached",
+        lambda payload, **kwargs: (
+            started.append({"payload": payload, **kwargs})
+            or {
+                "job_id": "job-0123456789",
+                "state_path": str(tmp_path / "job-0123456789.json"),
+                "status": "queued",
+            }
+        ),
+    )
+    llm.set_live_file_access_mode("auto")
+    llm.set_live_background_task_event_callback(events.append)
+    try:
+        result = json.loads(
+            llm._execute_model_tool(
+                "delegate_background_task",
+                {"objective": "Repair export and run its tests."},
+                allowed_tools=["delegate_background_task"],
+            )
+        )
+    finally:
+        llm.set_live_file_access_mode(None)
+        llm.set_live_background_task_event_callback(None)
+
+    assert result["status"] == "started"
+    assert result["job_id"] == "job-0123456789"
+    assert events[0]["state_path"].endswith("job-0123456789.json")
+    task = started[0]["payload"]
+    assert task["scope_folder"] == str(tmp_path.resolve())
+    assert task["allow_network"] is False
+    assert task["allow_file_delete"] is False
+    assert task["git_permission_mode"] == "never permit"
+
+
+def test_chat_background_task_ask_mode_respects_decline(tmp_path: Path, monkeypatch):
+    """Ask mode obtains approval before any detached process is created."""
+    import config
+    from core.llm_clients import client as llm
+
+    monkeypatch.setattr(config, "TOOL_FILE_ROOTS", [str(tmp_path)], raising=False)
+    monkeypatch.setattr(
+        "standalone.background_agents.start_payload_detached",
+        lambda *_args, **_kwargs: pytest.fail("declined work must not launch"),
+    )
+    llm.set_live_file_access_mode("ask")
+    llm.set_live_file_approval_callback(lambda _request: {"approved": False})
+    try:
+        result = llm._execute_model_tool(
+            "delegate_background_task",
+            {"objective": "Change the project."},
+            allowed_tools=["delegate_background_task"],
+        )
+    finally:
+        llm.set_live_file_access_mode(None)
+        llm.set_live_file_approval_callback(None)
+
+    assert "declined" in result.lower()
+
+
+def test_background_result_returns_to_originating_conversation(tmp_path: Path):
+    """Completion persists by stable conversation id without opening Agent Team."""
+    from runtime.workers.ui_host import QtProtocolHost
+
+    conversations = [
+        {"id": "origin", "messages": []},
+        {"id": "other", "messages": []},
+    ]
+
+    class HostDouble:
+        _all_conversations = conversations
+        _active_conversation_idx = 1
+        _chat = None
+
+        def _persist_conversations(self):
+            return None
+
+        def _chat_is_visible(self):
+            return False
+
+    result = QtProtocolHost._chat_background_result(
+        HostDouble(),
+        conversation_id="origin",
+        job_id="job-0123456789",
+        title="Repair export",
+        text="Tests passed.",
+    )
+
+    assert result["appended"] is True
+    assert conversations[1]["messages"] == []
+    message = conversations[0]["messages"][0]
+    assert "Tests passed" in message["content"]
+    assert message["background_task"]["job_id"] == "job-0123456789"
+    duplicate = QtProtocolHost._chat_background_result(
+        HostDouble(),
+        conversation_id="origin",
+        job_id="job-0123456789",
+        text="Duplicate",
+    )
+    assert duplicate["duplicate"] is True
+    assert len(conversations[0]["messages"]) == 1
+
+
 def test_prompt_tools_and_memory_scheduler_settings_workflow(
     isolated_app_state: IsolatedAppState,
     monkeypatch: pytest.MonkeyPatch,
@@ -3724,3 +3928,46 @@ def test_agent_permission_notice_and_bubble_notice_workflow(qapp, tmp_path: Path
     finally:
         window.deleteLater()
         bubble.deleteLater()
+
+
+def test_long_history_builds_only_a_screenful_of_sidebar_rows(qapp):
+    """A big history must not delay the chat window appearing."""
+    from ui import chat_window as chat_window_module
+    from ui.chat_window import ChatWindow
+
+    total = chat_window_module._SIDEBAR_INITIAL_ROWS * 4
+    conversations = [
+        {
+            "messages": [
+                {"role": "user", "content": f"question {index}"},
+                {"role": "assistant", "content": f"answer {index}"},
+            ],
+            "context": "",
+        }
+        for index in range(total)
+    ]
+
+    window = ChatWindow(conversations, lambda *_args, **_kwargs: iter(()))
+    try:
+        # Construction stops after a screenful; the rest is queued.
+        built_up_front = list.__len__(window._sidebar_btns)
+        assert built_up_front <= chat_window_module._SIDEBAR_INITIAL_ROWS + 2
+        assert window.__dict__["_pending_sidebar_rows"]
+
+        # Any read of the row list still sees the complete history, in order.
+        rows = [index for index, _button in window._sidebar_btns]
+        assert not window.__dict__["_pending_sidebar_rows"]
+        assert len(rows) == total
+        assert rows == sorted(rows, reverse=True)  # newest first
+
+        # Selecting a conversation past the initial batch highlights exactly it.
+        window._switch(total - 5)
+        selected = [
+            index
+            for index, button in window._sidebar_btns
+            if getattr(button, "_active", False) or button.isChecked()
+        ]
+        assert selected == [total - 5]
+    finally:
+        window.deleteLater()
+        qapp.processEvents()

@@ -10770,9 +10770,9 @@
         1942
       ],
       "test_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_settings_dialog_controls.py::test_local_speech_device_options_hide_cuda_on_macos",
+      "production_entry_point": "Section-level production surface represented by tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup",
       "scenarios": [
         "normal",
         "repeat",
@@ -10783,16 +10783,14 @@
         "macos",
         "linux"
       ],
-      "optional_components": [
-        "PySide6"
-      ],
+      "optional_components": [],
       "timeout_seconds": 30,
       "persistent_state": [],
       "cleanup": [
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.369,
+      "mapping_score": 0.418,
       "source_section": "speech_voice"
     },
     {
@@ -10891,9 +10889,9 @@
         1972
       ],
       "test_node_ids": [
-        "tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal"
+        "tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_released_speech_tester.py::test_released_speech_tester_only_outputs_to_the_terminal",
+      "production_entry_point": "Section-level production surface represented by tests/test_speech_status.py::test_audio_speech_status_combines_install_and_live_warmup",
       "scenarios": [
         "normal",
         "repeat",
@@ -10911,7 +10909,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.314,
+      "mapping_score": 0.32,
       "source_section": "speech_voice"
     },
     {
@@ -12502,9 +12500,9 @@
         2300
       ],
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow",
+      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text",
       "scenarios": [
         "normal",
         "repeat",
@@ -12522,7 +12520,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.093,
+      "mapping_score": 0.244,
       "source_section": "tools_permissions"
     },
     {
@@ -14548,9 +14546,9 @@
         2699
       ],
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow",
+      "production_entry_point": "Section-level production surface represented by tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test",
       "scenarios": [
         "normal",
         "repeat",
@@ -14569,7 +14567,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.252,
+      "mapping_score": 0.368,
       "source_section": "agent_tasks"
     },
     {
@@ -14663,9 +14661,9 @@
         2726
       ],
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow",
+      "production_entry_point": "Section-level production surface represented by tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test",
       "scenarios": [
         "normal",
         "repeat",
@@ -14683,7 +14681,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.235,
+      "mapping_score": 0.313,
       "source_section": "agent_tasks"
     },
     {
@@ -15151,7 +15149,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.207,
+      "mapping_score": 0.216,
       "source_section": "agent_tasks"
     },
     {
@@ -16190,9 +16188,9 @@
         3029
       ],
       "test_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated",
+      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation",
       "scenarios": [
         "normal",
         "repeat",
@@ -16203,16 +16201,14 @@
         "macos",
         "linux"
       ],
-      "optional_components": [
-        "PySide6"
-      ],
+      "optional_components": [],
       "timeout_seconds": 30,
       "persistent_state": [],
       "cleanup": [
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.265,
+      "mapping_score": 0.272,
       "source_section": "settings_profiles"
     },
     {
@@ -16299,9 +16295,9 @@
         3047
       ],
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens",
+      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation",
       "scenarios": [
         "normal",
         "repeat",
@@ -16319,7 +16315,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.219,
+      "mapping_score": 0.237,
       "source_section": "settings_profiles"
     },
     {
@@ -16626,9 +16622,9 @@
         3100
       ],
       "test_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding",
+      "production_entry_point": "Section-level production surface represented by tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir",
       "scenarios": [
         "normal",
         "repeat",
@@ -16646,7 +16642,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.424,
+      "mapping_score": 0.456,
       "source_section": "optional_installers"
     },
     {
@@ -16659,9 +16655,9 @@
         3104
       ],
       "test_node_ids": [
-        "tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding"
+        "tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_optional_deps.py::test_optional_tts_installer_log_survives_legacy_console_encoding",
+      "production_entry_point": "Section-level production surface represented by tests/test_optional_deps.py::test_optional_installer_paths_ignore_ephemeral_run_log_dir",
       "scenarios": [
         "normal",
         "repeat",
@@ -16679,7 +16675,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.441,
+      "mapping_score": 0.464,
       "source_section": "optional_installers"
     },
     {

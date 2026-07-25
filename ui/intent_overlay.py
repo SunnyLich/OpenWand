@@ -380,6 +380,7 @@ class IntentOverlay(QWidget):
         conversation_namespace_label: str = "",
         initial_custom_text: str = "",
         focus_overlay: bool = False,
+        defer_focus: bool = False,
         parent=None,
     ):
         """Initialize the intent overlay instance."""
@@ -398,6 +399,10 @@ class IntentOverlay(QWidget):
         self.setWindowFlags(flags)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self._focus_deferred = bool(defer_focus)
+        if self._focus_deferred:
+            self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+            self.setEnabled(False)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
 
@@ -454,6 +459,7 @@ class IntentOverlay(QWidget):
         self._prompt_resize_pending = False
         self._initial_custom_text = str(initial_custom_text or "").strip()
         self._focus_overlay_requested = bool(focus_overlay)
+        self._interaction_started = False
         self._was_activated = False   # macOS: dismiss on focus-out once activated
         self._kb_hook = None
         self._overlay_grabbed_keyboard = False
@@ -1942,15 +1948,26 @@ class IntentOverlay(QWidget):
         except Exception:
             pass
 
-    def showEvent(self, event):
-        """Show event."""
-        super().showEvent(event)
-        self.raise_()
-        if not _IS_WIN:
+    def activate_after_context(self) -> None:
+        """Enable and focus a picker shown early for hotkey-time context capture."""
+        if self._handled:
+            return
+        if self._focus_deferred:
+            self._focus_deferred = False
+            self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+            self.setEnabled(True)
+        self._start_interaction()
+
+    def _start_interaction(self) -> None:
+        """Install key routing and focus the picker exactly once."""
+        if self._interaction_started or self._handled:
+            return
+        self._interaction_started = True
+        if _IS_WIN:
+            self._win_force_foreground()
+        else:
             self.activateWindow()
             self._focus_overlay()
-        self._closed = False
-        self._debug("show")
         if _IS_WIN:
             import keyboard  # type: ignore
 
@@ -1996,6 +2013,15 @@ class IntentOverlay(QWidget):
         elif not _IS_MAC:
             for delay_ms in (25, 75, 150):
                 QTimer.singleShot(delay_ms, self._focus_overlay)
+
+    def showEvent(self, event):
+        """Show event."""
+        super().showEvent(event)
+        self.raise_()
+        self._closed = False
+        self._debug("show-deferred" if self._focus_deferred else "show")
+        if not self._focus_deferred:
+            self._start_interaction()
 
     # ── Cleanup / fire ────────────────────────────────────────────────────
 

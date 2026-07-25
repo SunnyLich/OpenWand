@@ -66,6 +66,10 @@ _STT_BG_POLL_SECONDS = 0.2
 
 _model = None
 _model_ready = False  # True once the model is loaded AND warmed (first clip fast)
+_model_loading = False
+_model_error = ""
+_model_device = ""
+_model_compute = ""
 _model_lock = threading.Lock()
 _recording_lock = threading.RLock()
 _stream = None
@@ -111,23 +115,34 @@ def _stt_bg_overlap_seconds() -> float:
 
 def _get_model():
     """Return model."""
-    global _model, _model_ready
+    global _model, _model_ready, _model_loading, _model_error, _model_device, _model_compute
     with _model_lock:
         if _model is None:
-            import config
-            from core import optional_deps
+            _model_loading = True
+            _model_error = ""
+            try:
+                import config
+                from core import optional_deps
 
-            optional_deps.require_optional_package_runtime("stt", device=config.STT_DEVICE)
-            from faster_whisper import WhisperModel
+                optional_deps.require_optional_package_runtime("stt", device=config.STT_DEVICE)
+                from faster_whisper import WhisperModel
 
-            from core.stt_device import build_model, resolve_compute_type, resolve_device
-            device = resolve_device(config.STT_DEVICE, log=_log)
-            compute_type = resolve_compute_type(device, config.STT_COMPUTE_TYPE, log=_log)
-            _model, device, compute_type = build_model(
-                WhisperModel, config.STT_MODEL, device, compute_type, log=_log
-            )
-            _model_ready = True
-            _log(f"Whisper model '{config.STT_MODEL}' loaded on {device} ({compute_type}).")
+                from core.stt_device import build_model, resolve_compute_type, resolve_device
+                device = resolve_device(config.STT_DEVICE, log=_log)
+                compute_type = resolve_compute_type(device, config.STT_COMPUTE_TYPE, log=_log)
+                _model, device, compute_type = build_model(
+                    WhisperModel, config.STT_MODEL, device, compute_type, log=_log
+                )
+                _model_ready = True
+                _model_device = str(device)
+                _model_compute = str(compute_type)
+                _log(f"Whisper model '{config.STT_MODEL}' loaded on {device} ({compute_type}).")
+            except Exception as exc:
+                _model_ready = False
+                _model_error = f"{type(exc).__name__}: {exc}"
+                raise
+            finally:
+                _model_loading = False
     return _model
 
 
@@ -150,10 +165,14 @@ def stt_prewarm(wait: bool = False) -> None:
 
 def stt_reset_model() -> None:
     """Drop the cached Whisper model after STT settings change."""
-    global _model, _model_ready
+    global _model, _model_ready, _model_loading, _model_error, _model_device, _model_compute
     with _model_lock:
         _model = None
         _model_ready = False
+        _model_loading = False
+        _model_error = ""
+        _model_device = ""
+        _model_compute = ""
     _log("Whisper model cache reset")
     return None
 
@@ -164,7 +183,13 @@ def stt_is_ready() -> dict[str, Any]:
     Reads a flag only (never the model lock), so it answers instantly even while
     prewarm is still loading on its background thread — letting the GUI show a
     "warming up" indicator instead of a silent slow first transcription."""
-    return {"ready": _model_ready}
+    return {
+        "ready": _model_ready,
+        "warming": _model_loading,
+        "error": _model_error,
+        "device": _model_device,
+        "compute": _model_compute,
+    }
 
 
 def stt_is_recording() -> bool:

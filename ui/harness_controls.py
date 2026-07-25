@@ -121,7 +121,7 @@ class HarnessControlsDialog(QDialog):
         self.model.addItem(t("Provider default"), "")
         for model in (_CLAUDE_MODELS if self.provider == "claude" else _CODEX_MODELS):
             label = (
-                f"{model} — usage credits required"
+                f"{model} — {t('usage credits required')}"
                 if self.provider == "claude" and model == "claude-fable-5"
                 else model
             )
