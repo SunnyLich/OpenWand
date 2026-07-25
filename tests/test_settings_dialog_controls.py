@@ -2474,6 +2474,7 @@ def test_kokoro_install_uses_gpu_packages_for_gpu_and_auto(monkeypatch, device_v
     from ui.settings_panel import dialog as dialog_mod
     from ui.settings_panel.dialog import SettingsDialog
 
+    monkeypatch.setattr(optional_deps.sys, "platform", "win32")
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog.__new__(SettingsDialog)
     device = QComboBox()

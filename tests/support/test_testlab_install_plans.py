@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 
-def test_testlab_kokoro_auto_provisions_cuda_without_requiring_a_gpu() -> None:
+def test_testlab_kokoro_auto_provisions_cuda_without_requiring_a_gpu(monkeypatch) -> None:
     from core import optional_deps
     from testlab.checks import _install_common
 
+    monkeypatch.setattr(optional_deps.sys, "platform", "win32")
     plan, verify_device, mode = _install_common._kokoro_install_plan(optional_deps, "auto")
 
     assert mode == "gpu"
@@ -16,10 +17,11 @@ def test_testlab_kokoro_auto_provisions_cuda_without_requiring_a_gpu() -> None:
     assert verify_device == "auto"
 
 
-def test_testlab_kokoro_explicit_devices_keep_strict_semantics() -> None:
+def test_testlab_kokoro_explicit_devices_keep_strict_semantics(monkeypatch) -> None:
     from core import optional_deps
     from testlab.checks import _install_common
 
+    monkeypatch.setattr(optional_deps.sys, "platform", "win32")
     cuda_plan, cuda_verify_device, cuda_mode = _install_common._kokoro_install_plan(optional_deps, "cuda")
     cpu_plan, cpu_verify_device, cpu_mode = _install_common._kokoro_install_plan(optional_deps, "cpu")
 

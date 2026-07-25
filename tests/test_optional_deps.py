@@ -707,6 +707,7 @@ def test_optional_deps_frozen_kokoro_cuda_uses_uv_best_match_index_strategy(monk
     """Packaged CUDA Kokoro installs need uv to search PyPI and PyTorch indexes."""
     from core import optional_deps
 
+    monkeypatch.setattr(optional_deps.sys, "platform", "win32")
     suffix = ".exe" if sys.platform == "win32" else ""
     bundle = tmp_path / "_internal"
     uv = bundle / "bin" / f"uv{suffix}"
@@ -2223,10 +2224,11 @@ def test_elevenlabs_install_uses_release_locked_dependency_closure():
     assert all("==" in package for package in packages)
 
 
-def test_kokoro_gpu_install_includes_cuda_torch_index():
+def test_kokoro_gpu_install_includes_cuda_torch_index(monkeypatch):
     """GPU Kokoro installs must request CUDA Torch wheels explicitly."""
     from core import optional_deps
 
+    monkeypatch.setattr(optional_deps.sys, "platform", "win32")
     torch_packages = optional_deps.kokoro_torch_install_packages("cuda")
     packages = optional_deps.kokoro_install_packages("cuda")
 
@@ -2258,6 +2260,7 @@ def test_kokoro_auto_install_does_not_depend_on_cuda_probe(monkeypatch):
     def fail_probe():
         raise AssertionError("Auto package selection must not depend on a hardware probe")
 
+    monkeypatch.setattr(optional_deps.sys, "platform", "win32")
     monkeypatch.setattr(optional_deps, "system_cuda_available", fail_probe)
 
     assert optional_deps.kokoro_install_mode_for_device("auto") == "gpu"
@@ -2280,6 +2283,7 @@ def test_kokoro_auto_install_still_provisions_gpu_without_cuda_probe(monkeypatch
     """Auto should provision CPU fallback and GPU capability without probing."""
     from core import optional_deps
 
+    monkeypatch.setattr(optional_deps.sys, "platform", "win32")
     monkeypatch.setattr(optional_deps, "system_cuda_available", lambda: False)
 
     assert optional_deps.kokoro_install_mode_for_device("auto") == "gpu"

@@ -183,7 +183,7 @@ def _wait_snapshot(ui, key: str, *, timeout: float = 15.0) -> dict:
         snapshot = ui.call("ui.debug.shell.snapshot", timeout=5)
         if snapshot.get(key) is True:
             return snapshot
-        time.sleep(0.05)
+        time.sleep(1.0)
     pytest.fail(f"UI shell did not reach {key}: {snapshot}")
 
 
@@ -228,7 +228,8 @@ def test_real_worker_tray_and_provider_actions_open_every_target_then_quit(
     )
     ui = supervisor.workers["ui"]
     try:
-        supervisor.start_all()
+        # Flow startup launches the UI worker. Brain starts lazily when a tray
+        # target needs data; native/audio are unrelated to this shell path.
         flow.start()
 
         for label, visible_key in (

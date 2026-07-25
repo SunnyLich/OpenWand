@@ -53,6 +53,7 @@ def isolated_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         encoding="utf-8",
     )
     theme_calls: list[bool] = []
+    monkeypatch.setenv("WISP_LAUNCH_SMOKE_DISABLE_AUTOSTART_SYNC", "1")
     monkeypatch.setattr(settings_dialog, "ENV_PATH", env_path)
     monkeypatch.setattr(settings_env, "ENV_PATH", env_path)
     monkeypatch.setattr(
