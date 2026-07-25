@@ -211,6 +211,37 @@ def test_supervisor_shutdown_never_snapshots_an_exited_worker_pid(monkeypatch):
     assert shutdowns == ["already-exited", "still-live"]
 
 
+def test_supervisor_shutdown_can_skip_managed_process_audit(monkeypatch):
+    """An isolated test can stop real workers without OS-wide process discovery."""
+    shutdowns = []
+
+    class FakeWorker:
+        pid = 42
+
+        def alive(self):
+            return True
+
+        def shutdown(self):
+            shutdowns.append("worker")
+
+    supervisor = object.__new__(WispSupervisor)
+    supervisor.workers = {"worker": FakeWorker()}
+    monkeypatch.setattr(
+        supervisor_ipc,
+        "_snapshot_managed_processes",
+        lambda _pids: pytest.fail("process audit must be skipped"),
+    )
+    monkeypatch.setattr(
+        supervisor_ipc,
+        "_force_stop_managed_processes",
+        lambda _items: pytest.fail("forced audit cleanup must be skipped"),
+    )
+
+    supervisor.shutdown(audit_managed_processes=False)
+
+    assert shutdowns == ["worker"]
+
+
 def test_supervisor_startup_failure_matrix_cleans_every_partial_worker(monkeypatch):
     """All startup fault classes roll back the complete worker process set."""
     failures = (

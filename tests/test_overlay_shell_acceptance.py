@@ -317,7 +317,14 @@ def _run_real_worker_shell_case(
             for name, worker in supervisor.workers.items()
         )
         progress(f"worker states before shutdown: {worker_states}")
-        supervisor.shutdown()
+        # Windows psutil process-tree discovery can block inside native process
+        # enumeration on a busy hosted runner. This isolated fixture cannot have
+        # addon hosts, and Windows uses in-process hotkeys, so stop each real
+        # worker without the unrelated OS-wide survivor audit. Keep the existing
+        # audit on macOS (where the hotkey helper is a child process) and Linux.
+        audit_managed_processes = os.name != "nt"
+        progress(f"managed process audit enabled: {audit_managed_processes}")
+        supervisor.shutdown(audit_managed_processes=audit_managed_processes)
         progress("worker shutdown complete")
 
 

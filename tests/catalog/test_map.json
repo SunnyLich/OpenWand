@@ -484,7 +484,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 39
+      "node_count": 40
     },
     {
       "path": "tests/runtime/test_ui_host_agent_meeting.py",

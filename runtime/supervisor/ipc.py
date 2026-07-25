@@ -621,25 +621,35 @@ class WispSupervisor:
         """Call a method on the named worker and return its result."""
         return self.workers[worker].call(method, params, timeout=timeout)
 
-    def shutdown(self) -> None:
-        """Gracefully stop every worker, then force-stop managed survivors."""
+    def shutdown(self, *, audit_managed_processes: bool = True) -> None:
+        """Gracefully stop every worker, then optionally audit managed survivors."""
         # A worker may already have exited itself (for example, the UI worker
         # after the user chooses Quit). Never resolve that stale PID through
         # psutil: Windows can retain or reuse it while native process discovery
         # is running. Live workers are still snapshotted before teardown so
         # their owned helper processes remain discoverable on every platform.
-        worker_pids = [
-            pid
-            for worker in self.workers.values()
-            if worker.alive() and (pid := worker.pid) is not None
-        ]
-        managed_processes = _snapshot_managed_processes(worker_pids)
+        worker_pids = (
+            [
+                pid
+                for worker in self.workers.values()
+                if worker.alive() and (pid := worker.pid) is not None
+            ]
+            if audit_managed_processes
+            else []
+        )
+        managed_processes = (
+            _snapshot_managed_processes(worker_pids) if audit_managed_processes else []
+        )
         for name, worker in self.workers.items():
             try:
                 worker.shutdown()
             except Exception:  # noqa: BLE001 - one broken worker must not strand the rest
                 log.exception("Worker %s raised during shutdown; continuing", name)
-        survivors = _force_stop_managed_processes(managed_processes)
+        survivors = (
+            _force_stop_managed_processes(managed_processes)
+            if audit_managed_processes
+            else []
+        )
         if survivors:
             log.error("Managed Wisp processes survived shutdown: %s", ", ".join(map(str, survivors)))
         elif managed_processes:
