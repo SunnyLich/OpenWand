@@ -5,12 +5,15 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 _PYTEST_NO_TESTS_COLLECTED = 5
 _FILE_TIMEOUT_EXIT_CODE = 124
-_DEFAULT_FILE_TIMEOUT_SECONDS = 300.0
+_DEFAULT_FILE_INACTIVITY_TIMEOUT_SECONDS = 300.0
 _FAULT_HANDLER_TIMEOUT_SECONDS = 60
+_PROCESS_POLL_SECONDS = 1.0
 
 
 def _test_files(root: Path) -> list[Path]:
@@ -75,18 +78,76 @@ def _terminate_process_tree(process: subprocess.Popen) -> None:
         pass
 
 
-def _run_file(root: Path, path: Path, basetemp: Path, timeout_seconds: float) -> int:
-    """Run one pytest file with a hard process-tree deadline."""
-    process = subprocess.Popen(_pytest_command(root, [path], basetemp), cwd=root)
-    try:
-        return process.wait(timeout=timeout_seconds)
-    except subprocess.TimeoutExpired:
-        print(
-            f"=== file timed out after {timeout_seconds:g}s: {path.relative_to(root)} ===",
-            flush=True,
-        )
-        _terminate_process_tree(process)
-        return _FILE_TIMEOUT_EXIT_CODE
+def _forward_process_output(
+    process: subprocess.Popen,
+    mark_activity,
+) -> None:
+    """Forward pytest output immediately and mark every emitted chunk as activity."""
+    stream = process.stdout
+    if stream is None:
+        return
+    while True:
+        chunk = stream.read1(4096)
+        if not chunk:
+            return
+        mark_activity()
+        binary_stdout = getattr(sys.stdout, "buffer", None)
+        if binary_stdout is not None:
+            binary_stdout.write(chunk)
+            binary_stdout.flush()
+        else:
+            sys.stdout.write(chunk.decode(errors="replace"))
+            sys.stdout.flush()
+
+
+def _run_file(
+    root: Path,
+    path: Path,
+    basetemp: Path,
+    inactivity_timeout_seconds: float,
+) -> int:
+    """Run one pytest file until it exits or stops emitting output."""
+    process = subprocess.Popen(
+        _pytest_command(root, [path], basetemp),
+        cwd=root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    activity_lock = threading.Lock()
+    last_activity_at = time.monotonic()
+
+    def mark_activity() -> None:
+        nonlocal last_activity_at
+        with activity_lock:
+            last_activity_at = time.monotonic()
+
+    output_thread = threading.Thread(
+        target=_forward_process_output,
+        args=(process, mark_activity),
+        name="wisp-ci-pytest-output",
+        daemon=True,
+    )
+    output_thread.start()
+
+    while True:
+        with activity_lock:
+            inactive_for = time.monotonic() - last_activity_at
+        remaining = inactivity_timeout_seconds - inactive_for
+        if remaining <= 0:
+            print(
+                "=== file stopped producing output for "
+                f"{inactivity_timeout_seconds:g}s: {path.relative_to(root)} ===",
+                flush=True,
+            )
+            _terminate_process_tree(process)
+            output_thread.join(timeout=5.0)
+            return _FILE_TIMEOUT_EXIT_CODE
+        try:
+            status = process.wait(timeout=min(_PROCESS_POLL_SECONDS, remaining))
+        except subprocess.TimeoutExpired:
+            continue
+        output_thread.join(timeout=5.0)
+        return status
 
 
 def _run_per_file(
@@ -94,14 +155,14 @@ def _run_per_file(
     files: list[Path],
     chunk_index: int,
     *,
-    timeout_seconds: float = _DEFAULT_FILE_TIMEOUT_SECONDS,
+    inactivity_timeout_seconds: float = _DEFAULT_FILE_INACTIVITY_TIMEOUT_SECONDS,
 ) -> int:
     for index, path in enumerate(files, start=1):
         rel_path = path.relative_to(root)
         basetemp = root / f".pytest-tmp-ci-chunk-{chunk_index}-file-{index:03d}"
         print(f"=== running file {index}/{len(files)}: {rel_path} ===", flush=True)
         try:
-            status = _run_file(root, path, basetemp, timeout_seconds)
+            status = _run_file(root, path, basetemp, inactivity_timeout_seconds)
         except KeyboardInterrupt:
             print(f"=== runner interrupted while waiting for file {index}/{len(files)}: {rel_path} ===", flush=True)
             raise
@@ -131,9 +192,11 @@ def main() -> int:
     parser.add_argument("--list-only", action="store_true")
     parser.add_argument("--per-file", action="store_true")
     parser.add_argument(
+        "--per-file-inactivity-timeout-seconds",
         "--per-file-timeout-seconds",
+        dest="per_file_inactivity_timeout_seconds",
         type=float,
-        default=_DEFAULT_FILE_TIMEOUT_SECONDS,
+        default=_DEFAULT_FILE_INACTIVITY_TIMEOUT_SECONDS,
     )
     args = parser.parse_args()
 
@@ -141,8 +204,8 @@ def main() -> int:
         parser.error("--chunk-total must be at least 1")
     if not 1 <= args.chunk_index <= args.chunk_total:
         parser.error("--chunk-index must be between 1 and --chunk-total")
-    if args.per_file_timeout_seconds <= 0:
-        parser.error("--per-file-timeout-seconds must be greater than zero")
+    if args.per_file_inactivity_timeout_seconds <= 0:
+        parser.error("--per-file-inactivity-timeout-seconds must be greater than zero")
 
     root = Path(__file__).resolve().parents[1]
     files = _chunk_files(_test_files(root), args.chunk_index, args.chunk_total)
@@ -162,7 +225,7 @@ def main() -> int:
             root,
             files,
             args.chunk_index,
-            timeout_seconds=args.per_file_timeout_seconds,
+            inactivity_timeout_seconds=args.per_file_inactivity_timeout_seconds,
         )
 
     basetemp = root / f".pytest-tmp-ci-chunk-{args.chunk_index}"

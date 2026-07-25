@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import subprocess
+import sys
 from pathlib import Path
 
 from scripts import run_ci_pytest_chunk
@@ -52,30 +52,55 @@ def test_chunks_partition_every_file_once() -> None:
     )
 
 
-def test_per_file_timeout_stops_the_process_tree(tmp_path: Path, monkeypatch) -> None:
-    """A wedged pytest file fails promptly instead of consuming the whole CI job."""
+def test_per_file_inactivity_timeout_stops_the_process_tree(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A silent pytest process fails promptly instead of consuming the whole CI job."""
     test_file = tmp_path / "tests" / "test_slow.py"
     test_file.parent.mkdir(parents=True)
     test_file.write_text("def test_slow(): pass\n", encoding="utf-8")
-    process = type(
-        "FakeProcess",
-        (),
-        {
-            "wait": lambda self, timeout=None: (_ for _ in ()).throw(
-                subprocess.TimeoutExpired("pytest", timeout)
-            ),
-        },
-    )()
-    terminated = []
-    monkeypatch.setattr(subprocess, "Popen", lambda *_args, **_kwargs: process)
-    monkeypatch.setattr(run_ci_pytest_chunk, "_terminate_process_tree", terminated.append)
+    monkeypatch.setattr(
+        run_ci_pytest_chunk,
+        "_pytest_command",
+        lambda *_args: [sys.executable, "-c", "import time; time.sleep(60)"],
+    )
 
     status = run_ci_pytest_chunk._run_file(
         tmp_path,
         test_file,
         tmp_path / ".pytest-tmp",
-        12.0,
+        0.5,
     )
 
     assert status == run_ci_pytest_chunk._FILE_TIMEOUT_EXIT_CODE
-    assert terminated == [process]
+
+
+def test_per_file_inactivity_timeout_resets_when_output_arrives(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A long-running file stays alive while it continues to report progress."""
+    test_file = tmp_path / "tests" / "test_progress.py"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text("def test_progress(): pass\n", encoding="utf-8")
+    script = (
+        "import time\n"
+        "for index in range(6):\n"
+        "    print(index, flush=True)\n"
+        "    time.sleep(0.4)\n"
+    )
+    monkeypatch.setattr(
+        run_ci_pytest_chunk,
+        "_pytest_command",
+        lambda *_args: [sys.executable, "-c", script],
+    )
+
+    status = run_ci_pytest_chunk._run_file(
+        tmp_path,
+        test_file,
+        tmp_path / ".pytest-tmp",
+        1.0,
+    )
+
+    assert status == 0

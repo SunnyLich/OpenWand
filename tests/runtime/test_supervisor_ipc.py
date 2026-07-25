@@ -1627,22 +1627,37 @@ def test_ui_worker_freeze_watchdog_writes_log(tmp_path):
         },
     )
     try:
-        result = worker.call("ui.debug.block_event_loop", {"seconds": 0.35}, timeout=10)
-        assert result["blocked_seconds"] == 0.35
+        # Let startup settle so a startup-only freeze report cannot be mistaken
+        # for the deliberately blocked dispatch below. A one-second block gives
+        # heavily scheduled macOS runners several watchdog intervals to observe it.
+        assert worker.call("ui.ping", timeout=30)["pong"] is True
+        for path in tmp_path.glob("ui_freeze_*.log"):
+            path.unlink(missing_ok=True)
+
+        result = worker.call("ui.debug.block_event_loop", {"seconds": 1.0}, timeout=10)
+        assert result["blocked_seconds"] == 1.0
 
         deadline = time.time() + 5
         freeze_logs = []
+        matching_freeze_logs = []
         slow_logs = []
         while time.time() < deadline:
             freeze_logs = list(tmp_path.glob("ui_freeze_*.log"))
+            matching_freeze_logs = [
+                path
+                for path in freeze_logs
+                if "active_method=ui.debug.block_event_loop"
+                in path.read_text(encoding="utf-8")
+            ]
             slow_logs = list(tmp_path.glob("ui_slow_dispatch_*.log"))
-            if freeze_logs and slow_logs:
+            if matching_freeze_logs and slow_logs:
                 break
             time.sleep(0.05)
 
         assert freeze_logs
+        assert matching_freeze_logs
         assert slow_logs
-        freeze_text = freeze_logs[0].read_text(encoding="utf-8")
+        freeze_text = matching_freeze_logs[0].read_text(encoding="utf-8")
         slow_text = slow_logs[0].read_text(encoding="utf-8")
         assert "active_method=ui.debug.block_event_loop" in freeze_text
         assert "Thread stacks:" in freeze_text
@@ -1665,6 +1680,10 @@ def test_ui_worker_show_settings_does_not_block_event_loop(tmp_path):
         },
     )
     try:
+        # Worker startup is outside the dispatch-latency contract below.
+        assert worker.call("ui.ping", timeout=30)["pong"] is True
+        for path in tmp_path.glob("ui_freeze_*.log"):
+            path.unlink(missing_ok=True)
         started = time.perf_counter()
         result = worker.call("ui.show_settings", timeout=10)
         elapsed = time.perf_counter() - started
@@ -1693,6 +1712,10 @@ def test_ui_worker_show_memory_does_not_crash_or_block_event_loop(tmp_path):
         },
     )
     try:
+        # Worker startup is outside the dispatch-latency contract below.
+        assert worker.call("ui.ping", timeout=30)["pong"] is True
+        for path in tmp_path.glob("ui_freeze_*.log"):
+            path.unlink(missing_ok=True)
         started = time.perf_counter()
         result = worker.call(
             "ui.show_memory",
