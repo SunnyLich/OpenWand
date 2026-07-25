@@ -484,7 +484,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 38
+      "node_count": 39
     },
     {
       "path": "tests/runtime/test_ui_host_agent_meeting.py",
@@ -574,7 +574,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 5
+      "node_count": 6
     },
     {
       "path": "tests/support/test_dependency_locks.py",

@@ -138,10 +138,14 @@ def test_supervisor_shutdown_continues_after_one_worker_raises(monkeypatch):
     calls = []
 
     class FakeWorker:
-        def __init__(self, name, pid, *, fail=False):
+        def __init__(self, name, pid, *, fail=False, alive=True):
             self.name = name
             self.pid = pid
             self.fail = fail
+            self._alive = alive
+
+        def alive(self):
+            return self._alive
 
         def shutdown(self):
             calls.append(self.name)
@@ -168,6 +172,45 @@ def test_supervisor_shutdown_continues_after_one_worker_raises(monkeypatch):
     assert forced == [snapshot]
 
 
+def test_supervisor_shutdown_never_snapshots_an_exited_worker_pid(monkeypatch):
+    """An exited worker's reusable PID never enters native process discovery."""
+    shutdowns = []
+
+    class FakeWorker:
+        def __init__(self, name, pid, *, alive):
+            self.name = name
+            self.pid = pid
+            self._alive = alive
+
+        def alive(self):
+            return self._alive
+
+        def shutdown(self):
+            shutdowns.append(self.name)
+
+    supervisor = object.__new__(WispSupervisor)
+    supervisor.workers = {
+        "already-exited": FakeWorker("already-exited", 41, alive=False),
+        "still-live": FakeWorker("still-live", 42, alive=True),
+    }
+    snapshotted = []
+    monkeypatch.setattr(
+        supervisor_ipc,
+        "_snapshot_managed_processes",
+        lambda pids: snapshotted.extend(pids) or [],
+    )
+    monkeypatch.setattr(
+        supervisor_ipc,
+        "_force_stop_managed_processes",
+        lambda _items: [],
+    )
+
+    supervisor.shutdown()
+
+    assert snapshotted == [42]
+    assert shutdowns == ["already-exited", "still-live"]
+
+
 def test_supervisor_startup_failure_matrix_cleans_every_partial_worker(monkeypatch):
     """All startup fault classes roll back the complete worker process set."""
     failures = (
@@ -191,6 +234,9 @@ def test_supervisor_startup_failure_matrix_cleans_every_partial_worker(monkeypat
             def __init__(self, name, error=None):
                 self.name = name
                 self.error = error
+
+            def alive(self):
+                return False
 
             def call(self, method, params, *, timeout):
                 assert method == f"{self.name}.ping"

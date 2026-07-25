@@ -623,7 +623,16 @@ class WispSupervisor:
 
     def shutdown(self) -> None:
         """Gracefully stop every worker, then force-stop managed survivors."""
-        worker_pids = [pid for worker in self.workers.values() if (pid := worker.pid) is not None]
+        # A worker may already have exited itself (for example, the UI worker
+        # after the user chooses Quit). Never resolve that stale PID through
+        # psutil: Windows can retain or reuse it while native process discovery
+        # is running. Live workers are still snapshotted before teardown so
+        # their owned helper processes remain discoverable on every platform.
+        worker_pids = [
+            pid
+            for worker in self.workers.values()
+            if worker.alive() and (pid := worker.pid) is not None
+        ]
         managed_processes = _snapshot_managed_processes(worker_pids)
         for name, worker in self.workers.items():
             try:

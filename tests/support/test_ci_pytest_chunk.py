@@ -52,6 +52,12 @@ def test_chunks_partition_every_file_once() -> None:
     )
 
 
+def test_only_visible_output_counts_as_ci_progress() -> None:
+    """Pipe control bytes cannot keep a silent test alive forever."""
+    assert run_ci_pytest_chunk._contains_visible_progress(b". [42%]\n") is True
+    assert run_ci_pytest_chunk._contains_visible_progress(b"\x00\r\n\t\x1f\x7f") is False
+
+
 def test_per_file_inactivity_timeout_stops_the_process_tree(
     tmp_path: Path,
     monkeypatch,

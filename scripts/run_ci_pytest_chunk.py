@@ -14,6 +14,7 @@ _FILE_TIMEOUT_EXIT_CODE = 124
 _DEFAULT_FILE_INACTIVITY_TIMEOUT_SECONDS = 300.0
 _FAULT_HANDLER_TIMEOUT_SECONDS = 60
 _PROCESS_POLL_SECONDS = 1.0
+_IGNORED_ACTIVITY_BYTES = bytes(range(0x20)) + b"\x7f"
 
 
 def _test_files(root: Path) -> list[Path]:
@@ -78,6 +79,11 @@ def _terminate_process_tree(process: subprocess.Popen) -> None:
         pass
 
 
+def _contains_visible_progress(chunk: bytes) -> bool:
+    """Return whether output contains something a CI reader can actually see."""
+    return bool(chunk.translate(None, _IGNORED_ACTIVITY_BYTES))
+
+
 def _forward_process_output(
     process: subprocess.Popen,
     mark_activity,
@@ -90,7 +96,8 @@ def _forward_process_output(
         chunk = stream.read1(4096)
         if not chunk:
             return
-        mark_activity()
+        if _contains_visible_progress(chunk):
+            mark_activity()
         binary_stdout = getattr(sys.stdout, "buffer", None)
         if binary_stdout is not None:
             binary_stdout.write(chunk)

@@ -312,6 +312,11 @@ def _run_real_worker_shell_case(
         progress("stopping flow")
         flow.stop()
         progress("flow stopped; shutting down workers")
+        worker_states = ", ".join(
+            f"{name}=pid:{worker.pid},alive:{worker.alive()}"
+            for name, worker in supervisor.workers.items()
+        )
+        progress(f"worker states before shutdown: {worker_states}")
         supervisor.shutdown()
         progress("worker shutdown complete")
 
