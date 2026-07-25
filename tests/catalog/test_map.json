@@ -1784,7 +1784,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 19
+      "node_count": 21
     },
     {
       "path": "tests/test_onboarding_acceptance.py",

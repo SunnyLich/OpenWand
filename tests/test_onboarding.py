@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from ui.onboarding import (
     clean_profile_name,
     local_speech_install_request,
@@ -35,9 +37,18 @@ def test_simple_profile_uses_oauth_and_local_speech_defaults():
     assert values["STT_MODEL"] == "base"
 
 
-def test_local_speech_choices_build_one_combined_real_installer_request():
+@pytest.mark.parametrize(
+    ("platform_name", "kokoro_mode"),
+    (("win32", "gpu"), ("linux", "gpu"), ("darwin", "cpu")),
+)
+def test_local_speech_choices_build_one_combined_real_installer_request(
+    monkeypatch,
+    platform_name,
+    kokoro_mode,
+):
     from core import optional_deps
 
+    monkeypatch.setattr(optional_deps.sys, "platform", platform_name)
     request = local_speech_install_request(
         tts_preference="local",
         stt_preference="local",
@@ -48,9 +59,13 @@ def test_local_speech_choices_build_one_combined_real_installer_request():
     assert request["display_name"] == "Local speech"
     assert optional_deps.KOKORO_PACKAGE in request["packages"]
     assert optional_deps.STT_PACKAGE in request["packages"]
-    assert optional_deps.KOKORO_CUDA_TORCH_PACKAGE in request["pre_install_packages"]
+    assert optional_deps.kokoro_install_mode_for_device("auto") == kokoro_mode
+    assert (
+        optional_deps.KOKORO_CUDA_TORCH_PACKAGE in request["pre_install_packages"]
+    ) is (kokoro_mode == "gpu")
     extra = request["external_plan_extra"]
     assert extra["post_install"] == "speech_prepare"
+    assert extra["kokoro_install_device"] == ("cuda" if kokoro_mode == "gpu" else "cpu")
     assert extra["settings_updates"]["TTS_PROVIDER"] == "kokoro"
     assert extra["settings_updates"]["STT_MODEL"] == "base"
 
