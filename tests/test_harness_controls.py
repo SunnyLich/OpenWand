@@ -130,15 +130,18 @@ def test_harness_controls_choose_or_clear_workspace(monkeypatch, tmp_path) -> No
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
-def test_claude_controls_offer_full_model_ids() -> None:
-    """Claude's picker exposes concrete versions instead of only family aliases."""
+def test_claude_controls_offer_and_save_full_model_ids(monkeypatch) -> None:
+    """Claude's picker persists concrete versions instead of only family aliases."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
-    from ui.harness_controls import HarnessControlsDialog
+    import ui.harness_controls as controls
 
     app = QApplication.instance() or QApplication(sys.argv)
-    dialog = HarnessControlsDialog("claude")
+    writes = []
+    monkeypatch.setattr(controls, "write_env_file", lambda path, values: writes.append((path, values)))
+    monkeypatch.setattr(controls.config, "reload", lambda: None)
+    dialog = controls.HarnessControlsDialog("claude")
 
     try:
         model_values = {
@@ -153,11 +156,17 @@ def test_claude_controls_offer_full_model_ids() -> None:
             "claude-haiku-4-5",
         } <= model_values
 
+        fable_index = dialog.model.findData("claude-fable-5")
+        assert fable_index >= 0
+        assert "usage credits required" in dialog.model.itemText(fable_index)
+
         sonnet_5_index = dialog.model.findData("claude-sonnet-5")
         assert sonnet_5_index >= 0
         dialog.model.setCurrentIndex(sonnet_5_index)
         assert dialog.model.currentText() == "claude-sonnet-5"
         assert dialog._model_value() == "claude-sonnet-5"
+        dialog._save()
+        assert writes[0][1]["WISP_CLAUDE_MODEL"] == "claude-sonnet-5"
     finally:
         dialog.deleteLater()
         app.processEvents()
