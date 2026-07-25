@@ -589,7 +589,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 7
+      "node_count": 8
     },
     {
       "path": "tests/support/test_docs_setup_guidance.py",
@@ -1524,7 +1524,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 48
+      "node_count": 49
     },
     {
       "path": "tests/test_intent_overlay_keyboard_hook.py",
