@@ -260,6 +260,11 @@ def _run_real_worker_shell_case(
         audio=supervisor.workers["audio"],
     )
     ui = supervisor.workers["ui"]
+    ui.on_stderr_line(
+        lambda line: progress(f"UI {line}")
+        if line.startswith("[settings debug]")
+        else None
+    )
     try:
         progress("starting isolated UI flow")
         # This acceptance path only exercises UI-shell IPC. Keep the real flow
@@ -285,23 +290,30 @@ def _run_real_worker_shell_case(
                 progress,
             )
 
+        progress("clicking provider badge")
         assert ui.call("ui.debug.provider_badge.click", timeout=10) == {
             "clicked": True,
             "provider": execution_mode,
         }
+        progress("provider badge click returned")
         provider = _wait_snapshot(ui, "provider_controls_visible")
         assert any(provider_title in title for title in provider["visible_window_titles"])
         progress(f"{provider_title} controls visible")
 
+        progress("triggering Quit")
         assert ui.call("ui.debug.tray.trigger", {"label": "Quit"}, timeout=10)["triggered"] is True
+        progress("Quit trigger returned")
         deadline = time.monotonic() + 10
         while ui.alive() and time.monotonic() < deadline:
             time.sleep(0.05)
         assert not ui.alive()
         progress("quit complete")
     finally:
+        progress("stopping flow")
         flow.stop()
+        progress("flow stopped; shutting down workers")
         supervisor.shutdown()
+        progress("worker shutdown complete")
 
 
 def test_real_worker_tray_and_provider_actions_open_every_target_then_quit(

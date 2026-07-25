@@ -574,7 +574,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 3
+      "node_count": 4
     },
     {
       "path": "tests/support/test_dependency_locks.py",

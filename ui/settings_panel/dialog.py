@@ -857,16 +857,49 @@ class SettingsDialog(QDialog):
         pending = self.__dict__.get("_pending_page_builds") or []
         if not pending:
             return False
+        debug_enabled = bool(os.environ.get("WISP_UI_DEBUG_METHODS"))
+        started_at = time.monotonic()
+        phase_at = started_at
+
+        def debug(message: str) -> None:
+            """Expose cold-build boundaries to real-worker acceptance logs."""
+            nonlocal phase_at
+            if not debug_enabled:
+                return
+            now = time.monotonic()
+            print(
+                f"[settings debug] deferred build: {message} "
+                f"(+{now - phase_at:.1f}s, total {now - started_at:.1f}s)",
+                file=sys.stderr,
+                flush=True,
+            )
+            phase_at = now
+
+        page_labels = (
+            "LLM and Connections",
+            "TTS / Voice",
+            "Keybinds",
+            "Prompts",
+            "Advanced",
+            "About",
+        )
         self._building_deferred_pages = True
         try:
+            debug("starting")
             while pending:
+                page_index = len(page_labels) - len(pending)
+                page_label = page_labels[page_index] if 0 <= page_index < len(page_labels) else "unknown page"
+                debug(f"building {page_label}")
                 pending.pop(0)()
+                debug(f"built {page_label}")
 
             self._values_loaded = True
+            debug("loading values")
             legacy_preset = self._preset_slug(self._active_preset_slug)
             # The General page was loaded during __init__ and may already carry
             # edits, so this pass covers only the pages built just now.
             self._load_values(include_general=False)
+            debug("loaded values")
             if (
                 legacy_preset
                 and not settings_profiles.profile_path(ENV_PATH, legacy_preset).is_file()
@@ -876,13 +909,16 @@ class SettingsDialog(QDialog):
                 self._apply_preset(legacy_preset)
         finally:
             self._building_deferred_pages = False
+        debug("localizing widgets")
         localize_widget_tree(self)
+        debug("localized widgets")
         self._refresh_tab_labels()
         self._refresh_search_index()
         self._apply_dialog_theme()
         # Targets sign-in labels on the Connections page, so it has to wait until
         # that page exists.
         self._schedule_open_status_refresh()
+        debug("complete")
         return True
 
     def keyPressEvent(self, event):  # noqa: N802 - Qt override
