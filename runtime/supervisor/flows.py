@@ -328,8 +328,8 @@ class FlowController:
 
     # -- lifecycle -----------------------------------------------------
 
-    def start(self) -> None:
-        """Subscribe to native and UI worker events to wire up the app flows."""
+    def start(self, *, prewarm: bool = True) -> None:
+        """Wire app flows and show the UI, optionally starting background prewarms."""
         self.native.on_event("native.hotkey", self._on_native_hotkey)
         self.ui.on_event("ui.summon_caller", self._on_summon_caller)
         self.ui.on_event("ui.request_snip", self._on_request_snip)
@@ -405,16 +405,17 @@ class FlowController:
         if callable(audio_on_exit):
             audio_on_exit(self._on_audio_worker_exit)
         self.ui.call("ui.show_overlay", timeout=30.0)
-        try:
-            self.ui.call("ui.prewarm_intent", timeout=30.0, wait=False)
-        except Exception:
-            log.exception("intent prewarm did not start")
-        self._prewarm_privacy()
-        self._prewarm_harness()
-        try:
-            self.audio.call("audio.prewarm", timeout=30.0, wait=False)
-        except Exception:
-            log.exception("audio prewarm did not start")
+        if prewarm:
+            try:
+                self.ui.call("ui.prewarm_intent", timeout=30.0, wait=False)
+            except Exception:
+                log.exception("intent prewarm did not start")
+            self._prewarm_privacy()
+            self._prewarm_harness()
+            try:
+                self.audio.call("audio.prewarm", timeout=30.0, wait=False)
+            except Exception:
+                log.exception("audio prewarm did not start")
         # Surface results that detached installers (staged applies, model
         # downloads) wrote while Wisp was closed, right at startup.
         try:

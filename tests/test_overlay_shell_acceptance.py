@@ -181,24 +181,55 @@ def _wait_snapshot(ui, key: str, *, timeout: float = 15.0) -> dict:
     deadline = time.monotonic() + timeout
     snapshot = {}
     while time.monotonic() < deadline:
-        snapshot = ui.call("ui.debug.shell.snapshot", timeout=5)
+        remaining = max(0.1, deadline - time.monotonic())
+        snapshot = ui.call("ui.debug.shell.snapshot", timeout=remaining)
         if snapshot.get(key) is True:
             return snapshot
         time.sleep(1.0)
     pytest.fail(f"UI shell did not reach {key}: {snapshot}")
 
 
+def _wait_snapshots(ui, expected: dict[str, str], progress, *, timeout: float = 15.0) -> dict:
+    """Wait under one deadline and report each independently visible surface."""
+    deadline = time.monotonic() + timeout
+    pending = dict(expected)
+    snapshot = {}
+    while pending and time.monotonic() < deadline:
+        remaining = max(0.1, deadline - time.monotonic())
+        snapshot = ui.call("ui.debug.shell.snapshot", timeout=remaining)
+        for key, label in tuple(pending.items()):
+            if snapshot.get(key) is True:
+                progress(f"{label} visible")
+                del pending[key]
+        if pending:
+            time.sleep(1.0)
+    if pending:
+        pytest.fail(f"UI shell did not reach {sorted(pending)}: {snapshot}")
+    return snapshot
+
+
 def _run_real_worker_shell_case(
     case_root: Path,
     execution_mode: str,
     provider_title: str,
+    verify_shared_surfaces: bool,
 ) -> None:
     """Run one provider's shell workflow in its own worker-process tree."""
     from runtime.supervisor.flows import FlowController
     from runtime.supervisor.ipc import WispSupervisor, default_specs
 
+    started_at = time.monotonic()
+    last_progress_at = started_at
+
     def progress(message: str) -> None:
-        print(f"=== overlay shell [{execution_mode}]: {message} ===", flush=True)
+        nonlocal last_progress_at
+        now = time.monotonic()
+        print(
+            f"=== overlay shell [{execution_mode}]: {message} "
+            f"(+{now - last_progress_at:.1f}s, total {now - started_at:.1f}s) ===",
+            flush=True,
+        )
+        last_progress_at = now
 
     case_root.mkdir(parents=True, exist_ok=True)
     (case_root / ".env").write_text(
@@ -231,22 +262,28 @@ def _run_real_worker_shell_case(
     ui = supervisor.workers["ui"]
     try:
         progress("starting isolated UI flow")
-        # Flow startup launches the UI worker. Brain starts lazily when a tray
-        # target needs data; native/audio are unrelated to this shell path.
-        flow.start()
+        # This acceptance path only exercises UI-shell IPC. Keep the real flow
+        # wiring, but do not launch unrelated brain/audio prewarms twice while
+        # the isolated provider cases run in parallel.
+        flow.start(prewarm=False)
         progress("overlay visible")
 
-        for label, visible_key in (
-            ("Last chat", "chat_visible"),
-            ("Memory", "memory_visible"),
-            ("Addon Manager", "addons_visible"),
-            ("Settings", "settings_visible"),
-            ("Runtime Status", "runtime_status_visible"),
-        ):
-            result = ui.call("ui.debug.tray.trigger", {"label": label}, timeout=10)
-            assert result == {"triggered": True, "label": label}
-            _wait_snapshot(ui, visible_key)
-            progress(f"{label} visible")
+        if verify_shared_surfaces:
+            shared_surfaces = (
+                ("Last chat", "chat_visible"),
+                ("Memory", "memory_visible"),
+                ("Addon Manager", "addons_visible"),
+                ("Settings", "settings_visible"),
+                ("Runtime Status", "runtime_status_visible"),
+            )
+            for label, _visible_key in shared_surfaces:
+                result = ui.call("ui.debug.tray.trigger", {"label": label}, timeout=15)
+                assert result == {"triggered": True, "label": label}
+            _wait_snapshots(
+                ui,
+                {visible_key: label for label, visible_key in shared_surfaces},
+                progress,
+            )
 
         assert ui.call("ui.debug.provider_badge.click", timeout=10) == {
             "clicked": True,
@@ -267,12 +304,12 @@ def _run_real_worker_shell_case(
         supervisor.shutdown()
 
 
-def test_real_worker_tray_and_provider_actions_open_every_target_then_quit(
+def test_real_worker_tray_targets_and_each_provider_action_then_quit(
     tmp_path: Path,
     capfd,
 ) -> None:
     """Run both provider shells concurrently without sharing files or workers."""
-    cases = (("codex", "ChatGPT"), ("claude", "Claude"))
+    cases = (("codex", "ChatGPT", True), ("claude", "Claude", False))
     # The progress lines are intentionally uncaptured: if a hosted runner stalls,
     # its log identifies the provider and last surface instead of looking frozen.
     with capfd.disabled(), ThreadPoolExecutor(max_workers=len(cases)) as executor:
@@ -282,8 +319,9 @@ def test_real_worker_tray_and_provider_actions_open_every_target_then_quit(
                 tmp_path / execution_mode,
                 execution_mode,
                 provider_title,
+                verify_shared_surfaces,
             )
-            for execution_mode, provider_title in cases
+            for execution_mode, provider_title, verify_shared_surfaces in cases
         ]
         for future in futures:
             future.result()

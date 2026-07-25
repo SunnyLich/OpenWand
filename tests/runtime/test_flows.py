@@ -159,6 +159,30 @@ def make_flow(
     return flow, native, ui, brain, audio
 
 
+def test_start_can_wire_ui_without_unrelated_background_prewarms():
+    """Shell acceptance can use real event wiring without loading speech models."""
+    native = FakeWorker()
+    ui = FakeWorker()
+    brain = FakeWorker()
+    audio = FakeWorker()
+    flow = FlowController(
+        native=native,
+        ui=ui,
+        brain=brain,
+        audio=audio,
+        run_async=False,
+    )
+
+    flow.start(prewarm=False)
+
+    assert ui.calls_for("ui.show_overlay")
+    assert not ui.calls_for("ui.prewarm_intent")
+    assert not brain.calls_for("brain.privacy.prewarm")
+    assert not brain.calls_for("brain.harness.prewarm")
+    assert not audio.calls_for("audio.prewarm")
+    assert ui.events["ui.memory.open_requested"]
+
+
 def test_safe_call_quiets_ui_worker_exit(caplog):
     """Late best-effort UI calls during shutdown should not log an ERROR traceback."""
     flow, *_ = make_flow()
