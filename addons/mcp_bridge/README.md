@@ -28,7 +28,9 @@ is a bundled dependency-free server for smoke-testing the bridge.
 ## Server: giving other AI apps Wisp's desktop eyes
 
 `context_server.py` is a standalone MCP stdio server. Wisp does not run it —
-your MCP client launches it (Wisp doesn't even need to be open). It exposes:
+your MCP client launches it (Wisp doesn't even need to be open).
+
+## Tools
 
 | Tool | What it reads |
 |---|---|

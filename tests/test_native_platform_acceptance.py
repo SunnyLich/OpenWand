@@ -304,6 +304,7 @@ def test_native_paste_method_by_clipboard_restore_matrix(
         "set_foreground_window",
         lambda target: focus_events.append(target),
     )
+    monkeypatch.setattr(platform_utils, "get_foreground_window", lambda: 733)
     monkeypatch.setattr(
         platform_utils, "send_keys", lambda combo: key_events.append(combo)
     )

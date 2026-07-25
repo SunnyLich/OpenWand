@@ -411,6 +411,7 @@ def test_tray_runtime_status_real_supervisor_to_window_workflow(
     """Click the production tray action and route it through supervisor and UI host."""
 
     del runtime_state_guard
+    from PySide6.QtGui import QAction, QKeySequence
     from PySide6.QtWidgets import QLabel, QPushButton, QTreeWidget
 
     from runtime.supervisor.flows import FlowController
@@ -491,6 +492,22 @@ def test_tray_runtime_status_real_supervisor_to_window_workflow(
         driver.wait(lambda: tree.topLevelItemCount() == 2, "new runtime event to stream into the tree")
 
         buttons = {button.text(): button for button in dialog.findChildren(QPushButton)}
+        selected_event = tree.topLevelItem(0)
+        selected_event.setSelected(True)
+        assert buttons["Copy selected"].isEnabled()
+        driver.click(buttons["Copy selected"])
+        selected_clipboard = qapp.clipboard().text()
+        assert "model process exited" in selected_clipboard
+        assert "    Traceback line" in selected_clipboard
+        assert "    Recommended action: restart the model worker" in selected_clipboard
+
+        qapp.clipboard().clear()
+        copy_selected_action = dialog.findChild(QAction, "runtimeCopySelectedAction")
+        assert copy_selected_action is not None
+        assert copy_selected_action.shortcut() == QKeySequence(QKeySequence.StandardKey.Copy)
+        copy_selected_action.trigger()
+        assert "model process exited" in qapp.clipboard().text()
+
         driver.click(buttons["Copy all"])
         clipboard = qapp.clipboard().text()
         assert "[native] running pid=101" in clipboard
@@ -632,9 +649,14 @@ def test_settings_uninstall_exact_plan_and_isolated_self_removing_helper_matrix(
 
     monkeypatch.setattr(QMessageBox, "exec", confirm)
     monkeypatch.setattr(QMessageBox, "information", lambda _p, _t, text: completion_messages.append(text))
-    monkeypatch.setattr(QTimer, "singleShot", staticmethod(lambda delay, _callback: quit_schedules.append(delay)))
     try:
         _show_about(dialog, driver)
+        # Only capture timers scheduled by the uninstall itself. Opening a Settings
+        # page also schedules ordinary UI work (deferred page building, search index
+        # refresh), which has nothing to do with the app-quit under test.
+        monkeypatch.setattr(
+            QTimer, "singleShot", staticmethod(lambda delay, _callback: quit_schedules.append(delay))
+        )
 
         # First confirmation is declined: no helper exists and nothing is removed.
         driver.click(dialog._uninstall_btn)

@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+/settings_profiles/
 private/
 *.pem
 *.key
@@ -42,6 +43,11 @@ FLOWS_SPLIT_PLAN.md
 AUTO_AGENT_TOOL_CAPABILITY_PLAN.md
 TEXT_ANNOTATION_ADDON_PLAN.md
 docs/OS_TEST_CHECKLIST.md
+
+# Generated API reference (derived from docstrings; rebuild with
+# scripts/build_api_docs.py)
+docs/api/
+
 # Memory (vector store + fallback JSON; contains personal user data)
 memory/*
 !memory/

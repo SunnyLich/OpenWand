@@ -84,6 +84,16 @@ def _install_save_boundaries(
 
     monkeypatch.setattr(settings_dialog, "_read_env", lambda: dict(persisted))
     monkeypatch.setattr(settings_dialog, "_write_env", write_env)
+    monkeypatch.setattr(
+        settings_dialog.settings_profiles,
+        "migrate_legacy_profiles",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        settings_dialog.settings_profiles,
+        "save_profile",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(config, "reload", lambda: None)
     monkeypatch.setattr(llm, "reset_clients", lambda: None)
     monkeypatch.setattr(tts, "reset_connections", lambda: None)
@@ -168,7 +178,7 @@ def test_add_alias_search_filter_and_expand_every_connection_provider(
 
         dialog._connections_expanded = True
         dialog._refresh_connection_rows_filter()
-        local_providers = {"ollama", "custom"}
+        local_providers = {"custom"}
         queries = (
             "",
             "no-such-connection",
@@ -386,7 +396,7 @@ def test_model_refresh_and_manual_name_every_provider_matrix(
         dialog._tabs.setCurrentIndex(dialog._tab_base_names.index("LLM"))
         app.processEvents()
         row = dialog._model_section_rows["LLM"][0]
-        providers = (*settings_dialog._CONNECTION_PROVIDER_IDS, "chatgpt")
+        providers = (*settings_dialog._CONNECTION_PROVIDER_IDS, "ollama", "chatgpt")
         for provider in providers:
             connection = (
                 dialog._add_api_key_row(provider)
@@ -659,7 +669,7 @@ def test_every_provider_reaches_its_real_chat_route_probe(
             for button in dialog.findChildren(QPushButton)
             if button.text() == "Test Chat model"
         )
-        providers = (*settings_dialog._CONNECTION_PROVIDER_IDS, "chatgpt")
+        providers = (*settings_dialog._CONNECTION_PROVIDER_IDS, "ollama", "chatgpt")
         before_counts = (0, 0, 0, 0)
         selected_models: dict[str, str] = {}
 

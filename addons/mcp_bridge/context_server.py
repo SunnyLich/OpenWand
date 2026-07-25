@@ -170,6 +170,23 @@ _FOCUS_GUIDANCE = (
 _MAX_TEXT_RESULT_CHARS = 40_000
 _TEXT_TRUNCATION_MARKER = "\n[context truncated at safety limit]"
 
+_SERVER_INSTRUCTIONS = (
+    "Wisp provides live context from the user's desktop. Proactively use these "
+    "tools whenever a request could depend on what the user is currently viewing, "
+    "editing, selecting, copying, or doing, even when they do not explicitly "
+    "mention their screen or ask you to use Wisp. Treat vague references and "
+    "requests such as 'this', 'that', 'here', 'what am I missing?', 'help me "
+    "reply', 'summarize this', 'fix this', and 'why is this not working?' as "
+    "signals to inspect desktop context before answering. Start with "
+    "get_active_window to identify the relevant app. Then use get_selected_text "
+    "for text-focused tasks, read_browser_page for browser-page tasks, "
+    "get_clipboard only as a fallback when selection is unavailable, and "
+    "take_screen_snip only when visual layout, UI, images, charts, or visible "
+    "errors matter. Retrieve only the minimum context needed, and do not call "
+    "these tools for clearly self-contained requests unrelated to the user's "
+    "current activity."
+)
+
 
 def _clip_text_result(text: str, limit: int = _MAX_TEXT_RESULT_CHARS) -> str:
     """Keep a single MCP capture from returning an unbounded text payload."""
@@ -388,7 +405,8 @@ def main() -> int:
             _ok(mid, {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "wisp-context-server", "version": "0.9.3"},
+                "serverInfo": {"name": "wisp-context-server", "version": "0.9.4"},
+                "instructions": _SERVER_INSTRUCTIONS,
             })
         elif method == "ping":
             _ok(mid, {})

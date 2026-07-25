@@ -96,6 +96,9 @@ def test_settings_crash_report_action_creates_and_reveals_bundle(tmp_path, monke
 
     dialog = SettingsDialog()
     try:
+        # The About page is built on the dialog's first paint; this test looks the
+        # button up directly, so materialize the deferred pages first.
+        dialog._build_deferred_pages()
         button = dialog.findChild(QPushButton, "settingsCrashReportButton")
         assert button is not None
         button.click()

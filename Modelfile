@@ -1,0 +1,2 @@
+﻿FROM hf.co/TrevorJS/gemma-4-E4B-it-uncensored-GGUF:latest
+PARAMETER num_ctx 16384

@@ -122,6 +122,12 @@ def test_unknown_method_and_garbage_input():
         assert proc.wait(timeout=30) == 0
 
     assert replies[1]["result"]["serverInfo"]["name"] == "wisp-context-server"
+    instructions = replies[1]["result"]["instructions"]
+    assert "Proactively use these tools" in instructions
+    assert "even when they do not explicitly" in instructions
+    assert "get_active_window" in instructions
+    assert "get_clipboard only as a fallback" in instructions
+    assert "minimum context needed" in instructions
     assert replies[2]["error"]["code"] == -32601
     assert {tool["name"] for tool in replies[3]["result"]["tools"]} == EXPECTED_TOOLS
 

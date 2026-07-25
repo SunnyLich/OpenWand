@@ -1,0 +1,2 @@
+﻿FROM hf.co/nuofang/Qwen3.5-4B-SOMPOA-heresy-v2-GGUF:Q4_K_M
+PARAMETER num_ctx 8192

@@ -153,7 +153,7 @@ set "PYTHONUNBUFFERED=1"
 exit /b %ERRORLEVEL%
 
 :runtime_deps_ok
-"%VPY%" -c "import PySide6; import dotenv; import PIL; import numpy" >nul 2>nul
+"%VPY%" -c "import PySide6; import dotenv; import PIL; import numpy; import av.about" >nul 2>nul
 exit /b %ERRORLEVEL%
 
 :venv_ready
