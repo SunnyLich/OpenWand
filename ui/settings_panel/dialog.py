@@ -4285,7 +4285,7 @@ class SettingsDialog(QDialog):
         # that pulls in NumPy/faster-whisper and can freeze the Qt UI thread.
         # If STT is already loaded in this process, the label below can still
         # show the live backend; otherwise it shows the configured request.
-        self._stt_active_lbl = QLabel(t("Checking speech recognition setup..."))
+        self._stt_active_lbl = QLabel()
         self._stt_active_lbl.setWordWrap(True)
         self._stt_install_status_lbl = self._stt_active_lbl
         self._stt_download_btn = QPushButton(t("Install STT"))
@@ -4305,9 +4305,10 @@ class SettingsDialog(QDialog):
             self._stt_download_btn,
         ))
         # Resolving the active backend scans every installed distribution, which
-        # costs a quarter second of disk I/O. Leave the label on its placeholder:
-        # opening this page runs _refresh_current_install_status, which fills it
-        # in. Probing here would block the Settings window from appearing at all.
+        # costs a quarter second of disk I/O. Leave the label blank during page
+        # construction: opening this page runs _refresh_current_install_status,
+        # which fills it before the page paints. Probing here would block the
+        # Settings window from appearing at all.
 
         outer.addWidget(stt_card)
         self._voice_feature_cards["stt"] = stt_card

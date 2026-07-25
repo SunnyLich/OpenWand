@@ -1565,6 +1565,51 @@ def test_intent_overlay_linux_moves_keyboard_grab_to_custom_input(monkeypatch):
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_deferred_intent_overlay_stays_inert_until_context_activation(monkeypatch):
+    """The early-rendered picker must not steal focus while context is captured."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
+    import config
+    import ui.intent_overlay as intent_overlay
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    old_rows = list(config.CALLER_ROWS)
+    focused: list[bool] = []
+    monkeypatch.setattr(intent_overlay, "_IS_WIN", False)
+    monkeypatch.setattr(intent_overlay, "_IS_MAC", False)
+    config.CALLER_ROWS[:] = [
+        {
+            "intents": [{"key": "w", "label": "Write", "hint": "", "prompt": "Write"}],
+            "custom_key": "s",
+        }
+    ]
+    overlay = intent_overlay.IntentOverlay(caller_idx=0, defer_focus=True)
+    monkeypatch.setattr(overlay, "_focus_overlay", lambda: focused.append(True))
+    try:
+        overlay.show()
+        app.processEvents()
+
+        assert overlay.isVisible()
+        assert overlay.isEnabled() is False
+        assert overlay.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating) is True
+        assert overlay._interaction_started is False
+        assert focused == []
+
+        overlay.activate_after_context()
+
+        assert overlay.isEnabled() is True
+        assert overlay.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating) is False
+        assert overlay._interaction_started is True
+        assert focused == [True]
+    finally:
+        config.CALLER_ROWS[:] = old_rows
+        overlay.close()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_apply_intent_context_choices_updates_caller_policy():
     """Verify overlay context choices become real per-prompt caller policy."""
     from runtime.supervisor.flows import FlowController

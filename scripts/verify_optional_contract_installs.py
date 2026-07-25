@@ -64,12 +64,18 @@ def _verify_feature(uv: str, feature: str, root: Path) -> None:
     print(f"Verified {feature} Release contract.", flush=True)
 
 
+def _parse_features(argv: list[str] | None = None) -> list[str]:
+    """Return explicitly requested features, or every feature when omitted."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("features", nargs="*", choices=FEATURES)
+    args = parser.parse_args(argv)
+    return list(args.features or FEATURES)
+
+
 def main() -> int:
     from core import optional_deps
 
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("features", nargs="*", choices=FEATURES, default=list(FEATURES))
-    args = parser.parse_args()
+    features = _parse_features()
     if not optional_deps.optional_contract_target_supported():
         raise SystemExit("This operating-system/architecture target has no supported Release contracts.")
     uv = shutil.which("uv")
@@ -77,7 +83,7 @@ def main() -> int:
         raise SystemExit("uv is required to verify optional dependency contracts.")
     with tempfile.TemporaryDirectory(prefix="wisp-optional-contracts-") as raw_root:
         root = Path(raw_root)
-        for feature in args.features:
+        for feature in features:
             _verify_feature(uv, feature, root)
     return 0
 

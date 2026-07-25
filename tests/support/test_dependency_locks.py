@@ -15,6 +15,14 @@ COMBINED_INSTALL_LOCK_GROUPS = tuple(
 )
 
 
+def test_optional_contract_verifier_defaults_to_every_feature() -> None:
+    """The CI verifier accepts no positional arguments and checks the full matrix."""
+    from scripts.verify_optional_contract_installs import FEATURES, _parse_features
+
+    assert _parse_features([]) == list(FEATURES)
+    assert _parse_features(["stt", "kokoro"]) == ["stt", "kokoro"]
+
+
 def test_optional_contract_lock_matrix_is_complete() -> None:
     """Every supported feature/platform/variant has independent Source and Release locks."""
     variants = {
