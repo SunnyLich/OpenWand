@@ -240,6 +240,10 @@ def _run_real_worker_shell_case(
         "PYTHONPATH": os.pathsep.join(
             [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parents[1] / "runtime" / "brain")]
         ),
+        # Authentication is outside this shell test. Never let isolated hosted
+        # workers query the runner's real OS credential store while Settings is
+        # populating its connection rows.
+        "PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring",
         "QT_QPA_PLATFORM": "offscreen",
         "CHAT_EXECUTION_MODE": execution_mode,
         "WISP_ADDONS_DIR": str(case_root / "addons"),
