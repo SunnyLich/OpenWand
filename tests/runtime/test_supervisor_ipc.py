@@ -1113,14 +1113,16 @@ def test_real_intent_failure_shows_recovery_recommendation_in_reply_bubble(tmp_p
 def test_stream_activity_renews_idle_timeout():
     """A healthy stream may run past its idle limit while events keep arriving."""
     worker = _worker("runtime.workers.brain_host", "brain")
-    words = [str(index) for index in range(10)]
+    # Keep the stream longer than the idle window without making normal
+    # subprocess scheduling on hosted runners part of the assertion.
+    words = [str(index) for index in range(20)]
     events = []
     try:
         assert worker.call("brain.ping", timeout=5)["pong"] is True
         reply = worker.call_with_events(
             "brain.echo",
             {"text": " ".join(words), "delay": 0.05},
-            timeout=0.15,
+            timeout=0.5,
             on_event=lambda event, data, req_id: events.append((event, data, req_id)),
         )
 
