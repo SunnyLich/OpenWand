@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -187,20 +188,20 @@ def _wait_snapshot(ui, key: str, *, timeout: float = 15.0) -> dict:
     pytest.fail(f"UI shell did not reach {key}: {snapshot}")
 
 
-@pytest.mark.parametrize(
-    ("execution_mode", "provider_title"),
-    (("codex", "ChatGPT"), ("claude", "Claude")),
-)
-def test_real_worker_tray_and_provider_actions_open_every_target_then_quit(
-    tmp_path: Path,
+def _run_real_worker_shell_case(
+    case_root: Path,
     execution_mode: str,
     provider_title: str,
 ) -> None:
-    """Trigger actual UI-worker QActions and observe every production target window."""
+    """Run one provider's shell workflow in its own worker-process tree."""
     from runtime.supervisor.flows import FlowController
     from runtime.supervisor.ipc import WispSupervisor, default_specs
 
-    (tmp_path / ".env").write_text(
+    def progress(message: str) -> None:
+        print(f"=== overlay shell [{execution_mode}]: {message} ===", flush=True)
+
+    case_root.mkdir(parents=True, exist_ok=True)
+    (case_root / ".env").write_text(
         f"WISP_ONBOARDING_COMPLETE=True\nCHAT_EXECUTION_MODE={execution_mode}\nTTS_PROVIDER=none\n",
         encoding="utf-8",
     )
@@ -210,9 +211,10 @@ def test_real_worker_tray_and_provider_actions_open_every_target_then_quit(
         ),
         "QT_QPA_PLATFORM": "offscreen",
         "CHAT_EXECUTION_MODE": execution_mode,
-        "WISP_ADDONS_DIR": str(tmp_path / "addons"),
+        "WISP_ADDONS_DIR": str(case_root / "addons"),
         "WISP_BRAIN_FAKE_LLM": "1",
-        "WISP_REPO_ROOT": str(tmp_path),
+        "WISP_REPO_ROOT": str(case_root),
+        "WISP_RUN_LOG_DIR": str(case_root / "logs"),
         "WISP_UI_DEBUG_METHODS": "1",
         "WISP_ONBOARDING_COMPLETE": "True",
     }
@@ -228,9 +230,11 @@ def test_real_worker_tray_and_provider_actions_open_every_target_then_quit(
     )
     ui = supervisor.workers["ui"]
     try:
+        progress("starting isolated UI flow")
         # Flow startup launches the UI worker. Brain starts lazily when a tray
         # target needs data; native/audio are unrelated to this shell path.
         flow.start()
+        progress("overlay visible")
 
         for label, visible_key in (
             ("Last chat", "chat_visible"),
@@ -242,6 +246,7 @@ def test_real_worker_tray_and_provider_actions_open_every_target_then_quit(
             result = ui.call("ui.debug.tray.trigger", {"label": label}, timeout=10)
             assert result == {"triggered": True, "label": label}
             _wait_snapshot(ui, visible_key)
+            progress(f"{label} visible")
 
         assert ui.call("ui.debug.provider_badge.click", timeout=10) == {
             "clicked": True,
@@ -249,12 +254,36 @@ def test_real_worker_tray_and_provider_actions_open_every_target_then_quit(
         }
         provider = _wait_snapshot(ui, "provider_controls_visible")
         assert any(provider_title in title for title in provider["visible_window_titles"])
+        progress(f"{provider_title} controls visible")
 
         assert ui.call("ui.debug.tray.trigger", {"label": "Quit"}, timeout=10)["triggered"] is True
         deadline = time.monotonic() + 10
         while ui.alive() and time.monotonic() < deadline:
             time.sleep(0.05)
         assert not ui.alive()
+        progress("quit complete")
     finally:
         flow.stop()
         supervisor.shutdown()
+
+
+def test_real_worker_tray_and_provider_actions_open_every_target_then_quit(
+    tmp_path: Path,
+    capfd,
+) -> None:
+    """Run both provider shells concurrently without sharing files or workers."""
+    cases = (("codex", "ChatGPT"), ("claude", "Claude"))
+    # The progress lines are intentionally uncaptured: if a hosted runner stalls,
+    # its log identifies the provider and last surface instead of looking frozen.
+    with capfd.disabled(), ThreadPoolExecutor(max_workers=len(cases)) as executor:
+        futures = [
+            executor.submit(
+                _run_real_worker_shell_case,
+                tmp_path / execution_mode,
+                execution_mode,
+                provider_title,
+            )
+            for execution_mode, provider_title in cases
+        ]
+        for future in futures:
+            future.result()
