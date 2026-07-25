@@ -1152,8 +1152,10 @@ def test_stream_total_timeout_cancels_active_brain_request(monkeypatch):
             worker.call_with_events(
                 "brain.echo",
                 {"text": " ".join(str(index) for index in range(100)), "delay": 0.03},
-                timeout=0.1,
-                total_timeout=0.25,
+                # Keep ordinary hosted-runner scheduling well inside the idle
+                # window so this test isolates the independent hard deadline.
+                timeout=0.5,
+                total_timeout=0.75,
                 on_event=lambda _event, _data, _req_id: None,
             )
 
