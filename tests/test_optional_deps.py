@@ -1935,8 +1935,18 @@ def test_optional_install_staged_apply_discards_superseded_staging(monkeypatch, 
     assert json.loads(plan_path.read_text(encoding="utf-8"))["staging_path"] == str(newer_staging)
 
 
-def test_optional_tts_installer_stages_plan_on_all_platforms(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    ("platform_name", "machine"),
+    (("win32", "AMD64"), ("linux", "x86_64"), ("darwin", "arm64")),
+)
+def test_optional_tts_installer_stages_plan_on_all_platforms(
+    monkeypatch,
+    tmp_path,
+    platform_name,
+    machine,
+):
     """restart_apply plans stage on every platform, not just Windows."""
+    from core import optional_deps
     from scripts import optional_tts_installer
 
     plan_path = tmp_path / "plan.json"
@@ -1953,7 +1963,8 @@ def test_optional_tts_installer_stages_plan_on_all_platforms(monkeypatch, tmp_pa
     )
     called: dict[str, object] = {}
     monkeypatch.setattr(sys, "argv", ["optional_tts_installer.py", "--plan", str(plan_path)])
-    monkeypatch.setattr(optional_tts_installer.sys, "platform", "linux")
+    monkeypatch.setattr(optional_tts_installer.sys, "platform", platform_name)
+    monkeypatch.setattr(optional_deps.platform, "machine", lambda: machine)
     monkeypatch.setattr(
         optional_tts_installer,
         "_run_staged_restart_install",

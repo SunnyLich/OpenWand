@@ -1814,7 +1814,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 100
+      "node_count": 102
     },
     {
       "path": "tests/test_optional_install_acceptance.py",
