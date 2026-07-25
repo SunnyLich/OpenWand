@@ -339,7 +339,8 @@ class TtsConnectionTests(unittest.TestCase):
         """Verify Kokoro prewarm stays quiet until the optional package exists."""
         import config
 
-        with patch.object(config, "TTS_PROVIDER", "kokoro"), \
+        with patch.object(tts.macos_safety, "tts_prewarm_enabled", return_value=True), \
+             patch.object(config, "TTS_PROVIDER", "kokoro"), \
              patch("core.tts.kokoro_installed", return_value=False), \
              patch("core.tts._stream_kokoro", side_effect=AssertionError("unexpected Kokoro warmup")):
             self.assertIsNone(tts.prewarm())
@@ -447,7 +448,8 @@ class TtsConnectionTests(unittest.TestCase):
             problems=["kokoro-v1_0.pth: expected 327212226 bytes, found 12"],
         )
 
-        with patch.object(config, "TTS_PROVIDER", "kokoro"), \
+        with patch.object(tts.macos_safety, "tts_prewarm_enabled", return_value=True), \
+             patch.object(config, "TTS_PROVIDER", "kokoro"), \
              patch("core.tts.kokoro_installed", return_value=True), \
              patch("core.tts.verify_kokoro_assets", return_value=damaged), \
              patch("core.tts._stream_kokoro", side_effect=AssertionError("unexpected synthesis")), \
@@ -466,7 +468,8 @@ class TtsConnectionTests(unittest.TestCase):
             missing_voices=["af_new"],
         )
 
-        with patch.object(config, "TTS_PROVIDER", "kokoro"), \
+        with patch.object(tts.macos_safety, "tts_prewarm_enabled", return_value=True), \
+             patch.object(config, "TTS_PROVIDER", "kokoro"), \
              patch("core.tts.kokoro_installed", return_value=True), \
              patch("core.tts.verify_kokoro_assets", return_value=status), \
              patch("core.tts._get_kokoro_pipeline") as get_pipeline, \
