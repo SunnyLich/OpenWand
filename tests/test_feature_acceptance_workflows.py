@@ -1486,6 +1486,11 @@ def test_visible_test_tts_button_forwards_every_provider_configuration(
         dialog._fields["KOKORO_SPEED"].setText("1.10")
         dialog._fields["KOKORO_SAMPLE_RATE"].setText("24000")
         _set(dialog._fields["KOKORO_DEVICE"], "auto")
+        kokoro_device_field = dialog._fields["KOKORO_DEVICE"]
+        kokoro_devices = tuple(
+            str(kokoro_device_field.itemData(index))
+            for index in range(kokoro_device_field.count())
+        )
         openai_row = dialog._add_api_key_row("openai", alias="Speech")
         openai_row["key"].setText("test-openai-speech-key")
 
@@ -1495,9 +1500,7 @@ def test_visible_test_tts_button_forwards_every_provider_configuration(
             ("openai", None),
             ("openai_compatible", None),
             ("gpt_sovits", None),
-            ("kokoro", "auto"),
-            ("kokoro", "cpu"),
-            ("kokoro", "cuda"),
+            *(("kokoro", device) for device in kokoro_devices),
         ]
         test_button = dialog._tts_test_row.findChild(QPushButton)
         assert test_button is not None and test_button.text() == "Test TTS"
@@ -1542,7 +1545,7 @@ def test_visible_test_tts_button_forwards_every_provider_configuration(
             for provider, kwargs in calls
             if provider == "kokoro"
         }
-        for device in ("auto", "cpu", "cuda"):
+        for device in kokoro_devices:
             assert kokoro_by_device[device]["kokoro_voice"] == "af_heart"
             assert kokoro_by_device[device]["kokoro_lang_code"] == "a"
 
@@ -1552,7 +1555,7 @@ def test_visible_test_tts_button_forwards_every_provider_configuration(
         assert config.TTS_PROVIDER == "kokoro"
         assert config.TTS_CUSTOM_SAMPLE_RATE == 16000
         assert config.GPT_SOVITS_SAMPLE_RATE == 32000
-        assert config.KOKORO_DEVICE == "cuda"
+        assert config.KOKORO_DEVICE == kokoro_devices[-1]
         assert config.KOKORO_SPEED == 1.10
         assert config.KOKORO_SAMPLE_RATE == 24000
     finally:
