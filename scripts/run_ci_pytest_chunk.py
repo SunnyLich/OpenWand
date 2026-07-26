@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import threading
@@ -28,6 +29,7 @@ _DIAGNOSTIC_LINE_PREFIXES = (
 )
 _FILE_INACTIVITY_TIMEOUT_OVERRIDES = {
     "tests/test_overlay_shell_acceptance.py": 90.0,
+    "tests/test_overlay_worker_acceptance.py": 90.0,
 }
 
 
@@ -66,6 +68,27 @@ def _pytest_command(root: Path, files: list[Path], basetemp: Path) -> list[str]:
 
 def _terminate_process_tree(process: subprocess.Popen) -> None:
     """Terminate one timed-out pytest process and its worker descendants."""
+    if os.name == "nt":
+        # psutil's recursive process enumeration can itself block on a busy
+        # hosted Windows runner. taskkill performs the native process-tree walk
+        # and, crucially, closes descendant copies of pytest's output pipe.
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=10.0,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            if process.poll() is None:
+                process.kill()
+        try:
+            process.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            pass
+        return
+
     try:
         import psutil
 

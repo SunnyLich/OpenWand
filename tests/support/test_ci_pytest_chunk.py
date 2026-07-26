@@ -64,12 +64,15 @@ def test_only_visible_output_counts_as_ci_progress() -> None:
 
 
 def test_overlay_acceptance_has_a_focused_inactivity_ceiling(tmp_path: Path) -> None:
-    test_file = tmp_path / "tests" / "test_overlay_shell_acceptance.py"
-    test_file.parent.mkdir(parents=True)
-    test_file.touch()
+    shell_file = tmp_path / "tests" / "test_overlay_shell_acceptance.py"
+    worker_file = tmp_path / "tests" / "test_overlay_worker_acceptance.py"
+    shell_file.parent.mkdir(parents=True)
+    shell_file.touch()
+    worker_file.touch()
 
-    assert run_ci_pytest_chunk._file_inactivity_timeout(tmp_path, test_file, 300.0) == 90.0
-    assert run_ci_pytest_chunk._file_inactivity_timeout(tmp_path, test_file, 30.0) == 30.0
+    for test_file in (shell_file, worker_file):
+        assert run_ci_pytest_chunk._file_inactivity_timeout(tmp_path, test_file, 300.0) == 90.0
+        assert run_ci_pytest_chunk._file_inactivity_timeout(tmp_path, test_file, 30.0) == 30.0
 
 
 def test_per_file_inactivity_timeout_stops_the_process_tree(

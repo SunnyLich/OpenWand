@@ -705,7 +705,14 @@ def test_every_provider_reaches_its_real_chat_route_probe(
                     else:
                         connection_rows[provider]["key"].clear()
                 test_button.click()
-                _wait_until(app, lambda: not dialog._running_test_tokens)
+                # The mocked route returns immediately; allow a loaded Windows
+                # runner time to schedule and drain the real Settings worker
+                # thread without treating scheduler delay as a provider failure.
+                _wait_until(
+                    app,
+                    lambda: not dialog._running_test_tokens,
+                    timeout=15.0,
+                )
                 assert f"✓ Primary — {provider} / {model}: OK" in dialog._llm_test_status_lbl.text()
                 after_counts = (
                     len(openai_requests),

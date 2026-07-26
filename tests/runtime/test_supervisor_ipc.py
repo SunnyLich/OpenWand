@@ -1200,6 +1200,9 @@ def test_stream_activity_renews_idle_timeout():
             "brain.echo",
             {"text": " ".join(words), "delay": 0.05},
             timeout=0.5,
+            # This test isolates idle renewal. The independent hard-cap behavior
+            # has its own test below and must not race slow hosted scheduling.
+            total_timeout=10.0,
             on_event=lambda event, data, req_id: events.append((event, data, req_id)),
         )
 
