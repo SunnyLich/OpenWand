@@ -15,6 +15,20 @@ _DEFAULT_FILE_INACTIVITY_TIMEOUT_SECONDS = 300.0
 _FAULT_HANDLER_TIMEOUT_SECONDS = 60
 _PROCESS_POLL_SECONDS = 1.0
 _IGNORED_ACTIVITY_BYTES = bytes(range(0x20)) + b"\x7f"
+_PYTEST_PROGRESS_BYTES = frozenset(b".sFxXE")
+_DIAGNOSTIC_LINE_PREFIXES = (
+    b"Timeout (",
+    b"Thread ",
+    b"Current thread ",
+    b"Stack (",
+    b'File "',
+    b"Fatal Python error:",
+    b"Python runtime state:",
+    b"Extension modules:",
+)
+_FILE_INACTIVITY_TIMEOUT_OVERRIDES = {
+    "tests/test_overlay_shell_acceptance.py": 90.0,
+}
 
 
 def _test_files(root: Path) -> list[Path]:
@@ -84,20 +98,34 @@ def _contains_visible_progress(chunk: bytes) -> bool:
     return bool(chunk.translate(None, _IGNORED_ACTIVITY_BYTES))
 
 
+def _line_reports_progress(line: bytes) -> bool:
+    """Distinguish test progress from repeated faulthandler diagnostics."""
+    visible = line.translate(None, _IGNORED_ACTIVITY_BYTES).strip()
+    if not visible:
+        return False
+    return not visible.startswith(_DIAGNOSTIC_LINE_PREFIXES)
+
+
+def _is_pytest_progress_fragment(fragment: bytes) -> bool:
+    """Recognize pytest's newline-free per-test progress characters."""
+    return bool(fragment) and all(byte in _PYTEST_PROGRESS_BYTES for byte in fragment)
+
+
 def _forward_process_output(
     process: subprocess.Popen,
     mark_activity,
 ) -> None:
-    """Forward pytest output immediately and mark every emitted chunk as activity."""
+    """Forward all output while only meaningful test progress renews the deadline."""
     stream = process.stdout
     if stream is None:
         return
+    pending = b""
     while True:
         chunk = stream.read1(4096)
         if not chunk:
+            if _line_reports_progress(pending):
+                mark_activity()
             return
-        if _contains_visible_progress(chunk):
-            mark_activity()
         binary_stdout = getattr(sys.stdout, "buffer", None)
         if binary_stdout is not None:
             binary_stdout.write(chunk)
@@ -105,6 +133,21 @@ def _forward_process_output(
         else:
             sys.stdout.write(chunk.decode(errors="replace"))
             sys.stdout.flush()
+        pending += chunk
+        while b"\n" in pending:
+            line, pending = pending.split(b"\n", 1)
+            if _line_reports_progress(line):
+                mark_activity()
+        if _is_pytest_progress_fragment(pending):
+            mark_activity()
+            pending = b""
+
+
+def _file_inactivity_timeout(root: Path, path: Path, default: float) -> float:
+    """Return a focused timeout without weakening a stricter caller deadline."""
+    relative = path.relative_to(root).as_posix()
+    override = _FILE_INACTIVITY_TIMEOUT_OVERRIDES.get(relative)
+    return min(default, override) if override is not None else default
 
 
 def _run_file(
@@ -168,8 +211,13 @@ def _run_per_file(
         rel_path = path.relative_to(root)
         basetemp = root / f".pytest-tmp-ci-chunk-{chunk_index}-file-{index:03d}"
         print(f"=== running file {index}/{len(files)}: {rel_path} ===", flush=True)
+        file_timeout = _file_inactivity_timeout(
+            root,
+            path,
+            inactivity_timeout_seconds,
+        )
         try:
-            status = _run_file(root, path, basetemp, inactivity_timeout_seconds)
+            status = _run_file(root, path, basetemp, file_timeout)
         except KeyboardInterrupt:
             print(f"=== runner interrupted while waiting for file {index}/{len(files)}: {rel_path} ===", flush=True)
             raise

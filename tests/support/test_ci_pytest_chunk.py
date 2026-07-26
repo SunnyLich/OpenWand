@@ -56,6 +56,20 @@ def test_only_visible_output_counts_as_ci_progress() -> None:
     """Pipe control bytes cannot keep a silent test alive forever."""
     assert run_ci_pytest_chunk._contains_visible_progress(b". [42%]\n") is True
     assert run_ci_pytest_chunk._contains_visible_progress(b"\x00\r\n\t\x1f\x7f") is False
+    assert run_ci_pytest_chunk._line_reports_progress(b"=== overlay shell: Settings visible ===") is True
+    assert run_ci_pytest_chunk._line_reports_progress(b"Timeout (0:01:00)!") is False
+    assert run_ci_pytest_chunk._line_reports_progress(
+        b'  File "subprocess.py", line 1264 in wait'
+    ) is False
+
+
+def test_overlay_acceptance_has_a_focused_inactivity_ceiling(tmp_path: Path) -> None:
+    test_file = tmp_path / "tests" / "test_overlay_shell_acceptance.py"
+    test_file.parent.mkdir(parents=True)
+    test_file.touch()
+
+    assert run_ci_pytest_chunk._file_inactivity_timeout(tmp_path, test_file, 300.0) == 90.0
+    assert run_ci_pytest_chunk._file_inactivity_timeout(tmp_path, test_file, 30.0) == 30.0
 
 
 def test_per_file_inactivity_timeout_stops_the_process_tree(
@@ -110,3 +124,35 @@ def test_per_file_inactivity_timeout_resets_when_output_arrives(
     )
 
     assert status == 0
+
+
+def test_fault_handler_dumps_do_not_renew_file_inactivity(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Repeated diagnostic stacks stay visible without keeping a hung file alive."""
+    test_file = tmp_path / "tests" / "test_hung.py"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text("def test_hung(): pass\n", encoding="utf-8")
+    script = (
+        "import time\n"
+        "for _ in range(20):\n"
+        "    print('Timeout (0:01:00)!', flush=True)\n"
+        "    print('Thread 0x123 (most recent call first):', flush=True)\n"
+        "    print('  File \\\"subprocess.py\\\", line 1264 in wait', flush=True)\n"
+        "    time.sleep(0.1)\n"
+    )
+    monkeypatch.setattr(
+        run_ci_pytest_chunk,
+        "_pytest_command",
+        lambda *_args: [sys.executable, "-c", script],
+    )
+
+    status = run_ci_pytest_chunk._run_file(
+        tmp_path,
+        test_file,
+        tmp_path / ".pytest-tmp",
+        0.5,
+    )
+
+    assert status == run_ci_pytest_chunk._FILE_TIMEOUT_EXIT_CODE
