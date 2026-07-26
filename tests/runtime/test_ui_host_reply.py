@@ -475,6 +475,34 @@ def _fake_window(events, name):
     )
 
 
+def test_debug_tray_trigger_queues_action_until_after_dispatch(monkeypatch) -> None:
+    """A terminating tray action must not run inside its request-response dispatch."""
+    import sys
+    from types import SimpleNamespace
+
+    from runtime.workers.ui_host import QtProtocolHost
+
+    queued = []
+    triggered = []
+    qtcore = SimpleNamespace(
+        QTimer=SimpleNamespace(singleShot=lambda interval, callback: queued.append((interval, callback)))
+    )
+    monkeypatch.setitem(sys.modules, "PySide6.QtCore", qtcore)
+    monkeypatch.setenv("WISP_UI_DEBUG_METHODS", "1")
+    action = SimpleNamespace(text=lambda: "Quit", trigger=lambda: triggered.append("Quit"))
+    overlay = SimpleNamespace(_tray_menu=SimpleNamespace(actions=lambda: [action]))
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host._ensure_overlay = lambda: overlay  # type: ignore[method-assign]
+
+    result = host._dispatch("ui.debug.tray.trigger", {"label": "Quit"})
+
+    assert result == {"triggered": True, "label": "Quit"}
+    assert triggered == []
+    assert len(queued) == 1 and queued[0][0] == 0
+    queued[0][1]()
+    assert triggered == ["Quit"]
+
+
 def test_ui_shutdown_message_defers_quit_and_leaves_stdin_open(monkeypatch) -> None:
     """Verify __shutdown__ tears down windows once, then quits via the loop."""
     import json

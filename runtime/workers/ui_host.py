@@ -2333,6 +2333,8 @@ class QtProtocolHost:
             self._memory_manager().delete_fact(str(params.get("id") or params.get("fact_id") or ""))
             return {"emitted": True}
         if method == "ui.debug.tray.trigger" and os.environ.get("WISP_UI_DEBUG_METHODS"):
+            from PySide6.QtCore import QTimer
+
             overlay = self._ensure_overlay()
             requested = str(params.get("label") or "").strip()
             action = next(
@@ -2344,8 +2346,9 @@ class QtProtocolHost:
                     "triggered": False,
                     "available": [item.text() for item in overlay._tray_menu.actions() if item.text()],
                 }
-            action.trigger()
-            return {"triggered": True, "label": action.text()}
+            label = action.text()
+            QTimer.singleShot(0, action.trigger)
+            return {"triggered": True, "label": label}
         if method == "ui.debug.provider_badge.click" and os.environ.get("WISP_UI_DEBUG_METHODS"):
             overlay = self._ensure_overlay()
             overlay._provider_badge.click()

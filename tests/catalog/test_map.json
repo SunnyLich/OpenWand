@@ -514,7 +514,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 47
+      "node_count": 48
     },
     {
       "path": "tests/runtime/test_ui_host_runtime_status.py",
