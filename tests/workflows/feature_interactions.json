@@ -1584,7 +1584,7 @@
         {"source_state": "codex", "target_state": "controls_window", "expected_result": "The ChatGPT badge opens ChatGPT controls."},
         {"source_state": "claude", "target_state": "controls_window", "expected_result": "The Claude badge opens Claude controls."}
       ],
-      "test_node_ids": ["tests/test_provider_controls_acceptance.py::test_floating_provider_badge_opens_and_saves_real_controls", "tests/test_overlay_shell_acceptance.py::test_real_worker_tray_and_provider_actions_open_every_target_then_quit"],
+      "test_node_ids": ["tests/test_provider_controls_acceptance.py::test_floating_provider_badge_opens_and_saves_real_controls", "tests/test_overlay_shell_acceptance.py::test_real_worker_provider_action_opens_matching_controls_then_quit"],
       "status": "accepted"
     },
     {
@@ -1978,7 +1978,7 @@
         {"source_state": "runtime_status", "target_state": "target_surface_or_exit", "expected_result": "Runtime Status becomes visible with a supervisor snapshot."},
         {"source_state": "quit", "target_state": "target_surface_or_exit", "expected_result": "The UI worker exits and the supervisor can finish cleanup."}
       ],
-      "test_node_ids": ["tests/test_overlay_shell_acceptance.py::test_real_worker_tray_and_provider_actions_open_every_target_then_quit"],
+      "test_node_ids": ["tests/test_overlay_shell_acceptance.py::test_real_worker_tray_actions_open_each_shared_surface_then_quit", "tests/test_overlay_shell_acceptance.py::test_real_worker_settings_action_finishes_loading_then_quit"],
       "status": "accepted"
     },
     {

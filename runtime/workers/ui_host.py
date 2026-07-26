@@ -2399,6 +2399,10 @@ class QtProtocolHost:
 
             overlay = self._ensure_overlay()
             visible = [widget for widget in QApplication.topLevelWidgets() if widget.isVisible()]
+            settings_dialog = next(
+                (widget for widget in visible if type(widget).__name__ == "SettingsDialog"),
+                None,
+            )
             return {
                 "overlay_state": str(getattr(overlay, "_current_state", "")),
                 "icon_visible": bool(overlay._icon_label.isVisible()),
@@ -2408,7 +2412,13 @@ class QtProtocolHost:
                 "runtime_status_visible": bool(
                     self._runtime_status_dialog is not None and self._runtime_status_dialog.isVisible()
                 ),
-                "settings_visible": any(type(widget).__name__ == "SettingsDialog" for widget in visible),
+                "settings_visible": settings_dialog is not None,
+                "settings_ready": bool(
+                    settings_dialog is not None
+                    and getattr(settings_dialog, "_values_loaded", False)
+                    and not getattr(settings_dialog, "_building_deferred_pages", False)
+                    and not getattr(settings_dialog, "_pending_page_builds", ())
+                ),
                 "provider_controls_visible": any(
                     type(widget).__name__ == "HarnessControlsDialog" for widget in visible
                 ),

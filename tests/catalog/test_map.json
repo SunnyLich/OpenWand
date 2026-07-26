@@ -1874,7 +1874,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 3
+      "node_count": 6
     },
     {
       "path": "tests/test_page_context_extraction.py",

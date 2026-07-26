@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -189,30 +188,12 @@ def _wait_snapshot(ui, key: str, *, timeout: float = 15.0) -> dict:
     pytest.fail(f"UI shell did not reach {key}: {snapshot}")
 
 
-def _wait_snapshots(ui, expected: dict[str, str], progress, *, timeout: float = 15.0) -> dict:
-    """Wait under one deadline and report each independently visible surface."""
-    deadline = time.monotonic() + timeout
-    pending = dict(expected)
-    snapshot = {}
-    while pending and time.monotonic() < deadline:
-        remaining = max(0.1, deadline - time.monotonic())
-        snapshot = ui.call("ui.debug.shell.snapshot", timeout=remaining)
-        for key, label in tuple(pending.items()):
-            if snapshot.get(key) is True:
-                progress(f"{label} visible")
-                del pending[key]
-        if pending:
-            time.sleep(1.0)
-    if pending:
-        pytest.fail(f"UI shell did not reach {sorted(pending)}: {snapshot}")
-    return snapshot
-
-
 def _run_real_worker_shell_case(
     case_root: Path,
     execution_mode: str,
-    provider_title: str,
-    verify_shared_surfaces: bool,
+    *,
+    tray_expectations: tuple[tuple[str, str, str], ...] = (),
+    provider_title: str = "",
 ) -> None:
     """Run one provider's shell workflow in its own worker-process tree."""
     from runtime.supervisor.flows import FlowController
@@ -277,32 +258,23 @@ def _run_real_worker_shell_case(
         flow.start(prewarm=False)
         progress("overlay visible")
 
-        if verify_shared_surfaces:
-            shared_surfaces = (
-                ("Last chat", "chat_visible"),
-                ("Memory", "memory_visible"),
-                ("Addon Manager", "addons_visible"),
-                ("Settings", "settings_visible"),
-                ("Runtime Status", "runtime_status_visible"),
-            )
-            for label, _visible_key in shared_surfaces:
-                result = ui.call("ui.debug.tray.trigger", {"label": label}, timeout=15)
-                assert result == {"triggered": True, "label": label}
-            _wait_snapshots(
-                ui,
-                {visible_key: label for label, visible_key in shared_surfaces},
-                progress,
-            )
+        for label, ready_key, reached_state in tray_expectations:
+            progress(f"triggering {label}")
+            result = ui.call("ui.debug.tray.trigger", {"label": label}, timeout=15)
+            assert result == {"triggered": True, "label": label}
+            _wait_snapshot(ui, ready_key)
+            progress(f"{label} {reached_state}")
 
-        progress("clicking provider badge")
-        assert ui.call("ui.debug.provider_badge.click", timeout=10) == {
-            "clicked": True,
-            "provider": execution_mode,
-        }
-        progress("provider badge click returned")
-        provider = _wait_snapshot(ui, "provider_controls_visible")
-        assert any(provider_title in title for title in provider["visible_window_titles"])
-        progress(f"{provider_title} controls visible")
+        if provider_title:
+            progress("clicking provider badge")
+            assert ui.call("ui.debug.provider_badge.click", timeout=10) == {
+                "clicked": True,
+                "provider": execution_mode,
+            }
+            progress("provider badge click returned")
+            provider = _wait_snapshot(ui, "provider_controls_visible")
+            assert any(provider_title in title for title in provider["visible_window_titles"])
+            progress(f"{provider_title} controls visible")
 
         progress("triggering Quit")
         assert ui.call("ui.debug.tray.trigger", {"label": "Quit"}, timeout=10)["triggered"] is True
@@ -335,24 +307,51 @@ def _run_real_worker_shell_case(
         progress("worker shutdown complete")
 
 
-def test_real_worker_tray_and_provider_actions_open_every_target_then_quit(
+def test_real_worker_tray_actions_open_each_shared_surface_then_quit(
     tmp_path: Path,
     capfd,
 ) -> None:
-    """Run both provider shells concurrently without sharing files or workers."""
-    cases = (("codex", "ChatGPT", True), ("claude", "Claude", False))
-    # The progress lines are intentionally uncaptured: if a hosted runner stalls,
-    # its log identifies the provider and last surface instead of looking frozen.
-    with capfd.disabled(), ThreadPoolExecutor(max_workers=len(cases)) as executor:
-        futures = [
-            executor.submit(
-                _run_real_worker_shell_case,
-                tmp_path / execution_mode,
-                execution_mode,
-                provider_title,
-                verify_shared_surfaces,
-            )
-            for execution_mode, provider_title, verify_shared_surfaces in cases
-        ]
-        for future in futures:
-            future.result()
+    """Open each lightweight tray surface sequentially in one real worker tree."""
+    with capfd.disabled():
+        _run_real_worker_shell_case(
+            tmp_path / "tray-surfaces",
+            "codex",
+            tray_expectations=(
+                ("Last chat", "chat_visible", "visible"),
+                ("Memory", "memory_visible", "visible"),
+                ("Addon Manager", "addons_visible", "visible"),
+                ("Runtime Status", "runtime_status_visible", "visible"),
+            ),
+        )
+
+
+def test_real_worker_settings_action_finishes_loading_then_quit(
+    tmp_path: Path,
+    capfd,
+) -> None:
+    """Require the real Settings dialog to finish deferred loading before success."""
+    with capfd.disabled():
+        _run_real_worker_shell_case(
+            tmp_path / "settings",
+            "codex",
+            tray_expectations=(("Settings", "settings_ready", "ready"),),
+        )
+
+
+@pytest.mark.parametrize(
+    ("execution_mode", "provider_title"),
+    (("codex", "ChatGPT"), ("claude", "Claude")),
+)
+def test_real_worker_provider_action_opens_matching_controls_then_quit(
+    tmp_path: Path,
+    capfd,
+    execution_mode: str,
+    provider_title: str,
+) -> None:
+    """Open each provider's controls in its own sequential real worker tree."""
+    with capfd.disabled():
+        _run_real_worker_shell_case(
+            tmp_path / execution_mode,
+            execution_mode,
+            provider_title=provider_title,
+        )
