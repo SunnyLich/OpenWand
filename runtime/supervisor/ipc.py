@@ -517,44 +517,74 @@ class WorkerClient:
             self._terminate_locked()
             self._spawn()
 
-    def shutdown(self) -> None:
+    def shutdown(self, *, progress: Callable[[str], None] | None = None) -> None:
         """Handle shutdown for worker client."""
+        if progress is not None:
+            progress("waiting for spawn lock")
         with self._spawn_lock:
+            if progress is not None:
+                progress("acquired spawn lock")
             self._shutting_down = True
-            self._terminate_locked()
+            self._terminate_locked(progress=progress)
 
-    def _terminate_locked(self) -> None:
+    def _terminate_locked(self, *, progress: Callable[[str], None] | None = None) -> None:
         """Handle terminate locked for worker client."""
         proc = self._proc
         self._proc = None
         if proc is None or proc.poll() is not None:
+            if progress is not None:
+                progress("process already stopped")
             return
         try:
+            if progress is not None:
+                progress("waiting for write lock")
             with self._write_lock:
+                if progress is not None:
+                    progress("acquired write lock")
                 if proc.stdin and not proc.stdin.closed:
+                    if progress is not None:
+                        progress("sending shutdown request and closing stdin")
                     protocol.write_message(proc.stdin, protocol.make_request(0, "__shutdown__"))
                     # EOF is the deterministic quit signal: worker stdin readers
                     # unblock on it even if the __shutdown__ request is missed.
                     proc.stdin.close()
+                    if progress is not None:
+                        progress("shutdown request sent and stdin closed")
         except Exception:  # noqa: BLE001
             pass
         try:
+            if progress is not None:
+                progress(f"waiting up to {self.spec.shutdown_timeout:g}s for graceful exit")
             proc.wait(timeout=self.spec.shutdown_timeout)
+            if progress is not None:
+                progress("graceful exit complete")
             return
         except Exception:  # noqa: BLE001 - escalate below, then let supervisor audit survivors
+            if progress is not None:
+                progress("graceful wait expired; terminating")
             pass
         try:
             proc.terminate()
+            if progress is not None:
+                progress("terminate sent; waiting up to 2s")
         except Exception:  # noqa: BLE001
             log.warning("Could not terminate %s pid=%s", self.spec.name, proc.pid, exc_info=True)
         try:
             proc.wait(timeout=2.0)
+            if progress is not None:
+                progress("terminate complete")
             return
         except Exception:  # noqa: BLE001
+            if progress is not None:
+                progress("terminate wait expired; killing")
             pass
         try:
             proc.kill()
+            if progress is not None:
+                progress("kill sent; waiting up to 5s")
             proc.wait(timeout=5.0)
+            if progress is not None:
+                progress("kill complete")
         except Exception:  # noqa: BLE001
             # Do not abort shutdown of the remaining workers. WispSupervisor's
             # cross-platform psutil audit gets one final chance to stop this pid.
@@ -621,7 +651,12 @@ class WispSupervisor:
         """Call a method on the named worker and return its result."""
         return self.workers[worker].call(method, params, timeout=timeout)
 
-    def shutdown(self, *, audit_managed_processes: bool = True) -> None:
+    def shutdown(
+        self,
+        *,
+        audit_managed_processes: bool = True,
+        progress: Callable[[str], None] | None = None,
+    ) -> None:
         """Gracefully stop every worker, then optionally audit managed survivors."""
         # A worker may already have exited itself (for example, the UI worker
         # after the user chooses Quit). Never resolve that stale PID through
@@ -642,7 +677,14 @@ class WispSupervisor:
         )
         for name, worker in self.workers.items():
             try:
-                worker.shutdown()
+                if progress is None:
+                    worker.shutdown()
+                else:
+                    worker.shutdown(
+                        progress=lambda phase, worker_name=name: progress(
+                            f"{worker_name}: {phase}"
+                        )
+                    )
             except Exception:  # noqa: BLE001 - one broken worker must not strand the rest
                 log.exception("Worker %s raised during shutdown; continuing", name)
         survivors = (

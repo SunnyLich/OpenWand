@@ -328,7 +328,10 @@ def _run_real_worker_shell_case(
         # audit on macOS (where the hotkey helper is a child process) and Linux.
         audit_managed_processes = os.name != "nt"
         progress(f"managed process audit enabled: {audit_managed_processes}")
-        supervisor.shutdown(audit_managed_processes=audit_managed_processes)
+        supervisor.shutdown(
+            audit_managed_processes=audit_managed_processes,
+            progress=lambda phase: progress(f"worker shutdown: {phase}"),
+        )
         progress("worker shutdown complete")
 
 
