@@ -216,11 +216,13 @@ def qapp():
     """Return the shared offscreen QApplication for UI acceptance workflows."""
 
     pytest.importorskip("PySide6", reason="PySide6 not installed")
+    from PySide6.QtCore import QCoreApplication, QEvent
     from PySide6.QtWidgets import QApplication
 
     global _QT_APP
     _QT_APP = QApplication.instance() or QApplication(["wisp-workflow-tests"])
-    return _QT_APP
+    yield _QT_APP
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def pytest_sessionstart(session) -> None:
