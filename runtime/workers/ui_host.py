@@ -2394,6 +2394,10 @@ class QtProtocolHost:
             QTest.keyClicks(overlay._input_line, text)
             QTest.keyClick(overlay._input_line, Qt.Key.Key_Return)
             return {"submitted": True, "text": text}
+        if method == "ui.debug.shell.close_aux_windows" and os.environ.get(
+            "WISP_UI_DEBUG_METHODS"
+        ):
+            return self._debug_close_aux_windows()
         if method == "ui.debug.shell.snapshot" and os.environ.get("WISP_UI_DEBUG_METHODS"):
             from PySide6.QtWidgets import QApplication
 
@@ -4673,6 +4677,54 @@ class QtProtocolHost:
             return {"open": bool(dlg is not None and dlg.isVisible())}
         except Exception:
             return {"open": False}
+
+    def _debug_close_aux_windows(self) -> dict[str, Any]:
+        """Close acceptance-test auxiliary windows without touching the overlay shell."""
+        from PySide6.QtWidgets import QApplication
+
+        candidates: list[tuple[str, Any]] = [
+            ("chat", self._chat),
+            ("memory", self._memory_viewer),
+            ("addons", self._addons_dialog),
+            ("runtime_status", self._runtime_status_dialog),
+        ]
+        try:
+            from ui.settings_panel import dialog as settings_dialog
+
+            candidates.append(("settings", getattr(settings_dialog, "_settings_dialog", None)))
+        except Exception:
+            pass
+
+        overlay = self._overlay
+        if overlay is not None:
+            candidates.append(
+                ("provider_controls", getattr(overlay, "_harness_controls_dialog", None))
+            )
+
+        # A deferred provider-controls open can replace the overlay's reference
+        # before an older dialog is deleted. Close every surviving instance, but
+        # never use a broad top-level-window sweep: the overlay, provider badge,
+        # bubble, context panel, and tray must remain available to the test.
+        candidates.extend(
+            ("provider_controls", widget)
+            for widget in QApplication.allWidgets()
+            if type(widget).__name__ == "HarnessControlsDialog"
+        )
+
+        closed: list[str] = []
+        seen: set[int] = set()
+        for label, widget in candidates:
+            if widget is None or id(widget) in seen:
+                continue
+            seen.add(id(widget))
+            try:
+                was_visible = bool(widget.isVisible())
+                widget.close()
+            except RuntimeError:
+                continue
+            if was_visible and label not in closed:
+                closed.append(label)
+        return {"closed": closed}
 
     def _debug_settings_action(
         self,
