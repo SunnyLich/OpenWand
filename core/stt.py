@@ -133,6 +133,13 @@ def preload_model() -> dict | None:
         from core.macos_helper import stt_client
         stt_client.prewarm()
         return None
+    if str(getattr(config, "STT_PROVIDER", "local") or "local").strip().lower() == "cloudflare":
+        return {
+            "model": config.STT_CLOUDFLARE_MODEL,
+            "device": "cloudflare",
+            "compute": "hosted",
+            "degraded": False,
+        }
     _get_model()
     return active_backend()
 
@@ -145,6 +152,17 @@ def prewarm(on_ready=None):
     if macos_helper.is_enabled():
         from core.macos_helper import stt_client
         stt_client.prewarm()
+        return
+    if str(getattr(config, "STT_PROVIDER", "local") or "local").strip().lower() == "cloudflare":
+        if on_ready is not None:
+            on_ready(
+                {
+                    "model": config.STT_CLOUDFLARE_MODEL,
+                    "device": "cloudflare",
+                    "compute": "hosted",
+                    "degraded": False,
+                }
+            )
         return
     if not macos_safety.stt_prewarm_enabled():
         print("[stt] prewarm skipped in macOS safe mode.")
@@ -282,17 +300,53 @@ def stop_and_transcribe() -> str:
     if peak < 0.3:
         audio = audio * (0.3 / peak)
 
-    model = _get_model()
+    provider = str(getattr(config, "STT_PROVIDER", "local") or "local").strip().lower()
     language = config.STT_LANGUAGE or None
     beam_size = config.STT_BEAM_SIZE
-    print(f"[stt] Transcribing with language={language!r} beam_size={beam_size}")
-    segments, _info = model.transcribe(
-        audio,
-        beam_size=beam_size,
-        language=language,                     # None = auto-detect
-        vad_filter=True,                        # skip silent regions
-    )
-    raw_text = " ".join(seg.text.strip() for seg in segments).strip()
+    if provider == "cloudflare":
+        from core import cloudflare_stt
+
+        print(f"[stt] Transcribing with Cloudflare language={language!r} beam_size={beam_size}")
+        try:
+            raw_text = cloudflare_stt.transcribe(
+                audio,
+                account_id=config.STT_CLOUDFLARE_ACCOUNT_ID,
+                api_token=config.CLOUDFLARE_API_TOKEN,
+                sample_rate=SAMPLE_RATE,
+                language=language,
+                beam_size=beam_size,
+                model=config.STT_CLOUDFLARE_MODEL,
+                timeout_seconds=config.STT_CLOUDFLARE_TIMEOUT_SECONDS,
+            )
+        except Exception as cloud_error:
+            if not bool(getattr(config, "STT_CLOUDFLARE_FALLBACK_LOCAL", True)):
+                raise
+            print(f"[stt] Cloudflare failed; trying local fallback: {cloud_error}")
+            try:
+                model = _get_model()
+                segments, _info = model.transcribe(
+                    audio,
+                    beam_size=beam_size,
+                    language=language,
+                    vad_filter=True,
+                )
+                raw_text = " ".join(seg.text.strip() for seg in segments).strip()
+            except Exception as local_error:
+                raise RuntimeError(
+                    f"Cloudflare STT failed ({cloud_error}); local fallback also failed ({local_error})."
+                ) from cloud_error
+    elif provider == "local":
+        model = _get_model()
+        print(f"[stt] Transcribing locally with language={language!r} beam_size={beam_size}")
+        segments, _info = model.transcribe(
+            audio,
+            beam_size=beam_size,
+            language=language,                     # None = auto-detect
+            vad_filter=True,                        # skip silent regions
+        )
+        raw_text = " ".join(seg.text.strip() for seg in segments).strip()
+    else:
+        raise RuntimeError(f"Unknown STT provider: {provider}")
     text = clean_transcript(raw_text)
     if raw_text and not text:
         print(f"[stt] Discarded repeated-token transcript: {raw_text!r}")

@@ -3507,39 +3507,34 @@
     {
       "function_id": "F192",
       "function": "Push new Wisp turns back into their source transcript after confirmation.",
-      "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "external conversation options Push Wisp turns action -> confirmation -> provider-specific append/persist",
+      "acceptance_status": "untested",
+      "production_entry_point": "",
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_real_external_push_provider_by_confirmation_matrix",
+        "tests/test_app_user_workflows.py::test_chat_external_source_menu_omits_push_action",
         "tests/test_external_conversation_sync.py::test_push_codex_turns_backs_up_and_round_trips",
         "tests/test_external_conversation_sync.py::test_push_claude_turns_preserves_parent_chain"
       ],
-      "success_assertions": [
-        "For Codex and Claude, decline leaves source untouched; confirm appends only pending Wisp turns and reparses to the complete history."
-      ],
-      "dependency_status": "audited",
+      "success_assertions": [],
+      "dependency_status": "pending",
       "interaction_ids": [
         "I084"
       ],
-      "audit_note": "Real isolated JSONL files and actual menu actions are used."
+      "audit_note": "The transcript-write UI action was removed; component helpers remain tested but there is no accepted production entry point."
     },
     {
       "function_id": "F193",
       "function": "Create a backup before editing an external transcript.",
-      "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "confirmed external transcript push -> full copy2 backup -> append",
+      "acceptance_status": "component_only",
+      "production_entry_point": "",
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_real_external_push_provider_by_confirmation_matrix",
         "tests/test_external_conversation_sync.py::test_external_locked_file_and_backup_failures_preserve_source"
       ],
-      "success_assertions": [
-        "Each confirmed provider write creates a backup before mutation; decline creates none, and backup/locked-file failure preserves the original bytes."
-      ],
-      "dependency_status": "audited",
+      "success_assertions": [],
+      "dependency_status": "pending",
       "interaction_ids": [
         "I084"
       ],
-      "audit_note": "Backup and source files are real isolated files."
+      "audit_note": "Backup behavior is covered at the component boundary, but the production transcript-write entry point was removed."
     },
     {
       "function_id": "F194",

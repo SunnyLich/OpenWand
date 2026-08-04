@@ -1018,6 +1018,14 @@ class BuiltinModelToolsTests(unittest.TestCase):
                             self.assertEqual(request["reasoning"], {"effort": effort})
                         else:
                             self.assertNotIn("reasoning", request)
+            config.CHAT_REASONING_EFFORT = "high"
+            request = llm._with_responses_reasoning(
+                {"model": "matrix-model", "input": "hello"},
+                provider="chatgpt",
+                model="matrix-model",
+                reasoning_effort="low",
+            )
+            self.assertEqual(request["reasoning"], {"effort": "low"})
         finally:
             config.CHAT_REASONING_EFFORT = old_effort
             llm._route_capabilities.clear()

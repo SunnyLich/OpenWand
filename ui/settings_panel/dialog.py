@@ -1081,6 +1081,7 @@ class SettingsDialog(QDialog):
             ("CARTESIA_API_KEY",   "Cartesia"),
             ("ELEVENLABS_API_KEY", "ElevenLabs"),
             ("TTS_CUSTOM_API_KEY", "Custom TTS endpoint"),
+            ("CLOUDFLARE_API_TOKEN", "Cloudflare Workers AI"),
             ("CUSTOM_API_KEY",     "Custom provider"),
         ]:
             if name not in self._fields:
@@ -4242,6 +4243,14 @@ class SettingsDialog(QDialog):
         stt_first_use.setWordWrap(True)
         stt_cv.addWidget(stt_first_use)
 
+        stt_provider = _NoScrollCombo()
+        stt_provider.addItem(t("Local — faster-whisper"), "local")
+        stt_provider.addItem(t("Cloudflare — Whisper Large v3 Turbo"), "cloudflare")
+        stt_provider_tip = (
+            "Local stays on this computer. Cloudflare uploads captured speech audio to Workers AI."
+        )
+        self._fields["STT_PROVIDER"] = stt_provider
+
         stt_model = _NoScrollCombo()
         stt_model.setProperty("allow_custom_saved_value", True)
         for label, model, translation_key in _STT_MODEL_OPTIONS:
@@ -4294,16 +4303,82 @@ class SettingsDialog(QDialog):
         )
         self._fields["STT_DEVICE"] = stt_device
 
+        cloudflare_account = QLineEdit()
+        cloudflare_account.setPlaceholderText(t("Cloudflare Account ID"))
+        cloudflare_account.setToolTip(
+            t("Find this in the Cloudflare Workers AI dashboard under Use REST API.")
+        )
+        self._fields["STT_CLOUDFLARE_ACCOUNT_ID"] = cloudflare_account
+        cloudflare_token = self._password()
+        cloudflare_token.setToolTip(
+            t("Use a dedicated token with Workers AI Read and Edit permissions.")
+        )
+        self._fields["CLOUDFLARE_API_TOKEN"] = cloudflare_token
+        self._set_secret_placeholder(cloudflare_token, "not configured", stored=False)
+        cloudflare_fallback = QCheckBox(t("Use local Whisper if Cloudflare is unavailable"))
+        cloudflare_fallback.setToolTip(
+            t("Falls back only when local STT is installed; otherwise the Cloudflare error is shown.")
+        )
+        self._fields["STT_CLOUDFLARE_FALLBACK_LOCAL"] = cloudflare_fallback
+        cloudflare_note = QLabel(
+            "<small>"
+            + t(
+                "Cloudflare mode sends each speech clip to Workers AI after Wisp's local silence check. "
+                "It needs internet access and does not provide live streaming transcription."
+            )
+            + "</small>"
+        )
+        cloudflare_note.setWordWrap(True)
+
         stt_fw = QWidget()
         stt_f = _expanding_form_layout(stt_fw)
         stt_f.setContentsMargins(0, 0, 0, 0)
         stt_f.setSpacing(8)
-        stt_f.addRow(_tooltip_label("Whisper model", stt_model_tip), self._fields["STT_MODEL"])
-        stt_f.addRow(_tooltip_label("Device", stt_device_tip), self._fields["STT_DEVICE"])
-        stt_f.addRow(_tooltip_label("Compute type", stt_compute_tip), self._fields["STT_COMPUTE_TYPE"])
-        stt_f.addRow(_tooltip_label("Speech language", stt_language_tip), self._fields["STT_LANGUAGE"])
-        stt_f.addRow(_tooltip_label("Beam size", stt_beam_tip), self._fields["STT_BEAM_SIZE"])
+        stt_f.addRow(_tooltip_label("Provider", stt_provider_tip), self._fields["STT_PROVIDER"])
+        stt_model_label = _tooltip_label("Whisper model", stt_model_tip)
+        stt_device_label = _tooltip_label("Device", stt_device_tip)
+        stt_compute_label = _tooltip_label("Compute type", stt_compute_tip)
+        stt_language_label = _tooltip_label("Speech language", stt_language_tip)
+        stt_beam_label = _tooltip_label("Beam size", stt_beam_tip)
+        cloudflare_account_label = _tooltip_label(
+            "Cloudflare Account ID",
+            "Account identifier from the Workers AI dashboard; this is not your email or zone ID.",
+        )
+        cloudflare_token_label = _tooltip_label(
+            "Workers AI API token",
+            "Stored in your operating system keychain and never written to the profile file.",
+        )
+        stt_f.addRow(stt_model_label, self._fields["STT_MODEL"])
+        stt_f.addRow(stt_device_label, self._fields["STT_DEVICE"])
+        stt_f.addRow(stt_compute_label, self._fields["STT_COMPUTE_TYPE"])
+        stt_f.addRow(stt_language_label, self._fields["STT_LANGUAGE"])
+        stt_f.addRow(stt_beam_label, self._fields["STT_BEAM_SIZE"])
+        stt_f.addRow(cloudflare_account_label, self._fields["STT_CLOUDFLARE_ACCOUNT_ID"])
+        stt_f.addRow(cloudflare_token_label, self._fields["CLOUDFLARE_API_TOKEN"])
+        stt_f.addRow("", self._fields["STT_CLOUDFLARE_FALLBACK_LOCAL"])
+        stt_f.addRow("", cloudflare_note)
         stt_cv.addWidget(stt_fw)
+        self._stt_local_widgets = [
+            stt_note,
+            stt_first_use,
+            stt_model_label,
+            self._fields["STT_MODEL"],
+            stt_device_label,
+            self._fields["STT_DEVICE"],
+            stt_compute_label,
+            self._fields["STT_COMPUTE_TYPE"],
+        ]
+        self._stt_cloud_widgets = [
+            cloudflare_account_label,
+            self._fields["STT_CLOUDFLARE_ACCOUNT_ID"],
+            cloudflare_token_label,
+            self._fields["CLOUDFLARE_API_TOKEN"],
+            self._fields["STT_CLOUDFLARE_FALLBACK_LOCAL"],
+            cloudflare_note,
+        ]
+        for widget in self._stt_cloud_widgets:
+            widget.setVisible(False)
+        stt_provider.currentIndexChanged.connect(lambda *_: self._update_stt_provider_fields())
 
         stt_hint = QLabel(
             "<small>"
@@ -4345,7 +4420,6 @@ class SettingsDialog(QDialog):
         # construction: opening this page runs _refresh_current_install_status,
         # which fills it before the page paints. Probing here would block the
         # Settings window from appearing at all.
-
         outer.addWidget(stt_card)
         self._voice_feature_cards["stt"] = stt_card
 
@@ -4883,6 +4957,56 @@ class SettingsDialog(QDialog):
             notice.setText(t(_TTS_TIMING_NOTICE))
         if provider in {"kokoro", "elevenlabs"} and self._tts_page_is_current():
             self._refresh_tts_optional_install_status()
+
+    def _update_stt_provider_fields(self) -> None:
+        """Switch the STT editor and action between local and Cloudflare modes."""
+        provider = _get(self._fields.get("STT_PROVIDER")).strip().lower() or "local"
+        is_cloudflare = provider == "cloudflare"
+        for widget in getattr(self, "_stt_local_widgets", []):
+            widget.setVisible(not is_cloudflare)
+        for widget in getattr(self, "_stt_cloud_widgets", []):
+            widget.setVisible(is_cloudflare)
+        self._rebuild_stt_languages()
+
+        button = getattr(self, "_stt_download_btn", None)
+        if isinstance(button, QPushButton):
+            if is_cloudflare:
+                self._connect_button_action(button, self._test_cloudflare_stt_connection)
+                button.setText(t("Test Cloudflare STT"))
+                button.setToolTip(t("Send a half-second silent clip to verify Workers AI access."))
+            else:
+                self._connect_button_action(button, self._preload_stt_model)
+                button.setText(t("Install STT"))
+                button.setToolTip(
+                    t(
+                        "Install or repair faster-whisper, then download and load the speech "
+                        "model so the first hold-to-talk does not stall."
+                    )
+                )
+
+    def _test_cloudflare_stt_connection(self) -> None:
+        """Verify the currently entered/stored Cloudflare Workers AI credentials."""
+        from core import cloudflare_stt
+
+        account_id = _get(self._fields["STT_CLOUDFLARE_ACCOUNT_ID"]).strip()
+        api_token = self._effective_secret_value("CLOUDFLARE_API_TOKEN")
+        import config as cfg
+
+        self._start_async_test(
+            "cloudflare_stt_test",
+            self._stt_active_lbl,
+            lambda: cloudflare_stt.test_connection(
+                account_id=account_id,
+                api_token=api_token,
+                model=str(
+                    getattr(cfg, "STT_CLOUDFLARE_MODEL", "@cf/openai/whisper-large-v3-turbo")
+                ),
+                timeout_seconds=min(
+                    30.0,
+                    float(getattr(cfg, "STT_CLOUDFLARE_TIMEOUT_SECONDS", 90.0)),
+                ),
+            ),
+        )
 
     def _tts_page_is_current(self) -> bool:
         """Return whether the Settings dialog is currently showing TTS / Voice."""
@@ -9324,6 +9448,7 @@ class SettingsDialog(QDialog):
             ("CARTESIA_API_KEY",   "Cartesia"),
             ("ELEVENLABS_API_KEY", "ElevenLabs"),
             ("TTS_CUSTOM_API_KEY", "Custom TTS endpoint"),
+            ("CLOUDFLARE_API_TOKEN", "Cloudflare Workers AI"),
             ("CUSTOM_API_KEY",     "Custom provider"),
         ]:
             if name not in self._fields:
@@ -9394,12 +9519,31 @@ class SettingsDialog(QDialog):
             self._env.get("TTS_READ_ALOUD_MAX_WORDS", str(getattr(cfg, "TTS_READ_ALOUD_MAX_WORDS", 110))),
         )
         self._update_tts_provider_fields()
+        _set(
+            self._fields["STT_PROVIDER"],
+            self._env.get("STT_PROVIDER", getattr(cfg, "STT_PROVIDER", "local")),
+        )
         _set(self._fields["STT_MODEL"], self._env.get("STT_MODEL", cfg.STT_MODEL))
         self._rebuild_stt_languages()  # drop yue if the loaded model isn't large-v3
         _set(self._fields["STT_COMPUTE_TYPE"], self._env.get("STT_COMPUTE_TYPE", cfg.STT_COMPUTE_TYPE))
         _set(self._fields["STT_LANGUAGE"], self._env.get("STT_LANGUAGE", cfg.STT_LANGUAGE))
         _set(self._fields["STT_BEAM_SIZE"], self._env.get("STT_BEAM_SIZE", str(cfg.STT_BEAM_SIZE)))
         _set(self._fields["STT_DEVICE"], self._env.get("STT_DEVICE", cfg.STT_DEVICE))
+        _set(
+            self._fields["STT_CLOUDFLARE_ACCOUNT_ID"],
+            self._env.get(
+                "STT_CLOUDFLARE_ACCOUNT_ID",
+                getattr(cfg, "STT_CLOUDFLARE_ACCOUNT_ID", ""),
+            ),
+        )
+        _set(
+            self._fields["STT_CLOUDFLARE_FALLBACK_LOCAL"],
+            self._env.get(
+                "STT_CLOUDFLARE_FALLBACK_LOCAL",
+                str(getattr(cfg, "STT_CLOUDFLARE_FALLBACK_LOCAL", True)),
+            ),
+        )
+        self._update_stt_provider_fields()
         _set(
             self._fields["STT_BACKGROUND_CHUNK_FIRST_TRIGGER_SECONDS"],
             self._env.get(
@@ -10309,7 +10453,8 @@ class SettingsDialog(QDialog):
         model_combo = self._fields.get("STT_MODEL")
         if combo is None or model_combo is None:
             return
-        supports_yue = _get(model_combo) == "large-v3"
+        provider = _get(self._fields.get("STT_PROVIDER")).strip().lower() or "local"
+        supports_yue = provider == "cloudflare" or _get(model_combo) == "large-v3"
         current = combo.currentData()
         combo.blockSignals(True)
         combo.clear()
@@ -10340,6 +10485,37 @@ class SettingsDialog(QDialog):
         import config as cfg
 
         env = getattr(self, "_env", {})
+        provider = (
+            _get(self._fields.get("STT_PROVIDER"))
+            or env.get("STT_PROVIDER")
+            or getattr(cfg, "STT_PROVIDER", "local")
+        ).strip().lower()
+        if provider == "cloudflare":
+            if isinstance(button, QPushButton):
+                self._connect_button_action(button, self._test_cloudflare_stt_connection)
+                button.setText(t("Test Cloudflare STT"))
+            account_id = (
+                _get(self._fields.get("STT_CLOUDFLARE_ACCOUNT_ID"))
+                or env.get("STT_CLOUDFLARE_ACCOUNT_ID")
+                or getattr(cfg, "STT_CLOUDFLARE_ACCOUNT_ID", "")
+            ).strip()
+            api_token = self._effective_secret_value("CLOUDFLARE_API_TOKEN")
+            missing = []
+            if not account_id:
+                missing.append(t("Account ID"))
+            if not api_token:
+                missing.append(t("API token"))
+            if missing:
+                lbl.setText(
+                    t("Cloudflare STT needs: {items}.").format(items=", ".join(missing))
+                )
+                lbl.setStyleSheet("color: #d8932a; font-size: 9pt;")
+            else:
+                lbl.setText(
+                    t("Cloudflare Whisper Large v3 Turbo is configured. Click Test Cloudflare STT to verify access.")
+                )
+                lbl.setStyleSheet("color: #80c080; font-size: 9pt;")
+            return
         model = _get(self._fields.get("STT_MODEL")) or env.get("STT_MODEL", cfg.STT_MODEL)
         device = _get(self._fields.get("STT_DEVICE")) or env.get("STT_DEVICE", cfg.STT_DEVICE)
         compute = _get(self._fields.get("STT_COMPUTE_TYPE")) or env.get(
@@ -10506,6 +10682,7 @@ class SettingsDialog(QDialog):
                 "stt_compute_type": compute_type,
                 "settings_updates": {
                     "WISP_STT_PREFERENCE": "local",
+                    "STT_PROVIDER": "local",
                     "STT_MODEL": model,
                     "STT_DEVICE": device,
                     "STT_COMPUTE_TYPE": compute_type,
@@ -10599,7 +10776,16 @@ class SettingsDialog(QDialog):
 
         return any(
             _get(self._fields[key]) != old_env.get(key, str(getattr(cfg, key, "")))
-            for key in ("STT_MODEL", "STT_COMPUTE_TYPE", "STT_LANGUAGE", "STT_BEAM_SIZE", "STT_DEVICE")
+            for key in (
+                "STT_PROVIDER",
+                "STT_MODEL",
+                "STT_COMPUTE_TYPE",
+                "STT_LANGUAGE",
+                "STT_BEAM_SIZE",
+                "STT_DEVICE",
+                "STT_CLOUDFLARE_ACCOUNT_ID",
+                "STT_CLOUDFLARE_FALLBACK_LOCAL",
+            )
         )
 
     @staticmethod
@@ -10716,6 +10902,9 @@ class SettingsDialog(QDialog):
         """Save settings and apply changes live. Returns True on success."""
         old_env = dict(self._env)
         stt_changed = self._stt_fields_changed(old_env)
+        cloudflare_token_changed = bool(
+            _get(self._fields.get("CLOUDFLARE_API_TOKEN")).strip()
+        )
         saved = False
         self._last_save_warnings = []
         self._saving_settings = True
@@ -10738,11 +10927,16 @@ class SettingsDialog(QDialog):
                 self._on_settings_tab_changed(self._tabs.currentIndex())
                 if self._on_apply:
                     new_env = _read_env()
-                    changed_keys = sorted(
+                    changed_key_set = {
                         key
                         for key in set(old_env) | set(new_env)
                         if old_env.get(key) != new_env.get(key)
-                    )
+                    }
+                    if cloudflare_token_changed:
+                        # Keychain-only changes never appear in the .env diff,
+                        # but the long-lived audio worker still needs to reload.
+                        changed_key_set.add("CLOUDFLARE_API_TOKEN")
+                    changed_keys = sorted(changed_key_set)
                     apply_payload = {"changed_keys": changed_keys}
                     try:
                         self._on_apply(apply_payload)
@@ -10831,7 +11025,9 @@ class SettingsDialog(QDialog):
                 "KOKORO_VOICE", "KOKORO_LANG_CODE", "KOKORO_DEVICE", "KOKORO_SPEED", "KOKORO_SAMPLE_RATE",
                 "LIVE_VOICE_PROVIDER", "LIVE_VOICE_MODEL", "LIVE_VOICE_VOICE_NAME", "LIVE_VOICE_HALF_DUPLEX",
                 "TTS_VOLUME", "TTS_READ_ALOUD_MIN_WORDS", "TTS_READ_ALOUD_MAX_WORDS",
-                "STT_MODEL", "STT_COMPUTE_TYPE", "STT_LANGUAGE", "STT_BEAM_SIZE", "STT_DEVICE",
+                "STT_PROVIDER", "STT_MODEL", "STT_COMPUTE_TYPE", "STT_LANGUAGE", "STT_BEAM_SIZE", "STT_DEVICE",
+                "STT_CLOUDFLARE_ACCOUNT_ID", "STT_CLOUDFLARE_MODEL",
+                "STT_CLOUDFLARE_TIMEOUT_SECONDS", "STT_CLOUDFLARE_FALLBACK_LOCAL",
                 "STT_BACKGROUND_CHUNK_FIRST_TRIGGER_SECONDS", "STT_BACKGROUND_CHUNK_STEP_SECONDS",
                 "STT_BACKGROUND_CHUNK_LIVE_DELAY_SECONDS", "STT_BACKGROUND_CHUNK_OVERLAP_SECONDS",
             },
@@ -11238,11 +11434,16 @@ class SettingsDialog(QDialog):
             "LIVE_VOICE_MODEL": self._live_voice_model_value(),
             "LIVE_VOICE_VOICE_NAME": self._live_voice_voice_value(),
             "LIVE_VOICE_HALF_DUPLEX": _get(self._fields["LIVE_VOICE_HALF_DUPLEX"]),
+            "STT_PROVIDER":      _get(self._fields["STT_PROVIDER"]),
             "STT_MODEL":         _get(self._fields["STT_MODEL"]),
             "STT_COMPUTE_TYPE":  _get(self._fields["STT_COMPUTE_TYPE"]),
             "STT_LANGUAGE":      _get(self._fields["STT_LANGUAGE"]),
             "STT_BEAM_SIZE":     _get(self._fields["STT_BEAM_SIZE"]),
             "STT_DEVICE":        _get(self._fields["STT_DEVICE"]),
+            "STT_CLOUDFLARE_ACCOUNT_ID": _get(self._fields["STT_CLOUDFLARE_ACCOUNT_ID"]),
+            "STT_CLOUDFLARE_FALLBACK_LOCAL": _get(
+                self._fields["STT_CLOUDFLARE_FALLBACK_LOCAL"]
+            ),
             "STT_BACKGROUND_CHUNK_FIRST_TRIGGER_SECONDS": _get(
                 self._fields["STT_BACKGROUND_CHUNK_FIRST_TRIGGER_SECONDS"]
             ),

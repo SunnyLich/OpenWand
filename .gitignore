@@ -14,6 +14,9 @@ private/
 secrets.*
 
 # Local/generated assets
+/outputs/
+/.codex_tmp/
+/.tmp_pytest_action_publish_full/
 /doll/
 /tmp_debug_agent/
 /model_files/

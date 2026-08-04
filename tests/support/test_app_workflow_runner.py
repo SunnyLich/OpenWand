@@ -124,11 +124,13 @@ def test_workflow_runner_reports_honest_feature_acceptance_counts():
     counts = run_app_workflow_tests._feature_acceptance_counts(root)
 
     assert counts["total"] == 472
-    assert counts["accepted"] == counts["total"]
-    assert counts["dependency_audited"] == counts["total"]
-    assert counts["accepted_interactions"] == 197
-    assert counts["accepted_interactions"] == counts["declared_interactions"]
-    assert counts["complete"] is True
+    assert counts["accepted"] == 470
+    assert counts["component_only"] == 1
+    assert counts["untested"] == 1
+    assert counts["dependency_audited"] == 470
+    assert counts["accepted_interactions"] == 196
+    assert counts["declared_interactions"] == 197
+    assert counts["complete"] is False
 
 
 def test_pytest_preflight_reports_missing_project_venv(tmp_path, monkeypatch):

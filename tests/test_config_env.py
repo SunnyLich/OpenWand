@@ -994,6 +994,7 @@ class ConfigEnvTests(unittest.TestCase):
                     "ACTIVE_PROFILE",
                     "CALLER_COUNT",
                     "CALLER_1_PROFILE",
+                    "CALLER_1_HOTKEY",
                     "CALLER_1_CONTEXT_AMBIENT",
                     "CALLER_1_CONTEXT_CLIPBOARD",
                     "CALLER_1_CONTEXT_DOCUMENTS",

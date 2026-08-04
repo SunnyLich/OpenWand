@@ -325,6 +325,47 @@ class LlmFallbackTests(unittest.TestCase):
         self.assertIn("[Text2]\nText2 body from other app", text)
         self.assertEqual(text.count("Text1 body"), 1)
 
+    def test_active_document_drops_noisy_uia_duplicate_for_same_saved_vscode_file(self):
+        """A saved VS Code file must not also appear as editor chrome from UIA."""
+        with patch("core.context_fetcher.get_all_open_document_paths", return_value=[r"C:\Code\demo.py"]), \
+             patch.object(llm, "_read_document_paths", return_value="[demo.py]\ndef greet():\n    return 'hi'"), \
+             patch(
+                 "core.context_fetcher.get_all_open_document_window_texts_with_debug",
+                 return_value=(
+                     [("demo.py", "File Edit Selection View Run Terminal Explorer NO FOLDER OPENED")],
+                     [{
+                         "label": "demo.py",
+                         "process_name": "Code.exe",
+                         "accepted": True,
+                         "method": "uia",
+                     }],
+                 ),
+             ):
+            text, debug = llm.read_active_document_for_context_with_debug()
+
+        self.assertEqual(text, "[demo.py]\ndef greet():\n    return 'hi'")
+        self.assertEqual(debug["window_candidates"][0]["method"], "uia")
+
+    def test_active_document_replaces_saved_vscode_block_with_newer_backup(self):
+        """A matching VS Code backup replaces, rather than duplicates, saved text."""
+        with patch("core.context_fetcher.get_all_open_document_paths", return_value=[r"C:\Code\demo.py"]), \
+             patch.object(llm, "_read_document_paths", return_value="[demo.py]\nold saved text"), \
+             patch(
+                 "core.context_fetcher.get_all_open_document_window_texts_with_debug",
+                 return_value=(
+                     [("demo.py", "newer unsaved backup text")],
+                     [{
+                         "label": "demo.py",
+                         "process_name": "Code.exe",
+                         "accepted": True,
+                         "method": "vscode-backup",
+                     }],
+                 ),
+             ):
+            text = llm.read_active_document_for_context()
+
+        self.assertEqual(text, "[demo.py]\nnewer unsaved backup text")
+
     def test_stream_with_fallbacks_cools_down_transient_503_and_summarizes_failures(self):
         class TransientError(RuntimeError):
             """Exception raised for transient error failures."""

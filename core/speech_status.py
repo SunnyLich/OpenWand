@@ -108,11 +108,17 @@ def stt_status(
     live: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Return local speech-recognition status without loading a Whisper model."""
-    model = _text(config, "STT_MODEL")
+    provider = _text(config, "STT_PROVIDER", "local").lower()
+    model = (
+        _text(config, "STT_CLOUDFLARE_MODEL", "@cf/openai/whisper-large-v3-turbo")
+        if provider == "cloudflare"
+        else _text(config, "STT_MODEL")
+    )
     device = _text(config, "STT_DEVICE", "auto").lower()
     compute = _text(config, "STT_COMPUTE_TYPE", "int8").lower()
     result: dict[str, object] = {
         "component": "stt",
+        "provider": provider,
         "configured": bool(model),
         "model": model,
         "requested_device": device,
@@ -132,6 +138,41 @@ def stt_status(
         "installer": {},
     }
     if not model:
+        return result
+
+    if provider == "cloudflare":
+        missing: list[str] = []
+        if not _text(config, "STT_CLOUDFLARE_ACCOUNT_ID"):
+            missing.append("Cloudflare Account ID")
+        if not _text(config, "CLOUDFLARE_API_TOKEN"):
+            missing.append("Cloudflare Workers AI API token")
+        result["installed"] = None
+        if missing:
+            detail = f"Missing {', '.join(missing)}."
+            result.update(
+                state="not_configured",
+                usable=False,
+                summary=f"Cloudflare STT is incomplete: {detail}",
+                error=detail,
+                action="Complete the Cloudflare fields in Settings > Voice.",
+            )
+        else:
+            result.update(
+                state="configured",
+                usable=True,
+                ready=True,
+                summary=f"Cloudflare STT is configured: {model}; connection has not been tested.",
+            )
+        return result
+    if provider != "local":
+        detail = f"Unknown STT provider: {provider}"
+        result.update(
+            state="invalid_configuration",
+            usable=False,
+            summary=detail,
+            error=detail,
+            action="Choose a supported STT provider.",
+        )
         return result
 
     package = _package_status("stt", device=device)

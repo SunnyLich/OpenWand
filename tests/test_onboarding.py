@@ -34,6 +34,7 @@ def test_simple_profile_uses_oauth_and_local_speech_defaults():
     assert values["WISP_PROFILE_NAME"] == "Ada Lovelace"
     assert values["LLM_PROVIDER"] == "chatgpt"
     assert values["TTS_PROVIDER"] == "kokoro"
+    assert values["STT_PROVIDER"] == "local"
     assert values["STT_MODEL"] == "base"
 
 
@@ -92,6 +93,7 @@ def test_advanced_profile_keeps_cloud_speech_as_a_preference():
     assert values["LLM_MODEL"] == "custom-claude"
     assert values["WISP_TTS_PREFERENCE"] == "cloud"
     assert values["WISP_STT_PREFERENCE"] == "cloud"
+    assert values["STT_PROVIDER"] == "cloudflare"
     assert "TTS_PROVIDER" not in values
 
 

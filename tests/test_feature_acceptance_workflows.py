@@ -1587,7 +1587,14 @@ def test_tts_status_worker_can_finish_after_settings_is_closed(
         assert release.wait(3.0), "status worker was not released"
         return {"valid": False}
 
-    monkeypatch.setattr(optional_deps, "optional_package_spec_status", controlled_package_status)
+    # Own the worker's first probe so the lifetime assertion does not depend on
+    # real optional-runtime subprocesses installed on the developer's machine.
+    monkeypatch.setattr(optional_deps, "optional_package_runtime_status", controlled_package_status)
+    monkeypatch.setattr(
+        optional_deps,
+        "optional_package_spec_status",
+        lambda _package, **_kwargs: {"valid": False},
+    )
     monkeypatch.setattr(optional_deps, "system_cuda_available", lambda: False)
     monkeypatch.setattr(
         optional_deps,

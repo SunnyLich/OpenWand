@@ -838,7 +838,7 @@ def _intent_context_toggle_keys(raw: str | None) -> str:
 def _load_config() -> None:
     """Assign all .env-backed module-level config vars. Call after load_dotenv()."""
     global GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY
-    global CARTESIA_API_KEY, ELEVENLABS_API_KEY, TTS_CUSTOM_API_KEY
+    global CARTESIA_API_KEY, ELEVENLABS_API_KEY, TTS_CUSTOM_API_KEY, CLOUDFLARE_API_TOKEN
     global CUSTOM_API_KEY, CUSTOM_BASE_URL
     global DEEPSEEK_API_KEY, OPENROUTER_API_KEY, MISTRAL_API_KEY
     global XAI_API_KEY, TOGETHER_API_KEY, CEREBRAS_API_KEY, ZAI_API_KEY
@@ -887,6 +887,8 @@ def _load_config() -> None:
     global INTENT_CONTEXT_TOGGLE_KEYS, INTENT_OVERLAY_TIMEOUT_MS
     global SNIP_CONTEXT_AMBIENT, SNIP_CONTEXT_DOCUMENTS, SNIP_CONTEXT_TOOLS, SNIP_CALLER
     global STT_MODEL, STT_COMPUTE_TYPE, STT_LANGUAGE, STT_BEAM_SIZE, STT_DEVICE
+    global STT_PROVIDER, STT_CLOUDFLARE_ACCOUNT_ID, STT_CLOUDFLARE_MODEL
+    global STT_CLOUDFLARE_TIMEOUT_SECONDS, STT_CLOUDFLARE_FALLBACK_LOCAL
     global CALLER_ROWS, VOICE_CALLER
     global CONTEXT_BROWSER_MAX_CHARS, CONTEXT_AMBIENT_DOCUMENT_MAX_CHARS, CONTEXT_TOOL_DOCUMENT_MAX_CHARS
     global TOOL_TURN_MAX_CALLS, TOOL_TURN_MAX_RESULT_CHARS, TOOL_TURN_MAX_TOTAL_CHARS
@@ -913,6 +915,7 @@ def _load_config() -> None:
     CARTESIA_API_KEY  = secret_store.get_secret("CARTESIA_API_KEY")
     ELEVENLABS_API_KEY = secret_store.get_secret("ELEVENLABS_API_KEY")
     TTS_CUSTOM_API_KEY = secret_store.get_secret("TTS_CUSTOM_API_KEY")
+    CLOUDFLARE_API_TOKEN = secret_store.get_secret("CLOUDFLARE_API_TOKEN")
     CUSTOM_API_KEY    = secret_store.get_secret("CUSTOM_API_KEY")
     CUSTOM_BASE_URL   = os.getenv("CUSTOM_BASE_URL", "")
     DEEPSEEK_API_KEY  = secret_store.get_secret("DEEPSEEK_API_KEY")
@@ -1139,6 +1142,9 @@ def _load_config() -> None:
     TOOL_TURN_MAX_TOTAL_CHARS          = env_int("TOOL_TURN_MAX_TOTAL_CHARS",          300000)
 
     # --- STT ---
+    # local | cloudflare. Cloudflare uses Workers AI's hosted Whisper Large v3
+    # Turbo and uploads each captured speech window after the local silence gate.
+    STT_PROVIDER     = os.getenv("STT_PROVIDER", "local").strip().lower() or "local"
     STT_MODEL        = os.getenv("STT_MODEL",        "base")
     STT_COMPUTE_TYPE = os.getenv("STT_COMPUTE_TYPE", "int8")
     STT_LANGUAGE     = os.getenv("STT_LANGUAGE",     "en")
@@ -1149,6 +1155,16 @@ def _load_config() -> None:
     # more accurate than greedy (1); clamp to a sane range so a bad .env value
     # can't wedge the decoder.
     STT_BEAM_SIZE    = max(1, min(env_int("STT_BEAM_SIZE", 5), 10))
+    STT_CLOUDFLARE_ACCOUNT_ID = os.getenv("STT_CLOUDFLARE_ACCOUNT_ID", "").strip()
+    STT_CLOUDFLARE_MODEL = (
+        os.getenv("STT_CLOUDFLARE_MODEL", "@cf/openai/whisper-large-v3-turbo").strip()
+        or "@cf/openai/whisper-large-v3-turbo"
+    )
+    STT_CLOUDFLARE_TIMEOUT_SECONDS = max(
+        5.0,
+        min(env_float("STT_CLOUDFLARE_TIMEOUT_SECONDS", 90.0), 300.0),
+    )
+    STT_CLOUDFLARE_FALLBACK_LOCAL = env_bool("STT_CLOUDFLARE_FALLBACK_LOCAL", True)
 
     # --- Live voice conversation (Gemini Live API) ---
     # Runs entirely in the audio worker; needs GOOGLE_API_KEY and the optional

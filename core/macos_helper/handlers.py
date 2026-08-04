@@ -131,9 +131,33 @@ def _get_model():
     return _model
 
 
+def _stt_provider() -> str:
+    """Return the configured transcription provider with a safe legacy default."""
+    try:
+        import config
+
+        return str(getattr(config, "STT_PROVIDER", "local") or "local").strip().lower()
+    except Exception:
+        return "local"
+
+
+def _cloudflare_configured() -> tuple[bool, str]:
+    """Return whether the Cloudflare route has both required credentials."""
+    import config
+
+    missing: list[str] = []
+    if not str(getattr(config, "STT_CLOUDFLARE_ACCOUNT_ID", "") or "").strip():
+        missing.append("Account ID")
+    if not str(getattr(config, "CLOUDFLARE_API_TOKEN", "") or "").strip():
+        missing.append("API token")
+    return not missing, ", ".join(missing)
+
+
 def stt_prewarm(wait: bool = False) -> None:
     """Load the model in a background thread; return immediately so the request
     loop is not blocked by the (slow) first model load."""
+    if _stt_provider() == "cloudflare":
+        return None
     if wait:
         _get_model()
         return None
@@ -164,7 +188,14 @@ def stt_is_ready() -> dict[str, Any]:
     Reads a flag only (never the model lock), so it answers instantly even while
     prewarm is still loading on its background thread — letting the GUI show a
     "warming up" indicator instead of a silent slow first transcription."""
-    return {"ready": _model_ready}
+    if _stt_provider() == "cloudflare":
+        configured, missing = _cloudflare_configured()
+        return {
+            "ready": configured,
+            "provider": "cloudflare",
+            "error": "" if configured else f"Missing Cloudflare {missing}.",
+        }
+    return {"ready": _model_ready, "provider": "local"}
 
 
 def stt_is_recording() -> bool:
@@ -197,8 +228,32 @@ def _chunk_audio_slice(chunks: list[Any], start_sample: int, end_sample: int):
     return audio[start:end].copy()
 
 
+def _transcribe_local_audio(audio, *, label: str) -> str:
+    """Transcribe one already-normalized buffer with local faster-whisper."""
+    import config
+    from core.stt_postprocess import clean_transcript
+
+    seconds = len(audio) / float(_SAMPLE_RATE)
+    model = _get_model()
+    language = config.STT_LANGUAGE or None
+    beam_size = config.STT_BEAM_SIZE
+    _log(f"transcribing {label} {seconds:.2f}s locally with language={language!r} beam_size={beam_size}")
+    segments, _info = model.transcribe(
+        audio,
+        beam_size=beam_size,
+        language=language,
+        vad_filter=True,
+    )
+    raw_text = " ".join(seg.text.strip() for seg in segments).strip()
+    text = clean_transcript(raw_text)
+    if raw_text and not text:
+        _log(f"discarded repeated-token transcript for {label}: {raw_text!r}")
+    _log(f"transcribed {label}: {text!r}")
+    return text
+
+
 def _transcribe_audio(audio, *, label: str) -> str:
-    """Normalize and transcribe one audio buffer."""
+    """Normalize and transcribe one audio buffer through the selected provider."""
     import numpy as np
 
     import config
@@ -216,21 +271,44 @@ def _transcribe_audio(audio, *, label: str) -> str:
     if peak < 0.3:
         audio = audio * (0.3 / peak)
 
-    model = _get_model()
-    language = config.STT_LANGUAGE or None
-    beam_size = config.STT_BEAM_SIZE
-    _log(f"transcribing {label} {seconds:.2f}s with language={language!r} beam_size={beam_size}")
-    segments, _info = model.transcribe(
-        audio,
-        beam_size=beam_size,
-        language=language,
-        vad_filter=True,
-    )
-    raw_text = " ".join(seg.text.strip() for seg in segments).strip()
+    provider = _stt_provider()
+    if provider == "local":
+        return _transcribe_local_audio(audio, label=label)
+    if provider != "cloudflare":
+        raise RuntimeError(f"Unknown STT provider: {provider}")
+
+    from core import cloudflare_stt
+
+    _log(f"transcribing {label} {seconds:.2f}s with Cloudflare Workers AI")
+    try:
+        raw_text = cloudflare_stt.transcribe(
+            audio,
+            account_id=config.STT_CLOUDFLARE_ACCOUNT_ID,
+            api_token=config.CLOUDFLARE_API_TOKEN,
+            sample_rate=_SAMPLE_RATE,
+            language=config.STT_LANGUAGE or None,
+            beam_size=config.STT_BEAM_SIZE,
+            model=config.STT_CLOUDFLARE_MODEL,
+            timeout_seconds=config.STT_CLOUDFLARE_TIMEOUT_SECONDS,
+        )
+    except Exception as cloud_error:
+        if not bool(getattr(config, "STT_CLOUDFLARE_FALLBACK_LOCAL", True)):
+            raise
+        _log(
+            "Cloudflare STT failed; trying local fallback: "
+            f"{type(cloud_error).__name__}: {cloud_error}"
+        )
+        try:
+            return _transcribe_local_audio(audio, label=f"{label} local fallback")
+        except Exception as local_error:
+            raise RuntimeError(
+                f"Cloudflare STT failed ({cloud_error}); local fallback also failed ({local_error})."
+            ) from cloud_error
+
     text = clean_transcript(raw_text)
     if raw_text and not text:
         _log(f"discarded repeated-token transcript for {label}: {raw_text!r}")
-    _log(f"transcribed {label}: {text!r}")
+    _log(f"Cloudflare transcribed {label}: {text!r}")
     return text
 
 

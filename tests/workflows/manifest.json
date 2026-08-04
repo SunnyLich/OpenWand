@@ -1503,9 +1503,9 @@
         278
       ],
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_message_position_action_matrix"
+        "tests/runtime/test_flows.py::test_long_action_stage_gets_an_exact_heads_up"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_chat_message_position_action_matrix",
+      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_long_action_stage_gets_an_exact_heads_up",
       "scenarios": [
         "normal",
         "repeat",
@@ -1525,7 +1525,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.247,
+      "mapping_score": 0.25,
       "source_section": "ask_rewrite"
     },
     {
@@ -1688,9 +1688,9 @@
         304
       ],
       "test_node_ids": [
-        "tests/runtime/test_flows.py::test_rewrite_flow_pastes_back_to_original_pid"
+        "tests/test_rewrite_tool_call.py::test_responses_rewrite_streams_safe_reasoning_before_tool_result"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_rewrite_flow_pastes_back_to_original_pid",
+      "production_entry_point": "Section-level production surface represented by tests/test_rewrite_tool_call.py::test_responses_rewrite_streams_safe_reasoning_before_tool_result",
       "scenarios": [
         "normal",
         "repeat",
@@ -1708,7 +1708,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.367,
+      "mapping_score": 0.372,
       "source_section": "ask_rewrite"
     },
     {
@@ -2372,9 +2372,9 @@
         420
       ],
       "test_node_ids": [
-        "tests/runtime/test_flows.py::test_agent_approval_and_cancel_route_to_brain"
+        "tests/runtime/test_flows.py::test_fast_response_cancels_slow_notice"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_agent_approval_and_cancel_route_to_brain",
+      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_fast_response_cancels_slow_notice",
       "scenarios": [
         "normal",
         "repeat",
@@ -2393,7 +2393,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.29,
+      "mapping_score": 0.298,
       "source_section": "shortcuts"
     },
     {
@@ -2667,9 +2667,9 @@
         465
       ],
       "test_node_ids": [
-        "tests/runtime/test_flows.py::test_precaptured_screenshot_is_discarded_when_final_choice_turns_it_off"
+        "tests/runtime/test_flows.py::test_calc_selection_failure_after_action_choice_does_not_mutate"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_precaptured_screenshot_is_discarded_when_final_choice_turns_it_off",
+      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_calc_selection_failure_after_action_choice_does_not_mutate",
       "scenarios": [
         "normal",
         "repeat",
@@ -2688,7 +2688,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.251,
+      "mapping_score": 0.399,
       "source_section": "shortcuts"
     },
     {
@@ -2739,9 +2739,9 @@
         474
       ],
       "test_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_ollama_custom_preset_fills_dummy_api_key"
+        "tests/runtime/test_flows.py::test_supported_app_custom_prompt_forces_disposition_then_exact_action_tool"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_settings_dialog_controls.py::test_ollama_custom_preset_fills_dummy_api_key",
+      "production_entry_point": "Production entry point exercised by tests/runtime/test_flows.py::test_supported_app_custom_prompt_forces_disposition_then_exact_action_tool",
       "scenarios": [
         "normal",
         "repeat",
@@ -2754,16 +2754,14 @@
         "macos",
         "linux"
       ],
-      "optional_components": [
-        "PySide6"
-      ],
+      "optional_components": [],
       "timeout_seconds": 30,
       "persistent_state": [],
       "cleanup": [
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
-      "mapping_status": "section",
-      "mapping_score": 0.429,
+      "mapping_status": "direct",
+      "mapping_score": 0.523,
       "source_section": "shortcuts"
     },
     {
@@ -4433,9 +4431,9 @@
         768
       ],
       "test_node_ids": [
-        "tests/runtime/test_flows.py::test_intent_selection_capture_restores_picker_with_selected_text"
+        "tests/runtime/test_flows.py::test_calc_selection_is_not_collected_while_intent_picker_is_open"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_intent_selection_capture_restores_picker_with_selected_text",
+      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_calc_selection_is_not_collected_while_intent_picker_is_open",
       "scenarios": [
         "normal",
         "repeat",
@@ -4453,7 +4451,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.404,
+      "mapping_score": 0.439,
       "source_section": "snip_vision"
     },
     {
@@ -5462,9 +5460,9 @@
         936
       ],
       "test_node_ids": [
-        "tests/test_chat_window_render_limits.py::test_conversation_datetime_formats_for_history_display"
+        "tests/test_chat_window_render_limits.py::test_delete_all_conversations_cancel_or_save_failure_preserves_history"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_chat_window_render_limits.py::test_conversation_datetime_formats_for_history_display",
+      "production_entry_point": "Section-level production surface represented by tests/test_chat_window_render_limits.py::test_delete_all_conversations_cancel_or_save_failure_preserves_history",
       "scenarios": [
         "normal",
         "repeat",
@@ -5488,7 +5486,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.357,
+      "mapping_score": 0.448,
       "source_section": "chat_projects"
     },
     {
@@ -8121,9 +8119,9 @@
         1434
       ],
       "test_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_settings_can_create_custom_profile"
+        "tests/integration/brain/test_handler_addons.py::test_addon_llm_local_route_discovers_ollama_and_has_no_cloud_fallback"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_settings_dialog_controls.py::test_settings_can_create_custom_profile",
+      "production_entry_point": "Section-level production surface represented by tests/integration/brain/test_handler_addons.py::test_addon_llm_local_route_discovers_ollama_and_has_no_cloud_fallback",
       "scenarios": [
         "normal",
         "repeat",
@@ -8134,16 +8132,14 @@
         "macos",
         "linux"
       ],
-      "optional_components": [
-        "PySide6"
-      ],
+      "optional_components": [],
       "timeout_seconds": 30,
       "persistent_state": [],
       "cleanup": [
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.254,
+      "mapping_score": 0.311,
       "source_section": "provider_connections"
     },
     {
@@ -12642,9 +12638,9 @@
         2326
       ],
       "test_node_ids": [
-        "tests/runtime/test_flows.py::test_memory_events_route_to_brain_and_seed_ui_viewer"
+        "tests/runtime/test_flows.py::test_long_action_stage_gets_an_exact_heads_up"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_memory_events_route_to_brain_and_seed_ui_viewer",
+      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_long_action_stage_gets_an_exact_heads_up",
       "scenarios": [
         "normal",
         "repeat",
@@ -12655,9 +12651,7 @@
         "macos",
         "linux"
       ],
-      "optional_components": [
-        "PySide6"
-      ],
+      "optional_components": [],
       "timeout_seconds": 30,
       "persistent_state": [
         "function-specific app state"
@@ -12666,7 +12660,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.25,
+      "mapping_score": 0.255,
       "source_section": "tools_permissions"
     },
     {
@@ -13546,9 +13540,9 @@
         2493
       ],
       "test_node_ids": [
-        "tests/runtime/test_ui_host_reply.py::test_chat_add_conversation_persists_text_annotations"
+        "tests/test_formatted_replies_addon.py::test_addon_settings_discover_installed_ollama_models"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/runtime/test_ui_host_reply.py::test_chat_add_conversation_persists_text_annotations",
+      "production_entry_point": "Section-level production surface represented by tests/test_formatted_replies_addon.py::test_addon_settings_discover_installed_ollama_models",
       "scenarios": [
         "normal",
         "repeat",
@@ -13559,16 +13553,14 @@
         "macos",
         "linux"
       ],
-      "optional_components": [
-        "PySide6"
-      ],
+      "optional_components": [],
       "timeout_seconds": 30,
       "persistent_state": [],
       "cleanup": [
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.249,
+      "mapping_score": 0.303,
       "source_section": "addons_mcp"
     },
     {
@@ -14003,9 +13995,9 @@
         2582
       ],
       "test_node_ids": [
-        "tests/test_addon_manager.py::test_addon_events_intents_and_notifications"
+        "tests/runtime/test_flows.py::test_start_loads_addon_actions_before_showing_first_tray_menu"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_addon_manager.py::test_addon_events_intents_and_notifications",
+      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_start_loads_addon_actions_before_showing_first_tray_menu",
       "scenarios": [
         "normal",
         "repeat",
@@ -14023,7 +14015,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.333,
+      "mapping_score": 0.369,
       "source_section": "addons_mcp"
     },
     {
@@ -14468,9 +14460,9 @@
         2681
       ],
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow",
+      "production_entry_point": "Section-level production surface represented by tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes",
       "scenarios": [
         "normal",
         "repeat",
@@ -14488,7 +14480,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.25,
+      "mapping_score": 0.261,
       "source_section": "agent_tasks"
     },
     {
@@ -14661,9 +14653,9 @@
         2726
       ],
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow",
+      "production_entry_point": "Section-level production surface represented by tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes",
       "scenarios": [
         "normal",
         "repeat",
@@ -14681,7 +14673,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.235,
+      "mapping_score": 0.239,
       "source_section": "agent_tasks"
     },
     {
@@ -14968,9 +14960,9 @@
         2798
       ],
       "test_node_ids": [
-        "tests/test_agent_task_window_layout.py::test_agent_task_defaults_follow_assistant_language"
+        "tests/runtime/test_ui_host_reply.py::test_virtual_workspace_task_start_uses_a_locked_down_scoped_agent_spec"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_agent_task_window_layout.py::test_agent_task_defaults_follow_assistant_language",
+      "production_entry_point": "Section-level production surface represented by tests/runtime/test_ui_host_reply.py::test_virtual_workspace_task_start_uses_a_locked_down_scoped_agent_spec",
       "scenarios": [
         "normal",
         "repeat",
@@ -14991,7 +14983,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.308,
+      "mapping_score": 0.321,
       "source_section": "agent_tasks"
     },
     {
@@ -15149,7 +15141,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.207,
+      "mapping_score": 0.215,
       "source_section": "agent_tasks"
     },
     {

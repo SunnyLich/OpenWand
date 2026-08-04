@@ -83,6 +83,9 @@ callers and older addon code, but new work should use addon naming and
 
 ## Quality Notes
 
+- `docs/POLICY_REVIEW_AND_AUTOCORRECTION_PROPOSAL.md` records the proposed
+  multi-reviewer policy and output-repair architecture, its security boundaries,
+  and how it extends (but is not yet validated by) the AI-02 to AI-04 experiments.
 - `core.system.env_utils` centralizes env-file IO and typed environment parsing. Prefer
   it over ad hoc `int(os.getenv(...))` and string-only boolean checks.
 - Keep shared contracts and pure helpers in `core/`; keep PyQt object creation,

@@ -248,6 +248,33 @@ def test_tts_voice_tab_exposes_stt_settings():
         tab.deleteLater()
         app.processEvents()
 
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_tts_voice_tab_switches_to_cloudflare_stt_controls():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ui.settings_panel.dialog import SettingsDialog
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    dialog = SettingsDialog.__new__(SettingsDialog)
+    dialog._fields = {}
+    tab = SettingsDialog._tab_tts(dialog)
+    tab.show()
+
+    try:
+        provider = dialog._fields["STT_PROVIDER"]
+        provider.setCurrentIndex(provider.findData("cloudflare"))
+        app.processEvents()
+
+        assert not dialog._fields["STT_CLOUDFLARE_ACCOUNT_ID"].isHidden()
+        assert not dialog._fields["CLOUDFLARE_API_TOKEN"].isHidden()
+        assert dialog._fields["STT_MODEL"].isHidden()
+        assert dialog._stt_download_btn.text() == "Test Cloudflare STT"
+    finally:
+        tab.deleteLater()
+        app.processEvents()
+
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_speech_settings_group_tts_fields_and_use_compact_actions():
     """Speech settings keep volume first and present each speech mode consistently."""
@@ -816,6 +843,7 @@ def test_stt_install_uses_optional_installer(monkeypatch, tmp_path):
             "stt_compute_type": "int8",
             "settings_updates": {
                 "WISP_STT_PREFERENCE": "local",
+                "STT_PROVIDER": "local",
                 "STT_MODEL": "base",
                 "STT_DEVICE": "auto",
                 "STT_COMPUTE_TYPE": "int8",

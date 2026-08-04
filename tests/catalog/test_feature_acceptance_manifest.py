@@ -27,9 +27,11 @@ def test_feature_acceptance_manifest_is_current_and_honest():
 
     assert summary["inventory_functions"] == 472
     assert sum(summary["status_counts"].values()) == 472
-    assert summary["status_counts"]["real_entry_accepted"] == 472
-    assert summary["dependency_audited_functions"] == 472
-    assert summary["complete"] is True
+    assert summary["status_counts"]["real_entry_accepted"] == 470
+    assert summary["status_counts"]["component_only"] == 1
+    assert summary["status_counts"]["untested"] == 1
+    assert summary["dependency_audited_functions"] == 470
+    assert summary["complete"] is False
     assert all(record["interaction_ids"] for record in manifest["records"])
 
 
@@ -37,4 +39,5 @@ def test_declared_feature_interactions_cover_every_listed_state_combination():
     summary = validate_interactions(root=ROOT, manifest_path=INTERACTIONS)
 
     assert summary["declared_interactions"] == 197
-    assert summary["accepted_interactions"] == summary["declared_interactions"]
+    assert summary["accepted_interactions"] == 196
+    assert summary["declared_interactions"] == 197

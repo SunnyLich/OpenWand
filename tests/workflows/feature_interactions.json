@@ -1536,8 +1536,8 @@
         {"source_state": "claude_confirmed", "target_state": "source_mutation", "expected_result": "Pending Wisp turns append with a valid Claude parent chain."},
         {"source_state": "claude_confirmed", "target_state": "backup", "expected_result": "A full backup exists before the append."}
       ],
-      "test_node_ids": ["tests/test_app_user_workflows.py::test_chat_real_external_push_provider_by_confirmation_matrix", "tests/test_external_conversation_sync.py::test_external_locked_file_and_backup_failures_preserve_source"],
-      "status": "accepted"
+      "test_node_ids": ["tests/test_app_user_workflows.py::test_chat_external_source_menu_omits_push_action", "tests/test_external_conversation_sync.py::test_external_locked_file_and_backup_failures_preserve_source"],
+      "status": "pending"
     },
     {
       "interaction_id": "I085",

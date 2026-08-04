@@ -1496,107 +1496,26 @@ def test_chat_external_transcript_pull_button_and_count_matrix(qapp, monkeypatch
 
 
 @pytest.mark.parametrize("provider", ["codex", "claude"])
-@pytest.mark.parametrize("confirmed", [False, True], ids=["declined", "confirmed"])
-def test_chat_real_external_push_provider_by_confirmation_matrix(
-    qapp, monkeypatch, tmp_path, provider, confirmed
-):
-    """Both provider transcript formats are changed only after the real confirmation action."""
-    from PySide6.QtCore import Qt
-    from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QMenu, QMessageBox, QPushButton
+def test_chat_external_source_menu_omits_push_action(qapp, monkeypatch, provider):
+    """Imported conversations do not expose the confusing transcript-write action."""
+    from PySide6.QtWidgets import QMenu
 
-    from core.conversation_store import external_sync
-    from ui import chat_window as chat_window_mod
     from ui.chat_window import ChatWindow
 
-    root = tmp_path / f".{provider}"
-    if provider == "codex":
-        path = root / "sessions" / "push.jsonl"
-        records = [
-            {"type": "session_meta", "payload": {"id": "push", "cwd": str(tmp_path)}},
-            {"type": "event_msg", "payload": {"type": "user_message", "message": "Original"}},
-        ]
-        parser = external_sync.parse_codex_session
-    else:
-        path = root / "projects" / "repo" / "push.jsonl"
-        records = [{
-            "type": "user",
-            "uuid": "u1",
-            "parentUuid": None,
-            "sessionId": "push",
-            "cwd": str(tmp_path),
-            "message": {"role": "user", "content": "Original"},
-        }]
-        parser = external_sync.parse_claude_session
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(json.dumps(row) for row in records) + "\n", encoding="utf-8")
-    conversation = parser(path)
-    assert conversation is not None
-    conversation["messages"].append({"role": "assistant", "content": "Wisp follow-up"})
-    original = path.read_bytes()
-    backups = tmp_path / "backups"
+    conversation = {
+        "external_source": {"provider": provider},
+        "messages": [
+            {"role": "user", "content": "Original"},
+            {"role": "assistant", "content": "Wisp follow-up"},
+        ],
+    }
     menus = []
-    information = []
     monkeypatch.setattr(QMenu, "popup", lambda menu, _pos: menus.append(menu))
-    monkeypatch.setattr(
-        QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: (
-            QMessageBox.StandardButton.Yes if confirmed else QMessageBox.StandardButton.No
-        ),
-    )
-    monkeypatch.setattr(
-        QMessageBox,
-        "information",
-        lambda _parent, title, text: information.append((title, text)),
-    )
-    monkeypatch.setattr(
-        chat_window_mod,
-        "push_conversation_to_source",
-        lambda conv: external_sync.push_conversation_to_source(
-            conv,
-            backup_dir=backups,
-            source_root=root,
-        ),
-    )
-    persisted = []
-    window = ChatWindow(
-        [conversation],
-        lambda _messages, **_kwargs: iter(()),
-        persist_fn=lambda: persisted.append(True),
-    )
+    window = ChatWindow([conversation], lambda _messages, **_kwargs: iter(()))
     try:
-        window.show()
-        qapp.processEvents()
-        title_button = window._sidebar_btns[0][1]
-        row = title_button.parentWidget()
-        menu_button = next(
-            button for button in row.findChildren(QPushButton) if button is not title_button
-        )
-        QTest.mouseClick(menu_button, Qt.MouseButton.LeftButton)
-        provider_label = "ChatGPT" if provider == "codex" else "Claude"
-        push_action = next(
-            action for action in menus[-1].actions()
-            if action.text() == f"Push Wisp turns to {provider_label}"
-        )
-        assert push_action.isEnabled()
-        push_action.trigger()
-        qapp.processEvents()
-
-        if confirmed:
-            reparsed = parser(path)
-            assert reparsed is not None
-            assert [message["content"] for message in reparsed["messages"]] == [
-                "Original", "Wisp follow-up"
-            ]
-            assert list(backups.glob("*"))
-            assert persisted == [True]
-            assert information
-        else:
-            assert path.read_bytes() == original
-            assert not backups.exists()
-            assert persisted == []
-            assert information == []
+        window._open_conversation_menu(0)
+        labels = {action.text() for action in menus[-1].actions()}
+        assert not any(label.startswith("Push Wisp turns to") for label in labels)
     finally:
         window.close()
         window.deleteLater()
@@ -1886,6 +1805,7 @@ def test_settings_real_apply_click_persists_and_reopens(qapp, tmp_path: Path, mo
     import config
     from core import tts
     from core.llm_clients import client as llm_client
+    from core.system import autostart
     from ui.settings_panel import dialog as settings_dialog
     from ui.settings_panel import env as settings_env
     from ui.settings_panel.dialog import SettingsDialog, _get, _set
@@ -1905,6 +1825,7 @@ def test_settings_real_apply_click_persists_and_reopens(qapp, tmp_path: Path, mo
     monkeypatch.setattr(llm_client, "reset_clients", lambda: None)
     monkeypatch.setattr(tts, "reset_connections", lambda: None)
     monkeypatch.setattr(theme, "apply_app_theme", lambda: None)
+    monkeypatch.setattr(autostart, "sync_start_on_login", lambda _enabled: None)
 
     applied = []
     dialog = SettingsDialog(on_apply=applied.append)

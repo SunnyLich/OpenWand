@@ -29,6 +29,7 @@ import hashlib
 import html
 import json
 import logging
+import os
 import secrets
 import sys
 import threading
@@ -90,6 +91,60 @@ def _generate_state() -> str:
 
 _TOKEN_FILE = Path(__file__).parent.parent / "private" / ".chatgpt_tokens.json"
 _APP_ICON_FILE = Path(__file__).resolve().parents[2] / "assets" / "app.ico"
+
+
+def _codex_auth_path() -> Path:
+    """Return the native Codex CLI credential cache path."""
+    configured_home = str(os.environ.get("CODEX_HOME") or "").strip()
+    codex_home = Path(configured_home).expanduser() if configured_home else Path.home() / ".codex"
+    return codex_home / "auth.json"
+
+
+def _codex_login_sharing_enabled() -> bool:
+    """Whether Wisp should reuse a valid native Codex ChatGPT login."""
+    value = str(os.environ.get("WISP_SHARE_CODEX_LOGIN", "true") or "").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
+def _jwt_expiry_ms(token: str) -> int:
+    """Read a JWT expiry without logging or validating the credential value."""
+    parts = str(token or "").split(".")
+    if len(parts) != 3:
+        return 0
+    try:
+        padding = "=" * (-len(parts[1]) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(parts[1] + padding))
+        return int(float(claims.get("exp") or 0) * 1000)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return 0
+
+
+def _read_codex_tokens_unlocked() -> dict | None:
+    """Read a fresh ChatGPT session from Codex without copying or refreshing it."""
+    if not _codex_login_sharing_enabled():
+        return None
+    try:
+        raw = json.loads(_codex_auth_path().read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict) or str(raw.get("auth_mode") or "").strip().lower() != "chatgpt":
+        return None
+    stored = raw.get("tokens")
+    if not isinstance(stored, dict):
+        return None
+    access = str(stored.get("access_token") or "").strip()
+    expires = _jwt_expiry_ms(access)
+    if not access or expires < int((time.time() + 60) * 1000):
+        return None
+    account_id = str(stored.get("account_id") or "").strip() or _parse_account_id(stored)
+    if not account_id:
+        return None
+    return {
+        "access": access,
+        "expires": expires,
+        "account_id": account_id,
+        "_source": "codex",
+    }
 
 
 class OAuthTokenStorageError(RuntimeError):
@@ -256,9 +311,20 @@ def _get_tokens_unlocked() -> dict | None:
 
 
 def get_tokens() -> dict | None:
-    """Return stored OAuth tokens while keeping chunk operations consecutive."""
+    """Return native Codex login details first, then Wisp's OAuth fallback."""
     with _token_storage_lock:
+        codex_tokens = _read_codex_tokens_unlocked()
+        if codex_tokens:
+            return codex_tokens
         return _get_tokens_unlocked()
+
+
+def credential_source(tokens: dict | None = None) -> str:
+    """Return ``codex``, ``wisp``, or an empty string for the active login."""
+    current = tokens if tokens is not None else get_tokens()
+    if not current:
+        return ""
+    return "codex" if current.get("_source") == "codex" else "wisp"
 
 
 def _save_tokens_unlocked(tokens: dict) -> None:

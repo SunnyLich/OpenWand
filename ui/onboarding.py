@@ -292,7 +292,9 @@ def profile_values(
     if tts_preference == "local":
         values.update({"TTS_PROVIDER": "kokoro", "TTS_SPEAK_REPLIES": "True"})
     if stt_preference == "local":
-        values.update({"STT_MODEL": "base", "STT_DEVICE": "auto"})
+        values.update({"STT_PROVIDER": "local", "STT_MODEL": "base", "STT_DEVICE": "auto"})
+    elif stt_preference == "cloud":
+        values.update({"STT_PROVIDER": "cloudflare"})
     return values
 
 
@@ -350,6 +352,7 @@ def local_speech_install_request(
         settings_updates.update(
             {
                 "WISP_STT_PREFERENCE": "local",
+                "STT_PROVIDER": "local",
                 "STT_MODEL": str(settings.get("STT_MODEL") or "base"),
                 "STT_DEVICE": stt_device,
                 "STT_COMPUTE_TYPE": str(settings.get("STT_COMPUTE_TYPE") or "int8"),
@@ -628,7 +631,7 @@ class OnboardingWizard(QDialog):
             t("Local speech recognition — Whisper (installer opens after setup)"),
             "local",
         )
-        self._stt.addItem("Cloud/live voice — configure in Settings", "cloud")
+        self._stt.addItem("Cloudflare Whisper — configure in Settings", "cloud")
         layout.addWidget(tts_label)
         layout.addWidget(self._tts)
         layout.addWidget(stt_label)

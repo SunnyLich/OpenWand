@@ -1,5 +1,6 @@
 """Tests for ChatGPT OAuth callback and credential contracts."""
 
+import base64
 import http.server
 import json
 import logging
@@ -16,6 +17,87 @@ import pytest
 from core.auth import chatgpt as chatgpt_auth
 
 _ASYNC_OAUTH_TEST_TIMEOUT = 15
+
+
+@pytest.fixture(autouse=True)
+def _isolate_native_codex_login(monkeypatch):
+    """Unit tests must not inherit the developer machine's Codex session."""
+    monkeypatch.setenv("WISP_SHARE_CODEX_LOGIN", "false")
+
+
+def _jwt_with_expiry(expiry_seconds: int) -> str:
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"exp": expiry_seconds}).encode("utf-8")
+    ).rstrip(b"=").decode("ascii")
+    return f"header.{payload}.signature"
+
+
+def test_native_codex_login_is_reused_without_copying_tokens(tmp_path, monkeypatch):
+    """A fresh Codex ChatGPT cache becomes Wisp's preferred login source."""
+    auth_file = tmp_path / "auth.json"
+    access = _jwt_with_expiry(int(chatgpt_auth.time.time()) + 3600)
+    auth_file.write_text(
+        json.dumps(
+            {
+                "auth_mode": "chatgpt",
+                "tokens": {
+                    "access_token": access,
+                    "refresh_token": "must-not-be-copied",
+                    "account_id": "account-codex",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("WISP_SHARE_CODEX_LOGIN", "true")
+    monkeypatch.setattr(chatgpt_auth, "_codex_auth_path", lambda: auth_file)
+    monkeypatch.setattr(
+        chatgpt_auth,
+        "_get_tokens_unlocked",
+        lambda: {"access": "wisp-access", "account_id": "account-wisp"},
+    )
+
+    tokens = chatgpt_auth.get_tokens()
+
+    assert tokens == {
+        "access": access,
+        "expires": (int(chatgpt_auth.time.time()) + 3600) * 1000,
+        "account_id": "account-codex",
+        "_source": "codex",
+    }
+    assert "refresh" not in tokens
+    assert chatgpt_auth.credential_source(tokens) == "codex"
+    assert chatgpt_auth.get_valid_access_token() == access
+
+
+def test_expired_codex_login_falls_back_to_wisp_oauth(tmp_path, monkeypatch):
+    """Wisp never spends or rewrites Codex's rotating refresh token."""
+    auth_file = tmp_path / "auth.json"
+    auth_file.write_text(
+        json.dumps(
+            {
+                "auth_mode": "chatgpt",
+                "tokens": {
+                    "access_token": _jwt_with_expiry(int(chatgpt_auth.time.time()) - 1),
+                    "refresh_token": "codex-refresh",
+                    "account_id": "account-codex",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    fallback = {
+        "access": "wisp-access",
+        "refresh": "wisp-refresh",
+        "expires": int((chatgpt_auth.time.time() + 3600) * 1000),
+        "account_id": "account-wisp",
+    }
+    monkeypatch.setenv("WISP_SHARE_CODEX_LOGIN", "true")
+    monkeypatch.setattr(chatgpt_auth, "_codex_auth_path", lambda: auth_file)
+    monkeypatch.setattr(chatgpt_auth, "_get_tokens_unlocked", lambda: fallback)
+
+    assert chatgpt_auth.get_tokens() == fallback
+    assert chatgpt_auth.credential_source() == "wisp"
 
 
 def test_oauth_success_page_uses_wisp_copy(monkeypatch):

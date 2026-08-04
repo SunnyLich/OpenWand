@@ -84,6 +84,9 @@ def _stt_prewarm_available() -> bool:
         import config
         from core import optional_deps
 
+        if str(getattr(config, "STT_PROVIDER", "local") or "local").strip().lower() != "local":
+            return False
+
         status = optional_deps.require_optional_package_runtime(
             "stt",
             device=str(getattr(config, "STT_DEVICE", "auto") or "auto"),

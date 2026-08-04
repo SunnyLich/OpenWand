@@ -1,15 +1,19 @@
 """Tests for test stt macos safety."""
 
+import base64
+import io
 import sys
 import threading
 import types
 import unittest
+import wave
 from unittest import mock
 
 import numpy as np
+import pytest
 
 import config
-from core import stt
+from core import cloudflare_stt, stt
 from core.macos_helper import handlers as helper_handlers
 from core.stt_postprocess import clean_transcript, looks_like_repeated_token_noise
 
@@ -278,6 +282,139 @@ class STTMacOSSafetyTests(unittest.TestCase):
             helper_handlers._recording = old_recording
             helper_handlers._stream = old_stream
             helper_handlers._stt_bg_results[:] = old_results
+
+
+class _CloudflareResponse:
+    def __init__(self, status_code: int, body: dict, reason: str = "") -> None:
+        self.status_code = status_code
+        self._body = body
+        self.reason = reason
+
+    def json(self) -> dict:
+        return self._body
+
+
+def test_cloudflare_transcribe_encodes_wav_and_provider_options():
+    captured: dict[str, object] = {}
+
+    def post(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return _CloudflareResponse(200, {"success": True, "result": {"text": " hello cloud "}})
+
+    text = cloudflare_stt.transcribe(
+        np.linspace(-0.5, 0.5, 16_000, dtype="float32"),
+        account_id="account-123",
+        api_token="token-456",
+        language="en",
+        beam_size=7,
+        post=post,
+    )
+
+    assert text == "hello cloud"
+    assert captured["url"].endswith(
+        "/accounts/account-123/ai/run/@cf/openai/whisper-large-v3-turbo"
+    )
+    assert captured["headers"]["Authorization"] == "Bearer token-456"
+    payload = captured["json"]
+    assert payload["language"] == "en"
+    assert payload["beam_size"] == 7
+    assert payload["vad_filter"] is True
+    with wave.open(io.BytesIO(base64.b64decode(payload["audio"])), "rb") as wav:
+        assert wav.getnchannels() == 1
+        assert wav.getsampwidth() == 2
+        assert wav.getframerate() == 16_000
+        assert wav.getnframes() == 16_000
+
+
+@pytest.mark.parametrize(
+    ("account_id", "api_token", "message"),
+    (("", "token", "Account ID"), ("account", "", "API token")),
+)
+def test_cloudflare_transcribe_requires_both_credentials(account_id, api_token, message):
+    with pytest.raises(cloudflare_stt.CloudflareSTTConfigurationError, match=message):
+        cloudflare_stt.transcribe(
+            np.ones(8_000, dtype="float32"),
+            account_id=account_id,
+            api_token=api_token,
+        )
+
+
+def test_cloudflare_transcribe_reports_daily_quota_without_leaking_token():
+    def post(_url, **_kwargs):
+        return _CloudflareResponse(
+            429,
+            {"success": False, "errors": [{"code": 3036, "message": "daily allocation used"}]},
+        )
+
+    with pytest.raises(cloudflare_stt.CloudflareSTTError) as caught:
+        cloudflare_stt.transcribe(
+            np.ones(8_000, dtype="float32"),
+            account_id="account",
+            api_token="super-secret-token",
+            post=post,
+        )
+
+    assert "quota or rate limit" in str(caught.value)
+    assert "daily allocation used" in str(caught.value)
+    assert "super-secret-token" not in str(caught.value)
+
+
+def test_audio_handler_routes_cloudflare_and_keeps_transcript_cleanup(monkeypatch):
+    monkeypatch.setattr(config, "STT_PROVIDER", "cloudflare", raising=False)
+    monkeypatch.setattr(config, "STT_CLOUDFLARE_ACCOUNT_ID", "account", raising=False)
+    monkeypatch.setattr(config, "CLOUDFLARE_API_TOKEN", "token", raising=False)
+    monkeypatch.setattr(config, "STT_CLOUDFLARE_MODEL", cloudflare_stt.DEFAULT_MODEL, raising=False)
+    monkeypatch.setattr(config, "STT_CLOUDFLARE_TIMEOUT_SECONDS", 30.0, raising=False)
+    monkeypatch.setattr(config, "STT_CLOUDFLARE_FALLBACK_LOCAL", False, raising=False)
+    monkeypatch.setattr(config, "STT_LANGUAGE", "en", raising=False)
+    monkeypatch.setattr(config, "STT_BEAM_SIZE", 5, raising=False)
+    called: dict[str, object] = {}
+
+    def transcribe(audio, **kwargs):
+        called.update(samples=len(audio), **kwargs)
+        return "  a useful transcript  "
+
+    monkeypatch.setattr(cloudflare_stt, "transcribe", transcribe)
+
+    text = helper_handlers._transcribe_audio(
+        np.ones(16_000, dtype="float32") * 0.2,
+        label="test",
+    )
+
+    assert text == "a useful transcript"
+    assert called["samples"] == 16_000
+    assert called["account_id"] == "account"
+    assert called["language"] == "en"
+
+
+def test_audio_handler_falls_back_to_local_when_cloudflare_fails(monkeypatch):
+    monkeypatch.setattr(config, "STT_PROVIDER", "cloudflare", raising=False)
+    monkeypatch.setattr(config, "STT_CLOUDFLARE_ACCOUNT_ID", "account", raising=False)
+    monkeypatch.setattr(config, "CLOUDFLARE_API_TOKEN", "token", raising=False)
+    monkeypatch.setattr(config, "STT_CLOUDFLARE_MODEL", cloudflare_stt.DEFAULT_MODEL, raising=False)
+    monkeypatch.setattr(config, "STT_CLOUDFLARE_TIMEOUT_SECONDS", 30.0, raising=False)
+    monkeypatch.setattr(config, "STT_CLOUDFLARE_FALLBACK_LOCAL", True, raising=False)
+    monkeypatch.setattr(config, "STT_LANGUAGE", "en", raising=False)
+    monkeypatch.setattr(config, "STT_BEAM_SIZE", 5, raising=False)
+    monkeypatch.setattr(
+        cloudflare_stt,
+        "transcribe",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            cloudflare_stt.CloudflareSTTError("offline")
+        ),
+    )
+    monkeypatch.setattr(
+        helper_handlers,
+        "_transcribe_local_audio",
+        lambda _audio, *, label: f"local from {label}",
+    )
+
+    text = helper_handlers._transcribe_audio(
+        np.ones(16_000, dtype="float32"),
+        label="test",
+    )
+
+    assert text == "local from test local fallback"
 
 
 if __name__ == "__main__":

@@ -49,6 +49,31 @@ def test_stt_status_distinguishes_package_files_from_runtime_import(monkeypatch)
     assert "ctranslate2" in status["error"]
 
 
+def test_cloudflare_stt_status_requires_credentials_without_local_packages():
+    missing = speech_status.stt_status(
+        _config(
+            STT_PROVIDER="cloudflare",
+            STT_CLOUDFLARE_ACCOUNT_ID="",
+            CLOUDFLARE_API_TOKEN="",
+            STT_CLOUDFLARE_MODEL="@cf/openai/whisper-large-v3-turbo",
+        )
+    )
+    ready = speech_status.stt_status(
+        _config(
+            STT_PROVIDER="cloudflare",
+            STT_CLOUDFLARE_ACCOUNT_ID="account",
+            CLOUDFLARE_API_TOKEN="token",
+            STT_CLOUDFLARE_MODEL="@cf/openai/whisper-large-v3-turbo",
+        )
+    )
+
+    assert missing["state"] == "not_configured"
+    assert missing["installed"] is None
+    assert ready["state"] == "configured"
+    assert ready["usable"] is True
+    assert ready["provider"] == "cloudflare"
+
+
 def test_kokoro_status_rejects_missing_selected_voice_assets(monkeypatch):
     monkeypatch.setattr(
         optional_deps,
