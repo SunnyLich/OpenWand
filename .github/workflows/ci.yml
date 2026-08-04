@@ -130,14 +130,16 @@ jobs:
           - { os: ubuntu-latest, chunk: 2, chunk_total: 4 }
           - { os: ubuntu-latest, chunk: 3, chunk_total: 4 }
           - { os: ubuntu-latest, chunk: 4, chunk_total: 4 }
-          - { os: windows-latest, chunk: 1, chunk_total: 8 }
-          - { os: windows-latest, chunk: 2, chunk_total: 8 }
-          - { os: windows-latest, chunk: 3, chunk_total: 8 }
-          - { os: windows-latest, chunk: 4, chunk_total: 8 }
-          - { os: windows-latest, chunk: 5, chunk_total: 8 }
-          - { os: windows-latest, chunk: 6, chunk_total: 8 }
-          - { os: windows-latest, chunk: 7, chunk_total: 8 }
-          - { os: windows-latest, chunk: 8, chunk_total: 8 }
+          - { os: windows-latest, chunk: 1, chunk_total: 10 }
+          - { os: windows-latest, chunk: 2, chunk_total: 10 }
+          - { os: windows-latest, chunk: 3, chunk_total: 10 }
+          - { os: windows-latest, chunk: 4, chunk_total: 10 }
+          - { os: windows-latest, chunk: 5, chunk_total: 10 }
+          - { os: windows-latest, chunk: 6, chunk_total: 10 }
+          - { os: windows-latest, chunk: 7, chunk_total: 10 }
+          - { os: windows-latest, chunk: 8, chunk_total: 10 }
+          - { os: windows-latest, chunk: 9, chunk_total: 10 }
+          - { os: windows-latest, chunk: 10, chunk_total: 10 }
 
     steps:
       - uses: actions/checkout@v7
