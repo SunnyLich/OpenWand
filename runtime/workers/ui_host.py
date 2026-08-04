@@ -2703,9 +2703,10 @@ class QtProtocolHost:
         """Start a scoped task, splitting only clearly independent file work."""
         from dataclasses import asdict
 
+        from core.agent.workspace_parallel import split_independent_workspace_objective
+
         import config
         from core.agent.task_spec import agent_task_spec_from_dict
-        from core.agent.workspace_parallel import split_independent_workspace_objective
 
         clean_objective = str(objective or "").strip()[:8_000]
         scope = str(scope_folder or "").strip()
