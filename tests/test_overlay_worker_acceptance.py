@@ -218,11 +218,10 @@ def _run_real_worker_shell_case(
         audio=supervisor.workers["audio"],
     )
     ui = supervisor.workers["ui"]
-    ui.on_stderr_line(
-        lambda line: progress(f"UI {line}")
-        if line.startswith("[settings debug]")
-        else None
-    )
+    # WorkerClient already persists stderr and keeps a bounded in-memory tail.
+    # Re-emitting every settings-debug line with a flushed print can backpressure
+    # a hosted Windows runner and makes diagnostic chatter look like test progress
+    # to the per-file inactivity watchdog.
     try:
         progress("starting isolated UI flow")
         # This acceptance path only exercises UI-shell IPC. Keep the real flow
