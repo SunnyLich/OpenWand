@@ -122,6 +122,9 @@ def _main() -> int:
         """Emit event."""
         send(protocol.make_event(event, data=data, req_id=req_id))
 
+    from wisp_brain.handlers import set_runtime_event_emitter
+    set_runtime_event_emitter(lambda event, data: emit_event(event, data, None))
+
     def respond(req_id, ok: bool, *, result=None, error=None) -> None:
         """Handle respond for runtime brain wisp brain host."""
         send(protocol.make_response(req_id, ok, result=result, error=error))
@@ -193,6 +196,7 @@ def _main() -> int:
         run_addon_shutdown()
     except Exception:
         pass
+    set_runtime_event_emitter(None)
     return 0
 
 

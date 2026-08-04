@@ -29,6 +29,7 @@ def main() -> int:
 
     handlers.HANDLERS.setdefault("brain.ping", brain_ping)
     handlers.HANDLERS.setdefault("boundary.status", lambda: boundary_status("brain"))
+    handlers.start_addon_bootstrap()
     from wisp_brain.host import _main
 
     return _main()

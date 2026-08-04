@@ -109,7 +109,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 10
+      "node_count": 19
     },
     {
       "path": "tests/integration/brain/test_handler_agent.py",
@@ -124,7 +124,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 15
+      "node_count": 16
     },
     {
       "path": "tests/integration/brain/test_handler_chat.py",
@@ -484,7 +484,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 40
+      "node_count": 42
     },
     {
       "path": "tests/runtime/test_ui_host_agent_meeting.py",
@@ -934,7 +934,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 97
+      "node_count": 108
     },
     {
       "path": "tests/test_agent_task_retry.py",
@@ -1009,7 +1009,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 94
+      "node_count": 92
     },
     {
       "path": "tests/test_assistant_text.py",
@@ -1159,7 +1159,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 12
+      "node_count": 14
     },
     {
       "path": "tests/test_chat_window_render_limits.py",
@@ -1174,7 +1174,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 42
+      "node_count": 44
     },
     {
       "path": "tests/test_chatgpt_auth.py",
@@ -1189,7 +1189,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 12
+      "node_count": 14
     },
     {
       "path": "tests/test_config_env.py",
@@ -1516,6 +1516,36 @@
       "node_count": 7
     },
     {
+      "path": "tests/test_formatted_replies_addon.py",
+      "kind": "pytest",
+      "scope": "ui",
+      "behaviour": "user_path",
+      "execution": "github_safe",
+      "category": "GU",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 22
+    },
+    {
+      "path": "tests/test_ghost_cursor.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 3
+    },
+    {
       "path": "tests/test_github_auth.py",
       "kind": "pytest",
       "scope": "integration",
@@ -1762,7 +1792,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 50
+      "node_count": 52
     },
     {
       "path": "tests/test_llm_history.py",
@@ -2160,6 +2190,21 @@
       "node_count": 2
     },
     {
+      "path": "tests/test_privacy_summary.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 7
+    },
+    {
       "path": "tests/test_profile_user_workflows.py",
       "kind": "pytest",
       "scope": "e2e",
@@ -2367,7 +2412,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 169
+      "node_count": 170
     },
     {
       "path": "tests/test_settings_env.py",
@@ -2502,7 +2547,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 8
+      "node_count": 9
     },
     {
       "path": "tests/test_spreadsheet_advanced_actions.py",
@@ -2545,7 +2590,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 11
+      "node_count": 17
     },
     {
       "path": "tests/test_text_annotations.py",
@@ -2711,6 +2756,36 @@
       "node_count": 17
     },
     {
+      "path": "tests/test_virtual_workspace_addon.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 23
+    },
+    {
+      "path": "tests/test_virtual_workspace_background_runner.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 12
+    },
+    {
       "path": "tests/test_visual_regression.py",
       "kind": "pytest",
       "scope": "ui",
@@ -2782,6 +2857,66 @@
       ],
       "schedule": "github-actions",
       "node_count": 6
+    },
+    {
+      "path": "tests/test_workspace_activity.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 8
+    },
+    {
+      "path": "tests/test_workspace_file_tree.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 5
+    },
+    {
+      "path": "tests/test_workspace_parallel.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 25
+    },
+    {
+      "path": "tests/test_workspace_previews.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 9
     },
     {
       "path": "tools/test_mic.py",

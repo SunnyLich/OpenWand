@@ -19,6 +19,8 @@ log = logging.getLogger("wisp")
 # Kept alive for the whole process lifetime. If this handle is garbage-collected
 # the OS releases the lock, so it must stay referenced at module scope.
 _lock_handle = None
+_mutex_handle = None
+_WINDOWS_MUTEX_NAME = "Local\\Wisp.SingleInstance.v2"
 
 
 def acquire() -> bool:
@@ -41,22 +43,43 @@ def acquire() -> bool:
 
 def _acquire_windows() -> bool:
     """Handle acquire windows for system single instance."""
-    global _lock_handle
+    global _lock_handle, _mutex_handle
+    import ctypes
     import msvcrt
+
+    # The named kernel mutex is the authoritative Windows guard.  The byte-range
+    # file lock remains in place for updater compatibility, but msvcrt locking
+    # alone has allowed two uv/python launcher trees to coexist in production.
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p]
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    kernel32.CloseHandle.restype = ctypes.c_bool
+    ctypes.set_last_error(0)
+    mutex = kernel32.CreateMutexW(None, True, _WINDOWS_MUTEX_NAME)
+    if not mutex:
+        log.warning("Could not create the Wisp instance mutex; falling back to the file lock.")
+    elif ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
+        kernel32.CloseHandle(mutex)
+        return False
 
     try:
         fh = open(SINGLE_INSTANCE_LOCK, "a+")
     except OSError:
         log.warning("Could not open single-instance lock file; skipping guard.")
+        _mutex_handle = mutex
         return True  # fail open: never block the only instance over a fs error
 
     try:
         msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
     except OSError:
         fh.close()
+        if mutex:
+            kernel32.CloseHandle(mutex)
         return False  # another instance holds the lock
 
     _lock_handle = fh
+    _mutex_handle = mutex
     return True
 
 

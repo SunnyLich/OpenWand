@@ -75,6 +75,14 @@ class AgentToolbox:
         self.workspace.write_text(path, content, create=True, edit=False)
         return self._result("create_file", True, self.workspace.relative(path))
 
+    def create_file_bytes(self, path: str, content: bytes) -> ToolResult:
+        """Create a binary file from already-decoded bytes."""
+        if not self.permissions.allow_file_create:
+            raise PermissionDenied("Creating files is disabled for this task.")
+        self._approve("create_file_base64", {"path": path, "bytes": len(content)})
+        self.workspace.write_bytes(path, content, create=True, edit=False)
+        return self._result("create_file_base64", True, self.workspace.relative(path))
+
     def write_file(self, path: str, content: str) -> ToolResult:
         """Write file."""
         resolved = self.workspace.resolve(path)
@@ -106,6 +114,31 @@ class AgentToolbox:
             edit=self.permissions.allow_file_edit,
         )
         return self._result("write_file", True, self.workspace.relative(path))
+
+    def write_file_bytes(self, path: str, content: bytes) -> ToolResult:
+        """Create or replace a binary file without altering its bytes."""
+        resolved = self.workspace.resolve(path)
+        exists = resolved.exists()
+        if exists and not self.permissions.allow_file_edit:
+            raise PermissionDenied("Editing files is disabled for this task.")
+        if not exists and not self.permissions.allow_file_create:
+            raise PermissionDenied("Creating files is disabled for this task.")
+        before = resolved.read_bytes() if exists else b""
+        self._approve(
+            "write_file_base64",
+            {"path": str(resolved), "exists": exists, "bytes": len(content)},
+        )
+        if exists and resolved.read_bytes() != before:
+            raise PermissionDenied("write_file_base64 refused because the file changed after approval preview.")
+        if not exists and resolved.exists():
+            raise PermissionDenied("write_file_base64 refused because the file was created after approval preview.")
+        self.workspace.write_bytes(
+            path,
+            content,
+            create=self.permissions.allow_file_create,
+            edit=self.permissions.allow_file_edit,
+        )
+        return self._result("write_file_base64", True, self.workspace.relative(path))
 
     def edit_file(self, path: str, old: str, new: str) -> ToolResult:
         """Edit a file by replacing one exact text block."""

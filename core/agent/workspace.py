@@ -76,6 +76,17 @@ class ScopedWorkspace:
         resolved.parent.mkdir(parents=True, exist_ok=True)
         resolved.write_text(content, encoding="utf-8")
 
+    def write_bytes(self, path: str | Path, content: bytes, *, create: bool, edit: bool) -> None:
+        """Write bytes without text decoding or newline conversion."""
+        resolved = self.resolve(path)
+        exists = resolved.exists()
+        if exists and not edit:
+            raise PermissionError("Editing files is disabled for this task.")
+        if not exists and not create:
+            raise PermissionError("Creating files is disabled for this task.")
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        resolved.write_bytes(content)
+
     def patch_text(self, path: str | Path, old: str, new: str, *, edit: bool) -> int:
         """Handle patch text for scoped workspace."""
         if not edit:

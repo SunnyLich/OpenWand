@@ -263,10 +263,19 @@ def test_tray_surface_failure_matrix_rebuilds_and_dispatches_without_blocking(mo
     monkeypatch.setattr(QApplication, "quit", lambda: quit_calls.append(True))
     signals = OverlaySignals()
     dispatched: list[str] = []
+    addon_dispatched: list[tuple[str, str]] = []
     signals.show_last_chat.connect(lambda: dispatched.append("chat"))
     signals.show_memory_viewer.connect(lambda: dispatched.append("memory"))
     signals.show_settings.connect(lambda: dispatched.append("settings"))
-    overlay = IconOverlay(signals)
+    signals.run_addon_tray_action.connect(
+        lambda addon_id, label: addon_dispatched.append((addon_id, label))
+    )
+    overlay = IconOverlay(
+        signals,
+        addon_tray_actions=[
+            {"addon_id": "virtual-workspace", "label": "Open Virtual Workspace"}
+        ],
+    )
 
     def action(label: str):
         return next(item for item in overlay._tray_menu.actions() if item.text() == label)
@@ -280,6 +289,9 @@ def test_tray_surface_failure_matrix_rebuilds_and_dispatches_without_blocking(mo
         action("Quit").trigger()
         assert dispatched == ["chat", "memory", "settings"]
         assert quit_calls == [True]
+
+        action("Open Virtual Workspace").trigger()
+        assert addon_dispatched == [("virtual-workspace", "Open Virtual Workspace")]
 
         # Rebuilding replaces a missing/destroyed native tray/menu pair and
         # recreates every action callback.

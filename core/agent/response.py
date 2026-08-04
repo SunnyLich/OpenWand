@@ -344,7 +344,39 @@ class AgentResponseMixin:
         if args is None and isinstance(call.get("function"), dict):
             args = call["function"].get("arguments")
         if args is None:
-            args = {}
+            # Some providers flatten tool arguments into the tool-call object
+            # instead of nesting them below ``args``.  Accept that common shape
+            # without leaking response-envelope fields into the actual tool.
+            envelope_keys = {
+                "tool",
+                "name",
+                "function",
+                "args",
+                "parameters",
+                "id",
+                "type",
+                "thought",
+                "status",
+                "next_agent",
+                "reason",
+                "final",
+                "tool_calls",
+            }
+            args = {key: value for key, value in call.items() if key not in envelope_keys}
+        if isinstance(args, str):
+            try:
+                parsed = json.loads(args)
+            except (TypeError, ValueError):
+                parsed = None
+            if isinstance(parsed, dict):
+                args = parsed
+        if isinstance(args, dict) and not str(args.get("path") or "").strip():
+            for alias in ("file_path", "relative_path", "file", "filename"):
+                value = args.get(alias)
+                if isinstance(value, str) and value.strip():
+                    args = dict(args)
+                    args["path"] = value
+                    break
         return args
 
     @staticmethod

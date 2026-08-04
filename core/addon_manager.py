@@ -28,7 +28,12 @@ from core.system.paths import ADDONS_DIR, BUNDLED_ADDONS_DIR, REPO_ROOT
 log = logging.getLogger("wisp.addons")
 
 _HOST_TIMEOUT_SECONDS = 2.0
-_DEFAULT_BUNDLED_ADDONS = ("mcp_bridge", "ui_lab")
+_DEFAULT_BUNDLED_ADDONS = (
+    "mcp_bridge",
+    "ui_lab",
+    "formatted_replies",
+    "virtual_workspace",
+)
 
 
 def _terminal(event: str) -> None:
@@ -76,6 +81,7 @@ class LoadedAddon:
     intents: list[dict[str, Any]] = field(default_factory=list)
     notifications: list[dict[str, Any]] = field(default_factory=list)
     hotkeys: list[dict[str, Any]] = field(default_factory=list)
+    settings: list[dict[str, Any]] = field(default_factory=list)
     runtime_status: dict[str, Any] = field(default_factory=dict)
     runtime_python: Path | None = None
 
@@ -233,7 +239,10 @@ class AddonManager:
         """Initialize the addon manager instance."""
         self._dir = addons_dir or ADDONS_DIR
         self._bundled_addons_dir = bundled_addons_dir or BUNDLED_ADDONS_DIR
-        self._seed_bundled_defaults = bundled_addons_dir is not None or _same_path(self._dir, ADDONS_DIR)
+        self._seed_bundled_defaults = bundled_addons_dir is not None or (
+            not str(os.environ.get("WISP_ADDONS_DIR") or "").strip()
+            and _same_path(self._dir, ADDONS_DIR)
+        )
         self._mods: list[LoadedAddon] = []  # compatibility name used by callers/tests
         self._tool_registry: Any = None
 
@@ -403,14 +412,15 @@ class AddonManager:
                 actions.append({"label": label, "callback": _make_action_callback(addon, label)})
         return actions
 
-    def run_tray_action(self, name: str, label: str) -> None:
+    def run_tray_action(self, name: str, label: str) -> dict[str, Any]:
         """Run tray action."""
         addon = self._find(name)
         if addon is None or addon.host is None or not addon.enabled:
             raise ValueError(f"Addon not loaded: {name}")
         if not _has_ui_permission(addon, "tray"):
             raise PermissionError(f"Addon is missing ui tray permission: {name}")
-        _call_host(addon, "run_tray_action", {"label": label}, timeout=5.0)
+        result = _call_host(addon, "run_tray_action", {"label": label}, timeout=5.0)
+        return _safe_tray_action_result(result)
 
     def get_intents(self, caller_idx: int | None = None) -> list[dict[str, Any]]:
         """Return intents."""
@@ -522,6 +532,68 @@ class AddonManager:
                     actions.append(normalized)
         return actions
 
+    def get_message_actions(self, payload: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Return safe actions addons may place beside a chat message."""
+        request = _safe_message_action_payload(payload or {}, include_text=False)
+        actions: list[dict[str, Any]] = []
+        for addon in self._enabled_addons():
+            if len(actions) >= 12:
+                break
+            if addon.host is None or not _has_ui_permission(addon, "message_actions"):
+                continue
+            result = _call_host(addon, "get_message_actions", request, timeout=2.0)
+            for item in _safe_list(result):
+                normalized = _safe_message_action(addon.id, item)
+                if normalized is not None:
+                    actions.append(normalized)
+                if len(actions) >= 12:
+                    break
+        return actions
+
+    def run_message_action(
+        self,
+        addon_id: str,
+        action_id: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Start a permitted addon action for one concrete chat message."""
+        addon = self._find(addon_id)
+        if addon is None or addon.host is None or not addon.enabled:
+            raise ValueError(f"Addon not loaded: {addon_id}")
+        if not _has_ui_permission(addon, "message_actions"):
+            raise PermissionError(f"Addon is missing ui message_actions permission: {addon_id}")
+        request = _safe_message_action_payload(payload or {}, include_text=True)
+        result = _call_host(
+            addon,
+            "run_message_action",
+            {"action_id": str(action_id or "")[:80], "payload": request},
+            timeout=5.0,
+        )
+        return _safe_message_action_result(result)
+
+    def resume_message_action(
+        self,
+        addon_id: str,
+        action_id: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Resume a message action after the host completes its requested work."""
+        addon = self._find(addon_id)
+        if addon is None or addon.host is None or not addon.enabled:
+            raise ValueError(f"Addon not loaded: {addon_id}")
+        if not _has_ui_permission(addon, "message_actions"):
+            raise PermissionError(f"Addon is missing ui message_actions permission: {addon_id}")
+        result = _call_host(
+            addon,
+            "resume_message_action",
+            {
+                "action_id": str(action_id or "")[:80],
+                "payload": _safe_message_action_resume_payload(payload or {}),
+            },
+            timeout=5.0,
+        )
+        return _safe_message_action_result(result)
+
     def mod_names(self) -> list[str]:
         """Handle mod names for addon manager."""
         return [m.name for m in self._mods]
@@ -559,6 +631,7 @@ class AddonManager:
             addon.intents = []
             addon.notifications = []
             addon.hotkeys = []
+            addon.settings = []
         return enabled
 
     def repair_environment(self, name: str) -> dict[str, Any]:
@@ -596,7 +669,13 @@ class AddonManager:
                 self._register_tools(addon)
         return addon.runtime_status
 
-    def get_settings(self, name: str) -> list[dict[str, Any]]:
+    def get_settings(
+        self,
+        name: str,
+        *,
+        refresh_host: bool = True,
+        resolve_dynamic_options: bool = True,
+    ) -> list[dict[str, Any]]:
         """Return settings."""
         addon = self._find(name)
         if addon is None:
@@ -604,16 +683,34 @@ class AddonManager:
         descriptors: list[dict[str, Any]] = []
         descriptors.extend(dict(s) for s in addon.manifest.settings if isinstance(s, dict))
         if addon.enabled and addon.host is not None and _has_ui_permission(addon, "settings"):
-            descriptors.extend(
-                dict(s)
-                for s in _safe_list(_call_host(addon, "get_settings"))
-                if isinstance(s, dict)
-            )
+            if refresh_host:
+                addon.settings = [
+                    dict(s)
+                    for s in _safe_list(_call_host(addon, "get_settings"))
+                    if isinstance(s, dict)
+                ]
+            descriptors.extend(dict(s) for s in addon.settings if isinstance(s, dict))
         out: list[dict[str, Any]] = []
         for item in descriptors:
             key = str(item.get("key") or "").strip()
             if not key:
                 continue
+            if resolve_dynamic_options and str(item.get("type") or "").strip().lower() == "ollama_model":
+                try:
+                    from core.llm_clients.client import safe_list_models
+
+                    models, error = safe_list_models("ollama")
+                except Exception as exc:
+                    models, error = [], f"{type(exc).__name__}: {exc}"
+                if models:
+                    item["type"] = "choice"
+                    item["options"] = list(dict.fromkeys(str(model) for model in models if str(model)))
+                    item["default"] = str(item.get("default") or item["options"][0])
+                else:
+                    item["type"] = "text"
+                    if error:
+                        original_help = str(item.get("help") or "").strip()
+                        item["help"] = f"{original_help} Ollama: {error}".strip()
             item["value"] = addon_store.get_setting(addon.id, key, item.get("default"))
             out.append(item)
         return out
@@ -625,9 +722,21 @@ class AddonManager:
             return
         addon_store.set_setting(addon.id, str(key).strip(), value)
 
-    def summaries(self) -> list[dict[str, Any]]:
+    def summaries(
+        self,
+        *,
+        refresh_host: bool = True,
+        resolve_dynamic_options: bool = True,
+    ) -> list[dict[str, Any]]:
         """Handle summaries for addon manager."""
-        return [self.payload(addon) for addon in self._mods]
+        return [
+            self.payload(
+                addon,
+                refresh_host=refresh_host,
+                resolve_dynamic_options=resolve_dynamic_options,
+            )
+            for addon in self._mods
+        ]
 
     def model_tool_names(self) -> list[str]:
         """Return enabled addon model-tool names without building UI payloads."""
@@ -650,8 +759,18 @@ class AddonManager:
                     })
         return payloads
 
-    def payload(self, addon: LoadedAddon) -> dict[str, Any]:
+    def payload(
+        self,
+        addon: LoadedAddon,
+        *,
+        refresh_host: bool = True,
+        resolve_dynamic_options: bool = True,
+    ) -> dict[str, Any]:
         """Handle payload for addon manager."""
+        tray_actions = list(addon.tray_actions)
+        if refresh_host and addon.host is not None and _has_ui_permission(addon, "tray"):
+            tray_actions = _safe_list(_call_host(addon, "get_tray_actions"))
+            addon.tray_actions = tray_actions
         return {
             "id": addon.id,
             "name": addon.name,
@@ -659,12 +778,16 @@ class AddonManager:
             "status": addon.status,
             "enabled": bool(addon.enabled),
             "hooks": list(addon.hooks),
-            "tray_actions": list(addon.tray_actions),
+            "tray_actions": tray_actions,
             "tools": [str(t.get("name") or "") for t in addon.tools if isinstance(t, dict)],
             "intents": list(addon.intents),
             "notifications": list(addon.notifications),
             "hotkeys": list(addon.hotkeys),
-            "settings": self.get_settings(addon.id),
+            "settings": self.get_settings(
+                addon.id,
+                refresh_host=refresh_host,
+                resolve_dynamic_options=resolve_dynamic_options,
+            ),
             "permissions": addon.manifest.permissions,
             "dependencies": {
                 "python": addon.manifest.dependencies.python,
@@ -727,6 +850,7 @@ class AddonManager:
                 addon.intents = []
                 addon.notifications = []
                 addon.hotkeys = []
+                addon.settings = []
                 return False
             if not addon.runtime_status.get("ready"):
                 addon.status = "needs_dependencies"
@@ -738,6 +862,7 @@ class AddonManager:
                 addon.intents = []
                 addon.notifications = []
                 addon.hotkeys = []
+                addon.settings = []
                 return False
             addon.runtime_python = Path(str(addon.runtime_status.get("python") or ""))
 
@@ -761,6 +886,15 @@ class AddonManager:
             else []
         )
         addon.hotkeys = _safe_hotkeys(addon, _call_host(addon, "get_hotkeys")) if _has_permission(addon, "hotkeys") else []
+        addon.settings = (
+            [
+                dict(item)
+                for item in _safe_list(_call_host(addon, "get_settings"))
+                if isinstance(item, dict)
+            ]
+            if _has_ui_permission(addon, "settings")
+            else []
+        )
         if addon.error:
             addon.status = "error"
             if addon.host is not None:
@@ -839,9 +973,10 @@ def addon_setting(addon_id: str, key: str, default: Any = None) -> Any:
 def init(addons_dir: Path | None = None) -> AddonManager:
     """Handle init for addon manager."""
     global _manager
-    _manager = AddonManager(addons_dir or ADDONS_DIR)
-    _manager.load_all()
-    return _manager
+    manager = AddonManager(addons_dir or ADDONS_DIR)
+    manager.load_all()
+    _manager = manager
+    return manager
 
 
 def get_manager() -> AddonManager:
@@ -927,6 +1062,146 @@ def _has_text_context_menu_permission(addon: LoadedAddon) -> bool:
     """Return whether an addon explicitly opted into text context-menu actions."""
     ui = addon.manifest.permissions.get("ui")
     return isinstance(ui, list) and "text_context_menu" in {str(item) for item in ui}
+
+
+def _safe_tray_action_result(value: Any) -> dict[str, Any]:
+    """Allow tray callbacks to request only bounded UI-owned effects."""
+    from urllib.parse import urlsplit
+
+    out: dict[str, Any] = {}
+    if not isinstance(value, dict):
+        return out
+    message = str(value.get("message") or "").replace("\x00", "").strip()[:240]
+    if message:
+        out["message"] = message
+    raw_url = str(value.get("virtual_workspace_url") or "").strip()
+    if not raw_url or len(raw_url) > 4096 or "\x00" in raw_url or "\r" in raw_url or "\n" in raw_url:
+        return out
+    try:
+        parsed = urlsplit(raw_url)
+        port = parsed.port
+    except ValueError:
+        return out
+    if (
+        parsed.scheme == "http"
+        and parsed.hostname == "127.0.0.1"
+        and parsed.username is None
+        and parsed.password is None
+        and port is not None
+        and 1 <= port <= 65535
+    ):
+        out["virtual_workspace_url"] = raw_url
+    return out
+
+
+def _safe_message_action(addon_id: str, item: Any) -> dict[str, Any] | None:
+    """Normalize one unobtrusive action shown beneath assistant messages."""
+    if not isinstance(item, dict):
+        return None
+    action_id = str(item.get("id") or "").replace("\x00", "").strip()[:80]
+    label = str(item.get("label") or action_id).replace("\x00", "").strip()[:40]
+    role = str(item.get("role") or "assistant").strip().lower()
+    if not action_id or not label or role not in {"assistant", "user", "all"}:
+        return None
+    return {
+        "addon_id": addon_id,
+        "id": action_id,
+        "label": label,
+        "role": role,
+        "presentation": bool(item.get("presentation")),
+        "auto": bool(item.get("auto")),
+    }
+
+
+def _safe_message_action_payload(payload: dict[str, Any], *, include_text: bool) -> dict[str, Any]:
+    """Limit message metadata crossing into an addon subprocess."""
+    allowed = {
+        "surface",
+        "role",
+        "message_id",
+        "conversation_id",
+        "user_prompt",
+        "presentation_status",
+    }
+    if include_text:
+        allowed.add("text")
+    out = {key: str(payload.get(key) or "").replace("\x00", "") for key in allowed}
+    out["text"] = out.get("text", "")[:120_000]
+    out["user_prompt"] = out.get("user_prompt", "")[:24_000]
+    return out
+
+
+def _safe_message_action_resume_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Limit host-operation results returned to an addon action."""
+    state = payload.get("state") if isinstance(payload.get("state"), dict) else {}
+    safe_state: dict[str, Any] = {}
+    for key, value in list(state.items())[:24]:
+        clean_key = str(key or "").replace("\x00", "").strip()[:80]
+        if not clean_key:
+            continue
+        if isinstance(value, bool) or value is None:
+            safe_state[clean_key] = value
+        elif isinstance(value, (int, float)):
+            safe_state[clean_key] = value
+        else:
+            safe_state[clean_key] = str(value or "").replace("\x00", "")[:180_000]
+    return {
+        "operation": str(payload.get("operation") or "").strip()[:40],
+        "text": str(payload.get("text") or "").replace("\x00", "")[:180_000],
+        "state": safe_state,
+        "input_tokens_estimate": max(0, _safe_int(payload.get("input_tokens_estimate"), 0)),
+        "output_tokens_estimate": max(0, _safe_int(payload.get("output_tokens_estimate"), 0)),
+    }
+
+
+def _safe_message_action_result(value: Any) -> dict[str, Any]:
+    """Allow only host operations, status, and restricted-HTML presentations."""
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, Any] = {}
+    status = str(value.get("status") or "").replace("\x00", "").strip()[:240]
+    if status:
+        out["status"] = status
+    error_detail = str(value.get("error_detail") or "").replace("\x00", "").strip()[:1000]
+    if error_detail:
+        out["error_detail"] = error_detail
+    operation = value.get("llm")
+    if isinstance(operation, dict):
+        prompt = str(operation.get("prompt") or "").replace("\x00", "").strip()[:180_000]
+        if prompt:
+            route = str(operation.get("route") or "llm").strip().lower()
+            if route not in {"llm", "chat", "chatgpt-mini", "chatgpt-nano", "ollama-local"}:
+                route = "llm"
+            out["llm"] = {
+                "prompt": prompt,
+                "max_tokens": max(1, min(_safe_int(operation.get("max_tokens"), 2048), 4096)),
+                "temperature": operation.get("temperature"),
+                "route": route,
+            }
+            if route == "ollama-local":
+                out["llm"]["model"] = str(operation.get("model") or "").replace("\x00", "").strip()[:200]
+            state = value.get("state") if isinstance(value.get("state"), dict) else {}
+            out["state"] = _safe_message_action_resume_payload({"state": state})["state"]
+            return out
+    presentation = value.get("presentation")
+    if isinstance(presentation, dict):
+        fragment = str(presentation.get("html") or "").replace("\x00", "")[:180_000]
+        if fragment:
+            out["presentation"] = {
+                "format": "restricted_html",
+                "html": fragment,
+                "label": str(presentation.get("label") or "Formatted").replace("\x00", "").strip()[:40],
+                "status": str(presentation.get("status") or status or "Formatted").replace("\x00", "").strip()[:120],
+            }
+    usage = value.get("token_usage")
+    if isinstance(usage, dict):
+        out["token_usage"] = {
+            "formatting_input_estimate": max(0, _safe_int(usage.get("formatting_input_estimate"), 0)),
+            "formatting_output_estimate": max(0, _safe_int(usage.get("formatting_output_estimate"), 0)),
+            "verification_input_estimate": max(0, _safe_int(usage.get("verification_input_estimate"), 0)),
+            "verification_output_estimate": max(0, _safe_int(usage.get("verification_output_estimate"), 0)),
+        }
+    return out
 
 
 def _safe_text_annotation_payload(payload: dict[str, Any]) -> dict[str, str]:

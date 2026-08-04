@@ -395,6 +395,7 @@ def test_main_does_not_restart_ui_after_user_quit_event(tmp_path, monkeypatch):
     monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(supervisor_app.single_instance, "acquire", lambda: True)
     instances = []
+    flow_instances = []
 
     class FakeWorker:
         """Fake worker that records exit, event, and restart activity."""
@@ -403,6 +404,11 @@ def test_main_does_not_restart_ui_after_user_quit_event(tmp_path, monkeypatch):
             self.exit_handlers = []
             self.event_handlers = {}
             self.restart_calls = 0
+            self.shutdown_started = False
+
+        def begin_shutdown(self):
+            """Close the fake spawn gate."""
+            self.shutdown_started = True
 
         def on_exit(self, handler):
             """Store exit handler."""
@@ -431,11 +437,18 @@ def test_main_does_not_restart_ui_after_user_quit_event(tmp_path, monkeypatch):
                 "audio": FakeWorker(),
             }
             self.shutdown_called = False
+            self.begin_shutdown_calls = 0
             instances.append(self)
 
         def start_all(self):
             """No-op start."""
             return {}
+
+        def begin_shutdown(self):
+            """Prevent any fake worker from accepting a late restart."""
+            self.begin_shutdown_calls += 1
+            for worker in self.workers.values():
+                worker.begin_shutdown()
 
         def shutdown(self):
             """Record shutdown."""
@@ -446,6 +459,8 @@ def test_main_does_not_restart_ui_after_user_quit_event(tmp_path, monkeypatch):
         def __init__(self, *, native, ui, brain, audio, **_kwargs):
             """Initialize fake flow controller."""
             self.ui = ui
+            self.start_hotkey_calls = 0
+            flow_instances.append(self)
 
         def start(self):
             """Emit user quit, then the platform-specific UI process exit."""
@@ -455,6 +470,7 @@ def test_main_does_not_restart_ui_after_user_quit_event(tmp_path, monkeypatch):
 
         def start_hotkeys(self):
             """No-op hotkeys."""
+            self.start_hotkey_calls += 1
             return {"started": True}
 
     monkeypatch.setattr(supervisor_app, "WispSupervisor", FakeSupervisor)
@@ -463,6 +479,9 @@ def test_main_does_not_restart_ui_after_user_quit_event(tmp_path, monkeypatch):
     assert supervisor_app.main() == 0
     ui = instances[0].workers["ui"]
     assert ui.restart_calls == 0
+    assert ui.shutdown_started is True
+    assert instances[0].begin_shutdown_calls >= 1
+    assert flow_instances[0].start_hotkey_calls == 0
     assert instances[0].shutdown_called is True
     assert not list((tmp_path / "build_logs").glob("wisp_crash_*/supervisor-crash.log"))
 

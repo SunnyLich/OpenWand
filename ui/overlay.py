@@ -58,6 +58,7 @@ class OverlaySignals(QObject):
     chat_sync_conversation = Signal(int)     # a voice query appended to an existing conversation (idx)
     show_memory_viewer     = Signal()        # tray "Memory-¦" clicked
     show_addon_manager    = Signal()        # tray "Addon Manager" clicked
+    run_addon_tray_action = Signal(str, str)  # addon id, action label
     show_runtime_status    = Signal()        # tray "Runtime Status" clicked
     show_agent_task        = Signal()        # tray "Start agent task" clicked
     show_agent_history     = Signal()        # tray "Agent task history" clicked
@@ -83,10 +84,16 @@ class IconOverlay(QMainWindow):
         s = config.ICON_SIZE
         return (s, s)
 
-    def __init__(self, signals: OverlaySignals):
+    def __init__(
+        self,
+        signals: OverlaySignals,
+        *,
+        addon_tray_actions: list[dict[str, object]] | None = None,
+    ):
         """Initialize the icon overlay instance."""
         super().__init__()
         self.signals = signals
+        self._addon_tray_actions = self._normalize_addon_tray_actions(addon_tray_actions)
 
         self._build_window()
         self._build_icon_label()
@@ -355,6 +362,14 @@ class IconOverlay(QMainWindow):
         menu.addAction(self._icon_toggle_action)
         menu.addSeparator()
         menu.addAction(memory_action)
+        for descriptor in self._addon_tray_actions:
+            addon_id = descriptor["addon_id"]
+            label = descriptor["label"]
+            addon_action = QAction(label, self)
+            addon_action.triggered.connect(
+                lambda _checked=False, aid=addon_id, text=label: self._run_addon_tray_action(aid, text)
+            )
+            menu.addAction(addon_action)
         addon_manager_action = QAction(t("Addon Manager"), self)
         if os.environ.get("WISP_MACOS_PY_UI_HOST") == "1":
             addon_manager_action.triggered.connect(self.signals.show_addon_manager.emit)
@@ -371,6 +386,54 @@ class IconOverlay(QMainWindow):
         menu.addSeparator()
         menu.addAction(quit_action)
         return menu
+
+    @staticmethod
+    def _normalize_addon_tray_actions(
+        actions: list[dict[str, object]] | None,
+    ) -> list[dict[str, str]]:
+        """Validate and de-duplicate addon-owned tray descriptors."""
+        normalized: list[dict[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for item in actions or []:
+            if not isinstance(item, dict):
+                continue
+            addon_id = str(item.get("addon_id") or "").strip()
+            label = str(item.get("label") or "").strip()
+            key = (addon_id, label)
+            if not addon_id or not label or key in seen:
+                continue
+            seen.add(key)
+            normalized.append({"addon_id": addon_id, "label": label})
+            if len(normalized) >= 12:
+                break
+        return normalized
+
+    def set_addon_tray_actions(self, actions: list[dict[str, object]] | None = None) -> None:
+        """Replace addon-owned tray actions and rebuild the native menu."""
+        normalized = self._normalize_addon_tray_actions(actions)
+        if normalized == self._addon_tray_actions:
+            return
+        self._addon_tray_actions = normalized
+        if hasattr(self, "_tray"):
+            old_menu = getattr(self, "_tray_menu", None)
+            self._tray_menu = self._build_tray_menu()
+            self._update_tray_context_menu()
+            if old_menu is not None:
+                old_menu.deleteLater()
+
+    def _run_addon_tray_action(self, addon_id: str, label: str) -> None:
+        """Dispatch an explicit tray click without moving focus or injecting input."""
+        if os.environ.get("WISP_MACOS_PY_UI_HOST") == "1":
+            self.signals.run_addon_tray_action.emit(addon_id, label)
+            return
+        try:
+            from core.addon_manager import get_manager
+
+            get_manager().run_tray_action(addon_id, label)
+        except Exception:
+            # Runtime-hosted Wisp routes this through the signal above.  A
+            # standalone overlay without an addon manager should stay usable.
+            return
 
     def _set_icon_pixmap(self, state: str):
         """Set icon pixmap."""

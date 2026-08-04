@@ -103,6 +103,11 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
             if on_trace:
                 on_trace(entry)
 
+        def progress(payload: dict) -> None:
+            """Forward ephemeral structured progress without writing draft contents to logs."""
+            if on_trace:
+                on_trace(json.dumps({"workspace_progress": payload}, ensure_ascii=False))
+
         try:
             log("agent run started")
             self._control.raise_if_cancelled()
@@ -136,7 +141,15 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
             self._write_json(run_dir / "verification_commands.json", verify_commands)
             verbose("allowed verification commands", verify_commands)
 
-            final, turns, messages, agent_states = self._run_agent_loop(spec, tools, files, verify_commands, log, verbose)
+            final, turns, messages, agent_states = self._run_agent_loop(
+                spec,
+                tools,
+                files,
+                verify_commands,
+                log,
+                verbose,
+                progress,
+            )
             (run_dir / "turns.json").write_text(
                 json.dumps(turns, indent=2, ensure_ascii=False),
                 encoding="utf-8",
@@ -174,6 +187,7 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
         verify_commands: list[list[str]],
         log: LogCallback,
         verbose: Callable[[str, object], None] | None = None,
+        progress: Callable[[dict], None] | None = None,
     ) -> tuple[str, list[dict], list[dict], dict[str, dict]]:
         """Run agent loop."""
         agents = self._normalise_agents(spec)
@@ -203,6 +217,7 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                 task_state,
                 log,
                 verbose,
+                progress,
             )
 
         if (
@@ -222,6 +237,7 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                 task_state,
                 log,
                 verbose,
+                progress,
             )
 
         for turn_idx in range(max_turns):
@@ -256,6 +272,105 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
             log(f"prompt prepared for {agent_name}: {len(model_input)} chars ({'delta' if compact_prompt else 'full'})")
             provider, model = self._resolve_agent_route(spec, agent)
             fallbacks = self._task_model_fallbacks(spec)
+            turn: dict = {
+                "turn": turn_idx + 1,
+                "agent": agent_name,
+                "model_response": "",
+                "tool_results": [],
+                "messages": [],
+                "routing": {},
+                "task_state": self._compact_task_state(task_state),
+            }
+            turns.append(turn)
+            streamed_calls: list[dict] = []
+            streamed_results: list[dict] = []
+            draft_state: dict[str, object] = {"path": "", "length": 0, "sent_at": 0.0}
+            response_state: dict[str, object] = {"length": 0, "sent_at": 0.0}
+            response_id = f"turn-{turn_idx + 1}-{self._safe_agent_key(agent_name)}"
+            try:
+                turn_call_limit = max(0, int(getattr(spec, "max_tool_calls_per_turn", 0) or 0))
+            except (TypeError, ValueError):
+                turn_call_limit = 0
+
+            def apply_completed_stream_calls(
+                partial_response: str,
+                *,
+                active_agent: dict = agent,
+                active_agent_name: str = agent_name,
+                active_turn: dict = turn,
+                completed_calls: list[dict] = streamed_calls,
+                completed_results: list[dict] = streamed_results,
+                current_draft_state: dict[str, object] = draft_state,
+                current_response_state: dict[str, object] = response_state,
+                current_response_id: str = response_id,
+                call_limit: int = turn_call_limit,
+            ) -> None:
+                """Apply complete safe Workspace file calls while later calls still stream."""
+                if "virtual workspace" not in str(getattr(spec, "sandbox_mode", "") or "").casefold():
+                    return
+                self._emit_model_response_progress(
+                    progress,
+                    agent=active_agent_name,
+                    response_id=current_response_id,
+                    content=partial_response,
+                    state=current_response_state,
+                )
+                if call_limit and len(completed_calls) >= call_limit:
+                    return
+                draft = self._streaming_workspace_draft(partial_response)
+                if progress is not None and draft is not None:
+                    draft = dict(draft)
+                    draft["agent"] = active_agent_name
+                    now = time.monotonic()
+                    path_changed = draft["path"] != current_draft_state["path"]
+                    length_changed = int(draft["chars"]) >= int(current_draft_state["length"]) + 24
+                    time_elapsed = now - float(current_draft_state["sent_at"]) >= 0.12
+                    if path_changed or length_changed or time_elapsed:
+                        progress(draft)
+                        current_draft_state.update({
+                            "path": draft["path"],
+                            "length": draft["chars"],
+                            "sent_at": now,
+                        })
+                completed = self._completed_stream_tool_calls(partial_response)
+                while len(completed_calls) < len(completed):
+                    if call_limit and len(completed_calls) >= call_limit:
+                        return
+                    call = completed[len(completed_calls)]
+                    tool_name = self._tool_call_name(call) or "unknown"
+                    if tool_name not in {
+                        "create_file",
+                        "create_file_base64",
+                        "edit_file",
+                        "patch_file",
+                        "write_file",
+                        "write_file_base64",
+                    }:
+                        return
+                    self._control.raise_if_cancelled()
+                    log(f"{active_agent_name} streaming tool call: {tool_name}")
+                    result = self._execute_agent_tool_call(
+                        tools,
+                        call,
+                        active_agent_name,
+                        messages,
+                        active_turn,
+                        log=log,
+                        active_agent=active_agent,
+                        spec=spec,
+                        task_state=task_state,
+                    )
+                    self._log_tool_failure(log, result)
+                    result_dict = asdict(result)
+                    completed_calls.append(call)
+                    completed_results.append(result_dict)
+                    active_turn["tool_results"].append(result_dict)
+                    self._append_agent_history(
+                        agent_states,
+                        active_agent_name,
+                        f"Tool {result.tool}: {result.message}",
+                    )
+
             response_text = self._call_model(
                 model_input,
                 log,
@@ -268,24 +383,31 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                     6144 if compact_prompt else 8192,
                 ),
                 temperature=self._spec_float(spec, "agent_temperature", 0.0),
+                reasoning_effort=str(getattr(spec, "reasoning_effort", "") or ""),
+                on_stream_text=apply_completed_stream_calls,
+                activity_label=agent_name,
+                on_privacy_summary=lambda summary, name=agent_name: progress({
+                    "kind": "privacy_redaction",
+                    "agent": name,
+                    "summary": summary,
+                }),
             )
+            if "virtual workspace" in str(getattr(spec, "sandbox_mode", "") or "").casefold():
+                self._emit_model_response_progress(
+                    progress,
+                    agent=agent_name,
+                    response_id=response_id,
+                    content=response_text,
+                    state=response_state,
+                    complete=True,
+                )
+            turn["model_response"] = response_text
             agent_states[agent_name]["briefed"] = True
             file_payload = self._file_payload_summary(response_text)
             if file_payload:
                 log(file_payload)
             if verbose:
                 verbose(f"turn {turn_idx + 1} model response", response_text)
-            turn: dict = {
-                "turn": turn_idx + 1,
-                "agent": agent_name,
-                "model_response": response_text,
-                "tool_results": [],
-                "messages": [],
-                "routing": {},
-                "task_state": self._compact_task_state(task_state),
-            }
-            turns.append(turn)
-
             try:
                 parsed = self._parse_agent_response(response_text)
             except ValueError as exc:
@@ -328,6 +450,21 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                 self._append_agent_history(agent_states, agent_name, f"Thought: {thought}")
             final = str(parsed.get("final") or "").strip()
             calls = parsed.get("tool_calls") or []
+            if isinstance(calls, list) and turn_call_limit and len(calls) > turn_call_limit:
+                deferred_count = len(calls) - turn_call_limit
+                log(
+                    f"visible milestone limit: executing {turn_call_limit} tool call this turn; "
+                    f"deferring {deferred_count} batched call(s) to later turns"
+                )
+                turn["deferred_tool_call_count"] = deferred_count
+                calls = calls[:turn_call_limit]
+                final = ""
+                parsed = dict(parsed)
+                parsed["final"] = None
+                parsed["status"] = "continue"
+                parsed["reason"] = (
+                    "Wisp applied one visible milestone. Continue with the next unfinished milestone."
+                )
             if final and not calls:
                 deferred_agent = self._deferred_final_handoff_agent(final, agent, agents, turns)
                 if deferred_agent is not None and turn_idx + 1 < max_turns:
@@ -398,7 +535,7 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                     current_agent = authority
                     continue
                 log(f"{agent_name} returned final response")
-                if self._pause_after_turn_if_requested(spec, tools, messages, log):
+                if bool(getattr(spec, "pause_holds_terminal_final", True)) and self._pause_after_turn_if_requested(spec, tools, messages, log):
                     log(f"{agent_name} final response held; manual nudge queued before completion")
                     self._append_agent_history(agent_states, agent_name, "Held final after pause: " + final)
                     agent_states[agent_name]["tool_context"] = json.dumps(
@@ -460,8 +597,15 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                 log("agent stopped without tool calls")
                 return fallback, turns, messages, agent_states
 
-            results: list[dict] = []
-            for call in calls:
+            streamed_prefix = 0
+            while (
+                streamed_prefix < len(streamed_calls)
+                and streamed_prefix < len(calls)
+                and calls[streamed_prefix] == streamed_calls[streamed_prefix]
+            ):
+                streamed_prefix += 1
+            results: list[dict] = list(streamed_results[:streamed_prefix])
+            for call in calls[streamed_prefix:]:
                 self._control.raise_if_cancelled()
                 if isinstance(call, dict):
                     tool_name = self._tool_call_name(call) or "unknown"
@@ -494,6 +638,15 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
             agent_states["_shared_task_state"] = task_state
             turn["task_state"] = self._compact_task_state(task_state)
             agent_states[agent_name]["tool_context"] = self._tool_results_for_prompt(results, spec)
+            if (
+                final
+                and bool(getattr(spec, "finish_on_successful_tools", False))
+                and results
+                and all(bool(result.get("ok")) for result in results)
+            ):
+                log(f"{agent_name} completed the task with successful tool actions")
+                self._append_agent_history(agent_states, agent_name, "Final: " + final)
+                return final, turns, messages, agent_states
             repeated_guard_agent = self._repeated_failure_guard(
                 agent_name,
                 results,
@@ -1215,10 +1368,14 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
         task_state: dict,
         log: LogCallback,
         verbose: Callable[[str, object], None] | None = None,
+        progress: Callable[[dict], None] | None = None,
     ) -> None:
         """Run parallel read only round."""
         log(f"parallel read-only briefing started: {len(agents)} agents")
         state_lock = threading.Lock()
+        workspace_progress_enabled = (
+            "virtual workspace" in str(getattr(spec, "sandbox_mode", "") or "").casefold()
+        )
 
         def worker(agent: dict) -> dict:
             """Handle worker for agent task runner."""
@@ -1251,6 +1408,20 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                 log(f"prompt prepared for {agent_name}: {len(model_input)} chars (read-only full)")
                 provider, model = self._resolve_agent_route(spec, agent)
                 fallbacks = self._task_model_fallbacks(spec)
+                response_state: dict[str, object] = {"length": 0, "sent_at": 0.0}
+                response_id = f"briefing-{self._safe_agent_key(agent_name)}"
+
+                def show_response(partial_response: str) -> None:
+                    if not workspace_progress_enabled:
+                        return
+                    self._emit_model_response_progress(
+                        progress,
+                        agent=agent_name,
+                        response_id=response_id,
+                        content=partial_response,
+                        state=response_state,
+                    )
+
                 response_text = self._call_model(
                     model_input,
                     log,
@@ -1259,7 +1430,19 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                     fallbacks=fallbacks,
                     max_tokens=self._spec_token_budget(spec, "read_only_max_tokens", 3072),
                     temperature=self._spec_float(spec, "agent_temperature", 0.0),
+                    reasoning_effort=str(getattr(spec, "reasoning_effort", "") or ""),
+                    on_stream_text=show_response,
+                    activity_label=agent_name,
                 )
+                if workspace_progress_enabled:
+                    self._emit_model_response_progress(
+                        progress,
+                        agent=agent_name,
+                        response_id=response_id,
+                        content=response_text,
+                        state=response_state,
+                        complete=True,
+                    )
                 turn["model_response"] = response_text
                 agent_states[agent_name]["briefed"] = True
                 file_payload = self._file_payload_summary(response_text)
@@ -1359,6 +1542,7 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
         task_state: dict,
         log: LogCallback,
         verbose: Callable[[str, object], None] | None = None,
+        progress: Callable[[dict], None] | None = None,
     ) -> None:
         """Run implementer agents concurrently, gating every write through a file lease.
 
@@ -1375,6 +1559,9 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
         max_workers = max(1, self._spec_int(spec, "max_parallel_agents", 4))
         concurrency = min(len(workers), max_workers)
         log(f"parallel work round started: {len(workers)} worker(s), up to {concurrency} at a time")
+        workspace_progress_enabled = (
+            "virtual workspace" in str(getattr(spec, "sandbox_mode", "") or "").casefold()
+        )
 
         def worker(agent: dict) -> dict:
             """Handle worker for agent task runner."""
@@ -1409,6 +1596,39 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                     verbose(f"parallel work {agent_name} model input", model_input)
                 provider, model = self._resolve_agent_route(spec, agent)
                 fallbacks = self._task_model_fallbacks(spec)
+                draft_state: dict[str, object] = {"path": "", "length": 0, "sent_at": 0.0}
+                response_state: dict[str, object] = {"length": 0, "sent_at": 0.0}
+                response_id = f"parallel-{self._safe_agent_key(agent_name)}"
+
+                def show_worker_draft(partial_response: str) -> None:
+                    """Forward real streamed draft content for this worker."""
+                    if progress is None or not workspace_progress_enabled:
+                        return
+                    self._emit_model_response_progress(
+                        progress,
+                        agent=agent_name,
+                        response_id=response_id,
+                        content=partial_response,
+                        state=response_state,
+                    )
+                    draft = self._streaming_workspace_draft(partial_response)
+                    if draft is None:
+                        return
+                    now = time.monotonic()
+                    path_changed = draft["path"] != draft_state["path"]
+                    length_changed = int(draft["chars"]) >= int(draft_state["length"]) + 24
+                    time_elapsed = now - float(draft_state["sent_at"]) >= 0.12
+                    if not (path_changed or length_changed or time_elapsed):
+                        return
+                    worker_draft = dict(draft)
+                    worker_draft["agent"] = agent_name
+                    progress(worker_draft)
+                    draft_state.update({
+                        "path": draft["path"],
+                        "length": draft["chars"],
+                        "sent_at": now,
+                    })
+
                 response_text = self._call_model(
                     model_input,
                     log,
@@ -1421,7 +1641,28 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                         6144 if compact else 8192,
                     ),
                     temperature=self._spec_float(spec, "agent_temperature", 0.0),
+                    reasoning_effort=str(getattr(spec, "reasoning_effort", "") or ""),
+                    on_stream_text=show_worker_draft,
+                    activity_label=agent_name,
+                    on_privacy_summary=(
+                        None
+                        if progress is None
+                        else lambda summary, name=agent_name: progress({
+                            "kind": "privacy_redaction",
+                            "agent": name,
+                            "summary": summary,
+                        })
+                    ),
                 )
+                if workspace_progress_enabled:
+                    self._emit_model_response_progress(
+                        progress,
+                        agent=agent_name,
+                        response_id=response_id,
+                        content=response_text,
+                        state=response_state,
+                        complete=True,
+                    )
                 turn["model_response"] = response_text
                 agent_states[agent_name]["briefed"] = True
                 if verbose:
@@ -1445,7 +1686,14 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                     log(f"{agent_name} thought: {thought}")
                     self._append_agent_history(agent_states, agent_name, f"Thought: {thought}")
                 results: list[dict] = []
-                for call in parsed.get("tool_calls") or []:
+                calls = parsed.get("tool_calls") or []
+                try:
+                    call_limit = max(0, int(getattr(spec, "max_tool_calls_per_turn", 0) or 0))
+                except (TypeError, ValueError):
+                    call_limit = 0
+                if isinstance(calls, list) and call_limit:
+                    calls = calls[:call_limit]
+                for call in calls:
                     self._control.raise_if_cancelled()
                     if isinstance(call, dict):
                         log(f"{agent_name} tool call: {self._tool_call_name(call) or 'unknown'}")
@@ -1587,7 +1835,11 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                 "in one response and will not risk truncation. "
             )
         if any(name in tool_names for name in ("create_file", "edit_file", "create_file_base64")):
-            guidance.append("Use at most one file-writing tool call per turn, then verify in a later turn if needed. ")
+            guidance.append(
+                "When the objective explicitly requests several small independent files, include one "
+                "file-writing tool call for each file in the same response. For a normal single-file "
+                "change, use one write call and verify later only when verification was requested. "
+            )
         else:
             guidance.append(
                 "File-writing tools are not available in this task phase or active-agent role; "
@@ -1866,6 +2118,10 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
             "Tools absent from this phase's tool list are phase-limited, not broken or unapproved. "
             "If handing off, send_message to the next agent with objective, files, and expected output.\n\n"
             f"Title: {spec.title}\n"
+            "Objective (authoritative; keep every requested target in scope):\n"
+            f"{str(spec.objective or '')[:8_000]}\n\n"
+            "Required context:\n"
+            f"{str(spec.required_context or '(none)')[:8_000]}\n\n"
             f"Active agent: {active_agent['name']} ({active_agent['role']})\n"
             f"Agents: {roster or active_agent['name']}\n"
             f"Responsibility: {self._clip_prompt_line(active_agent['responsibility'] or '(none)', 180)}\n\n"
@@ -1901,6 +2157,10 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
         fallbacks: str | None = None,
         max_tokens: int = 4096,
         temperature: float | None = 0.0,
+        reasoning_effort: str | None = None,
+        on_stream_text: Callable[[str], None] | None = None,
+        activity_label: str = "",
+        on_privacy_summary: Callable[[dict], None] | None = None,
         json_mode: bool = True,
     ) -> str:
         """Call model."""
@@ -1908,11 +2168,14 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
         if self._model_callback is not None:
             started = time.perf_counter()
             response = self._model_callback(prompt)
+            if on_stream_text is not None:
+                on_stream_text(response)
             log(f"model callback response received in {time.perf_counter() - started:.1f}s ({len(response)} chars)")
             return response
         try:
             from core.llm_clients import client as llm
             from core.privacy_gateway import scrub_cloud_fields
+            from core.privacy_summary import summarize_privacy_report
 
             privacy_session, scrubbed, privacy_report = scrub_cloud_fields(
                 {"agent_prompt": prompt},
@@ -1920,14 +2183,19 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
             )
             prompt = scrubbed["agent_prompt"]
             if privacy_report.get("count"):
-                log(f"privacy filter redacted {privacy_report['count']} item(s) from the agent request")
+                safe_privacy = summarize_privacy_report(privacy_report)
+                log(str(safe_privacy["summary"]))
+                if on_privacy_summary is not None:
+                    on_privacy_summary(safe_privacy)
             llm.set_live_privacy_context(
                 privacy_session,
                 ai_enabled=bool(privacy_report.get("ai_enabled")),
             )
 
             route = f"{provider or 'configured provider'} / {model or 'configured model'}"
-            log(f"requesting LLM tool response via {route}")
+            clean_label = " ".join(str(activity_label or "").replace("]", "").split())[:48]
+            activity_suffix = f" [agent={clean_label}]" if clean_label else ""
+            log(f"requesting LLM tool response via {route}{activity_suffix}")
             started = time.perf_counter()
             heartbeat_done = threading.Event()
             progress_state = {"phase": "waiting", "chars": 0}
@@ -1937,9 +2205,12 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                 while not heartbeat_done.wait(5):
                     elapsed = time.perf_counter() - started
                     if progress_state["phase"] == "waiting":
-                        log(f"model call still waiting after {elapsed:.0f}s via {route}")
+                        log(f"model call still waiting after {elapsed:.0f}s via {route}{activity_suffix}")
                     else:
-                        log(f"model response still streaming after {elapsed:.0f}s ({progress_state['chars']} chars received)")
+                        log(
+                            f"model response still streaming after {elapsed:.0f}s "
+                            f"({progress_state['chars']} chars received){activity_suffix}"
+                        )
 
             heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
             heartbeat_thread.start()
@@ -1951,24 +2222,41 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
             try:
                 for chunk in llm.stream_response(
                     prompt,
-                    use_tools=True,
+                    # AgentTaskRunner supplies its own strict JSON tool protocol
+                    # in the prompt and executes those calls itself. Offering the
+                    # app's unrelated live model tools here creates contradictory
+                    # capabilities (for example addon tools disabled by a separate
+                    # setting) and can make the model refuse valid scoped tools.
+                    use_tools=False,
                     route_provider=provider,
                     route_model=model,
                     route_fallbacks=fallbacks,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    reasoning_effort=reasoning_effort,
                     json_mode=json_mode,
                 ):
                     if first_chunk:
                         first_chunk = False
                         progress_state["phase"] = "streaming"
-                        log(f"model first token after {time.perf_counter() - started:.1f}s via {route}")
+                        log(
+                            f"model first token after {time.perf_counter() - started:.1f}s "
+                            f"via {route}{activity_suffix}"
+                        )
                     chunks.append(chunk)
                     received_chars += len(chunk)
                     progress_state["chars"] = received_chars
+                    if on_stream_text is not None:
+                        partial_response = "".join(chunks)
+                        if privacy_session is not None:
+                            partial_response = privacy_session.restore(partial_response)
+                        on_stream_text(partial_response)
                     now = time.perf_counter()
                     if received_chars >= next_char_report or now - last_progress >= 10:
-                        log(f"model streaming response: {received_chars} chars received after {now - started:.1f}s")
+                        log(
+                            f"model streaming response: {received_chars} chars received "
+                            f"after {now - started:.1f}s{activity_suffix}"
+                        )
                         last_progress = now
                         while received_chars >= next_char_report:
                             next_char_report += 1000
@@ -1979,7 +2267,10 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
             response = "".join(chunks).strip()
             if privacy_session is not None:
                 response = privacy_session.restore(response)
-            log(f"model response received in {time.perf_counter() - started:.1f}s ({len(response)} chars)")
+            log(
+                f"model response received in {time.perf_counter() - started:.1f}s "
+                f"({len(response)} chars){activity_suffix}"
+            )
             return response
         except Exception as exc:
             log(f"LLM call failed: {exc}")
@@ -2005,6 +2296,171 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                 "final": None,
                 "model_error": str(exc)[:1000],
             })
+
+    @staticmethod
+    def _safe_agent_key(agent: str) -> str:
+        """Return a compact stable identifier suitable for Workspace activity ids."""
+        key = "".join(character if character.isalnum() or character in "-_" else "-" for character in str(agent))
+        return key.strip("-").casefold()[:60] or "wisp"
+
+    @staticmethod
+    def _emit_model_response_progress(
+        progress: Callable[[dict], None] | None,
+        *,
+        agent: str,
+        response_id: str,
+        content: str,
+        state: dict[str, object],
+        complete: bool = False,
+    ) -> None:
+        """Expose the model's real response text to the local Workspace as it streams."""
+        if progress is None:
+            return
+        text = str(content or "")
+        now = time.monotonic()
+        previous_length = int(state.get("length") or 0)
+        last_sent = float(state.get("sent_at") or 0.0)
+        if not complete and previous_length and len(text) < previous_length + 96 and now - last_sent < 0.15:
+            return
+        limit = 190_000
+        shown = text
+        truncated = len(text) > limit
+        if truncated:
+            shown = text[: limit - 80] + "\n\n[Wisp display truncated this response after 190,000 characters.]"
+        progress({
+            "kind": "model_response",
+            "agent": str(agent or "Wisp")[:80],
+            "response_id": str(response_id or "response")[:120],
+            "content": shown,
+            "chars": len(text),
+            "complete": bool(complete),
+            "truncated": truncated,
+        })
+        state.update({"length": len(text), "sent_at": now})
+
+    @staticmethod
+    def _completed_stream_tool_calls(text: str) -> list[dict]:
+        """Return complete leading tool-call objects from an unfinished JSON response."""
+        source = str(text or "")
+        key_at = source.find('"tool_calls"')
+        if key_at < 0:
+            return []
+        array_at = source.find("[", key_at + len('"tool_calls"'))
+        if array_at < 0:
+            return []
+        decoder = json.JSONDecoder()
+        position = array_at + 1
+        calls: list[dict] = []
+        while position < len(source):
+            while position < len(source) and source[position] in " \t\r\n,":
+                position += 1
+            if position >= len(source) or source[position] == "]":
+                break
+            try:
+                value, position = decoder.raw_decode(source, position)
+            except json.JSONDecodeError:
+                break
+            if not isinstance(value, dict):
+                break
+            calls.append(value)
+        return calls
+
+    @classmethod
+    def _streaming_workspace_draft(cls, text: str) -> dict | None:
+        """Extract a real, still-streaming text-file draft from partial protocol JSON."""
+        source = str(text or "")
+        key_at = source.find('"tool_calls"')
+        if key_at < 0:
+            return None
+        array_at = source.find("[", key_at + len('"tool_calls"'))
+        if array_at < 0:
+            return None
+        decoder = json.JSONDecoder()
+        position = array_at + 1
+        fragment = ""
+        while position < len(source):
+            while position < len(source) and source[position] in " \t\r\n,":
+                position += 1
+            if position >= len(source) or source[position] == "]":
+                return None
+            start = position
+            try:
+                _value, position = decoder.raw_decode(source, position)
+            except json.JSONDecodeError:
+                fragment = source[start:]
+                break
+        if not fragment:
+            return None
+        tool, tool_complete = cls._partial_json_string_field(fragment, "tool")
+        path, path_complete = cls._partial_json_string_field(fragment, "path")
+        content, content_started = cls._partial_json_string_field(fragment, "content", allow_partial=True)
+        if (
+            not tool_complete
+            or tool not in {"create_file", "write_file"}
+            or not path_complete
+            or not path
+            or not content_started
+        ):
+            return None
+        return {
+            "kind": "workspace_draft",
+            "path": path,
+            "content": content,
+            "chars": len(content),
+        }
+
+    @staticmethod
+    def _partial_json_string_field(
+        fragment: str,
+        key: str,
+        *,
+        allow_partial: bool = False,
+    ) -> tuple[str, bool]:
+        """Decode one JSON string field, including its safe complete prefix while streaming."""
+        marker = json.dumps(str(key))
+        key_at = fragment.find(marker)
+        if key_at < 0:
+            return "", False
+        colon_at = fragment.find(":", key_at + len(marker))
+        if colon_at < 0:
+            return "", False
+        quote_at = colon_at + 1
+        while quote_at < len(fragment) and fragment[quote_at].isspace():
+            quote_at += 1
+        if quote_at >= len(fragment) or fragment[quote_at] != '"':
+            return "", False
+        output: list[str] = []
+        index = quote_at + 1
+        complete = False
+        escapes = {'"': '"', "\\": "\\", "/": "/", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
+        while index < len(fragment):
+            char = fragment[index]
+            if char == '"':
+                complete = True
+                break
+            if char != "\\":
+                output.append(char)
+                index += 1
+                continue
+            if index + 1 >= len(fragment):
+                break
+            escaped = fragment[index + 1]
+            if escaped in escapes:
+                output.append(escapes[escaped])
+                index += 2
+                continue
+            if escaped == "u" and index + 6 <= len(fragment):
+                digits = fragment[index + 2:index + 6]
+                try:
+                    output.append(chr(int(digits, 16)))
+                except ValueError:
+                    break
+                index += 6
+                continue
+            break
+        if complete:
+            return "".join(output), True
+        return ("".join(output), True) if allow_partial else ("", False)
 
     @staticmethod
     def _is_permanent_model_error(exc_or_message: Exception | str) -> bool:
@@ -2557,11 +3013,11 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
             if tool == "write_file":
                 return tools.write_file(str(args["path"]), str(args.get("content", "")))
             if tool == "create_file_base64":
-                content = base64.b64decode(str(args.get("content_base64", ""))).decode("utf-8", errors="replace")
-                return tools.create_file(str(args["path"]), content)
+                content = base64.b64decode(str(args.get("content_base64", "")))
+                return tools.create_file_bytes(str(args["path"]), content)
             if tool == "write_file_base64":
-                content = base64.b64decode(str(args.get("content_base64", ""))).decode("utf-8", errors="replace")
-                return tools.write_file(str(args["path"]), content)
+                content = base64.b64decode(str(args.get("content_base64", "")))
+                return tools.write_file_bytes(str(args["path"]), content)
             if tool == "patch_file":
                 return tools.patch_file(str(args["path"]), str(args["old"]), str(args.get("new", "")))
             if tool == "delete_file":

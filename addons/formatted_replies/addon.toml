@@ -1,0 +1,46 @@
+[addon]
+id = "formatted-replies"
+name = "Formatted Replies (Experimental)"
+version = "0.1.0"
+description = "Keeps the canonical reply and optionally generates a restricted rich presentation beside it."
+entry = "__init__.py"
+api_version = "1"
+priority = 80
+
+[permissions]
+response = "read"
+llm = true
+ui = ["settings", "message_actions", "message_presentations"]
+
+[[settings]]
+key = "auto_format"
+label = "Auto-format every new reply"
+type = "bool"
+default = false
+
+[[settings]]
+key = "verify_meaning"
+label = "Verify meaning before showing"
+type = "bool"
+default = false
+
+[[settings]]
+key = "formatter_model"
+label = "Formatting model"
+type = "choice"
+default = "Wisp Chat model"
+options = ["Local (Ollama)", "Efficient (gpt-5.4-mini)", "Fastest (gpt-5.4-nano)", "Wisp LLM model", "Wisp Chat model"]
+help = "Uses Wisp's normal Chat model by default. Local Ollama and the smaller cloud models are opt-in and never change the model that writes the original reply."
+
+[[settings]]
+key = "formatter_local_model"
+label = "Local formatting model"
+type = "ollama_model"
+default = ""
+help = "Choose an installed Ollama model. If left blank, Wisp uses the first installed local model."
+
+[[settings]]
+key = "presentation_preference"
+label = "Presentation preference"
+type = "text"
+default = "Use restrained editorial formatting. Choose special decision layouts only when the content calls for one."

@@ -188,6 +188,85 @@ def test_conversation_delete_failure_matrix_preserves_history(monkeypatch):
     app.processEvents()
 
 
+def test_delete_all_conversations_confirms_clears_and_persists(monkeypatch):
+    """Bulk deletion is explicit, clears the live list, and refreshes the empty UI."""
+    from PySide6.QtWidgets import QMessageBox
+
+    window = ChatWindow.__new__(ChatWindow)
+    window._conversations = [
+        {"id": "one", "messages": []},
+        {"id": "two", "messages": []},
+    ]
+    window._active_idx = 1
+    window._streaming = False
+    persisted_snapshots = []
+    window._persist_fn = lambda: persisted_snapshots.append(list(window._conversations))
+    rebuilt = []
+    window._rebuild_stack = lambda: rebuilt.append("stack")
+    window._rebuild_sidebar = lambda: rebuilt.append("sidebar")
+
+    class InputFrame:
+        enabled = True
+
+        def setEnabled(self, enabled):
+            self.enabled = enabled
+
+    window._input_frame = InputFrame()
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+    )
+
+    ChatWindow._delete_all_conversations(window)
+
+    assert window._conversations == []
+    assert window._active_idx == 0
+    assert persisted_snapshots == [[]]
+    assert rebuilt == ["stack", "sidebar"]
+    assert window._input_frame.enabled is False
+
+
+def test_delete_all_conversations_cancel_or_save_failure_preserves_history(monkeypatch):
+    """Cancelling or failing to save never loses bulk-deleted history."""
+    from PySide6.QtWidgets import QMessageBox
+
+    window = ChatWindow.__new__(ChatWindow)
+    conversations = [{"id": "one", "messages": []}, {"id": "two", "messages": []}]
+    window._conversations = list(conversations)
+    window._active_idx = 1
+    window._streaming = False
+    warnings = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *_args: warnings.append(_args[-1]))
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.No,
+    )
+    window._persist_fn = lambda: pytest.fail("cancelled bulk delete reached persistence")
+
+    ChatWindow._delete_all_conversations(window)
+    assert window._conversations == conversations
+
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+    )
+
+    def fail_persist():
+        raise PermissionError("history file is locked")
+
+    window._persist_fn = fail_persist
+    window._rebuild_stack = lambda: pytest.fail("failed bulk delete rebuilt stack")
+    window._rebuild_sidebar = lambda: pytest.fail("failed bulk delete rebuilt sidebar")
+    ChatWindow._delete_all_conversations(window)
+
+    assert window._conversations == conversations
+    assert window._active_idx == 1
+    assert "history file is locked" in warnings[-1]
+
+
 def test_merged_annotations_hides_disabled_sources_and_rebuilds_ui_lab(monkeypatch):
     """Disabled add-ons disappear and stale UI Lab ranges are never reused."""
     monkeypatch.setattr(

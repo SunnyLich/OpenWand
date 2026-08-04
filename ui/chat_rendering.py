@@ -30,6 +30,8 @@ _RENDER_PALETTE: dict[str, str] = {
     "table_row_bg": "#26263a",
     "table_alt_bg": "#2b2b43",
     "table_border": "#494967",
+    "table_text": "#f2f0ff",
+    "table_accent": "#a99bff",
 }
 
 
@@ -42,6 +44,8 @@ def set_render_palette(
     table_row_bg: str = "",
     table_alt_bg: str = "",
     table_border: str = "",
+    table_text: str = "",
+    table_accent: str = "",
 ) -> None:
     """Update the themed colours used when rendering chat reply HTML."""
     if code_bg:
@@ -58,6 +62,10 @@ def set_render_palette(
         _RENDER_PALETTE["table_alt_bg"] = table_alt_bg
     if table_border:
         _RENDER_PALETTE["table_border"] = table_border
+    if table_text:
+        _RENDER_PALETTE["table_text"] = table_text
+    if table_accent:
+        _RENDER_PALETTE["table_accent"] = table_accent
 _NUMBER_RE = re.compile(r"^\s*\d+[.)]\s+(.*)$")
 _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*$")
 _WS_RE = re.compile(r"(\s+)")
@@ -393,35 +401,34 @@ def _chat_markdown_html(
             close_list()
             header, alignments, rows, end = table
             table_border = _RENDER_PALETTE["table_border"]
+            table_text = _RENDER_PALETTE["table_text"]
+            table_accent = _RENDER_PALETTE["table_accent"]
             parts.append(
-                '<table cellspacing="0" cellpadding="0" '
-                'style="border-collapse:collapse; width:100%; margin:2px 0 10px 0;">'
+                '<table width="100%" cellspacing="0" cellpadding="0" '
+                'style="border-collapse:collapse; width:100%; margin:12px 0 14px 0;">'
             )
             parts.append("<thead><tr>")
-            for column, ((cell, cell_offset), alignment) in enumerate(
+            for (cell, cell_offset), alignment in (
                 zip(header, alignments, strict=True)
             ):
-                edge = "" if column else f"border-left:1px solid {table_border};"
                 parts.append(
-                    f'<th style="text-align:{alignment}; padding:7px 9px; font-weight:700; '
-                    f'background:{_RENDER_PALETTE["table_header_bg"]}; '
-                    f'border-top:1px solid {table_border}; border-right:1px solid {table_border}; '
-                    f'border-bottom:1px solid {table_border}; {edge}">'
-                    f'{_inline_markdown_html(cell, annotations, line_offsets[line_index] + cell_offset)}</th>'
+                    f'<th style="text-align:{alignment}; padding:9px 11px; font-weight:700; '
+                    f'font-size:80%; color:{table_accent}; background:transparent; '
+                    f'border-top:2px solid {table_text}; border-bottom:1px solid {table_border};">'
+                    f'<small>{_inline_markdown_html(cell, annotations, line_offsets[line_index] + cell_offset)}</small></th>'
                 )
             parts.append("</tr></thead><tbody>")
             for row_index, row in enumerate(rows):
-                row_bg = _RENDER_PALETTE["table_alt_bg" if row_index % 2 else "table_row_bg"]
                 parts.append("<tr>")
                 source_line = line_index + 2 + row_index
-                for column, ((cell, cell_offset), alignment) in enumerate(
+                bottom_color = table_text if row_index == len(rows) - 1 else table_border
+                for (cell, cell_offset), alignment in (
                     zip(row, alignments, strict=True)
                 ):
-                    edge = "" if column else f"border-left:1px solid {table_border};"
                     parts.append(
-                        f'<td style="text-align:{alignment}; padding:7px 9px; background:{row_bg}; '
-                        f'border-right:1px solid {table_border}; border-bottom:1px solid {table_border}; {edge}">'
-                        f'{_inline_markdown_html(cell, annotations, line_offsets[source_line] + cell_offset)}</td>'
+                        f'<td style="text-align:{alignment}; padding:9px 11px; background:transparent; '
+                        f'border-bottom:1px solid {bottom_color};">'
+                        f'<small>{_inline_markdown_html(cell, annotations, line_offsets[source_line] + cell_offset)}</small></td>'
                     )
                 parts.append("</tr>")
             parts.append("</tbody></table>")
@@ -450,7 +457,17 @@ def _chat_markdown_html(
                 list_kind = desired
             item = (bullet or number).group(1)
             item_offset = offset + (bullet or number).start(1)
-            parts.append(f"<li>{_inline_markdown_html(item, annotations, item_offset)}</li>")
+            task_item = re.match(r"^\[([ xX])\]\s+(.*)$", item)
+            if task_item:
+                marker = "☑" if task_item.group(1).lower() == "x" else "☐"
+                task_text = task_item.group(2)
+                task_offset = item_offset + task_item.start(2)
+                parts.append(
+                    f"<li>{marker} "
+                    f"{_inline_markdown_html(task_text, annotations, task_offset)}</li>"
+                )
+            else:
+                parts.append(f"<li>{_inline_markdown_html(item, annotations, item_offset)}</li>")
             offset += len(raw_line) + 1
             line_index += 1
             continue
@@ -653,6 +670,11 @@ def _assistant_segments_to_html(
 def _assistant_text_to_html(text: str, read_count: int | None = 0, annotations: object = None) -> str:
     """Render tagged assistant text for the chat transcript."""
     return _assistant_segments_to_html(split_tagged_text(text), read_count, annotations)
+
+
+def render_markdown_html(text: str) -> str:
+    """Render plain Markdown with the same safe visual treatment as Wisp chat."""
+    return _assistant_text_to_html(str(text or ""), read_count=0)
 
 
 def _user_text_to_html(text: str, annotations: object = None) -> str:

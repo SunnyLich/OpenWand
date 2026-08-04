@@ -383,6 +383,27 @@ def test_reply_chunk_accepts_progress_metadata() -> None:
     assert bubble.progress == ["Reading files..."]
 
 
+def test_action_progress_replaces_the_same_visible_status_line() -> None:
+    """Ordered action stages use the bubble's replaceable progress surface."""
+    from runtime.workers.ui_host import QtProtocolHost
+
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    bubble = _Bubble()
+    host._ensure_bubble = lambda: bubble  # type: ignore[attr-defined]
+
+    first = host._action_progress(text="Reading the saved file...", stage="reading", sequence=1)
+    second = host._action_progress(
+        text="Building the exact diff preview...",
+        stage="preparing_preview",
+        sequence=2,
+    )
+
+    assert bubble.chunks == []
+    assert bubble.progress == ["Reading the saved file...", "Building the exact diff preview..."]
+    assert first == {"shown": True, "stage": "reading", "sequence": 1, "terminal": False}
+    assert second["stage"] == "preparing_preview"
+
+
 def test_reply_chunk_keeps_provider_action_in_thought_transcript() -> None:
     """Provider actions are translated activity, not replaceable status text."""
     from runtime.workers.ui_host import QtProtocolHost
@@ -501,6 +522,141 @@ def test_debug_tray_trigger_queues_action_until_after_dispatch(monkeypatch) -> N
     assert len(queued) == 1 and queued[0][0] == 0
     queued[0][1]()
     assert triggered == ["Quit"]
+
+
+def test_native_workspace_endpoint_accepts_only_authenticated_loopback() -> None:
+    """The custom window rejects remote, file, and unauthenticated endpoints."""
+    import pytest
+
+    from ui.virtual_workspace_window import _validated_endpoint
+
+    token = "t" * 32
+    assert _validated_endpoint(f"http://127.0.0.1:8765/?token={token}") == (
+        "http://127.0.0.1:8765",
+        token,
+    )
+    with pytest.raises(ValueError, match="loopback"):
+        _validated_endpoint(f"https://example.com/?token={token}")
+    with pytest.raises(ValueError, match="loopback"):
+        _validated_endpoint("http://127.0.0.1:8765/")
+
+
+def test_virtual_workspace_task_start_uses_a_locked_down_scoped_agent_spec(monkeypatch) -> None:  # noqa: ANN001
+    """The embedded task composer starts a scoped file task, not a host computer-use run."""
+    import config
+    from runtime.workers.ui_host import QtProtocolHost
+
+    emitted = []
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host.emit = lambda event, payload: emitted.append((event, payload))  # type: ignore[method-assign]
+
+    monkeypatch.setattr(config, "CHAT_REASONING_EFFORT", "high")
+    host._start_virtual_workspace_task("Create notes/readme.txt", "C:/isolated/session/files")
+
+    assert emitted[0][0] == "ui.agent.run_requested"
+    spec = emitted[0][1]["spec"]
+    assert spec["scope_folder"] == "C:/isolated/session/files"
+    assert spec["allow_file_create"] is True
+    assert spec["allow_file_edit"] is True
+    assert spec["allow_shell"] is False
+    assert spec["allow_network"] is False
+    assert spec["allow_file_delete"] is False
+    assert spec["reasoning_effort"] == "high"
+    assert spec["max_turns"] == 12
+    assert spec["full_turn_max_tokens"] == 4096
+    assert spec["delta_turn_max_tokens"] == 3072
+    assert spec["pause_holds_terminal_final"] is False
+    assert spec["finish_on_successful_tools"] is True
+    assert spec["max_tool_calls_per_turn"] == 0
+    assert spec["parallel_execution"] is False
+    assert spec["max_parallel_agents"] == 1
+    assert host._virtual_workspace_agent_active is True
+
+
+def test_virtual_workspace_parallelizes_only_explicit_independent_file_tasks() -> None:
+    """Distinct named file checklist items receive independent visible workers."""
+    from runtime.workers.ui_host import QtProtocolHost
+
+    emitted = []
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host.emit = lambda event, payload: emitted.append((event, payload))  # type: ignore[method-assign]
+
+    host._start_virtual_workspace_task(
+        "1. Create alpha.md with a heading\n"
+        "2. Create beta.csv with two rows\n"
+        "3. Create gamma.svg with a blue circle",
+        "C:/isolated/session/files",
+    )
+
+    spec = emitted[0][1]["spec"]
+    assert spec["parallel_execution"] is True
+    assert spec["max_parallel_agents"] == 3
+    assert [agent["name"] for agent in spec["agents"]] == [
+        "Coordinator",
+        "Worker 1",
+        "Worker 2",
+        "Worker 3",
+    ]
+    assert "alpha.md" in spec["agents"][1]["responsibility"]
+    assert "beta.csv" in spec["agents"][2]["responsibility"]
+    assert "gamma.svg" in spec["agents"][3]["responsibility"]
+
+
+def test_virtual_workspace_keeps_dependent_file_tasks_sequential() -> None:
+    """Dependency wording disables worker fan-out."""
+    from runtime.workers.ui_host import QtProtocolHost
+
+    emitted = []
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host.emit = lambda event, payload: emitted.append((event, payload))  # type: ignore[method-assign]
+
+    host._start_virtual_workspace_task(
+        "1. Create data.csv with two rows\n"
+        "2. Create report.md after data.csv is complete",
+        "C:/isolated/session/files",
+    )
+
+    spec = emitted[0][1]["spec"]
+    assert spec["parallel_execution"] is False
+    assert spec["agents"] == []
+    assert spec["max_parallel_agents"] == 1
+
+
+def test_virtual_workspace_receives_only_its_own_agent_progress() -> None:
+    from runtime.workers.ui_host import QtProtocolHost
+
+    class Workspace:
+        def __init__(self) -> None:
+            self.logs = []
+            self.traces = []
+            self.done = []
+
+        def isVisible(self) -> bool:
+            return True
+
+        def append_agent_event(self, params) -> None:  # noqa: ANN001
+            self.logs.append(params)
+
+        def append_agent_trace(self, params) -> bool:  # noqa: ANN001
+            self.traces.append(params)
+            return True
+
+        def finish_agent_task(self, params) -> None:  # noqa: ANN001
+            self.done.append(params)
+
+    workspace = Workspace()
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host._virtual_workspace_window = workspace
+    host._virtual_workspace_agent_active = True
+    host._agent_run_dialog = None
+
+    assert host._agent_log(line="inventory complete")["accepted"] is True
+    assert host._agent_trace(entry='{"workspace_progress": {}}')["accepted"] is True
+    assert host._agent_done(final="done")["accepted"] is True
+    assert workspace.logs == [{"line": "inventory complete"}]
+    assert workspace.traces == [{"entry": '{"workspace_progress": {}}'}]
+    assert workspace.done == [{"final": "done"}]
+    assert host._virtual_workspace_agent_active is False
 
 
 def test_ui_shutdown_message_defers_quit_and_leaves_stdin_open(monkeypatch) -> None:

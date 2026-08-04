@@ -472,6 +472,12 @@ def main() -> int:
     """Handle main for runtime supervisor app."""
     suppress_console_ctrl_c()
     install_crash_diagnostics()
+    from core.system.paths import USER_DATA_DIR
+
+    os.environ.setdefault(
+        "WISP_ACTION_TRACE_PATH",
+        str(USER_DATA_DIR / "logs" / "action-timings.jsonl"),
+    )
     log_mode = _runtime_log_mode()
     _prune_runtime_logs()
     log_dir = _prepare_run_log_dir() if log_mode == "debug" else None
@@ -507,8 +513,15 @@ def main() -> int:
     ui_quit_requested = threading.Event()
     abrupt_reason = ""
 
+    def _close_worker_spawn_gate() -> None:
+        """Prevent late startup/background calls from recreating workers."""
+        begin_shutdown = getattr(supervisor, "begin_shutdown", None)
+        if callable(begin_shutdown):
+            begin_shutdown()
+
     def _stop(_signum=None, _frame=None) -> None:
         """Signal handler: set the stop event to trigger shutdown."""
+        _close_worker_spawn_gate()
         stop.set()
 
     def _stop_when_ui_exits(returncode=None) -> None:
@@ -517,10 +530,12 @@ def main() -> int:
         logging.info("UI worker exited with code %s", returncode)
         if returncode in (0, None) or ui_quit_requested.is_set():
             logging.info("UI worker exited cleanly; shutting down Wisp")
+            _close_worker_spawn_gate()
             stop.set()
             return
         logging.warning("UI worker exited unexpectedly; shutting down Wisp")
         abrupt_reason = f"UI worker exited with code {returncode}"
+        _close_worker_spawn_gate()
         stop.set()
 
     for sig_name in ("SIGINT", "SIGTERM"):
@@ -535,6 +550,7 @@ def main() -> int:
         def _on_ui_quit_requested(_data=None, _req_id=None) -> None:
             logging.info("UI worker requested Wisp shutdown")
             ui_quit_requested.set()
+            _close_worker_spawn_gate()
             stop.set()
 
         ui_worker.on_event("ui.quit_requested", _on_ui_quit_requested)
@@ -569,16 +585,19 @@ def main() -> int:
         )
         flows.start()
         hotkey_result: dict[str, object] = {}
-        try:
-            hotkey_result = flows.start_hotkeys()
-        except Exception:
-            logging.exception("native hotkeys did not start")
+        if not stop.is_set():
+            try:
+                hotkey_result = flows.start_hotkeys()
+            except Exception:
+                logging.exception("native hotkeys did not start")
         if (
             _write_launch_smoke_ready(supervisor, startup_results, hotkey_result)
             and os.environ.get("WISP_LAUNCH_SMOKE_EXIT_AFTER_READY") == "1"
         ):
+            _close_worker_spawn_gate()
             stop.set()
-        stop.wait()
+        if not stop.is_set():
+            stop.wait()
     except BaseException:
         if log_mode != "debug":
             crash_dir = _write_abrupt_log("supervisor exception", supervisor, sys.exc_info())
@@ -586,6 +605,7 @@ def main() -> int:
                 logging.error("Wrote Wisp crash log: %s", crash_dir)
         raise
     finally:
+        _close_worker_spawn_gate()
         if flows is not None:
             flow_stop = getattr(flows, "stop", None)
             if callable(flow_stop):

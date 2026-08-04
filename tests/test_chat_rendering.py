@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from ui.chat_rendering import _assistant_text_to_html, _compact_markdown_tables, _user_text_to_html
+from ui.chat_rendering import (
+    _assistant_text_to_html,
+    _compact_markdown_tables,
+    _user_text_to_html,
+    render_markdown_html,
+)
 from ui.text_annotations import annotation_tooltip_anchor, annotations_from_keyword_rules, normalize_range_annotations
 
 
@@ -16,6 +21,18 @@ def test_assistant_html_preserves_markdown_blocks():
     assert "<ul>" in rendered
     assert "<li>one</li>" in rendered
     assert "<pre><code>print(&#x27;hi&#x27;)</code></pre>" in rendered
+
+
+def test_public_markdown_renderer_matches_chat_visuals():
+    rendered = render_markdown_html(
+        "# Heading\n\n- [x] Done\n\n"
+        "| Item | State |\n| --- | --- |\n| Preview | Ready |"
+    )
+
+    assert "<h1>Heading</h1>" in rendered
+    assert "☑ Done" in rendered
+    assert "<table" in rendered
+    assert "Preview" in rendered
 
 
 def test_assistant_html_keeps_inline_code_literal():
@@ -42,6 +59,28 @@ def test_assistant_html_renders_pipe_tables_as_themed_grids():
     assert "text-align:right" in rendered
     assert "Similar (~4 GB)" in rendered
     assert "|:---|" not in rendered
+
+
+def test_original_table_uses_same_editorial_rules_as_formatted_tables(monkeypatch):
+    """Canonical Markdown tables use clean horizontal rules, not legacy boxed cells."""
+    from ui import chat_rendering
+
+    monkeypatch.setitem(chat_rendering._RENDER_PALETTE, "table_text", "#112233")
+    monkeypatch.setitem(chat_rendering._RENDER_PALETTE, "table_accent", "#227766")
+    monkeypatch.setitem(chat_rendering._RENDER_PALETTE, "table_border", "#ccd8d5")
+    rendered = _assistant_text_to_html(
+        "Approach | Clarity | Risk\n"
+        "--- | --- | ---\n"
+        "Styled Markdown | Good | Low\n"
+        "Semantic blocks | Excellent | Medium"
+    )
+
+    assert "border-top:2px solid #112233" in rendered
+    assert "color:#227766" in rendered
+    assert "padding:9px 11px" in rendered
+    assert "background:transparent" in rendered
+    assert "border-left" not in rendered
+    assert "border-right" not in rendered
 
 
 def test_table_cells_keep_inline_markdown_and_escaped_pipes():

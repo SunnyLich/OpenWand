@@ -74,6 +74,8 @@ def test_agent_fake_llm_completes_in_one_turn(record_ctx, tmp_path, monkeypatch)
     assert "Fake agent run complete." in result["final"]
     assert result["error"] == ""
     assert result["cancelled"] is False
+    assert result["file_tool_successes"] == 0
+    assert result["file_tool_failures"] == 0
 
     run_dir = Path(result["run_dir"])
     assert run_dir.is_dir()
@@ -106,6 +108,37 @@ def test_agent_runs_a_scripted_model(record_ctx, tmp_path, monkeypatch):
     assert result["final"] == "Scripted final report."
     assert result["error"] == ""
     assert _events_of(events, "agent.done") == [result]
+
+
+def test_agent_done_reports_underlying_model_errors(record_ctx, tmp_path, monkeypatch):
+    script = tmp_path / "script.json"
+    model_error = "All query model routes failed: Connection error."
+    script.write_text(
+        json.dumps([
+            {
+                "thought": "Retry the transient provider failure.",
+                "status": "retry",
+                "next_agent": "same",
+                "reason": "Provider unavailable.",
+                "tool_calls": [],
+                "final": None,
+                "model_error": model_error,
+            },
+            {"thought": "Stop.", "tool_calls": [], "final": "Task could not complete."},
+        ]),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("WISP_BRAIN_AGENT_TEST_SCRIPT", str(script))
+    events, ctx = record_ctx()
+
+    result = handlers.HANDLERS["brain.agent.run"](
+        ctx,
+        spec=_noop_spec(tmp_path, title="provider error", objective="report the error"),
+        log_root=str(tmp_path / "runs"),
+    )
+
+    assert result["model_errors"] == [model_error]
+    assert result["run_log_path"] == str(Path(result["run_dir"]) / "run.log")
 
 
 def test_agent_history_lists_recent_runs(tmp_path):
@@ -360,6 +393,13 @@ def test_agent_run_approval_request_can_be_approved(record_ctx, tmp_path, monkey
     assert result["error"] == ""
     assert result["final"] == "Created note."
     assert (tmp_path / "note.txt").read_text(encoding="utf-8") == "hello"
+    assert result["file_tool_successes"] == 1
+    assert result["file_tool_failures"] == 0
+    assert result["file_tool_results"] == [
+        {"tool": "create_file", "ok": True, "message": "note.txt"}
+    ]
+    assert result["model_errors"] == []
+    assert result["run_log_path"].endswith("run.log")
     approvals = _events_of(events, "agent.approval.request")
     assert approvals
     assert approvals[0]["action"] == "create_file"

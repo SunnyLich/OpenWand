@@ -39,6 +39,21 @@ def _is_macos_offscreen_qt() -> bool:
     return sys.platform == "darwin" and os.environ.get("QT_QPA_PLATFORM", "offscreen") == "offscreen"
 
 
+def test_begin_shutdown_blocks_every_future_worker_spawn(monkeypatch):
+    """A quit barrier must make late startup/UI calls fail instead of respawning."""
+    worker = WorkerClient(WorkerSpec("ui", "runtime.workers.ui_host", "ui"))
+    spawned = []
+    monkeypatch.setattr(worker, "_spawn", lambda: spawned.append(True))
+
+    worker.begin_shutdown()
+
+    with pytest.raises(WorkerError, match="ui is shutting down"):
+        worker.start()
+    with pytest.raises(WorkerError, match="ui is shutting down"):
+        worker.restart()
+    assert spawned == []
+
+
 def _app_supervisor(tmp_path) -> WispSupervisor:
     """Create the same worker process set the app supervisor starts."""
     specs = default_specs()
@@ -318,6 +333,7 @@ def test_wisp_supervisor_starts_real_app_worker_process_set(tmp_path, runtime_st
             # backend can exit when top-level UI surfaces are opened, which is a
             # test harness limitation rather than the app architecture contract
             # this smoke test is meant to cover.
+            supervisor.call("ui", "ui.chat.message_actions", {"actions": []}, timeout=10)
             assert supervisor.call("ui", "ui.show_chat", {"new": True}, timeout=30) == {
                 "shown": True,
                 "reused": False,
@@ -407,6 +423,83 @@ def test_brain_worker_exposes_boundary_status_without_ui_or_native_imports():
         assert result["role"] == "brain"
         assert result["boundary"]["ok"] is True
         assert result["boundary"]["forbidden_loaded"] == []
+    finally:
+        worker.shutdown()
+
+
+def test_slow_addon_bootstrap_returns_early_then_pushes_real_ipc_snapshot(tmp_path):
+    """A slow addon cannot hold startup hostage and appears through the live event later."""
+    addon_dir = tmp_path / "addons" / "slow-menu"
+    addon_dir.mkdir(parents=True)
+    (addon_dir / "addon.toml").write_text(
+        textwrap.dedent(
+            """
+            [addon]
+            id = "slow-menu"
+            name = "Slow menu"
+            entry = "__init__.py"
+
+            [permissions]
+            ui = ["tray"]
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    (addon_dir / "__init__.py").write_text(
+        textwrap.dedent(
+            """
+            import time
+
+            time.sleep(2.0)
+
+            def _run():
+                return None
+
+            def get_tray_actions():
+                return [{"label": "Slow action", "callback": _run}]
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "addons.json").write_text(
+        json.dumps({"addons": {"slow-menu": {"enabled": True}}}),
+        encoding="utf-8",
+    )
+    worker = _worker(
+        "runtime.workers.brain_host",
+        "brain",
+        env={
+            "WISP_ADDONS_DIR": str(tmp_path / "addons"),
+            "WISP_ADDON_STORE": str(tmp_path / "addons.json"),
+        },
+    )
+    changed = threading.Event()
+    snapshots = []
+
+    def on_changed(data, _req_id):
+        snapshots.append(data)
+        if any(
+            addon.get("id") == "slow-menu" and "Slow action" in (addon.get("tray_actions") or [])
+            for addon in data.get("addons") or []
+        ):
+            changed.set()
+
+    worker.on_event("addons.changed", on_changed)
+    try:
+        worker.call("brain.ping", timeout=10)
+        started = time.monotonic()
+        early = worker.call(
+            "brain.addons.ready",
+            {"timeout_seconds": 0.05},
+            timeout=10,
+        )
+        elapsed = time.monotonic() - started
+
+        assert elapsed < 0.5
+        assert early["ready"] is False
+        assert early["addons"] == []
+        assert changed.wait(10), snapshots
+        assert any(snapshot.get("reason") == "loaded" for snapshot in snapshots)
     finally:
         worker.shutdown()
 

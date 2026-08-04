@@ -174,6 +174,15 @@ class WorkerClient:
         """Spawn the worker subprocess if it is not already running."""
         self._ensure_started()
 
+    def begin_shutdown(self) -> None:
+        """Prevent every future call from spawning or restarting this worker.
+
+        This is deliberately a fast state change rather than a process wait.
+        The supervisor uses it as an immediate barrier when the UI asks Wisp to
+        quit; the slower graceful termination still happens in ``shutdown``.
+        """
+        self._shutting_down = True
+
     def _ensure_started(self) -> None:
         """Ensure started."""
         if self.alive():
@@ -511,6 +520,8 @@ class WorkerClient:
     def restart(self) -> None:
         """Handle restart for worker client."""
         with self._spawn_lock:
+            if self._shutting_down:
+                raise WorkerError(f"{self.spec.name} is shutting down")
             if self._restart_count >= self.spec.restart_limit:
                 raise WorkerError(f"{self.spec.name} restart limit exceeded")
             self._restart_count += 1
@@ -651,6 +662,13 @@ class WispSupervisor:
         """Call a method on the named worker and return its result."""
         return self.workers[worker].call(method, params, timeout=timeout)
 
+    def begin_shutdown(self) -> None:
+        """Immediately close every worker-spawn gate before graceful teardown."""
+        for worker in self.workers.values():
+            begin = getattr(worker, "begin_shutdown", None)
+            if callable(begin):
+                begin()
+
     def shutdown(
         self,
         *,
@@ -658,6 +676,7 @@ class WispSupervisor:
         progress: Callable[[str], None] | None = None,
     ) -> None:
         """Gracefully stop every worker, then optionally audit managed survivors."""
+        self.begin_shutdown()
         # A worker may already have exited itself (for example, the UI worker
         # after the user chooses Quit). Never resolve that stale PID through
         # psutil: Windows can retain or reuse it while native process discovery

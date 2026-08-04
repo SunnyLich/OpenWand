@@ -72,6 +72,9 @@ class DummySpec:
     parallel_read_only_briefing: bool = True
     parallel_execution: bool = False
     max_parallel_agents: int = 4
+    pause_holds_terminal_final: bool = True
+    finish_on_successful_tools: bool = False
+    max_tool_calls_per_turn: int = 0
 
 
 class ScopedWorkspaceTests(unittest.TestCase):
@@ -1210,7 +1213,7 @@ class AgentRunnerTests(unittest.TestCase):
             prompts: list[str] = []
             coordinator_turns = 0
 
-            def fake_call_model(prompt, _log, *, provider=None, model=None, fallbacks=None, max_tokens=4096, temperature=0.0):
+            def fake_call_model(prompt, _log, *, provider=None, model=None, fallbacks=None, max_tokens=4096, temperature=0.0, reasoning_effort=None, on_stream_text=None, activity_label="", on_privacy_summary=None):
                 """Drive a tiny multi-agent run through read-only briefing and one handoff."""
                 nonlocal coordinator_turns
                 prompts.append(prompt)
@@ -1495,6 +1498,112 @@ class AgentRunnerTests(unittest.TestCase):
         control.wait_if_paused()
         self.assertFalse(control.is_pause_requested())
 
+    def test_fast_workspace_mode_finishes_with_successful_tool_response(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp) / "scope"
+            logs = Path(tmp) / "logs"
+            scope.mkdir()
+            calls = []
+            spec = DummySpec(
+                scope_folder=str(scope),
+                max_turns=4,
+                finish_on_successful_tools=True,
+                pause_holds_terminal_final=False,
+            )
+
+            def fake_model(_prompt: str) -> str:
+                calls.append(True)
+                return json.dumps({
+                    "thought": "Create the requested file and finish.",
+                    "tool_calls": [{
+                        "tool": "create_file",
+                        "args": {"filename": "hello.txt", "content": "hello world\n"},
+                    }],
+                    "final": "Created hello.txt.",
+                })
+
+            run_dir = AgentTaskRunner(log_root=logs, model_callback=fake_model).run(spec)
+
+            self.assertEqual(len(calls), 1)
+            self.assertEqual((scope / "hello.txt").read_text(encoding="utf-8"), "hello world\n")
+            self.assertEqual((run_dir / "final.md").read_text(encoding="utf-8"), "Created hello.txt.")
+
+    def test_workspace_pause_does_not_hold_an_already_terminal_response(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp) / "scope"
+            logs = Path(tmp) / "logs"
+            scope.mkdir()
+            control = AgentRunControl()
+            spec = DummySpec(
+                scope_folder=str(scope),
+                max_turns=1,
+                pause_holds_terminal_final=False,
+            )
+
+            def fake_model(_prompt: str) -> str:
+                control.pause_after_turn()
+                return json.dumps({"thought": "Done.", "tool_calls": [], "final": "Finished."})
+
+            run_dir = AgentTaskRunner(
+                log_root=logs,
+                model_callback=fake_model,
+                control=control,
+            ).run(spec)
+
+            self.assertEqual((run_dir / "final.md").read_text(encoding="utf-8"), "Finished.")
+            self.assertNotIn(
+                "final response held",
+                (run_dir / "run.log").read_text(encoding="utf-8"),
+            )
+
+    def test_pause_during_model_response_finishes_current_action_then_waits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp) / "scope"
+            logs = Path(tmp) / "logs"
+            scope.mkdir()
+            control = AgentRunControl()
+            spec = DummySpec(scope_folder=str(scope), max_turns=2)
+            calls = 0
+            result: dict[str, Path] = {}
+
+            def fake_model(_prompt: str) -> str:
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    control.pause_after_turn()
+                    return json.dumps({
+                        "thought": "Create after resume.",
+                        "tool_calls": [{
+                            "tool": "create_file",
+                            "args": {"path": "paused.txt", "content": "safe"},
+                        }],
+                        "final": None,
+                    })
+                return json.dumps({"thought": "Done.", "tool_calls": [], "final": "Finished."})
+
+            thread = threading.Thread(
+                target=lambda: result.setdefault(
+                    "run_dir",
+                    AgentTaskRunner(
+                        log_root=logs,
+                        model_callback=fake_model,
+                        control=control,
+                    ).run(spec),
+                )
+            )
+            thread.start()
+            self._wait_for_run_log(logs, "agent run paused after turn")
+
+            self.assertTrue(thread.is_alive())
+            self.assertEqual((scope / "paused.txt").read_text(encoding="utf-8"), "safe")
+            self.assertEqual(calls, 1)
+
+            control.resume()
+            thread.join(timeout=2)
+
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(calls, 2)
+
     def test_pause_after_turn_waits_before_terminal_final(self):
         """Verify pause-after-turn blocks completion before final artifacts are written."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -1690,7 +1799,7 @@ class AgentRunnerTests(unittest.TestCase):
             runner = AgentTaskRunner()
             calls: list[int] = []
 
-            def fake_call_model(_prompt, _log, *, provider=None, model=None, fallbacks=None, max_tokens=4096, temperature=0.0):
+            def fake_call_model(_prompt, _log, *, provider=None, model=None, fallbacks=None, max_tokens=4096, temperature=0.0, reasoning_effort=None, on_stream_text=None, activity_label="", on_privacy_summary=None):
                 calls.append(max_tokens)
                 return json.dumps({"thought": "Brief.", "tool_calls": [], "final": None})
 
@@ -1767,6 +1876,27 @@ class AgentRunnerTests(unittest.TestCase):
             self.assertEqual(result.tool, "read_file")
             self.assertEqual(result.data, "hello")
 
+    def test_tool_call_accepts_flat_arguments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tools = AgentToolbox(
+                ScopedWorkspace(tmp),
+                AgentPermissions(allow_file_create=True),
+            )
+            result = AgentTaskRunner()._execute_tool_call(
+                tools,
+                {
+                    "tool": "create_file",
+                    "path": "caret-test.txt",
+                    "content": "one\ntwo\nthree\nfour\nfive\n",
+                },
+            )
+
+            self.assertTrue(result.ok)
+            self.assertEqual(
+                Path(tmp, "caret-test.txt").read_text(encoding="utf-8"),
+                "one\ntwo\nthree\nfour\nfive\n",
+            )
+
     def test_base64_file_tools_avoid_large_json_quoting(self):
         with tempfile.TemporaryDirectory() as tmp:
             content = "line one\n'quoted' and \"quoted\"\nline three"
@@ -1804,6 +1934,19 @@ class AgentRunnerTests(unittest.TestCase):
             (None, None),
         )
 
+    def test_agent_model_call_does_not_offer_unrelated_app_tools(self):
+        captured: dict[str, object] = {}
+
+        def fake_stream(_prompt: str, **kwargs):
+            captured.update(kwargs)
+            yield json.dumps({"thought": "done", "tool_calls": [], "final": "Done."})
+
+        with patch("core.llm_clients.client.stream_response", side_effect=fake_stream):
+            response = AgentTaskRunner()._call_model("agent prompt", lambda _line: None)
+
+        self.assertIn('"final": "Done."', response)
+        self.assertIs(captured.get("use_tools"), False)
+
     def test_runner_repairs_invalid_json_once(self):
         with tempfile.TemporaryDirectory() as tmp:
             scope = Path(tmp) / "scope"
@@ -1835,7 +1978,7 @@ class AgentRunnerTests(unittest.TestCase):
         prompts: list[str] = []
         budgets: list[int] = []
 
-        def fake_call_model(prompt, _log, *, provider=None, model=None, fallbacks=None, max_tokens=4096, temperature=0.0):
+        def fake_call_model(prompt, _log, *, provider=None, model=None, fallbacks=None, max_tokens=4096, temperature=0.0, reasoning_effort=None, on_stream_text=None, activity_label="", on_privacy_summary=None):
             prompts.append(prompt)
             budgets.append(max_tokens)
             return json.dumps({"thought": "fixed", "tool_calls": [], "final": "ok"})
@@ -1883,6 +2026,262 @@ class AgentRunnerTests(unittest.TestCase):
 
             self.assertEqual(stream_response.call_args.kwargs["max_tokens"], 8192)
             self.assertEqual(stream_response.call_args.kwargs["temperature"], 0.0)
+            self.assertEqual(stream_response.call_args.kwargs["reasoning_effort"], "medium")
+
+    def test_workspace_receives_secret_free_privacy_redaction_details(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp) / "scope"
+            logs = Path(tmp) / "logs"
+            scope.mkdir()
+            spec = DummySpec(
+                scope_folder=str(scope),
+                objective="Create a note for private.person@example.com",
+                sandbox_mode="workspace-write: virtual workspace only",
+                max_turns=1,
+                approval_policy="never",
+            )
+            traces: list[str] = []
+            response = json.dumps({"thought": "Done.", "tool_calls": [], "final": "Finished."})
+
+            with patch("core.llm_clients.client.stream_response", return_value=iter([response])):
+                AgentTaskRunner(log_root=logs).run(spec, on_trace=traces.append)
+
+            privacy_events = [
+                json.loads(entry)["workspace_progress"]
+                for entry in traces
+                if entry.startswith('{"workspace_progress"')
+                and '"privacy_redaction"' in entry
+            ]
+            self.assertTrue(privacy_events)
+            encoded = json.dumps(privacy_events, ensure_ascii=False)
+            self.assertNotIn("private.person@example.com", encoded)
+            self.assertIn("Email address", encoded)
+            self.assertIn("Agent request", encoded)
+
+    def test_virtual_workspace_applies_complete_file_calls_while_response_streams(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp) / "scope"
+            logs = Path(tmp) / "logs"
+            scope.mkdir()
+            spec = DummySpec(
+                scope_folder=str(scope),
+                sandbox_mode="workspace-write: virtual workspace only",
+                max_turns=1,
+                approval_policy="never",
+                reasoning_effort="low",
+                finish_on_successful_tools=True,
+            )
+            response = json.dumps({
+                "thought": "Create both files.",
+                "status": "done",
+                "next_agent": "Solo",
+                "reason": "Done.",
+                "tool_calls": [
+                    {"tool": "create_file", "args": {"path": "first.txt", "content": "first"}},
+                    {"tool": "create_file", "args": {"path": "second.txt", "content": "second"}},
+                ],
+                "final": "Created both files.",
+            })
+            draft_at = response.index('"content": "first"') + len('"content": "fir')
+            first_call_at = response.index('}, {"tool": "create_file"') + 1
+            traces: list[str] = []
+
+            def fake_stream_response(*_args, **_kwargs):
+                yield response[:draft_at]
+                draft_events = [
+                    json.loads(entry)["workspace_progress"]
+                    for entry in traces
+                    if entry.startswith('{"workspace_progress"')
+                ]
+                self.assertTrue(draft_events)
+                self.assertEqual(draft_events[-1]["path"], "first.txt")
+                self.assertEqual(draft_events[-1]["content"], "fir")
+                self.assertFalse((scope / "first.txt").exists())
+                yield response[draft_at:first_call_at]
+                self.assertTrue((scope / "first.txt").is_file())
+                self.assertFalse((scope / "second.txt").exists())
+                yield response[first_call_at:]
+
+            with patch("core.llm_clients.client.stream_response", side_effect=fake_stream_response):
+                run_dir = AgentTaskRunner(log_root=logs).run(spec, on_trace=traces.append)
+
+            self.assertEqual((scope / "first.txt").read_text(encoding="utf-8"), "first")
+            self.assertEqual((scope / "second.txt").read_text(encoding="utf-8"), "second")
+            run_log = (run_dir / "run.log").read_text(encoding="utf-8")
+            self.assertIn("streaming tool call: create_file", run_log)
+            self.assertEqual(run_log.count("tool create_file: first.txt"), 1)
+            self.assertEqual(run_log.count("tool create_file: second.txt"), 1)
+            response_events = [
+                json.loads(entry)["workspace_progress"]
+                for entry in traces
+                if entry.startswith('{"workspace_progress"')
+                and '"model_response"' in entry
+            ]
+            self.assertGreaterEqual(len(response_events), 2)
+            self.assertTrue(response_events[-1]["complete"])
+            self.assertEqual(response_events[-1]["content"], response)
+            self.assertEqual(response_events[-1]["agent"], "Solo")
+
+    def test_visible_milestone_limit_defers_batched_file_calls_to_later_turns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp) / "scope"
+            logs = Path(tmp) / "logs"
+            scope.mkdir()
+            spec = DummySpec(
+                scope_folder=str(scope),
+                sandbox_mode="workspace-write: virtual workspace only",
+                max_turns=3,
+                approval_policy="never",
+                max_tool_calls_per_turn=1,
+            )
+            responses = iter([
+                json.dumps({
+                    "thought": "Create both files.",
+                    "status": "done",
+                    "tool_calls": [
+                        {"tool": "create_file", "args": {"path": "first.txt", "content": "first"}},
+                        {"tool": "create_file", "args": {"path": "second.txt", "content": "second"}},
+                    ],
+                    "final": "Created both files.",
+                }),
+                json.dumps({
+                    "thought": "Create the deferred file.",
+                    "status": "continue",
+                    "next_agent": "same",
+                    "tool_calls": [
+                        {"tool": "create_file", "args": {"path": "second.txt", "content": "second"}},
+                    ],
+                    "final": None,
+                }),
+                json.dumps({
+                    "thought": "All visible milestones are complete.",
+                    "tool_calls": [],
+                    "final": "Created first.txt and second.txt.",
+                }),
+            ])
+            model_calls = 0
+
+            def model_callback(_prompt: str) -> str:
+                nonlocal model_calls
+                model_calls += 1
+                return next(responses)
+
+            run_dir = AgentTaskRunner(log_root=logs, model_callback=model_callback).run(spec)
+
+            self.assertEqual(model_calls, 3)
+            self.assertEqual((scope / "first.txt").read_text(encoding="utf-8"), "first")
+            self.assertEqual((scope / "second.txt").read_text(encoding="utf-8"), "second")
+            turns = json.loads((run_dir / "turns.json").read_text(encoding="utf-8"))
+            self.assertEqual([len(turn["tool_results"]) for turn in turns], [1, 1, 0])
+            self.assertEqual(turns[0]["deferred_tool_call_count"], 1)
+            self.assertIn(
+                "visible milestone limit: executing 1 tool call this turn",
+                (run_dir / "run.log").read_text(encoding="utf-8"),
+            )
+
+    def test_workspace_can_complete_seven_explicit_files_in_one_response(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp) / "scope"
+            logs = Path(tmp) / "logs"
+            scope.mkdir()
+            objective = (
+                "Create all seven exact files in one response: preview.md, preview.html, "
+                "preview.csv, preview.svg, valid.py, valid.json, and sample.pdf."
+            )
+            spec = DummySpec(
+                scope_folder=str(scope),
+                objective=objective,
+                sandbox_mode="workspace-write: virtual workspace only",
+                max_turns=3,
+                approval_policy="never",
+                finish_on_successful_tools=True,
+                max_tool_calls_per_turn=0,
+            )
+            pdf = b"%PDF-1.4\nWisp PDF preview\n%%EOF\n"
+            response = json.dumps({
+                "thought": "Create the exact requested artifacts.",
+                "status": "done",
+                "tool_calls": [
+                    {"tool": "create_file", "args": {"path": "preview.md", "content": "# Preview"}},
+                    {"tool": "create_file", "args": {"path": "preview.html", "content": "<h1>Preview</h1>"}},
+                    {"tool": "create_file", "args": {"path": "preview.csv", "content": "Name,Status,Score\nWisp,Ready,10\n"}},
+                    {"tool": "create_file", "args": {"path": "preview.svg", "content": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>"}},
+                    {"tool": "create_file", "args": {"path": "valid.py", "content": "print('hello')\n"}},
+                    {"tool": "create_file", "args": {"path": "valid.json", "content": "{\"nested\": {\"ok\": true}}"}},
+                    {
+                        "tool": "create_file_base64",
+                        "args": {
+                            "path": "sample.pdf",
+                            "content_base64": base64.b64encode(pdf).decode("ascii"),
+                        },
+                    },
+                ],
+                "final": "Created all seven requested files.",
+            })
+            model_calls = 0
+
+            def model_callback(prompt: str) -> str:
+                nonlocal model_calls
+                model_calls += 1
+                self.assertIn(objective, prompt)
+                return response
+
+            run_dir = AgentTaskRunner(log_root=logs, model_callback=model_callback).run(spec)
+
+            self.assertEqual(model_calls, 1)
+            self.assertEqual(
+                {path.name for path in scope.iterdir()},
+                {
+                    "preview.md",
+                    "preview.html",
+                    "preview.csv",
+                    "preview.svg",
+                    "valid.py",
+                    "valid.json",
+                    "sample.pdf",
+                },
+            )
+            self.assertEqual((scope / "sample.pdf").read_bytes(), pdf)
+            turns = json.loads((run_dir / "turns.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(turns[0]["tool_results"]), 7)
+            self.assertEqual(
+                (run_dir / "final.md").read_text(encoding="utf-8"),
+                "Created all seven requested files.",
+            )
+
+    def test_compact_followup_prompt_repeats_authoritative_objective(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp) / "scope"
+            logs = Path(tmp) / "logs"
+            scope.mkdir()
+            objective = "Create preview.md, preview.csv, valid.py, and sample.pdf exactly."
+            spec = DummySpec(
+                scope_folder=str(scope),
+                objective=objective,
+                max_turns=2,
+                approval_policy="never",
+            )
+            prompts: list[str] = []
+
+            def model_callback(prompt: str) -> str:
+                prompts.append(prompt)
+                if len(prompts) == 1:
+                    return json.dumps({
+                        "thought": "Start.",
+                        "status": "continue",
+                        "next_agent": "same",
+                        "tool_calls": [
+                            {"tool": "create_file", "args": {"path": "preview.md", "content": "# Preview"}},
+                        ],
+                        "final": None,
+                    })
+                return json.dumps({"thought": "Stop for test.", "tool_calls": [], "final": "Done."})
+
+            AgentTaskRunner(log_root=logs, model_callback=model_callback).run(spec)
+
+            self.assertEqual(len(prompts), 2)
+            self.assertIn("Objective (authoritative", prompts[1])
+            self.assertIn(objective, prompts[1])
 
     def test_zero_token_budget_passes_through_as_no_cap(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2256,6 +2655,74 @@ class ParallelWorkRoundTests(unittest.TestCase):
             self.assertEqual({turn["agent"] for turn in turns}, {"Alpha", "Beta"})
             self.assertTrue(all(turn["phase"] == "parallel_work" for turn in turns))
             self.assertTrue(all(r["ok"] for turn in turns for r in turn["tool_results"]))
+
+    def test_each_parallel_worker_emits_its_own_real_streamed_draft(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp) / "scope"
+            scope.mkdir()
+            spec = DummySpec(
+                scope_folder=str(scope),
+                parallel_execution=True,
+                sandbox_mode="workspace-write: virtual workspace only",
+                max_tool_calls_per_turn=1,
+            )
+            spec.agents = self._workers()
+            runner = AgentTaskRunner()
+            tools = AgentToolbox(
+                ScopedWorkspace(scope),
+                AgentPermissions(allow_file_create=True, allow_file_edit=True),
+            )
+            agents = runner._normalise_agents(spec)
+            messages: list[dict] = []
+            turns: list[dict] = []
+            states = runner._initial_agent_states(agents)
+            task_state = runner._initial_task_state([])
+            progress_events: list[dict] = []
+
+            def fake_call_model(prompt, _log, *, on_stream_text=None, activity_label="", **_kwargs):
+                name = "Alpha" if "Active agent: Alpha" in prompt else "Beta"
+                path = f"{name.casefold()}.txt"
+                content = name.casefold()
+                response = json.dumps({
+                    "thought": f"build {name}",
+                    "tool_calls": [
+                        {"tool": "create_file", "args": {"path": path, "content": content}},
+                    ],
+                    "final": None,
+                })
+                partial_at = response.index(f'"content": "{content}"') + len('"content": "') + 2
+                self.assertEqual(activity_label, name)
+                self.assertIsNotNone(on_stream_text)
+                on_stream_text(response[:partial_at])
+                return response
+
+            runner._call_model = fake_call_model  # type: ignore[method-assign]
+            runner._run_parallel_work_round(
+                spec,
+                tools,
+                agents,
+                [],
+                [],
+                messages,
+                turns,
+                states,
+                task_state,
+                lambda _message: None,
+                progress=progress_events.append,
+            )
+
+            draft_events = [
+                event for event in progress_events if event.get("kind") == "workspace_draft"
+            ]
+            response_events = [
+                event for event in progress_events if event.get("kind") == "model_response"
+            ]
+            self.assertEqual({event["agent"] for event in draft_events}, {"Alpha", "Beta"})
+            self.assertEqual({event["path"] for event in draft_events}, {"alpha.txt", "beta.txt"})
+            self.assertEqual({event["agent"] for event in response_events}, {"Alpha", "Beta"})
+            self.assertTrue(any(event["complete"] for event in response_events))
+            self.assertTrue((scope / "alpha.txt").is_file())
+            self.assertTrue((scope / "beta.txt").is_file())
 
     def test_same_file_write_is_leased_to_exactly_one_agent(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -95,6 +95,18 @@ class AddonHost:
             return self._text_annotations(params)
         if method == "get_text_context_actions":
             return self._text_context_actions(params)
+        if method == "get_message_actions":
+            return self._message_actions(params)
+        if method == "run_message_action":
+            return self._run_message_action(
+                str(params.get("action_id") or ""),
+                params.get("payload") or {},
+            )
+        if method == "resume_message_action":
+            return self._resume_message_action(
+                str(params.get("action_id") or ""),
+                params.get("payload") or {},
+            )
         if method == "get_tools":
             return self._tools()
         if method == "execute_tool":
@@ -118,6 +130,9 @@ class AddonHost:
             "get_settings",
             "get_text_annotations",
             "get_text_context_actions",
+            "get_message_actions",
+            "run_message_action",
+            "resume_message_action",
         )
         return [name for name in hooks if hasattr(self.module, name)]
 
@@ -162,7 +177,7 @@ class AddonHost:
             if isinstance(item, dict)
         ]
 
-    def _run_tray_action(self, label: str) -> None:
+    def _run_tray_action(self, label: str) -> dict[str, Any] | None:
         """Run tray action."""
         if not label:
             raise ValueError("label is required")
@@ -173,8 +188,8 @@ class AddonHost:
             callback = item.get("callback")
             if not callable(callback):
                 raise ValueError(f"addon action is not callable: {label}")
-            callback()
-            return None
+            result = callback()
+            return result if isinstance(result, dict) else None
         raise ValueError(f"addon action not found: {label}")
 
     def _intents(self) -> list[dict[str, Any]]:
@@ -315,6 +330,34 @@ class AddonHost:
             return None
         result = fn(params or {})
         return result if isinstance(result, (str, dict)) else None
+
+    def _message_actions(self, params: dict[str, Any]) -> list[dict[str, Any]]:
+        """Return message-level actions exposed by this addon."""
+        fn = getattr(self.module, "get_message_actions", None)
+        if not callable(fn):
+            return []
+        result = fn(params or {})
+        return result if isinstance(result, list) else []
+
+    def _run_message_action(self, action_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Start one addon action for a concrete chat message."""
+        if not action_id:
+            raise ValueError("action_id is required")
+        fn = getattr(self.module, "run_message_action", None)
+        if not callable(fn):
+            raise ValueError("addon does not implement run_message_action")
+        result = fn(action_id, payload or {})
+        return result if isinstance(result, dict) else {}
+
+    def _resume_message_action(self, action_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Resume an addon message action after a host-provided operation."""
+        if not action_id:
+            raise ValueError("action_id is required")
+        fn = getattr(self.module, "resume_message_action", None)
+        if not callable(fn):
+            raise ValueError("addon does not implement resume_message_action")
+        result = fn(action_id, payload or {})
+        return result if isinstance(result, dict) else {}
 
     def _call_hook(self, hook: str, *args: Any) -> Any:
         """Call hook."""

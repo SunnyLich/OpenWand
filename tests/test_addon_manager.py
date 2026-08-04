@@ -45,7 +45,10 @@ def get_tools():
     }]
 
 def get_tray_actions():
-    return [{"label": "Act", "callback": lambda: None}]
+    return [{"label": "Act", "callback": lambda: {
+        "message": "acted",
+        "virtual_workspace_url": "http://127.0.0.1:8765/?token=test",
+    }}]
 
 def get_settings():
     return [{"key": "greeting", "label": "Greeting", "type": "text", "default": "hi"}]
@@ -120,6 +123,11 @@ def test_addon_hooks_and_tools_run_in_host_process(tmp_path, monkeypatch):
     assert host_pid and int(host_pid) != os.getpid()
     assert manager.before_query("hi", "")[1] == "|addon"
     assert manager.get_tray_actions()[0]["label"] == "Act"
+    assert manager.run_tray_action("demo", "Act") == {
+        "message": "acted",
+        "virtual_workspace_url": "http://127.0.0.1:8765/?token=test",
+    }
+    assert am._safe_tray_action_result({"virtual_workspace_url": "https://example.com/"}) == {}
     assert "demo_tool" in {s["name"] for s in registry.schemas()}
 
     tool_result = registry.execute("demo_tool", {})

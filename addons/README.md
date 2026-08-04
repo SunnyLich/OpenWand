@@ -1,7 +1,7 @@
 ﻿# Addons
 
 Addons extend Wisp with query hooks, response observers, tray actions, settings,
-and model-callable tools.
+message actions and presentations, and model-callable tools.
 
 Each addon lives in its own folder under `addons/` and declares an `addon.toml`
 manifest:
@@ -160,6 +160,36 @@ def get_text_context_actions(payload: dict) -> list[dict]:
         "text": "[addon] " + payload.get("selected_text", ""),
     }]
 
+def get_message_actions(payload: dict) -> list[dict]:
+    return [{
+        "id": "format-reply",
+        "label": "Format",
+        "role": "assistant",
+        "presentation": True,
+        "auto": False,
+    }]
+
+def run_message_action(action_id: str, payload: dict) -> dict:
+    return {
+        "status": "Formatting…",
+        "llm": {
+            "prompt": "Return a restricted HTML presentation for: " + payload["text"],
+            "max_tokens": 2048,
+            "route": "llm",  # or "chat"
+        },
+        "state": {"phase": "format"},
+    }
+
+def resume_message_action(action_id: str, payload: dict) -> dict:
+    return {
+        "status": "Formatted",
+        "presentation": {
+            "format": "restricted_html",
+            "html": payload["text"],
+            "label": "Formatted",
+        },
+    }
+
 def get_tray_actions() -> list[dict]:
     return [{"label": "Run thing", "callback": run_thing}]
 
@@ -195,6 +225,20 @@ floating bubble, then returns safe right-click menu actions. Addons must request
 `ui = ["text_context_menu"]`. Supported actions include `{"action": "copy",
 "text": "..."}` for clipboard text and UI Lab's local `label_editor` /
 `delete_label` actions with a `match` value for editing saved text labels.
+
+Message actions require `ui = ["message_actions"]`. Their action descriptors
+appear beneath matching chat messages. Wisp sends the canonical message text to
+`run_message_action` only after the user invokes the action (or when `auto` is
+true). An addon may request up to three bounded host LLM operations by returning
+an `llm` object and continuing in `resume_message_action`; provider credentials
+never enter the addon process. `route` may be `llm` or `chat` and selects the
+corresponding model route already configured in Wisp.
+
+Restricted HTML presentations additionally require
+`ui = ["message_presentations"]`. The UI sanitizes the fragment again, blocks
+scripts, forms, navigation, remote resources, and file access, and supplies all
+visual CSS itself. The canonical message remains the conversation source of
+truth and is stored beside—not replaced by—the optional presentation.
 
 Read settings with:
 

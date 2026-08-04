@@ -134,6 +134,9 @@ class AgentTaskSpec:
     tool_result_list_limit: int = 120
     visible_files_full_limit: int = 200
     visible_files_delta_limit: int = 80
+    pause_holds_terminal_final: bool = True
+    finish_on_successful_tools: bool = False
+    max_tool_calls_per_turn: int = 0
 
 
 def retry_spec_from_run(run_dir: Path) -> AgentTaskSpec:
@@ -323,4 +326,7 @@ def agent_task_spec_from_dict(data: dict) -> AgentTaskSpec:
         tool_result_list_limit=int(data.get("tool_result_list_limit") or 120),
         visible_files_full_limit=int(data.get("visible_files_full_limit") or 200),
         visible_files_delta_limit=int(data.get("visible_files_delta_limit") or 80),
+        pause_holds_terminal_final=bool(data.get("pause_holds_terminal_final", True)),
+        finish_on_successful_tools=bool(data.get("finish_on_successful_tools", False)),
+        max_tool_calls_per_turn=max(0, _int_or(data.get("max_tool_calls_per_turn"), 0)),
     )
