@@ -11,6 +11,40 @@ import pytest
 pytestmark = pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 not installed")
 
 
+def test_overlay_accepts_and_updates_addon_tray_actions(monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ui.overlay import IconOverlay, OverlaySignals
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    monkeypatch.setattr(IconOverlay, "_pin_overlay_windows", lambda self: None)
+    overlay = IconOverlay(
+        OverlaySignals(),
+        addon_tray_actions=[
+            {"addon_id": "mail", "label": "New draft"},
+            {"addon_id": "mail", "label": "New draft"},
+            {"addon_id": "", "label": "Ignored"},
+        ],
+    )
+
+    try:
+        assert overlay._addon_tray_actions == [
+            {"addon_id": "mail", "label": "New draft"}
+        ]
+        overlay.set_addon_tray_actions(
+            [{"addon_id": "calendar", "label": "New event"}]
+        )
+        assert overlay._addon_tray_actions == [
+            {"addon_id": "calendar", "label": "New event"}
+        ]
+    finally:
+        overlay._bubble.clear()
+        overlay._icon_label.close()
+        overlay.close()
+        app.processEvents()
+
+
 def test_post_submit_surfaces_show_without_taking_focus(monkeypatch):
     """Thinking UI shown after intent submission must remain non-activating."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
