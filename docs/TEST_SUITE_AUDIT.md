@@ -146,13 +146,13 @@ This runner has a broader pytest scope than the documented default and primary C
 `scripts/run_app_workflow_tests.py` now combines:
 
 - Twelve legacy workflow-oriented entry modules, including profile workflows and the inventory-manifest validator.
-- Every test file referenced by the expanded 472-function workflow manifest (currently 69 manifest files and 73 files after merging the legacy list).
+- Every test file explicitly related by the 472-function workflow manifest, plus the separately audited acceptance and interaction manifests.
 - One app-architecture module.
 - One real-host module.
 
 It adds log scanning (including worker `[crash] unhandled` diagnostics), isolated per-file execution on macOS, optional live-provider phases, and explicit temporary directories. Workflow-marked tests also receive a shared escaped Python/Qt exception collector. Real-worker workflows can opt into a shared process/thread/persistent-state inspector. These capabilities are valuable, but the fixed file list is another suite manifest that must be updated manually when workflow tests move or are added.
 
-The expanded `tests/workflows/manifest.json` maps all 472 exact entries and all 3,296 failure references from `docs/APP_FUNCTION_INVENTORY.md` to real pytest node IDs. Completeness enforcement is enabled. Mapped nodes receive the workflow marker during collection, so they run through the shared runtime-failure collector even when their original module did not declare the marker.
+The generated `tests/workflows/manifest.json` preserves all 472 exact entries and all 3,296 failure references from `docs/APP_FUNCTION_INVENTORY.md`. Only relationships explicitly recorded in `tests/workflows/function_test_relations.json` are attached to pytest nodes; unresolved functions remain empty. Related nodes receive the workflow marker during collection, while the independent test catalogue continues to decide what runs in CI.
 
 ### 6. Testlab
 

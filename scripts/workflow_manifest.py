@@ -1,4 +1,4 @@
-"""Load and validate the incremental app workflow manifest."""
+"""Load and validate explicit function/test traceability records."""
 
 from __future__ import annotations
 
@@ -47,96 +47,121 @@ def load_inventory(path: Path) -> list[InventoryFunction]:
 
 
 def load_manifest(path: Path) -> dict[str, Any]:
-    """Read the JSON workflow mapping."""
+    """Read a JSON workflow artifact."""
 
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 @cache
-def _test_functions(path: Path) -> set[str]:
+def _test_node_suffixes(path: Path) -> set[str]:
+    """Return top-level and class-qualified pytest node suffixes from an AST."""
+
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-    return {
-        node.name
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name.startswith("test_")
-    }
+    suffixes: set[str] = set()
+
+    def visit(body: list[ast.stmt], parents: tuple[str, ...] = ()) -> None:
+        for node in body:
+            if isinstance(node, ast.ClassDef):
+                visit(list(node.body), (*parents, node.name))
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if node.name.startswith("test_"):
+                    suffixes.add("::".join((*parents, node.name)))
+
+    visit(list(tree.body))
+    return suffixes
+
+
+def _node_exists(root: Path, node_id: str) -> tuple[bool, str]:
+    parts = str(node_id).split("::")
+    if len(parts) < 2:
+        return False, "invalid test node ID"
+    relative_path = parts[0].replace("\\", "/")
+    test_path = root / relative_path
+    if not test_path.is_file():
+        return False, "missing test file"
+    suffix = "::".join(part.split("[", 1)[0] for part in parts[1:])
+    if suffix not in _test_node_suffixes(test_path):
+        return False, "missing test function"
+    return True, ""
 
 
 def validate_manifest(*, root: Path, manifest_path: Path) -> dict[str, Any]:
-    """Validate source traceability and return an incremental coverage summary."""
+    """Validate explicit relations and return honest traceability counts."""
 
     manifest = load_manifest(manifest_path)
     inventory_path = root / str(manifest["inventory_source"])
     inventory = load_inventory(inventory_path)
-    by_name = {item.name: item for item in inventory}
+    by_id = {item.function_id: item for item in inventory}
+    catalog = load_manifest(root / "tests" / "catalog" / "test_map.json")
+    scheduled_files = {
+        str(entry.get("path", "")).replace("\\", "/"): entry
+        for entry in catalog.get("entries", [])
+    }
     errors: list[str] = []
-    mapped: set[str] = set()
+    seen: set[str] = set()
+    unresolved: list[str] = []
+    relationship_count = 0
     required_fields = {
         "function_id",
         "function",
         "failure_refs",
-        "test_node_ids",
-        "production_entry_point",
-        "scenarios",
-        "platforms",
-        "optional_components",
-        "timeout_seconds",
-        "persistent_state",
-        "cleanup",
-        "mapping_status",
-        "source_section",
+        "related_test_node_ids",
     }
+
+    if manifest.get("schema_version") != 3:
+        errors.append("schema_version must be 3")
+    if manifest.get("relation_source") != "tests/workflows/function_test_relations.json":
+        errors.append("relation_source must name the explicit function/test relation file")
 
     for index, record in enumerate(manifest.get("workflows", []), start=1):
         missing_fields = sorted(required_fields - set(record))
         if missing_fields:
             errors.append(f"record {index} missing fields: {', '.join(missing_fields)}")
             continue
-        name = str(record["function"])
-        item = by_name.get(name)
+        unexpected = sorted(set(record) - required_fields)
+        if unexpected:
+            errors.append(f"record {index} contains unexpected fields: {', '.join(unexpected)}")
+        function_id = str(record["function_id"])
+        item = by_id.get(function_id)
         if item is None:
-            errors.append(f"unknown inventory function: {name}")
+            errors.append(f"unknown inventory function ID: {function_id}")
             continue
-        if name in mapped:
-            errors.append(f"duplicate workflow record: {name}")
-        mapped.add(name)
-        if record["function_id"] != item.function_id:
-            errors.append(f"function ID differs from inventory for {name}")
-        if record["mapping_status"] not in {"verified", "direct", "section"}:
-            errors.append(f"invalid mapping status for {name}: {record['mapping_status']}")
-        if not str(record["source_section"]).strip():
-            errors.append(f"missing source section for {name}")
+        if function_id in seen:
+            errors.append(f"duplicate workflow record: {function_id}")
+        seen.add(function_id)
+        if record["function"] != item.name:
+            errors.append(f"function name differs from inventory for {function_id}")
         if tuple(record["failure_refs"]) != item.failure_refs:
-            errors.append(f"failure references differ from inventory for {name}")
-        if not record["test_node_ids"]:
-            errors.append(f"no workflow test node IDs for {name}")
-        for node_id in record["test_node_ids"]:
-            try:
-                relative_path, test_name = str(node_id).split("::", 1)
-            except ValueError:
-                errors.append(f"invalid test node ID for {name}: {node_id}")
+            errors.append(f"failure references differ from inventory for {function_id}")
+        nodes = [str(node_id) for node_id in record["related_test_node_ids"]]
+        if len(nodes) != len(set(nodes)):
+            errors.append(f"duplicate related test for {function_id}")
+        if not nodes:
+            unresolved.append(function_id)
+        relationship_count += len(nodes)
+        for node_id in nodes:
+            exists, reason = _node_exists(root, node_id)
+            if not exists:
+                errors.append(f"{reason} in relation {function_id}: {node_id}")
                 continue
-            test_path = root / relative_path
-            if not test_path.is_file():
-                errors.append(f"missing test file for {name}: {relative_path}")
-                continue
-            if test_name not in _test_functions(test_path):
-                errors.append(f"missing test function for {name}: {node_id}")
+            test_path = node_id.split("::", 1)[0].replace("\\", "/")
+            schedule = scheduled_files.get(test_path)
+            if schedule is None:
+                errors.append(f"related test is absent from the test catalogue {function_id}: {node_id}")
+            elif not schedule.get("schedule"):
+                errors.append(f"related test is unscheduled {function_id}: {node_id}")
 
-    missing = [item.name for item in inventory if item.name not in mapped]
-    if manifest.get("enforce_complete") and missing:
-        errors.append(f"{len(missing)} inventory functions have no workflow record")
+    missing_ids = [item.function_id for item in inventory if item.function_id not in seen]
+    if manifest.get("enforce_complete") and missing_ids:
+        errors.append(f"{len(missing_ids)} inventory functions have no traceability record")
     if errors:
         raise AssertionError("Workflow manifest is invalid:\n- " + "\n- ".join(errors))
     return {
         "inventory_functions": len(inventory),
         "failure_references": sum(len(item.failure_refs) for item in inventory),
-        "mapped_functions": len(mapped),
-        "missing_functions": missing,
+        "recorded_functions": len(seen),
+        "confirmed_functions": len(seen) - len(unresolved),
+        "unresolved_functions": unresolved,
+        "relationship_count": relationship_count,
         "enforce_complete": bool(manifest.get("enforce_complete")),
-        "mapping_statuses": {
-            status: sum(1 for record in manifest.get("workflows", []) if record.get("mapping_status") == status)
-            for status in ("verified", "direct", "section")
-        },
     }

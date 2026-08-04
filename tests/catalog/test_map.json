@@ -79,7 +79,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 3
+      "node_count": 9
     },
     {
       "path": "tests/integration/brain/test_brain_host.py",
