@@ -85,9 +85,18 @@ def _linux_qt_keyboard_grabs_enabled() -> bool:
     return not bool(getattr(sys, "frozen", False))
 
 
-def _build_rows(caller_idx: int = 0) -> list[dict]:
-    """Build the full list of overlay rows from the specified caller's config."""
+def _build_rows(
+    caller_idx: int = 0,
+    provider_suggestions: list[dict] | None = None,
+) -> list[dict]:
+    """Build app-aware suggestions plus the caller's normal overlay rows."""
     caller = config.CALLER_ROWS[caller_idx] if caller_idx < len(config.CALLER_ROWS) else {}
+    provider_active = bool(provider_suggestions)
+    configured_mode = (
+        "auto" if provider_active and bool(caller.get("paste_back"))
+        else "answer" if provider_active
+        else "legacy"
+    )
     rows = []
     used_keys: set[str] = set()
     for intent_idx, r in enumerate(caller.get("intents", [])):
@@ -106,6 +115,7 @@ def _build_rows(caller_idx: int = 0) -> list[dict]:
             "hint":      display_intent.get("hint", r.get("hint", "")),
             "prompt":    r["prompt"],
             "is_custom": False,
+            "routing": {"mode": configured_mode, "source": "configured"},
         })
     for r in _addon_intent_rows(caller_idx, used_keys):
         rows.append(r)
@@ -117,7 +127,54 @@ def _build_rows(caller_idx: int = 0) -> list[dict]:
         "hint":      t("Ask anything"),
         "prompt":    "",
         "is_custom": True,
+        "routing": {"mode": "auto", "source": "custom"},
     })
+    used_keys.update(str(row.get("glyph") or "").upper() for row in rows)
+    return _provider_intent_rows(provider_suggestions or [], used_keys) + rows
+
+
+def _provider_intent_rows(items: list[dict], used_keys: set[str]) -> list[dict]:
+    """Normalize provider suggestions and allocate non-conflicting shortcuts."""
+    rows: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        suggestion_id = str(item.get("id") or "").strip()
+        label = str(item.get("label") or "").strip()
+        prompt = str(item.get("prompt") or "").strip()
+        mode = str(item.get("mode") or "answer").strip().lower()
+        capability_type = str(item.get("capability_type") or "").strip()
+        planning_tool = str(item.get("planning_tool") or "").strip()
+        available = bool(item.get("available", True))
+        unavailable_reason = str(item.get("unavailable_reason") or "").strip()
+        if not suggestion_id or not label or not prompt or mode not in {"action", "answer"}:
+            continue
+        if mode == "action" and (not capability_type or not planning_tool):
+            continue
+        key = str(item.get("preferred_key") or "").strip().upper()
+        if available:
+            if not key or key in used_keys:
+                key = _choose_addon_intent_key(label, used_keys)
+            used_keys.add(key)
+        else:
+            key = "·"
+        row = {
+            "glyph": key,
+            "label": t(label),
+            "hint": t(unavailable_reason or str(item.get("hint") or "").strip()),
+            "prompt": prompt,
+            "is_custom": False,
+            "routing": {
+                "mode": mode,
+                "source": "provider",
+                "suggestion_id": suggestion_id,
+                "capability_type": capability_type,
+                "planning_tool": planning_tool,
+            },
+        }
+        if not available:
+            row["available"] = False
+        rows.append(row)
     return rows
 
 
@@ -148,6 +205,7 @@ def _addon_intent_rows(caller_idx: int, used_keys: set[str]) -> list[dict]:
             "hint": str(item.get("hint") or f"Addon: {item.get('addon_id', '')}").strip(),
             "prompt": prompt,
             "is_custom": False,
+            "routing": {"mode": "legacy", "source": "addon"},
         })
     return rows
 
@@ -182,6 +240,7 @@ _INPUT_MAX_H   = 118      # fallback when usable screen geometry is unavailable
 _SCREEN_MARGIN = 24
 _CONV_H        = 38
 _CONV_TOP      = 4
+_PROVIDER_H    = 30
 _CTX_H         = 92
 _CTX_GAP       = 4
 _CTX_CHIP_H    = 58
@@ -381,6 +440,7 @@ class IntentOverlay(QWidget):
         initial_custom_text: str = "",
         focus_overlay: bool = False,
         defer_focus: bool = False,
+        action_provider: dict | None = None,
         parent=None,
     ):
         """Initialize the intent overlay instance."""
@@ -406,7 +466,13 @@ class IntentOverlay(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
 
-        self._rows = _build_rows(caller_idx)
+        self._action_provider = dict(action_provider or {})
+        provider_suggestions = self._action_provider.get("suggested_intents")
+        self._rows = _build_rows(
+            caller_idx,
+            provider_suggestions if isinstance(provider_suggestions, list) else [],
+        )
+        self._selected_intent_routing: dict = {"mode": "auto", "source": "custom"}
         self._context_items = []
         for item in context_items or _default_context_items():
             next_item = dict(item)
@@ -584,6 +650,14 @@ class IntentOverlay(QWidget):
         """Return the currently typed custom prompt text, if any."""
         return self._input_line.text().strip()
 
+    def selected_intent_routing(self) -> dict:
+        """Return stable routing metadata for the row that was submitted."""
+        routing = dict(self._selected_intent_routing)
+        if routing.get("source") == "provider":
+            routing["provider_id"] = str(self._action_provider.get("id") or "")
+            routing["app"] = str(self._action_provider.get("app") or "")
+        return routing
+
     def _paste_clipboard_context(self) -> bool:
         """Attach clipboard files/images instead of inserting path-like text."""
         clipboard = QApplication.clipboard()
@@ -603,14 +677,20 @@ class IntentOverlay(QWidget):
         """Return the picker height for the current rows and context previews."""
         conversation_h = _CONV_H if self._show_conversation_selector else 0
         context_h = _CTX_H if self._context_items else 0
+        provider_h = _PROVIDER_H if self._provider_display_name() else 0
         return (
             _PAD_V * 2
             + conversation_h
             + context_h
+            + provider_h
             + _ROW_H * len(self._rows)
             + self._context_preview_height()
             + 26
         )
+
+    def _provider_display_name(self) -> str:
+        """Return the bounded app name painted above provider-owned actions."""
+        return " ".join(str(self._action_provider.get("display_name") or "").split())[:80]
 
     @staticmethod
     def _normalize_conversation_options(options: list[dict]) -> list[dict]:
@@ -800,11 +880,25 @@ class IntentOverlay(QWidget):
         if self._context_items:
             self._paint_context_items(p, y, ctx_label_font, ctx_state_font, ctx_token_font, palette)
             y += _CTX_H
+        provider_name = self._provider_display_name()
+        if provider_name:
+            p.setFont(QFont("Segoe UI", 9, QFont.Weight.DemiBold))
+            p.setPen(QPen(palette["key"]))
+            p.drawText(
+                _PAD_H + 4,
+                y,
+                _W - (_PAD_H * 2) - 8,
+                _PROVIDER_H,
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                f"{provider_name} actions",
+            )
+            y += _PROVIDER_H
 
         for i, row in enumerate(self._rows):
             row_rect = QRect(_PAD_H, y, _W - _PAD_H * 2, _ROW_H)
             self._row_rects.append(row_rect)
-            hovered  = (i == self._hovered)
+            available = bool(row.get("available", True))
+            hovered = available and i == self._hovered
 
             # Row highlight
             if hovered:
@@ -828,13 +922,13 @@ class IntentOverlay(QWidget):
 
             # Key letter
             p.setFont(key_font)
-            p.setPen(QPen(palette["key"]))
+            p.setPen(QPen(palette["key"] if available else palette["hint"]))
             p.drawText(_BADGE_X, badge_y, _BADGE_W, _BADGE_H,
                        Qt.AlignmentFlag.AlignCenter, row["glyph"])
 
             # Label
             p.setFont(label_font)
-            p.setPen(QPen(palette["label"]))
+            p.setPen(QPen(palette["label"] if available else palette["hint"]))
             text_w = _W - _PAD_H - _TEXT_X
             label_y = y + (_ROW_H // 2) - 12
             p.drawText(_TEXT_X, label_y, text_w, 20,
@@ -842,7 +936,11 @@ class IntentOverlay(QWidget):
                        row["label"])
 
             # Subtitle: actual prompt snippet (configured rows) or hint (custom row)
-            subtitle = row["hint"] if row["is_custom"] else (row["prompt"] or row["hint"])
+            subtitle = (
+                row["hint"]
+                if row["is_custom"] or not available
+                else (row["prompt"] or row["hint"])
+            )
             if subtitle:
                 p.setFont(hint_font)
                 p.setPen(QPen(palette["hint"]))
@@ -1052,7 +1150,7 @@ class IntentOverlay(QWidget):
             if isinstance(sources, list) and sources:
                 base_label = " ".join(str(item.get("label") or t("Context")).split())
                 added_source = False
-                for source_idx, source in enumerate(sources, start=1):
+                for source in sources:
                     if len(entries) >= _CTX_PREVIEW_MAX:
                         break
                     if not isinstance(source, dict):
@@ -1061,10 +1159,12 @@ class IntentOverlay(QWidget):
                     if not preview:
                         continue
                     source_label = " ".join(str(source.get("label") or "").split())
+                    app_label = " ".join(str(source.get("app") or "").split())
                     source_id = str(source.get("id") or source_label)
-                    label = f"{base_label} {source_idx}"
-                    if source_label:
-                        label = f"{label}: {source_label}"
+                    if app_label and source_label and source_label.casefold() not in app_label.casefold():
+                        label = f"{app_label}: {source_label}"
+                    else:
+                        label = app_label or source_label or base_label
                     entries.append((label, preview, item_id, source_id))
                     added_source = True
                 if added_source:
@@ -1519,6 +1619,8 @@ class IntentOverlay(QWidget):
         """Handle select for intent overlay."""
         if self._handled or self._selection_pending_idx is not None:
             return
+        if not self._rows[idx].get("available", True):
+            return
         if self._rows[idx]["is_custom"]:
             self._hovered = idx
             self._debug(f"select-custom idx={idx}")
@@ -1835,6 +1937,7 @@ class IntentOverlay(QWidget):
         self._unhook()
         self._timer.stop()
         custom_row = next(r for r in self._rows if r["is_custom"])
+        self._selected_intent_routing = dict(custom_row.get("routing") or {})
         self.intent_chosen.emit(custom_row["glyph"], text)
         self.close()
 
@@ -2088,6 +2191,7 @@ class IntentOverlay(QWidget):
         self._unhook()
         self._timer.stop()
         row = self._rows[idx]
+        self._selected_intent_routing = dict(row.get("routing") or {})
         self.intent_chosen.emit(row["glyph"], row["prompt"])
         self.close()
 

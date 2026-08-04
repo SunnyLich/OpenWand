@@ -53,6 +53,15 @@ _RULES: tuple[tuple[tuple[str, ...], str], ...] = (
         "Recommendation: check file/folder permissions, or close another program locking the file, then retry.",
     ),
     (
+        ("com.sun.star.connection", "noconnectexception", "calc action pipe"),
+        "Recommendation: this is a local LibreOffice connection, not an internet failure. "
+        "Restart Wisp and reopen LibreOffice once, then retry.",
+    ),
+    (
+        ("calc data changed after the preview", "selected calc range changed after the preview"),
+        "Recommendation: Wisp made no change. Review the current range and create a new preview before applying.",
+    ),
+    (
         ("no module named", "modulenotfounderror", "importerror", "dll load failed"),
         "Recommendation: the package install looks incomplete - reinstall it from Settings, then restart Wisp.",
     ),

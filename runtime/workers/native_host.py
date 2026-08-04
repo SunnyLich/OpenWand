@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import atexit
+import ctypes
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -804,6 +807,455 @@ def selected_text(
     )[0]
 
 
+_calc_selection_reader: Any = None
+_calc_api_selection_reader: Any = None
+_calc_action_adapter: Any = None
+_vscode_selection_reader: Any = None
+_vscode_action_adapter: Any = None
+_vscode_extension_api_adapter: Any = None
+_browser_action_adapter: Any = None
+_calc_automation_status: dict[str, Any] = {
+    "available": False,
+    "managed": False,
+    "reason": "not_started",
+}
+
+
+def calc_automation_prewarm(*, wait_for_startup: bool = False) -> dict[str, Any]:
+    """Provision and detect Wisp's persistent LibreOffice API endpoint."""
+    global _calc_automation_status
+    if not IS_WIN:
+        _calc_automation_status = {
+            "available": False,
+            "managed": False,
+            "reason": "windows_first",
+        }
+        return dict(_calc_automation_status)
+    try:
+        import psutil
+
+        from core.actions.adapters.calc.bridge import (
+            configure_calc_connection,
+            configured_calc_connection_pipe,
+        )
+
+        libreoffice_processes = []
+        command_line_pipe = ""
+        for process in psutil.process_iter(["name"]):
+            name = str(process.info.get("name") or "").casefold()
+            if name not in {"soffice.exe", "soffice.bin", "scalc.exe"}:
+                continue
+            libreoffice_processes.append(process)
+            try:
+                command_line = " ".join(process.cmdline())
+                match = re.search(r"pipe,name=(wisp_calc_[A-Za-z0-9_-]{16,80});urp", command_line)
+                if match:
+                    command_line_pipe = match.group(1)
+            except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
+                continue
+        executable = Path(
+            os.environ.get("LIBREOFFICE_EXECUTABLE")
+            or r"C:\Program Files\LibreOffice\program\soffice.exe"
+        )
+        libreoffice_python = Path(
+            os.environ.get("LIBREOFFICE_PYTHON")
+            or executable.with_name("python.exe")
+        )
+        helper = repo_root() / "runtime" / "helpers" / "calc_uno_action.py"
+        if not executable.is_file() or not libreoffice_python.is_file() or not helper.is_file():
+            _calc_automation_status = {
+                "available": False,
+                "managed": False,
+                "reason": "libreoffice_not_found",
+            }
+            return dict(_calc_automation_status)
+
+        managed_pipe = configured_calc_connection_pipe() or command_line_pipe
+        configured = configure_calc_connection(managed_pipe)
+        managed_pipe = str(configured.get("pipe_name") or "")
+        os.environ.pop("WISP_CALC_UNO_PORT", None)
+        os.environ["WISP_CALC_UNO_PIPE"] = managed_pipe
+
+        if libreoffice_processes and configured.get("changed") and not command_line_pipe:
+            _calc_automation_status = {
+                "available": False,
+                "managed": True,
+                "reason": "bridge_pending_restart",
+                "pipe_name": managed_pipe,
+                "transport": "uno_named_pipe_persisted",
+            }
+            return dict(_calc_automation_status)
+
+        connected = False
+        if libreoffice_processes:
+            deadline = time.monotonic() + (20.0 if wait_for_startup else 0.0)
+            while True:
+                completed = subprocess.run(  # noqa: S603 - fixed local executable and helper
+                    [
+                        str(libreoffice_python),
+                        str(helper),
+                        "--pipe",
+                        managed_pipe,
+                        "--mode",
+                        "probe",
+                    ],
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=3.0,
+                    check=False,
+                )
+                connected = completed.returncode == 0
+                if connected or time.monotonic() >= deadline:
+                    break
+                time.sleep(0.25)
+        if libreoffice_processes and not connected:
+            _calc_automation_status = {
+                "available": False,
+                "managed": True,
+                "reason": "bridge_starting" if not wait_for_startup else "bridge_unavailable",
+                "pipe_name": managed_pipe,
+                "transport": "uno_named_pipe_persisted",
+            }
+            return dict(_calc_automation_status)
+        _calc_automation_status = {
+            "available": True,
+            "managed": True,
+            "reason": "ready" if connected else "ready_on_launch",
+            "pipe_name": managed_pipe,
+            "transport": "uno_named_pipe_persisted",
+        }
+    except Exception as exc:  # noqa: BLE001 - optional integration must not block Wisp startup
+        _calc_automation_status = {
+            "available": False,
+            "managed": False,
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
+    return dict(_calc_automation_status)
+
+
+def action_calc_status() -> dict[str, Any]:
+    """Refresh whether the active LibreOffice process loaded Wisp's endpoint."""
+    return calc_automation_prewarm(wait_for_startup=True)
+
+
+def _calc_api_snapshot(active_app: dict[str, Any]) -> dict[str, Any]:
+    """Capture one Calc target and its values through the persisted UNO pipe."""
+    global _calc_selection_reader
+    from core.actions.adapters.calc import CalcSelectionReader, is_calc_app
+
+    app = active_app if isinstance(active_app, dict) else {}
+    if not is_calc_app(app):
+        raise RuntimeError("The captured application is not LibreOffice Calc.")
+    status = calc_automation_prewarm(wait_for_startup=True)
+    if not status.get("available") or status.get("transport") != "uno_named_pipe_persisted":
+        reason = str(status.get("reason") or "named_pipe_unavailable")
+        raise RuntimeError(f"Wisp's local Calc action pipe is unavailable ({reason}).")
+    if _calc_selection_reader is None:
+        _calc_selection_reader = CalcSelectionReader()
+    target = _calc_selection_reader.inspect_target(app)
+    if not target:
+        raise RuntimeError("Calc did not expose the selected range.")
+    expected_range = str(app.get("range") or "").replace("$", "").strip().upper()
+    actual_range = str(target.get("range") or "").replace("$", "").strip().upper()
+    if expected_range and actual_range != expected_range:
+        raise RuntimeError("The selected Calc range changed after the preview.")
+
+    pipe_name = str(status.get("pipe_name") or os.environ.get("WISP_CALC_UNO_PIPE") or "").strip()
+    libreoffice_python = Path(
+        os.environ.get("LIBREOFFICE_PYTHON")
+        or r"C:\Program Files\LibreOffice\program\python.exe"
+    )
+    helper = repo_root() / "runtime" / "helpers" / "calc_uno_action.py"
+    completed = subprocess.run(  # noqa: S603 - fixed local executable and helper
+        [
+            str(libreoffice_python),
+            str(helper),
+            "--pipe",
+            pipe_name,
+            "--mode",
+            "snapshot",
+            "--title",
+            str(target.get("document_title") or ""),
+            "--range",
+            actual_range,
+        ],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=8.0,
+        check=False,
+    )
+    output = next((line for line in reversed(completed.stdout.splitlines()) if line.strip()), "")
+    try:
+        result = json.loads(output) if output else {}
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("LibreOffice returned an invalid Calc snapshot.") from exc
+    if completed.returncode != 0 or not isinstance(result, dict) or not result.get("ok"):
+        error = str(result.get("error") if isinstance(result, dict) else "").strip()
+        raise RuntimeError(error or "LibreOffice could not snapshot the selected range.")
+    values = result.get("values")
+    if not isinstance(values, list) or not values or not all(isinstance(row, list) for row in values):
+        raise RuntimeError("LibreOffice returned invalid selected values.")
+    typed_values = result.get("typed_values")
+    if not isinstance(typed_values, list) or len(typed_values) != len(values) or not all(
+        isinstance(row, list) and len(row) == len(values[index])
+        for index, row in enumerate(typed_values)
+    ):
+        # Compatibility with an older helper during a rolling development restart.
+        typed_values = values
+    formulas = result.get("formulas")
+    if not isinstance(formulas, list) or len(formulas) != len(values) or not all(
+        isinstance(row, list) and len(row) == len(values[index])
+        for index, row in enumerate(formulas)
+    ):
+        formulas = values
+    fingerprint = str(result.get("fingerprint") or "").strip()
+    if not fingerprint:
+        raise RuntimeError("LibreOffice did not return a range fingerprint.")
+    return {
+        **target,
+        "range": actual_range,
+        "rows": len(values),
+        "columns": len(values[0]) if values else 0,
+        "values": values,
+        "typed_values": typed_values,
+        "formulas": formulas,
+        "selected_text": "\n".join("\t".join(str(cell) for cell in row) for row in values),
+        "fingerprint": fingerprint,
+        "capture_method": "windows_uia_name_box+uno_named_pipe",
+    }
+
+
+class _CalcApiSelectionReader:
+    """Revalidate Calc through the same typed API snapshot used by preview."""
+
+    @staticmethod
+    def inspect_selection(active_app: dict[str, Any]) -> dict[str, Any]:
+        return _calc_api_snapshot(active_app)
+
+
+def action_calc_snapshot(active_app: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return the canonical pre-preview Calc snapshot without changing cells."""
+    try:
+        return {"ok": True, "selection": _calc_api_snapshot(active_app or {}), "error": ""}
+    except Exception as exc:  # noqa: BLE001 - controlled IPC failure
+        return {"ok": False, "selection": {}, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def context_app_selection(active_app: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Read a captured app's structured selection after the overlay has focus."""
+    app = active_app if isinstance(active_app, dict) else {}
+    try:
+        from core.actions.adapters.calc import CalcSelectionReader, is_calc_app
+
+        if not is_calc_app(app):
+            return {"supported": False, "selection": {}}
+        global _calc_selection_reader
+        if _calc_selection_reader is None:
+            _calc_selection_reader = CalcSelectionReader()
+        selection = _calc_selection_reader.inspect_selection(app)
+        return {"supported": True, "selection": selection, "error": ""}
+    except Exception as exc:  # noqa: BLE001 - optional app integration must not block the overlay
+        return {
+            "supported": True,
+            "selection": {},
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def action_calc_apply(
+    plan: dict[str, Any] | None = None,
+    confirmed: bool = False,
+    idempotency_key: str = "",
+) -> dict[str, Any]:
+    """Execute one confirmed Calc plan in the exact recorded window."""
+    global _calc_action_adapter, _calc_api_selection_reader
+    try:
+        from core.actions.adapters.calc import CalcActionAdapter, action_plan_from_dict
+
+        status = calc_automation_prewarm(wait_for_startup=True)
+        if not status.get("available") or status.get("transport") != "uno_named_pipe_persisted":
+            reason = str(status.get("reason") or "named_pipe_unavailable")
+            raise RuntimeError(f"Wisp's local Calc action pipe is unavailable ({reason}).")
+        if _calc_api_selection_reader is None:
+            _calc_api_selection_reader = _CalcApiSelectionReader()
+        if _calc_action_adapter is None:
+            _calc_action_adapter = CalcActionAdapter(reader=_calc_api_selection_reader)
+        action_plan = action_plan_from_dict(plan or {})
+        result = _calc_action_adapter.execute(
+            action_plan,
+            confirmed=bool(confirmed),
+            idempotency_key=str(idempotency_key or ""),
+        )
+        return {"ok": True, "result": asdict(result), "error": ""}
+    except Exception as exc:  # noqa: BLE001 - return a user-facing action failure over IPC
+        return {"ok": False, "result": {}, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def action_vscode_snapshot(
+    active_app: dict[str, Any] | None = None,
+    selected_text: str = "",
+) -> dict[str, Any]:
+    """Read the exact saved VS Code file containing the captured selection."""
+    global _vscode_selection_reader
+    started = time.perf_counter()
+    try:
+        from core.actions.adapters.vscode import VSCodeSelectionReader
+
+        app = active_app if isinstance(active_app, dict) else {}
+        if _vscode_selection_reader is None:
+            _vscode_selection_reader = VSCodeSelectionReader()
+        if str(selected_text or "").strip():
+            snapshot = _vscode_selection_reader.inspect_selection(app, str(selected_text or ""))
+        else:
+            snapshot = _vscode_selection_reader.inspect_empty_file(app)
+        return {
+            "ok": True,
+            "snapshot": snapshot.to_selection_dict(),
+            "error": "",
+            "timing": {"total_ms": round((time.perf_counter() - started) * 1000, 3)},
+        }
+    except Exception as exc:  # noqa: BLE001 - optional app integration must not block Wisp
+        return {
+            "ok": False,
+            "snapshot": {},
+            "error": f"{type(exc).__name__}: {exc}",
+            "timing": {"total_ms": round((time.perf_counter() - started) * 1000, 3)},
+        }
+
+
+def action_vscode_apply(
+    plan: dict[str, Any] | None = None,
+    confirmed: bool = False,
+    idempotency_key: str = "",
+) -> dict[str, Any]:
+    """Apply one confirmed VS Code plan to its fingerprint-checked saved file."""
+    global _vscode_action_adapter
+    started = time.perf_counter()
+    try:
+        from core.actions.adapters.vscode import VSCodeActionAdapter, action_plan_from_dict
+
+        if _vscode_action_adapter is None:
+            _vscode_action_adapter = VSCodeActionAdapter()
+        action_plan = action_plan_from_dict(plan or {})
+        result = _vscode_action_adapter.execute(
+            action_plan,
+            confirmed=bool(confirmed),
+            idempotency_key=str(idempotency_key or ""),
+        )
+        return {
+            "ok": True,
+            "result": asdict(result),
+            "error": "",
+            "timing": {
+                "worker_total_ms": round((time.perf_counter() - started) * 1000, 3),
+                **dict(_vscode_action_adapter.last_execution_timing),
+            },
+        }
+    except Exception as exc:  # noqa: BLE001 - return a user-facing action failure over IPC
+        return {
+            "ok": False,
+            "result": {},
+            "error": f"{type(exc).__name__}: {exc}",
+            "timing": {
+                "worker_total_ms": round((time.perf_counter() - started) * 1000, 3),
+                **dict(getattr(_vscode_action_adapter, "last_execution_timing", {}) or {}),
+            },
+        }
+
+
+def action_vscode_live_apply(
+    text: str = "",
+    active_app: dict[str, Any] | None = None,
+    editor_point: dict[str, Any] | None = None,
+    confirmed: bool = False,
+) -> dict[str, Any]:
+    """Apply one reviewed edit to a Wisp-managed live VS Code editor."""
+    if not confirmed:
+        return {
+            "ok": False,
+            "method": "vscode-extension-api",
+            "error": "preview approval is required before editing the live VS Code buffer",
+        }
+    global _vscode_extension_api_adapter
+    try:
+        from core.actions.adapters.vscode import VSCodeExtensionAPIAdapter
+
+        if _vscode_extension_api_adapter is None:
+            _vscode_extension_api_adapter = VSCodeExtensionAPIAdapter()
+        return _vscode_extension_api_adapter.apply_text(str(text or ""))
+    except Exception as exc:  # noqa: BLE001 - return a controlled IPC failure
+        return {
+            "ok": False,
+            "method": "vscode-extension-api",
+            "activated": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def action_browser_form_snapshot(active_app: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Read safe editable fields from one Wisp-managed Chromium tab."""
+    global _browser_action_adapter
+    started = time.perf_counter()
+    try:
+        from core.actions.adapters.browser import BrowserActionAdapter
+
+        if _browser_action_adapter is None:
+            _browser_action_adapter = BrowserActionAdapter()
+        snapshot = _browser_action_adapter.inspect_form(active_app or {})
+        return {
+            "ok": True,
+            "snapshot": snapshot.to_dict(),
+            "error": "",
+            "timing": {"worker_total_ms": round((time.perf_counter() - started) * 1000, 3)},
+        }
+    except Exception as exc:  # noqa: BLE001 - return a controlled IPC failure
+        return {
+            "ok": False,
+            "snapshot": {},
+            "error": f"{type(exc).__name__}: {exc}",
+            "timing": {"worker_total_ms": round((time.perf_counter() - started) * 1000, 3)},
+        }
+
+
+def action_browser_form_apply(
+    plan: dict[str, Any] | None = None,
+    confirmed: bool = False,
+    idempotency_key: str = "",
+) -> dict[str, Any]:
+    """Apply and verify one reviewed browser form plan without submitting."""
+    global _browser_action_adapter
+    started = time.perf_counter()
+    try:
+        from core.actions.adapters.browser import BrowserActionAdapter, action_plan_from_dict
+
+        if _browser_action_adapter is None:
+            _browser_action_adapter = BrowserActionAdapter()
+        result = _browser_action_adapter.execute(
+            action_plan_from_dict(plan or {}),
+            confirmed=bool(confirmed),
+            idempotency_key=str(idempotency_key or ""),
+        )
+        return {
+            "ok": True,
+            "result": asdict(result),
+            "error": "",
+            "timing": {"worker_total_ms": round((time.perf_counter() - started) * 1000, 3)},
+        }
+    except Exception as exc:  # noqa: BLE001 - return a controlled IPC failure
+        return {
+            "ok": False,
+            "result": {},
+            "error": f"{type(exc).__name__}: {exc}",
+            "timing": {"worker_total_ms": round((time.perf_counter() - started) * 1000, 3)},
+        }
+
+
 def _selected_text_and_stale(
     *,
     allow_clipboard_fallback: bool = True,
@@ -1142,14 +1594,30 @@ def context_snapshot(
             "window": dict(_last_context_window_debug),
         },
     }
+    # Calc cells are a structured application target, not a text paste-back
+    # target. Trying to cache Calc's focused cell through UIA can dereference a
+    # stale COM element (and is never used by the Calc API action path).
+    try:
+        from core.actions.adapters.calc import is_calc_app
+
+        structured_calc_target = is_calc_app(active)
+    except Exception:
+        structured_calc_target = False
+
     # Grab the focused text element first (before selection/clipboard work), while
     # the user's field is still focused, so a later rewrite can be written back
     # in place via Accessibility even if focus has since moved.
-    if capture_focus:
+    if capture_focus and not structured_calc_target:
         snapshot["focus_token"] = _capture_focus()
+        if snapshot["focus_token"] and isinstance(_focus_cache.get("editor_point"), dict):
+            snapshot["editor_point"] = dict(_focus_cache["editor_point"])
     sel_dt = path_dt = clip_dt = window_text_dt = br_dt = 0.0
     selection_kind = _selection_source_kind(active) if include_selected_paths else "text"
-    if include_selection and selection_kind != "paths":
+    defer_app_selection = bool(
+        include_selection and selection_kind != "paths" and structured_calc_target
+    )
+    snapshot["app_selection_deferred"] = defer_app_selection
+    if include_selection and selection_kind != "paths" and not defer_app_selection:
         _s = time.monotonic()
         snapshot["selected_text"], snapshot["stale_selected_text"] = _selected_text_and_stale(
             allow_clipboard_fallback=True,
@@ -1654,10 +2122,9 @@ def _win_uia_capture_focus() -> int:
             "TextPatternRangeEndpoint_End",
             _UIA_TEXT_PATTERN_RANGE_ENDPOINT_END,
         )
+        collapsed = False
         try:
-            if text_range.CompareEndpoints(start_endpoint, text_range, end_endpoint) == 0:
-                _plog("uia capture: text selection is collapsed")
-                return 0
+            collapsed = text_range.CompareEndpoints(start_endpoint, text_range, end_endpoint) == 0
         except Exception:
             pass
         _focus_seq += 1
@@ -1666,11 +2133,207 @@ def _win_uia_capture_focus() -> int:
         _focus_cache["kind"] = "win-uia"
         _focus_cache["element"] = element
         _focus_cache["range"] = text_range
-        _plog(f"uia capture token={_focus_seq} ok")
+        _focus_cache["collapsed"] = collapsed
+        _focus_cache.update(_win_capture_background_input_target(element))
+        editor_point = _win_uia_editor_client_point(
+            text_range,
+            int(_focus_cache.get("root_hwnd") or 0),
+        )
+        if editor_point:
+            _focus_cache["editor_point"] = editor_point
+        _plog(f"uia capture token={_focus_seq} collapsed={collapsed} ok")
         return _focus_seq
     except Exception as exc:  # noqa: BLE001 - UIA is best-effort
         _plog(f"uia capture raised {type(exc).__name__}: {exc}")
         return 0
+
+
+def _win_uia_editor_client_point(text_range: Any, root_hwnd: int) -> dict[str, float]:
+    """Convert the captured UIA range rectangle to a DevTools viewport point."""
+    if not IS_WIN or not root_hwnd:
+        return {}
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        values = list(text_range.GetBoundingRectangles() or [])
+        if len(values) < 4:
+            clone = text_range.Clone()
+            clone.ExpandToEnclosingUnit(0)  # TextUnit_Character
+            values = list(clone.GetBoundingRectangles() or [])
+        if len(values) < 4:
+            return {}
+        left, top, width, height = (float(values[index]) for index in range(4))
+        window_rect = wintypes.RECT()
+        if not ctypes.windll.user32.GetWindowRect(root_hwnd, ctypes.byref(window_rect)):
+            return {}
+        return {
+            "x": max(0.0, left - float(window_rect.left) + max(1.0, width * 0.5)),
+            "y": max(0.0, top - float(window_rect.top) + max(1.0, height * 0.5)),
+        }
+    except Exception:
+        return {}
+
+
+def _win_capture_background_input_target(element: Any) -> dict[str, int]:
+    """Record the focused native HWND while the user is already in the target app."""
+    if not IS_WIN:
+        return {"input_hwnd": 0, "root_hwnd": 0, "target_pid": 0}
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class GuiThreadInfo(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.DWORD),
+                ("flags", wintypes.DWORD),
+                ("hwndActive", wintypes.HWND),
+                ("hwndFocus", wintypes.HWND),
+                ("hwndCapture", wintypes.HWND),
+                ("hwndMenuOwner", wintypes.HWND),
+                ("hwndMoveSize", wintypes.HWND),
+                ("hwndCaret", wintypes.HWND),
+                ("rcCaret", wintypes.RECT),
+            ]
+
+        user32 = ctypes.windll.user32
+        root_hwnd = int(user32.GetForegroundWindow() or 0)
+        thread_id = int(user32.GetWindowThreadProcessId(root_hwnd, None) or 0)
+        info = GuiThreadInfo(cbSize=ctypes.sizeof(GuiThreadInfo))
+        input_hwnd = 0
+        if thread_id and user32.GetGUIThreadInfo(thread_id, ctypes.byref(info)):
+            input_hwnd = int(info.hwndFocus or info.hwndCaret or 0)
+        if not input_hwnd:
+            try:
+                input_hwnd = int(element.CurrentNativeWindowHandle or 0)
+            except Exception:
+                input_hwnd = 0
+        if not input_hwnd:
+            input_hwnd = root_hwnd
+        if input_hwnd:
+            resolved_root = int(user32.GetAncestor(input_hwnd, 2) or 0)  # GA_ROOT
+            root_hwnd = resolved_root or root_hwnd
+        pid = wintypes.DWORD()
+        if input_hwnd:
+            user32.GetWindowThreadProcessId(input_hwnd, ctypes.byref(pid))
+        return {
+            "input_hwnd": int(input_hwnd),
+            "root_hwnd": int(root_hwnd),
+            "target_pid": int(pid.value),
+        }
+    except Exception as exc:  # noqa: BLE001 - capture remains best-effort
+        _plog(f"uia background target capture raised {type(exc).__name__}: {exc}")
+        return {"input_hwnd": 0, "root_hwnd": 0, "target_pid": 0}
+
+
+def _win_background_text_units(text: str) -> list[int]:
+    """Return WM_CHAR UTF-16 units, normalizing newlines to the Enter character."""
+    normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    raw = normalized.encode("utf-16-le", errors="surrogatepass")
+    units = [int.from_bytes(raw[index : index + 2], "little") for index in range(0, len(raw), 2)]
+    return [0x000D if unit == 0x000A else unit for unit in units]
+
+
+def _win_post_text_to_cached_target(token: int, text: str) -> dict[str, Any]:
+    """Post text to the captured input HWND without focus, cursor, or clipboard changes."""
+    if not IS_WIN:
+        return {"ok": False, "method": "win-post-message", "error": "not windows"}
+    if not token or _focus_cache.get("token") != token or _focus_cache.get("kind") != "win-uia":
+        return {"ok": False, "method": "win-post-message", "error": "stale or missing focus token"}
+    input_hwnd = int(_focus_cache.get("input_hwnd") or 0)
+    root_hwnd = int(_focus_cache.get("root_hwnd") or 0)
+    expected_pid = int(_focus_cache.get("target_pid") or 0)
+    if not input_hwnd:
+        return {"ok": False, "method": "win-post-message", "error": "no captured background input window"}
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        if not user32.IsWindow(input_hwnd):
+            return {"ok": False, "method": "win-post-message", "error": "captured input window is stale"}
+        actual_root = int(user32.GetAncestor(input_hwnd, 2) or 0)  # GA_ROOT
+        if root_hwnd and actual_root and actual_root != root_hwnd:
+            return {"ok": False, "method": "win-post-message", "error": "captured input window changed owners"}
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(input_hwnd, ctypes.byref(pid))
+        if expected_pid and int(pid.value) != expected_pid:
+            return {"ok": False, "method": "win-post-message", "error": "captured input process changed"}
+
+        foreground_before = int(user32.GetForegroundWindow() or 0)
+        text_range = _focus_cache.get("range")
+        if text_range is not None:
+            # Re-anchor the captured Monaco selection. UIA Select changes the
+            # target's internal selection, but unlike SetFocus it does not
+            # activate the target window.
+            text_range.Select()
+        if int(user32.GetForegroundWindow() or 0) != foreground_before:
+            return {
+                "ok": False,
+                "method": "win-post-message",
+                "error": "target attempted to take foreground during selection",
+                "foreground_unchanged": False,
+            }
+
+        units = _win_background_text_units(text)
+        for unit in units:
+            if not user32.PostMessageW(input_hwnd, 0x0102, unit, 1):  # WM_CHAR
+                return {
+                    "ok": False,
+                    "method": "win-post-message",
+                    "error": "target rejected background text input",
+                    "foreground_unchanged": int(user32.GetForegroundWindow() or 0) == foreground_before,
+                }
+        # PostMessage only confirms that Windows queued the messages. Chromium
+        # may intentionally discard synthetic background WM_CHAR events, so
+        # verify the exact text through the already-captured accessibility
+        # document before reporting success.
+        delivered = not text
+        if text:
+            try:
+                import comtypes.gen.UIAutomationClient as uiac  # type: ignore
+
+                element = _focus_cache.get("element")
+                raw_pattern = element.GetCurrentPattern(_UIA_TEXT_PATTERN_ID)
+                text_pattern = raw_pattern.QueryInterface(uiac.IUIAutomationTextPattern)
+                deadline = time.monotonic() + 0.5
+                while time.monotonic() < deadline:
+                    document_text = str(text_pattern.DocumentRange.GetText(-1) or "")
+                    if text in document_text:
+                        delivered = True
+                        break
+                    time.sleep(0.05)
+            except Exception:
+                delivered = False
+        foreground_after = int(user32.GetForegroundWindow() or 0)
+        unchanged = foreground_after == foreground_before
+        return {
+            "ok": bool(unchanged and delivered),
+            "method": "win-post-message",
+            "activated": False,
+            "confirmed": True,
+            "keystroke_sent": bool(units),
+            "clipboard_ok": False,
+            "clipboard_restored": True,
+            "foreground_unchanged": unchanged,
+            "text_verified": delivered,
+            "posted_utf16_units": len(units),
+            "target_pid": int(pid.value),
+            "error": (
+                ""
+                if unchanged and delivered
+                else "target ignored background text input"
+                if unchanged
+                else "foreground changed while posting background text"
+            ),
+        }
+    except Exception as exc:  # noqa: BLE001 - report the target-specific failure
+        return {
+            "ok": False,
+            "method": "win-post-message",
+            "foreground_unchanged": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
 
 
 def _ax_selected_text() -> str | None:
@@ -1736,59 +2399,57 @@ def _win_uia_apply_selected_text(
     paste_combo: str = "",
     restore_clipboard: bool = False,
 ) -> dict[str, Any]:
-    """Replace the cached Windows UIA selection range, avoiding current focus."""
-    if not IS_WIN:
-        return {"ok": False, "error": "not windows"}
-    if not token or _focus_cache.get("token") != token or _focus_cache.get("kind") != "win-uia":
-        return {"ok": False, "error": "stale or missing focus token"}
-    element = _focus_cache.get("element")
-    text_range = _focus_cache.get("range")
-    if element is None or text_range is None:
-        return {"ok": False, "error": "no cached selection range"}
-    original_clipboard = clipboard_get().get("text", "") if restore_clipboard else ""
-    clip_ok = False
-    restored = False
-    try:
-        from core.platform_utils import PASTE_COMBO, send_keys
+    """Apply to the cached Windows selection without activating the target app."""
+    del paste_combo, restore_clipboard
+    return _win_post_text_to_cached_target(token, text)
 
+
+def _win_restore_foreground(hwnd: int) -> bool:
+    """Best-effort restore after an anchored UIA paste temporarily activates an app."""
+    if not IS_WIN or not hwnd:
+        return False
+    try:
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        current = int(user32.GetForegroundWindow() or 0)
+        if current == int(hwnd):
+            return True
+        current_thread = int(kernel32.GetCurrentThreadId() or 0)
+        foreground_thread = int(user32.GetWindowThreadProcessId(current, None) or 0)
+        target_thread = int(user32.GetWindowThreadProcessId(int(hwnd), None) or 0)
+        attached_foreground = False
+        attached_target = False
         try:
-            element.SetFocus()
-        except Exception:
-            pass
-        text_range.Select()
-        time.sleep(0.05)
-        clip_ok = bool(clipboard_set(text).get("ok"))
-        if not clip_ok:
-            return {"ok": False, "method": "uia-range", "clipboard_ok": False, "error": "clipboard write failed"}
-        send_keys(paste_combo or PASTE_COMBO)
-        if restore_clipboard:
-            time.sleep(_PASTE_CLIPBOARD_RESTORE_DELAY_SECONDS)
-            restored = bool(clipboard_set(original_clipboard).get("ok"))
-        _plog(f"paste via UIA range token={token} restored={restored} ok")
-        return {
-            "ok": True,
-            "method": "uia-range",
-            "activated": True,
-            "confirmed": True,
-            "keystroke_sent": True,
-            "clipboard_ok": True,
-            "clipboard_restored": restored,
-            "target_pid": 0,
-            "error": "",
-        }
-    except Exception as exc:  # noqa: BLE001 - UIA is best-effort
-        if restore_clipboard and clip_ok:
-            try:
-                restored = bool(clipboard_set(original_clipboard).get("ok"))
-            except Exception:
-                restored = False
-        return {
-            "ok": False,
-            "method": "uia-range",
-            "clipboard_ok": bool(clip_ok),
-            "clipboard_restored": restored,
-            "error": f"{type(exc).__name__}: {exc}",
-        }
+            if foreground_thread and foreground_thread != current_thread:
+                attached_foreground = bool(user32.AttachThreadInput(current_thread, foreground_thread, True))
+            if target_thread and target_thread not in {current_thread, foreground_thread}:
+                attached_target = bool(user32.AttachThreadInput(current_thread, target_thread, True))
+            user32.LockSetForegroundWindow(2)  # LSFW_UNLOCK
+            if user32.IsIconic(int(hwnd)):
+                user32.ShowWindow(int(hwnd), 9)  # SW_RESTORE
+            user32.BringWindowToTop(int(hwnd))
+            user32.SetForegroundWindow(int(hwnd))
+        finally:
+            if attached_target:
+                user32.AttachThreadInput(current_thread, target_thread, False)
+            if attached_foreground:
+                user32.AttachThreadInput(current_thread, foreground_thread, False)
+        deadline = time.monotonic() + 0.6
+        while time.monotonic() < deadline:
+            if int(user32.GetForegroundWindow() or 0) == int(hwnd):
+                return True
+            time.sleep(0.03)
+        # Windows sometimes refuses the first request until this process has
+        # emitted an input event. A harmless Alt tap grants that foreground
+        # transition without typing into either application.
+        user32.keybd_event(0x12, 0, 0, 0)
+        user32.keybd_event(0x12, 0, 0x0002, 0)
+        user32.SetForegroundWindow(int(hwnd))
+        time.sleep(0.08)
+        return int(user32.GetForegroundWindow() or 0) == int(hwnd)
+    except Exception:
+        return False
+    return False
 
 
 _PASTE_CLIPBOARD_RESTORE_DELAY_SECONDS = 0.25
@@ -2043,6 +2704,15 @@ HANDLERS = {
     "native.hotkeys.stop": hotkeys_stop,
     "native.hotkeys.reload": hotkeys_reload,
     "native.context.snapshot": context_snapshot,
+    "native.context.app_selection": context_app_selection,
+    "native.action.calc.status": action_calc_status,
+    "native.action.calc.snapshot": action_calc_snapshot,
+    "native.action.calc.apply": action_calc_apply,
+    "native.action.vscode.snapshot": action_vscode_snapshot,
+    "native.action.vscode.apply": action_vscode_apply,
+    "native.action.vscode.live_apply": action_vscode_live_apply,
+    "native.action.browser.form_snapshot": action_browser_form_snapshot,
+    "native.action.browser.form_apply": action_browser_form_apply,
     "native.context.await_selection": await_selection_context,
     "native.context.browser_content": context_browser_content,
     "native.capture.fullscreen": capture_fullscreen,
@@ -2057,6 +2727,7 @@ HANDLERS = {
 
 def main() -> int:
     """Handle main for runtime workers native host."""
+    calc_automation_prewarm()
     return run_host(role="native", handlers=HANDLERS, event_sink_setter=set_event_sink)
 
 

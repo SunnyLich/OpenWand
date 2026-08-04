@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from core.actions.progress import ActionProgress, ActionProgressStage, ActionProgressUpdate
+from core.actions.telemetry import ActionTrace
 from core.system.env_utils import mcp_server_id_from_tool, mcp_server_override_key
 from runtime.supervisor import flow_context, flow_estimates, flow_utils, tool_modes
 from runtime.supervisor.runtime_log import RuntimeEventLog, normalize_severity
@@ -23,6 +25,8 @@ from ui.i18n import t
 log = logging.getLogger("wisp.runtime.flows")
 _INTERACTIVE_LLM_TIMEOUT_SECONDS = 120.0
 _INTERACTIVE_LLM_TOOL_TIMEOUT_SECONDS = 300.0
+_SLOW_RESPONSE_NOTICE_SECONDS = 3.0
+_ACTION_PROGRESS_HEADS_UP_SECONDS = 4.0
 _TTS_SEGMENT_MIN_CHARS = 60
 _TTS_SEGMENT_MAX_CHARS = 520
 _READ_ALOUD_MIN_WORDS = 50
@@ -87,11 +91,17 @@ _AUDIO_CONFIG_KEYS = {
     "TTS_VOLUME",
     "TTS_READ_ALOUD_MIN_WORDS",
     "TTS_READ_ALOUD_MAX_WORDS",
+    "STT_PROVIDER",
     "STT_MODEL",
     "STT_COMPUTE_TYPE",
     "STT_LANGUAGE",
     "STT_BEAM_SIZE",
     "STT_DEVICE",
+    "STT_CLOUDFLARE_ACCOUNT_ID",
+    "STT_CLOUDFLARE_MODEL",
+    "STT_CLOUDFLARE_TIMEOUT_SECONDS",
+    "STT_CLOUDFLARE_FALLBACK_LOCAL",
+    "CLOUDFLARE_API_TOKEN",
     "STT_BACKGROUND_CHUNK_FIRST_TRIGGER_SECONDS",
     "STT_BACKGROUND_CHUNK_STEP_SECONDS",
     "STT_BACKGROUND_CHUNK_LIVE_DELAY_SECONDS",
@@ -193,6 +203,9 @@ class PendingInvocation:
     caller_idx: int = 0
     caller: dict[str, Any] = field(default_factory=dict)
     context: dict[str, Any] = field(default_factory=dict)
+    # Provider identity and picker suggestions derived from the active app
+    # captured before the overlay is constructed.
+    action_provider_context: dict[str, Any] = field(default_factory=dict)
     screenshot_b64: str | None = None
     screenshot_tool_b64: str | None = None
     intent_target_pid: int = 0
@@ -201,6 +214,10 @@ class PendingInvocation:
     # (item_id, source_id) pairs removed via the intent picker's per-row X.
     removed_context_sources: set = field(default_factory=set)
     context_ready: threading.Event = field(default_factory=threading.Event)
+    invoked_at_unix_ns: int = 0
+    initial_context_at_unix_ns: int = 0
+    intent_shown_at_unix_ns: int = 0
+    context_ready_at_unix_ns: int = 0
 
 
 class _TtsSegmentBuffer:
@@ -303,6 +320,7 @@ class FlowController:
         self._pending_context_capture: dict[str, Any] | None = None
         self._last_reply = ""
         self._last_privacy_report: dict[str, Any] = {}
+        self._addon_tray_actions_snapshot: tuple[tuple[str, str], ...] = ()
         self._active_agent_stream_id: Any = None
         self._active_reply_stream_id: Any = None
         self._active_reply_stream_generation = 0
@@ -350,6 +368,8 @@ class FlowController:
         self.ui.on_event("ui.context.remove", self._on_context_remove)
         self.ui.on_event("ui.chat.request", self._on_chat_request)
         self.ui.on_event("ui.chat.context_preview", self._on_chat_context_preview)
+        self.ui.on_event("ui.chat.message_actions.requested", self._on_chat_message_actions_requested)
+        self.ui.on_event("ui.chat.message_action.requested", self._on_chat_message_action_requested)
         self.ui.on_event("ui.memory.open_requested", self._on_memory_open_requested)
         self.ui.on_event("ui.memory.add", self._on_memory_add)
         self.ui.on_event("ui.memory.update", self._on_memory_update)
@@ -389,6 +409,7 @@ class FlowController:
         self.brain.on_event("agent.trace", self._forward_agent_event("ui.agent.trace"))
         self.brain.on_event("agent.done", self._forward_agent_event("ui.agent.done"))
         self.brain.on_event("agent.approval.request", self._on_agent_approval_request)
+        self.brain.on_event("addons.changed", self._on_addons_changed)
         self.audio.on_event("audio.warmup.started", self._on_audio_warmup_started)
         self.audio.on_event("audio.warmup.progress", self._on_audio_warmup_progress)
         self.audio.on_event("audio.warmup.done", self._on_audio_warmup_done)
@@ -404,7 +425,30 @@ class FlowController:
         audio_on_exit = getattr(self.audio, "on_exit", None)
         if callable(audio_on_exit):
             audio_on_exit(self._on_audio_worker_exit)
-        self.ui.call("ui.show_overlay", timeout=30.0)
+        addon_snapshot = self._safe_call(
+            self.brain,
+            "brain.addons.ready",
+            {"timeout_seconds": 3.0},
+            timeout=5.0,
+        )
+        if isinstance(addon_snapshot, dict) and not addon_snapshot.get("ready", True):
+            error = str(addon_snapshot.get("error") or "").strip()
+            if error:
+                log.warning("addon startup failed: %s", error)
+            else:
+                log.info("addons are still loading; the tray will update when they are ready")
+        usable_addon_snapshot = (
+            addon_snapshot
+            if isinstance(addon_snapshot, dict) and "addons" in addon_snapshot
+            else {"addons": []}
+        )
+        addon_tray_actions = self._load_addon_tray_actions(usable_addon_snapshot)
+        self._addon_tray_actions_snapshot = self._addon_action_key(addon_tray_actions)
+        self.ui.call(
+            "ui.show_overlay",
+            {"addon_tray_actions": addon_tray_actions},
+            timeout=30.0,
+        )
         if prewarm:
             try:
                 self.ui.call("ui.prewarm_intent", timeout=30.0, wait=False)
@@ -454,7 +498,7 @@ class FlowController:
             return
         if kind == "caller":
             log.info("hotkey received: kind=%s", kind)
-            self._schedule(self.begin_caller, int((data or {}).get("index") or 0))
+            self._schedule(self.begin_caller, int((data or {}).get("index") or 0), time.time_ns())
         elif kind == "snip":
             log.info("hotkey received: kind=%s", kind)
             self._schedule(self.begin_snip)
@@ -497,7 +541,7 @@ class FlowController:
 
     def _on_summon_caller(self, data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle summon caller events."""
-        self._schedule(self.begin_caller, int((data or {}).get("caller_idx") or 0))
+        self._schedule(self.begin_caller, int((data or {}).get("caller_idx") or 0), time.time_ns())
 
     def _on_request_snip(self, _data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle request snip events."""
@@ -507,7 +551,12 @@ class FlowController:
         """Handle intent chosen events."""
         prompt = str((data or {}).get("custom") or (data or {}).get("prompt") or "").strip()
         choices = list((data or {}).get("context_choices") or [])
-        self._schedule(self.intent_chosen, prompt, choices)
+        routing = (
+            dict((data or {}).get("intent_routing") or {})
+            if isinstance((data or {}).get("intent_routing"), dict)
+            else {}
+        )
+        self._schedule(self.intent_chosen, prompt, choices, routing)
 
     def _on_intent_cancelled(self, _data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle intent cancelled events."""
@@ -602,6 +651,14 @@ class FlowController:
         """Handle chat context preview events."""
         self._schedule(self.chat_context_preview, data or {})
 
+    def _on_chat_message_actions_requested(self, data: dict[str, Any], _req_id: Any = None) -> None:
+        """Refresh addon message actions when Chat opens or addons change."""
+        self._schedule(self.chat_message_actions, data or {})
+
+    def _on_chat_message_action_requested(self, data: dict[str, Any], _req_id: Any = None) -> None:
+        """Run one user-requested addon action away from the UI thread."""
+        self._schedule(self.addon_run_message_action, data or {})
+
     def _on_memory_open_requested(self, _data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle memory open requested events."""
         self._schedule(self.open_memory)
@@ -674,6 +731,10 @@ class FlowController:
     def _on_addons_install_folder(self, data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle addons install folder events."""
         self._schedule(self.addon_install_folder, data or {})
+
+    def _on_addons_changed(self, data: dict[str, Any], _req_id: Any = None) -> None:
+        """Apply a brain-published addon snapshot to the already-visible tray."""
+        self._schedule(self._apply_addon_change, data or {})
 
     def _on_agent_task_requested(self, _data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle agent task requested events."""
@@ -1234,11 +1295,23 @@ class FlowController:
 
     # -- public product actions ---------------------------------------
 
-    def begin_caller(self, caller_idx: int = 0) -> None:
+    @staticmethod
+    def _action_provider_picker_context(context: dict[str, Any] | None) -> dict[str, Any]:
+        """Detect the app action provider from the hotkey-time context snapshot."""
+        try:
+            from core.actions.providers import detected_picker_context
+
+            return detected_picker_context(context)
+        except Exception:
+            log.exception("action provider detection failed")
+            return {}
+
+    def begin_caller(self, caller_idx: int = 0, invoked_at_unix_ns: int = 0) -> None:
         """Handle begin caller for flow controller."""
         import time
 
         t0 = time.monotonic()
+        invoked_at_unix_ns = int(invoked_at_unix_ns or time.time_ns())
         self._reload_supervisor_config_if_changed()
         caller = self._caller(caller_idx)
         self._log_caller_runtime(caller_idx, caller)
@@ -1259,6 +1332,7 @@ class FlowController:
         except Exception:
             log.exception("pre-picker context snapshot failed")
             initial_context = {}
+        initial_context_at_unix_ns = time.time_ns()
         if not self._is_current(generation):
             return
         screenshot_b64 = None
@@ -1275,8 +1349,11 @@ class FlowController:
             caller_idx=caller_idx,
             caller=caller,
             context=initial_context,
+            action_provider_context=self._action_provider_picker_context(initial_context),
             screenshot_b64=screenshot_b64,
             screenshot_tool_b64=screenshot_tool_b64,
+            invoked_at_unix_ns=invoked_at_unix_ns,
+            initial_context_at_unix_ns=initial_context_at_unix_ns,
         )
         with self._lock:
             self._pending = pending
@@ -1290,8 +1367,10 @@ class FlowController:
                 "caller_idx": caller_idx,
                 "target_hwnd": 0,
                 "context_items": self._intent_context_items(pending),
+                "action_provider": pending.action_provider_context,
             },
         )
+        pending.intent_shown_at_unix_ns = time.time_ns()
         t_show = time.monotonic()
         self._schedule(self._collect_initial_intent_context, pending, generation, t0, t_show)
         log.info(
@@ -1654,7 +1733,12 @@ class FlowController:
             timeout=30.0,
         )
 
-    def intent_chosen(self, prompt: str, context_choices: list[dict[str, Any]] | None = None) -> None:
+    def intent_chosen(
+        self,
+        prompt: str,
+        context_choices: list[dict[str, Any]] | None = None,
+        intent_routing: dict[str, Any] | None = None,
+    ) -> None:
         """Handle intent chosen for flow controller."""
         with self._lock:
             pending = self._pending
@@ -1682,7 +1766,54 @@ class FlowController:
             context["selected_text"] = str(context.get("stale_selected_text") or "")
         if not prompt:
             prompt = "What is this?"
-        if pending.caller.get("paste_back") and self._is_local_file_request(prompt):
+        app_selection = context.get("app_selection") if isinstance(context.get("app_selection"), dict) else {}
+        active_app = context.get("active_app") if isinstance(context.get("active_app"), dict) else {}
+        browser_app = dict(active_app)
+        if context.get("browser_url"):
+            browser_app["browser_url"] = str(context.get("browser_url") or "")
+        selected_text = str(context.get("selected_text") or "")
+        routing = self._validated_intent_routing(pending, intent_routing)
+        if routing.get("mode") == "invalid":
+            self._notice("Wisp could not verify the selected app action. Nothing was changed.", severity="warning")
+            self._set_idle()
+        elif routing.get("mode") == "action":
+            self._dispatch_provider_action(
+                pending,
+                prompt,
+                routing,
+                active_app=active_app,
+                browser_app=browser_app,
+                app_selection=app_selection,
+                selected_text=selected_text,
+            )
+        elif routing.get("mode") == "answer":
+            caller = dict(pending.caller)
+            caller["paste_back"] = False
+            pending.caller = caller
+            self._query(prompt, pending)
+        elif routing.get("mode") == "auto" and pending.action_provider_context:
+            self._run_app_prompt_disposition(
+                pending,
+                prompt,
+                active_app=active_app,
+                browser_app=browser_app,
+                app_selection=app_selection,
+                selected_text=selected_text,
+            )
+        elif self._is_calc_chart_action(prompt, app_selection):
+            self._run_calc_chart_action(pending, app_selection)
+        elif self._is_browser_form_action(prompt, browser_app):
+            self._run_browser_form_action(pending, prompt, browser_app)
+        elif self._is_vscode_fix_action(prompt, active_app, selected_text):
+            self._run_vscode_fix_action(pending, prompt, active_app, selected_text)
+        elif app_selection.get("app") == "libreoffice_calc" and pending.caller.get("paste_back"):
+            # A structured cell range is never ordinary text paste-back. Until a
+            # specific safe action owns the request, answer without touching Calc.
+            caller = dict(pending.caller)
+            caller["paste_back"] = False
+            pending.caller = caller
+            self._query(prompt, pending)
+        elif pending.caller.get("paste_back") and self._is_local_file_request(prompt):
             caller = dict(pending.caller)
             caller["paste_back"] = False
             if tool_modes.local_file_access_mode(caller) in {"off", "read"}:
@@ -1693,6 +1824,1595 @@ class FlowController:
             self._rewrite_and_paste(prompt, pending)
         else:
             self._query(prompt, pending)
+
+    @staticmethod
+    def _validated_intent_routing(
+        pending: PendingInvocation,
+        value: dict[str, Any] | None,
+    ) -> dict[str, str]:
+        """Resolve UI routing against the provider detected before the picker opened."""
+        raw = value if isinstance(value, dict) else {}
+        mode = str(raw.get("mode") or "legacy").strip().lower()
+        if mode == "legacy":
+            return {"mode": "legacy"}
+        if mode == "auto":
+            return {"mode": "auto", "source": str(raw.get("source") or "custom")}
+        if mode == "answer" and str(raw.get("source") or "") == "configured":
+            return {"mode": "answer", "source": "configured"}
+
+        provider = pending.action_provider_context
+        if not isinstance(provider, dict) or not provider:
+            return {"mode": "invalid"}
+        if str(raw.get("provider_id") or "") != str(provider.get("id") or ""):
+            return {"mode": "invalid"}
+        if str(raw.get("app") or "") != str(provider.get("app") or ""):
+            return {"mode": "invalid"}
+        suggestion_id = str(raw.get("suggestion_id") or "")
+        suggestions = provider.get("suggested_intents")
+        trusted = next(
+            (
+                item
+                for item in suggestions if isinstance(item, dict)
+                and str(item.get("id") or "") == suggestion_id
+            ),
+            None,
+        ) if isinstance(suggestions, list) else None
+        if not isinstance(trusted, dict):
+            return {"mode": "invalid"}
+        if not bool(trusted.get("available", True)):
+            return {"mode": "invalid"}
+        trusted_mode = str(trusted.get("mode") or "").strip().lower()
+        if mode != trusted_mode or mode not in {"action", "answer"}:
+            return {"mode": "invalid"}
+        for routing_field in ("capability_type", "planning_tool"):
+            if str(raw.get(routing_field) or "") != str(trusted.get(routing_field) or ""):
+                return {"mode": "invalid"}
+        return {
+            "mode": trusted_mode,
+            "source": "provider",
+            "provider_id": str(provider.get("id") or ""),
+            "app": str(provider.get("app") or ""),
+            "suggestion_id": suggestion_id,
+            "capability_type": str(trusted.get("capability_type") or ""),
+            "planning_tool": str(trusted.get("planning_tool") or ""),
+        }
+
+    def _dispatch_provider_action(
+        self,
+        pending: PendingInvocation,
+        prompt: str,
+        routing: dict[str, str],
+        *,
+        active_app: dict[str, Any],
+        browser_app: dict[str, Any],
+        app_selection: dict[str, Any],
+        selected_text: str,
+    ) -> None:
+        """Run one server-verified provider capability without keyword guessing."""
+        capability_type = str(routing.get("capability_type") or "")
+        planning_tool = str(routing.get("planning_tool") or "")
+        if capability_type == "browser.fill_form":
+            self._run_browser_form_action(
+                pending,
+                prompt,
+                browser_app,
+                planning_tool=planning_tool,
+            )
+            return
+        if capability_type == "vscode.replace_selection@1":
+            self._run_vscode_fix_action(
+                pending,
+                prompt,
+                active_app,
+                selected_text,
+                planning_tool=planning_tool,
+            )
+            return
+        if capability_type in {"calc.add_chart@1", "calc.format_table@1", "calc.sort_range@1"}:
+            self._run_calc_chart_action(
+                pending,
+                app_selection,
+                prompt=prompt,
+                planning_tool=planning_tool,
+                capability_type=capability_type,
+            )
+            return
+        if capability_type.startswith("presentation."):
+            self._run_powerpoint_action(
+                pending,
+                prompt,
+                planning_tool=planning_tool,
+                capability_type=capability_type,
+                provider_id=str(routing.get("provider_id") or ""),
+            )
+            return
+        self._notice("This app action is not available in the current Wisp build.", severity="warning")
+        self._set_idle()
+
+    def _run_powerpoint_action(
+        self,
+        pending: PendingInvocation,
+        prompt: str,
+        *,
+        planning_tool: str,
+        capability_type: str,
+        provider_id: str,
+    ) -> None:
+        """Run PowerPoint through the shared preview-first ActionRunner."""
+        from core.actions.adapters.presentation import PowerPointDesktopRuntimeProvider
+        from core.actions.runner import ActionRunner, ActionRuntimeProviderRegistry, PlannedToolCall
+
+        trace = ActionTrace(
+            capability_type,
+            app="presentation",
+            started_unix_ns=pending.invoked_at_unix_ns,
+        )
+        gen = self._new_generation()
+        self._safe_call(self.audio, "audio.stop", timeout=5.0)
+        self._safe_call(self.ui, "ui.overlay.state", {"state": "thinking"}, timeout=30.0)
+        self._safe_call(self.ui, "ui.reply.reset", timeout=30.0)
+        self._safe_call(self.ui, "ui.reply.thinking", timeout=30.0)
+
+        def publish(update: ActionProgressUpdate) -> None:
+            self._safe_call(self.ui, "ui.action.progress", update.to_dict(), timeout=30.0)
+
+        def record(update: ActionProgressUpdate) -> None:
+            trace.mark(
+                "progress_updated",
+                progress_stage=update.stage,
+                progress_sequence=update.sequence,
+                terminal=update.terminal,
+            )
+
+        def on_event(event: str, payload: Any, _req_id: Any = None) -> None:
+            if event == "privacy.review.request":
+                self._handle_privacy_review_request(payload)
+
+        def plan_with_model(**kwargs: Any) -> PlannedToolCall:
+            result = self._brain_reply_call_with_events(
+                "brain.action.plan",
+                {
+                    "planning_tool_name": kwargs["tool_name"],
+                    "planning_tool_description": kwargs["tool_description"],
+                    "input_schema": kwargs["input_schema"],
+                    "user_prompt": kwargs["user_prompt"],
+                    "app_context": kwargs["app_context"],
+                },
+                timeout=_INTERACTIVE_LLM_TIMEOUT_SECONDS,
+                on_event=on_event,
+                generation=gen,
+            )
+            if not isinstance(result, dict):
+                return PlannedToolCall(tool_name="", arguments={})
+            arguments = result.get("arguments")
+            return PlannedToolCall(
+                tool_name=str(result.get("tool_name") or ""),
+                arguments=dict(arguments) if isinstance(arguments, dict) else {},
+                visible_text=str(result.get("visible_text") or ""),
+            )
+
+        def approve(preview: Any) -> bool:
+            self._set_idle()
+            decision = self._safe_call(
+                self.ui,
+                "ui.action.preview.request",
+                {
+                    "plan_id": preview.plan_id,
+                    "title": preview.title,
+                    "summary": preview.summary,
+                    "html": preview.html,
+                    "details": list(preview.details),
+                    "warnings": list(preview.warnings),
+                },
+                timeout=300.0,
+            )
+            approved = isinstance(decision, dict) and bool(decision.get("approved"))
+            if approved:
+                self._safe_call(self.ui, "ui.overlay.state", {"state": "thinking"}, timeout=30.0)
+            return approved
+
+        runner = ActionRunner(
+            ActionRuntimeProviderRegistry((PowerPointDesktopRuntimeProvider(),)),
+            planner=plan_with_model,
+            approver=approve,
+            progress_sink=publish,
+            telemetry_sink=record,
+            planning_warning_seconds=_ACTION_PROGRESS_HEADS_UP_SECONDS,
+        )
+        try:
+            outcome = runner.run(
+                context=pending.context if isinstance(pending.context, dict) else {},
+                user_prompt=prompt,
+                capability_type=capability_type,
+                planning_tool_name=planning_tool,
+                provider_id=provider_id,
+                idempotency_key=f"{pending.invoked_at_unix_ns}:{capability_type}",
+            )
+        except Exception as exc:  # noqa: BLE001 - runner owns mutation rollback
+            trace.finish("failed", error_type=type(exc).__name__)
+            if self._is_current(gen):
+                self._notice(
+                    f"Wisp couldn't apply the PowerPoint action: {self._friendly_error(exc)}",
+                    severity="warning",
+                )
+                self._set_idle()
+            return
+        if not self._is_current(gen):
+            self._set_idle()
+            return
+        if outcome.status == "cancelled":
+            trace.finish("cancelled", failure_stage="preview_decision")
+            self._notice("PowerPoint action cancelled. Nothing was changed.")
+        else:
+            result = outcome.result
+            trace.finish("applied", result_status=result.status if result is not None else "applied")
+            self._status_notice(
+                result.message if result is not None else "PowerPoint action applied and verified."
+            )
+        self._set_idle()
+
+    def _run_app_prompt_disposition(
+        self,
+        pending: PendingInvocation,
+        prompt: str,
+        *,
+        active_app: dict[str, Any],
+        browser_app: dict[str, Any],
+        app_selection: dict[str, Any],
+        selected_text: str,
+    ) -> None:
+        """Force a supported-app custom prompt through Wisp's typed intent boundary."""
+        provider = pending.action_provider_context
+        suggestions = provider.get("suggested_intents") if isinstance(provider, dict) else []
+        action_suggestions = [
+            dict(item)
+            for item in suggestions if isinstance(item, dict) and item.get("mode") == "action"
+        ] if isinstance(suggestions, list) else []
+        capabilities = list(dict.fromkeys(
+            str(item.get("capability_type") or "")
+            for item in action_suggestions
+            if str(item.get("capability_type") or "")
+        ))
+        if not capabilities:
+            caller = dict(pending.caller)
+            caller["paste_back"] = False
+            pending.caller = caller
+            self._query(prompt, pending)
+            return
+
+        gen = self._new_generation()
+        self._safe_call(self.audio, "audio.stop", timeout=5.0)
+        self._safe_call(self.ui, "ui.overlay.state", {"state": "thinking"}, timeout=30.0)
+        self._safe_call(self.ui, "ui.reply.reset", timeout=30.0)
+        self._safe_call(self.ui, "ui.reply.thinking", timeout=30.0)
+        finished = threading.Event()
+
+        def show_heads_up() -> None:
+            if finished.is_set() or not self._is_current(gen):
+                return
+            self._on_reply_chunk(
+                {
+                    "text": "Wisp is still deciding whether this request needs an app action; this may take a few more seconds.",
+                    "is_progress": True,
+                },
+                thought_parser=None,
+            )
+
+        heads_up = threading.Timer(_ACTION_PROGRESS_HEADS_UP_SECONDS, show_heads_up)
+        heads_up.daemon = True
+        heads_up.start()
+
+        def on_event(event: str, payload: Any, _req_id: Any = None) -> None:
+            if event == "privacy.review.request":
+                self._handle_privacy_review_request(payload)
+
+        capability_rows = [
+            {
+                "capability_type": str(item.get("capability_type") or ""),
+                "title": str(item.get("label") or ""),
+                "description": str(item.get("hint") or ""),
+            }
+            for item in action_suggestions
+        ]
+        decision_schema = {
+            "type": "object",
+            "properties": {
+                "disposition": {
+                    "type": "string",
+                    "enum": ["answer", "action", "clarification", "unsupported"],
+                    "description": "Whether to answer, plan a supported app action, ask one question, or refuse an unsupported app mutation.",
+                },
+                "capability_type": {
+                    "type": "string",
+                    "enum": [""] + capabilities,
+                    "description": "Use an exact available capability only when disposition is action; otherwise use an empty string.",
+                },
+                "action_instruction": {
+                    "type": "string",
+                    "description": "A precise instruction for the selected action planner, or an empty string when no action is needed.",
+                },
+                "response_text": {
+                    "type": "string",
+                    "description": "The complete user-facing answer, clarification question, or unsupported-action explanation. Empty for an action.",
+                },
+            },
+            "required": ["disposition", "capability_type", "action_instruction", "response_text"],
+            "additionalProperties": False,
+        }
+        app_context = {
+            "provider": {
+                "id": str(provider.get("id") or ""),
+                "app": str(provider.get("app") or ""),
+                "display_name": str(provider.get("display_name") or ""),
+            },
+            "active_target": {
+                "name": str(active_app.get("name") or "")[:500],
+                "process_name": str(active_app.get("process_name") or "")[:160],
+                "browser_url": (
+                    str(browser_app.get("browser_url") or "")[:2_000]
+                    if str(pending.caller.get("context_browser_mode") or "off") != "off"
+                    else ""
+                ),
+            },
+            "selected_text": (
+                str(selected_text or "")[:8_000]
+                if pending.caller.get("_context_selection_enabled", True)
+                else ""
+            ),
+            "selection": {
+                key: value
+                for key, value in app_selection.items()
+                if key in {"app", "document_name", "sheet_name", "selection_address", "row_count", "column_count"}
+            },
+            "available_capabilities": capability_rows,
+        }
+        try:
+            result = self._brain_reply_call_with_events(
+                "brain.action.plan",
+                {
+                    "planning_tool_name": "wisp_choose_app_response",
+                    "planning_tool_description": (
+                        "Classify the user's prompt for the detected app. Choose action only when the user clearly "
+                        "requests a mutation covered by one available capability. Answer informational requests "
+                        "directly, ask one concise question when required, and mark unsupported mutations honestly."
+                    ),
+                    "input_schema": decision_schema,
+                    "user_prompt": prompt,
+                    "app_context": app_context,
+                },
+                timeout=_INTERACTIVE_LLM_TIMEOUT_SECONDS,
+                on_event=on_event,
+                generation=gen,
+            )
+        except Exception as exc:  # noqa: BLE001 - no application mutation has occurred
+            if self._is_current(gen):
+                self._notice(f"Wisp couldn't interpret this app request: {self._friendly_error(exc)}", severity="error")
+                self._set_idle()
+            return
+        finally:
+            finished.set()
+            heads_up.cancel()
+        if not self._is_current(gen):
+            return
+
+        if not isinstance(result, dict) or str(result.get("tool_name") or "") != "wisp_choose_app_response":
+            self._notice("The model did not use Wisp's required app-response tool. Nothing was changed.", severity="warning")
+            self._set_idle()
+            return
+        arguments = result.get("arguments") if isinstance(result, dict) else {}
+        arguments = arguments if isinstance(arguments, dict) else {}
+        disposition = str(arguments.get("disposition") or "").strip().lower()
+        capability_type = str(arguments.get("capability_type") or "").strip()
+        response_text = str(arguments.get("response_text") or "").strip()
+        if disposition == "action":
+            chosen = next(
+                (
+                    item for item in action_suggestions
+                    if str(item.get("capability_type") or "") == capability_type
+                ),
+                None,
+            )
+            if not isinstance(chosen, dict):
+                self._notice("The model selected an unavailable app action. Nothing was changed.", severity="warning")
+                self._set_idle()
+                return
+            action_prompt = str(arguments.get("action_instruction") or "").strip() or prompt
+            self._dispatch_provider_action(
+                pending,
+                action_prompt,
+                {
+                    "mode": "action",
+                    "provider_id": str(provider.get("id") or ""),
+                    "app": str(provider.get("app") or ""),
+                    "suggestion_id": str(chosen.get("id") or ""),
+                    "capability_type": capability_type,
+                    "planning_tool": str(chosen.get("planning_tool") or ""),
+                },
+                active_app=active_app,
+                browser_app=browser_app,
+                app_selection=app_selection,
+                selected_text=selected_text,
+            )
+            return
+
+        if disposition not in {"answer", "clarification", "unsupported"} or not response_text:
+            self._notice("The model did not return a usable app response. Nothing was changed.", severity="warning")
+            self._set_idle()
+            return
+        self._safe_call(
+            self.ui,
+            "ui.reply.chunk",
+            {"text": response_text, "is_thought": False, "is_progress": False},
+            timeout=30.0,
+        )
+        self._safe_call(self.ui, "ui.reply.done", timeout=30.0)
+        self._set_idle()
+
+    @staticmethod
+    def _is_browser_form_action(prompt: str, active_app: dict[str, Any]) -> bool:
+        """Recognize an explicit request to fill existing fields in a managed browser."""
+        try:
+            from core.actions.adapters.browser import is_browser_app
+
+            if not is_browser_app(active_app):
+                return False
+        except Exception:
+            return False
+        text = " ".join(str(prompt or "").casefold().split())
+        if not text or len(text) > 1_000:
+            return False
+        verbs = {
+            "fill", "fill in", "fill out", "complete", "enter", "populate", "set", "type",
+            "填寫", "填入", "填表", "填写", "輸入", "输入",
+        }
+        objects = {
+            "form", "field", "fields", "details", "information", "application", "survey",
+            "表單", "表格", "欄位", "字段", "資料", "信息",
+        }
+        return any(verb in text for verb in verbs) and (
+            any(noun in text for noun in objects) or " with " in text or ":" in text
+        )
+
+    def _run_browser_form_action(
+        self,
+        pending: PendingInvocation,
+        prompt: str,
+        active_app: dict[str, Any],
+        *,
+        planning_tool: str = "browser_plan_fill_form",
+    ) -> None:
+        """Plan, preview, fill, and verify safe fields without submitting the page."""
+        trace = ActionTrace(
+            "browser.fill_form",
+            app="browser",
+            started_unix_ns=pending.invoked_at_unix_ns,
+        )
+        progress = self._new_action_progress("browser.fill_form", app="browser", trace=trace)
+        gen = self._new_generation()
+        self._safe_call(self.audio, "audio.stop", timeout=5.0)
+        self._safe_call(self.ui, "ui.overlay.state", {"state": "thinking"}, timeout=30.0)
+        self._safe_call(self.ui, "ui.reply.reset", timeout=30.0)
+        self._safe_call(self.ui, "ui.reply.thinking", timeout=30.0)
+        progress.advance(
+            ActionProgressStage.READING,
+            "Reading safe editable fields from the current browser page...",
+        )
+        trace.mark("snapshot_requested")
+        snapshot_response = self._safe_call(
+            self.native,
+            "native.action.browser.form_snapshot",
+            {"active_app": active_app},
+            timeout=5.0,
+        )
+        snapshot_value = (
+            snapshot_response.get("snapshot")
+            if isinstance(snapshot_response, dict) and isinstance(snapshot_response.get("snapshot"), dict)
+            else {}
+        )
+        if not isinstance(snapshot_response, dict) or not snapshot_response.get("ok") or not snapshot_value:
+            error = str((snapshot_response or {}).get("error") or "The current page could not be inspected.")
+            progress.advance(ActionProgressStage.FAILED, "The browser page is not ready for a safe action.")
+            trace.finish("failed", failure_stage="snapshot", error_type=error.split(":", 1)[0][:80])
+            self._notice(
+                "Wisp could not inspect this page through its private browser API. "
+                "Reopen Chrome through Wisp control and try again.",
+                severity="warning",
+                technical_detail=error,
+            )
+            self._set_idle()
+            return
+        try:
+            from core.actions.adapters.browser import (
+                BrowserActionAdapter,
+                BrowserFormSnapshot,
+                browser_capabilities,
+                build_fill_form_plan,
+            )
+
+            snapshot = BrowserFormSnapshot.from_dict(snapshot_value)
+        except Exception as exc:  # noqa: BLE001 - malformed native state must never reach Apply
+            progress.advance(ActionProgressStage.FAILED, "The browser fields did not pass safety checks.")
+            trace.finish("failed", failure_stage="snapshot_validation", error_type=type(exc).__name__)
+            self._notice(f"Wisp couldn't prepare this browser action: {exc}", severity="warning")
+            self._set_idle()
+            return
+
+        progress.advance(
+            ActionProgressStage.PLANNING,
+            f"Found {len(snapshot.fields)} safe field(s). Drafting the exact values to fill...",
+        )
+        model_finished = threading.Event()
+        heads_up = self._start_action_progress_heads_up(
+            gen,
+            model_finished,
+            progress,
+            ActionProgressStage.PLANNING,
+            "The model is still matching your request to the page fields; this may take a few more seconds.",
+        )
+
+        def on_event(event: str, payload: Any, _req_id: Any = None) -> None:
+            if event == "privacy.review.request":
+                self._handle_privacy_review_request(payload)
+
+        model_instruction = (
+            f"{prompt}\n\n"
+            "Fill the forced planning tool with exact field assignments. Use only field_id values present in the "
+            "snapshot. Omit fields the user did not ask to change. Select values must exactly match one provided "
+            "option. Never submit, click, navigate, or propose any operation outside this tool."
+        )
+        try:
+            trace.mark("model_requested", field_count=len(snapshot.fields))
+            result = self._brain_reply_call_with_events(
+                "brain.action.plan",
+                {
+                    "planning_tool_name": planning_tool,
+                    "planning_tool_description": (
+                        "Plan exact values for the current safe browser fields. This tool can only fill reviewed "
+                        "fields and cannot submit, click, or navigate."
+                    ),
+                    "input_schema": browser_capabilities()[0].input_schema,
+                    "user_prompt": model_instruction,
+                    "app_context": snapshot.model_context(),
+                },
+                timeout=_INTERACTIVE_LLM_TIMEOUT_SECONDS,
+                on_event=on_event,
+                generation=gen,
+            )
+        except Exception as exc:  # noqa: BLE001 - no page mutation occurred
+            progress.advance(ActionProgressStage.FAILED, "The form values could not be drafted.")
+            trace.finish("failed", failure_stage="model", error_type=type(exc).__name__)
+            if self._is_current(gen):
+                self._notice(f"Browser form action failed: {self._friendly_error(exc)}", severity="error")
+                self._set_idle()
+            return
+        finally:
+            model_finished.set()
+            heads_up.cancel()
+        if not self._is_current(gen):
+            progress.advance(ActionProgressStage.CANCELLED, "This browser action was replaced by a newer request.")
+            trace.finish("superseded", failure_stage="after_model")
+            self._set_idle()
+            return
+
+        progress.advance(
+            ActionProgressStage.VALIDATING,
+            "Draft received. Checking every field, value, and page boundary...",
+        )
+        try:
+            if not isinstance(result, dict) or str(result.get("tool_name") or "") != planning_tool:
+                raise ValueError("The model did not return the required browser planning tool.")
+            planned_arguments = (
+                result.get("arguments") if isinstance(result, dict) and isinstance(result.get("arguments"), dict)
+                else {}
+            )
+            assignments = planned_arguments.get("assignments")
+            if not isinstance(assignments, list):
+                raise ValueError("The model did not return a form assignment list.")
+            summary = str((result or {}).get("visible_text") or "").strip()
+            plan = build_fill_form_plan(
+                snapshot,
+                assignments,
+                summary=summary or f"Fill {len(assignments)} field(s) on {snapshot.title}",
+            )
+            progress.advance(
+                ActionProgressStage.PREPARING_PREVIEW,
+                "Safety checks passed. Building the exact field-by-field preview...",
+            )
+            preview = BrowserActionAdapter().render_preview(plan, snapshot)
+        except Exception as exc:  # noqa: BLE001 - invalid model output never reaches the page
+            progress.advance(ActionProgressStage.FAILED, "The proposed values could not form a safe browser action.")
+            trace.finish("failed", failure_stage="preview_build", error_type=type(exc).__name__)
+            self._notice(f"Wisp couldn't build a safe form preview: {exc}", severity="warning")
+            self._set_idle()
+            return
+
+        progress.advance(
+            ActionProgressStage.AWAITING_APPROVAL,
+            preview.summary,
+        )
+        self._set_idle()
+        decision = self._safe_call(
+            self.ui,
+            "ui.action.preview.request",
+            {
+                "plan_id": preview.plan_id,
+                "title": preview.title,
+                "summary": preview.summary,
+                "html": preview.html,
+                "details": list(preview.details),
+                "warnings": list(preview.warnings),
+            },
+            timeout=300.0,
+        )
+        if not isinstance(decision, dict) or not decision.get("approved"):
+            progress.advance(ActionProgressStage.CANCELLED, "Browser form action cancelled. Nothing was changed.")
+            trace.finish("cancelled", failure_stage="preview_decision")
+            self._notice("Browser form action cancelled. Nothing was changed.")
+            self._set_idle()
+            return
+
+        self._safe_call(self.ui, "ui.overlay.state", {"state": "thinking"}, timeout=30.0)
+        progress.advance(
+            ActionProgressStage.APPLYING,
+            "Rechecking the page, filling the reviewed fields, and verifying every value...",
+        )
+        response = self._safe_call(
+            self.native,
+            "native.action.browser.form_apply",
+            {
+                "plan": plan.to_dict(),
+                "confirmed": True,
+                "idempotency_key": f"{plan.plan_id}:apply",
+            },
+            timeout=15.0,
+        )
+        if isinstance(response, dict) and response.get("ok"):
+            applied = response.get("result") if isinstance(response.get("result"), dict) else {}
+            progress.advance(ActionProgressStage.COMPLETE, "Reviewed browser fields filled and verified.")
+            trace.finish("applied", result_status=str(applied.get("status") or "applied"))
+            self._status_notice(str(applied.get("message") or "Filled the browser form without submitting it."))
+            self._set_idle()
+            return
+        error = str((response or {}).get("error") or "The browser did not verify the reviewed field values.")
+        progress.advance(ActionProgressStage.FAILED, "The reviewed browser action could not be verified.")
+        trace.finish("failed", failure_stage="apply", error_type=error.split(":", 1)[0][:80])
+        self._notice(f"Wisp couldn't fill the browser form: {error}", severity="warning")
+        self._set_idle()
+
+    @staticmethod
+    def _is_calc_chart_action(prompt: str, app_selection: dict[str, Any]) -> bool:
+        """Recognize the narrow local fast path Wisp can execute exactly."""
+        if app_selection.get("app") != "libreoffice_calc":
+            return False
+        text = " ".join(str(prompt or "").casefold().split())
+        if not text or len(text) > 220:
+            return False
+        unsupported = {
+            "pie", "line chart", "scatter", "area chart", "donut", "doughnut",
+            "\u9905\u5716", "\u997c\u56fe", "\u6298\u7dda", "\u6298\u7ebf", "\u6563\u9ede", "\u6563\u70b9",
+        }
+        if any(token in text for token in unsupported):
+            return False
+        nouns = {"chart", "graph", "plot", "\u5716\u8868", "\u56fe\u8868", "\u5716\u5f62", "\u56fe\u5f62"}
+        verbs = {
+            "create", "add", "insert", "make", "draw", "plot", "generate", "build", "chart", "graph",
+            "\u5efa\u7acb", "\u65b0\u589e", "\u63d2\u5165", "\u88fd\u4f5c", "\u521b\u5efa", "\u6dfb\u52a0",
+        }
+        return any(token in text for token in nouns) and any(token in text for token in verbs)
+
+    def _run_calc_chart_action(
+        self,
+        pending: PendingInvocation,
+        selection: dict[str, Any],
+        *,
+        prompt: str = "Create a vertical bar chart from the selected cells.",
+        planning_tool: str = "calc_plan_add_chart",
+        capability_type: str = "calc.add_chart@1",
+    ) -> None:
+        """Preview, confirm, execute, and report one bounded Calc action."""
+        action_key = capability_type.removesuffix("@1")
+        trace = ActionTrace(
+            action_key,
+            app="libreoffice_calc",
+            started_unix_ns=pending.invoked_at_unix_ns,
+        )
+        progress = self._new_action_progress(action_key, app="libreoffice_calc", trace=trace)
+        gen = self._new_generation()
+        self._safe_call(self.audio, "audio.stop", timeout=5.0)
+        self._safe_call(self.ui, "ui.overlay.state", {"state": "thinking"}, timeout=30.0)
+        self._safe_call(self.ui, "ui.reply.reset", timeout=30.0)
+        self._safe_call(self.ui, "ui.reply.thinking", timeout=30.0)
+        progress.advance(
+            ActionProgressStage.TARGETING,
+            "Checking the active Calc sheet and action connection...",
+        )
+        connection_finished = threading.Event()
+        connection_heads_up = self._start_action_progress_heads_up(
+            gen,
+            connection_finished,
+            progress,
+            ActionProgressStage.TARGETING,
+            "Calc is still starting its private action connection; Wisp is waiting without taking focus.",
+        )
+        try:
+            status = self._safe_call(self.native, "native.action.calc.status", {}, timeout=25.0)
+        finally:
+            connection_finished.set()
+            connection_heads_up.cancel()
+        if isinstance(status, dict) and status.get("available") is False:
+            reason = str(status.get("reason") or "")
+            progress.advance(ActionProgressStage.FAILED, "Calc is not ready for a background action.")
+            trace.finish("failed", failure_stage="availability", error_type=reason[:80])
+            if reason == "bridge_pending_restart":
+                self._notice(
+                    "Wisp installed its Calc action connection, but this LibreOffice process was already running "
+                    "before that one-time integration update. Reopen LibreOffice once to load it. After that, "
+                    "Calc and Wisp can be opened in either order.",
+                    severity="warning",
+                )
+            else:
+                self._notice(
+                    "Focusless Calc actions are not available in this session. Wisp did not change the spreadsheet.",
+                    severity="warning",
+                )
+            self._set_idle()
+            return
+        progress.advance(
+            ActionProgressStage.READING,
+            "Reading the selected Calc range and checking its current values...",
+        )
+        active_app = (
+            pending.context.get("active_app")
+            if isinstance(pending.context, dict)
+            and isinstance(pending.context.get("active_app"), dict)
+            else {}
+        )
+        app_result = self._safe_call(
+            self.native,
+            "native.action.calc.snapshot",
+            {"active_app": active_app},
+            timeout=12.0,
+        ) or {}
+        selection = (
+            app_result.get("selection")
+            if isinstance(app_result, dict) and isinstance(app_result.get("selection"), dict)
+            else {}
+        )
+        if not selection:
+            error = str(
+                app_result.get("error")
+                if isinstance(app_result, dict)
+                else ""
+            ).strip() or "Calc did not return a readable selected range."
+            progress.advance(ActionProgressStage.FAILED, "The selected Calc range could not be read.")
+            trace.finish("failed", failure_stage="snapshot", error_type=error.split(":", 1)[0][:80])
+            self._notice(
+                f"Wisp couldn't read the selected Calc cells: {error}",
+                severity="warning",
+            )
+            self._set_idle()
+            return
+        if isinstance(pending.context, dict):
+            pending.context["app_selection"] = selection
+            pending.context["selected_text"] = str(selection.get("selected_text") or "")
+            pending.context["app_selection_deferred"] = False
+        try:
+            from core.actions.adapters.calc import (
+                CalcActionAdapter,
+                CalcSnapshot,
+                build_chart_plan,
+                build_format_table_plan,
+                build_sort_range_plan,
+            )
+
+            snapshot = CalcSnapshot.from_selection(selection)
+            if capability_type == "calc.add_chart@1":
+                planning_description = (
+                    "Plan one vertical bar chart title for the captured Calc selection. The range and chart kind "
+                    "are fixed by Wisp and this tool cannot edit cells or create other objects."
+                )
+                planning_schema = {
+                    "type": "object",
+                    "properties": {
+                        "title": {
+                            "type": "string",
+                            "maxLength": 120,
+                            "description": "A concise title for the vertical bar chart.",
+                        },
+                    },
+                    "required": ["title"],
+                    "additionalProperties": False,
+                }
+                planning_progress = "Selection checked. Drafting the exact chart title and operation..."
+            elif capability_type == "calc.format_table@1":
+                planning_description = (
+                    "Plan the registered clean-table formatting operation for the captured Calc selection. "
+                    "Choose whether the first selected row is a header. The operation cannot change cell contents."
+                )
+                planning_schema = {
+                    "type": "object",
+                    "properties": {
+                        "has_header": {
+                            "type": "boolean",
+                            "description": "True only when the first selected row contains column headings.",
+                        },
+                    },
+                    "required": ["has_header"],
+                    "additionalProperties": False,
+                }
+                planning_progress = "Selection checked. Planning the exact formatting-only changes..."
+            elif capability_type == "calc.sort_range@1":
+                headers = [str(value).strip() for value in snapshot.values[0] if str(value).strip()]
+                unique_headers = [header for header in headers if headers.count(header) == 1]
+                if not unique_headers:
+                    raise ValueError("Sorting requires at least one unique, non-empty header in the first selected row.")
+                planning_description = (
+                    "Plan one row sort for the captured Calc selection. Choose one exact available header and a "
+                    "direction. Wisp keeps the header fixed and always moves complete rows together."
+                )
+                planning_schema = {
+                    "type": "object",
+                    "properties": {
+                        "column_header": {
+                            "type": "string",
+                            "enum": unique_headers,
+                            "description": "The exact selected header to sort by.",
+                        },
+                        "direction": {
+                            "type": "string",
+                            "enum": ["ascending", "descending"],
+                        },
+                    },
+                    "required": ["column_header", "direction"],
+                    "additionalProperties": False,
+                }
+                planning_progress = "Selection checked. Choosing the exact sort column and direction..."
+            else:
+                raise ValueError("This Calc operation is not registered.")
+            progress.advance(
+                ActionProgressStage.PLANNING,
+                planning_progress,
+            )
+            model_finished = threading.Event()
+            heads_up = self._start_action_progress_heads_up(
+                gen,
+                model_finished,
+                progress,
+                ActionProgressStage.PLANNING,
+                "The model is still preparing the Calc operation; this may take a few more seconds.",
+            )
+
+            def on_event(event: str, payload: Any, _req_id: Any = None) -> None:
+                if event == "privacy.review.request":
+                    self._handle_privacy_review_request(payload)
+
+            try:
+                result = self._brain_reply_call_with_events(
+                    "brain.action.plan",
+                    {
+                        "planning_tool_name": planning_tool,
+                        "planning_tool_description": planning_description,
+                        "input_schema": planning_schema,
+                        "user_prompt": prompt,
+                        "app_context": {
+                            "document_title": snapshot.document_title,
+                            "selection_address": snapshot.selection_address,
+                            "row_count": snapshot.row_count,
+                            "column_count": snapshot.column_count,
+                            "values": [list(row) for row in snapshot.values],
+                        },
+                    },
+                    timeout=_INTERACTIVE_LLM_TIMEOUT_SECONDS,
+                    on_event=on_event,
+                    generation=gen,
+                )
+            finally:
+                model_finished.set()
+                heads_up.cancel()
+            if not isinstance(result, dict) or str(result.get("tool_name") or "") != planning_tool:
+                raise ValueError("The model did not return the required Calc planning tool.")
+            planned_arguments = (
+                result.get("arguments") if isinstance(result, dict) and isinstance(result.get("arguments"), dict)
+                else {}
+            )
+            if capability_type == "calc.add_chart@1":
+                chart_title = str(planned_arguments.get("title") or "").strip()
+                if not chart_title:
+                    raise ValueError("The model did not return a chart title.")
+                plan = build_chart_plan(snapshot, title=chart_title)
+            elif capability_type == "calc.format_table@1":
+                if not isinstance(planned_arguments.get("has_header"), bool):
+                    raise ValueError("The model did not identify whether the selection has a header row.")
+                plan = build_format_table_plan(snapshot, has_header=bool(planned_arguments["has_header"]))
+            else:
+                plan = build_sort_range_plan(
+                    snapshot,
+                    column_label=str(planned_arguments.get("column_header") or ""),
+                    direction=str(planned_arguments.get("direction") or ""),
+                )
+            progress.advance(
+                ActionProgressStage.VALIDATING,
+                "Selection checked. Validating the exact Calc operation...",
+            )
+            progress.advance(
+                ActionProgressStage.PREPARING_PREVIEW,
+                "Building the exact preview from the validated range...",
+            )
+            preview = CalcActionAdapter().render_preview(plan, snapshot)
+        except Exception as exc:  # noqa: BLE001 - keep malformed app state away from paste-back
+            progress.advance(ActionProgressStage.FAILED, "The Calc action preview could not be prepared.")
+            trace.finish("failed", failure_stage="preview_build", error_type=type(exc).__name__)
+            self._notice(f"Wisp couldn't prepare the Calc action preview: {exc}", severity="warning")
+            self._set_idle()
+            return
+
+        progress.advance(
+            ActionProgressStage.AWAITING_APPROVAL,
+            preview.summary,
+        )
+        decision = self._safe_call(
+            self.ui,
+            "ui.action.preview.request",
+            {
+                "plan_id": preview.plan_id,
+                "title": preview.title,
+                "summary": preview.summary,
+                "html": preview.html,
+                "details": list(preview.details),
+                "warnings": list(preview.warnings),
+            },
+            timeout=300.0,
+        )
+        if not isinstance(decision, dict) or not decision.get("approved"):
+            progress.advance(ActionProgressStage.CANCELLED, "Calc action cancelled. Nothing was changed.")
+            trace.finish("cancelled", failure_stage="preview_decision")
+            self._notice("Calc action cancelled. Nothing was changed.")
+            self._set_idle()
+            return
+
+        self._notice("Applying the reviewed action in Calc...")
+        progress.advance(
+            ActionProgressStage.APPLYING,
+            "Rechecking the range, applying the reviewed action, and verifying the result...",
+        )
+        response = self._safe_call(
+            self.native,
+            "native.action.calc.apply",
+            {
+                "plan": plan.to_dict(),
+                "confirmed": True,
+                "idempotency_key": f"{plan.plan_id}:apply",
+            },
+            timeout=15.0,
+        )
+        if isinstance(response, dict) and response.get("ok"):
+            result = response.get("result") if isinstance(response.get("result"), dict) else {}
+            progress.advance(ActionProgressStage.COMPLETE, "Calc action applied and verified.")
+            trace.finish("applied", result_status=str(result.get("status") or "applied"))
+            self._status_notice(str(result.get("message") or "Calc action applied and verified."))
+            self._set_idle()
+            return
+        error = str((response or {}).get("error") or "Calc did not confirm the change.")
+        progress.advance(ActionProgressStage.FAILED, "Calc could not verify the reviewed action.")
+        trace.finish("failed", failure_stage="apply", error_type=error.split(":", 1)[0][:80])
+        self._notice(f"Wisp couldn't apply the Calc action: {error}", severity="warning")
+        self._set_idle()
+
+    @staticmethod
+    def _is_vscode_fix_action(
+        prompt: str,
+        active_app: dict[str, Any],
+        selected_text: str,
+    ) -> bool:
+        """Recognize an explicit selected-code mutation in a VS Code-like editor."""
+        try:
+            from core.actions.adapters.vscode import is_vscode_app
+
+            if not is_vscode_app(active_app):
+                return False
+        except Exception:
+            return False
+        text = " ".join(str(prompt or "").casefold().split())
+        if not text or len(text) > 500:
+            return False
+        action_words = {
+            "fix", "debug", "repair", "refactor", "optimize", "implement", "change",
+            "improve", "correct", "solve", "patch", "rewrite", "edit", "write", "create",
+            "make", "update",
+            "add error handling",
+            "修復", "修正", "除錯", "重構", "改善", "實作", "修改", "解决", "修复",
+        }
+        return any(word in text for word in action_words)
+
+    def _run_vscode_fix_action(
+        self,
+        pending: PendingInvocation,
+        prompt: str,
+        active_app: dict[str, Any],
+        selected_text: str,
+        *,
+        planning_tool: str = "vscode_plan_replace_selection",
+    ) -> None:
+        """Plan, preview, and apply one fingerprint-checked selected-code fix."""
+        trace = ActionTrace(
+            "vscode.code_change",
+            app="vscode",
+            started_unix_ns=pending.invoked_at_unix_ns,
+        )
+        for stage, when in (
+            ("initial_context_captured", pending.initial_context_at_unix_ns),
+            ("intent_presented", pending.intent_shown_at_unix_ns),
+            ("context_ready", pending.context_ready_at_unix_ns),
+        ):
+            if when:
+                trace.mark_at(stage, when)
+        progress = self._new_action_progress("vscode.code_change", app="vscode", trace=trace)
+        trace.mark(
+            "intent_received",
+            prompt_chars=len(prompt),
+            captured_selection_chars=len(selected_text),
+        )
+        gen = self._new_generation()
+        self._safe_call(self.audio, "audio.stop", timeout=5.0)
+        self._safe_call(self.ui, "ui.overlay.state", {"state": "thinking"}, timeout=30.0)
+        self._safe_call(self.ui, "ui.reply.reset", timeout=30.0)
+        self._safe_call(self.ui, "ui.reply.thinking", timeout=30.0)
+        progress.advance(
+            ActionProgressStage.READING,
+            "Reading the active saved VS Code file and exact selected range...",
+        )
+
+        if self._is_vscode_untitled_tab(active_app):
+            self._run_vscode_untitled_action(
+                pending,
+                prompt,
+                active_app,
+                selected_text,
+                trace=trace,
+                progress=progress,
+                generation=gen,
+                planning_tool=planning_tool,
+            )
+            return
+
+        trace.mark("snapshot_requested")
+        snapshot_response = self._safe_call(
+            self.native,
+            "native.action.vscode.snapshot",
+            {"active_app": active_app, "selected_text": selected_text},
+            timeout=4.0,
+        )
+        trace.mark(
+            "snapshot_returned",
+            ok=bool(isinstance(snapshot_response, dict) and snapshot_response.get("ok")),
+            native_timing=(snapshot_response or {}).get("timing", {})
+            if isinstance(snapshot_response, dict)
+            else {},
+        )
+        snapshot_value = (
+            snapshot_response.get("snapshot")
+            if isinstance(snapshot_response, dict) and isinstance(snapshot_response.get("snapshot"), dict)
+            else {}
+        )
+        if not isinstance(snapshot_response, dict) or not snapshot_response.get("ok") or not snapshot_value:
+            error = str((snapshot_response or {}).get("error") or "The active saved file could not be read.")
+            if self._is_vscode_save_required_error(error):
+                progress.advance(
+                    ActionProgressStage.FAILED,
+                    "This VS Code tab must be saved before Wisp can change it safely.",
+                )
+                trace.finish("failed", failure_stage="save_required", error_type="unsaved_editor")
+                self._notice(
+                    "Save this tab once, then press Ctrl+Shift+Q again. "
+                    "Wisp did not change anything.\n\n"
+                    "Recommendation: Press Ctrl+S to choose a filename, then run the same request again.",
+                    severity="warning",
+                )
+                self._set_idle()
+                return
+            progress.advance(ActionProgressStage.FAILED, "The active saved file could not be read safely.")
+            trace.finish("failed", failure_stage="snapshot", error_type=error.split(":", 1)[0][:80])
+            self._notice(f"Wisp couldn't prepare the VS Code action: {error}", severity="warning")
+            self._set_idle()
+            return
+
+        try:
+            from core.actions.adapters.vscode import (
+                VSCodeActionAdapter,
+                VSCodeSnapshot,
+                build_replace_file_plan,
+                build_replace_selection_plan,
+            )
+
+            snapshot = VSCodeSnapshot.from_selection(snapshot_value)
+        except Exception as exc:  # noqa: BLE001 - malformed native state must not reach the model
+            progress.advance(ActionProgressStage.FAILED, "The saved-file target did not pass safety checks.")
+            trace.finish("failed", failure_stage="snapshot_validation", error_type=type(exc).__name__)
+            self._notice(f"Wisp couldn't prepare the VS Code action: {exc}", severity="warning")
+            self._set_idle()
+            return
+
+        trace.mark(
+            "snapshot_validated",
+            target_kind="whole_file" if snapshot.is_whole_file else "selection",
+            document_chars=len(snapshot.text),
+            selected_chars=len(snapshot.selected_text),
+        )
+        progress.advance(
+            ActionProgressStage.PLANNING,
+            (
+                "Target checked. Drafting the exact contents for the new file..."
+                if snapshot.is_whole_file
+                else "Target checked. Reviewing the selected code and drafting the exact change..."
+            ),
+        )
+        model_finished = threading.Event()
+        model_heads_up_timer = self._start_action_progress_heads_up(
+            gen,
+            model_finished,
+            progress,
+            ActionProgressStage.PLANNING,
+            "The model is still drafting the exact code change; this may take a few more seconds.",
+        )
+        first_model_activity = threading.Event()
+
+        def on_event(event: str, payload: Any, _req_id: Any = None) -> None:
+            if event in {"rewrite.first_activity", "reply.chunk", "reply.done"} and not first_model_activity.is_set():
+                first_model_activity.set()
+                trace.mark("model_first_activity", event=event)
+            if event == "reply.chunk":
+                # Model summaries are not execution state. Keep the public
+                # action line deterministic while recording first activity.
+                return
+            elif event == "reply.done":
+                return
+            elif event == "privacy.review.request":
+                trace.mark("privacy_review_requested")
+                self._handle_privacy_review_request(payload)
+            elif event == "rewrite.telemetry":
+                trace.mark(
+                    "model_worker_telemetry",
+                    timing=payload if isinstance(payload, dict) else {},
+                )
+
+        context_radius = 2_500
+        context_start = max(0, snapshot.selection_start - context_radius)
+        context_end = min(len(snapshot.text), snapshot.selection_end + context_radius)
+        if snapshot.is_whole_file:
+            model_selected_text = "[The active saved VS Code file is currently empty.]"
+            rewrite_context = f"Active saved VS Code file: {snapshot.file_path}\nCurrent content: empty"
+            model_instruction = (
+                f"{prompt}\n\n"
+                "You are filling an empty saved VS Code file. Return the complete new file content, "
+                "not the bracketed placeholder. In assistant_response, briefly state what you created."
+            )
+        else:
+            model_selected_text = snapshot.selected_text
+            rewrite_context = (
+                f"Active saved file: {snapshot.file_path}\n"
+                f"Selected character range: {snapshot.selection_start}:{snapshot.selection_end}\n\n"
+                "Surrounding saved code:\n"
+                f"{snapshot.text[context_start:context_end]}"
+            )
+            model_instruction = (
+                f"{prompt}\n\n"
+                "You are proposing a change to selected code in VS Code. Return the complete replacement "
+                "for the selected block only, preserving valid indentation. In assistant_response, briefly "
+                "state the issue you found and how this replacement fixes it. Do not modify code outside "
+                "the selected block."
+            )
+        try:
+            _local_progress = (
+                "Planning the new file and drafting its exact contents…"
+                if snapshot.is_whole_file
+                else "Reviewing the selected code and drafting the exact change…"
+            )
+            trace.mark("local_progress_presented")
+            trace.mark("model_requested")
+            result = self._brain_reply_call_with_events(
+                "brain.action.plan",
+                {
+                    "planning_tool_name": planning_tool,
+                    "planning_tool_description": (
+                        "Plan the exact replacement text for the captured VS Code target. The tool cannot edit "
+                        "outside that target or execute commands."
+                    ),
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "replacement_text": {
+                                "type": "string",
+                                "description": "The complete replacement for only the captured editor target.",
+                            },
+                        },
+                        "required": ["replacement_text"],
+                        "additionalProperties": False,
+                    },
+                    "user_prompt": model_instruction,
+                    "app_context": {
+                        "selected_text": model_selected_text,
+                        "context": rewrite_context,
+                    },
+                },
+                timeout=_INTERACTIVE_LLM_TIMEOUT_SECONDS,
+                on_event=on_event,
+                generation=gen,
+            )
+        except Exception as exc:  # noqa: BLE001 - surface route failures without touching the file
+            log.exception("VS Code action planning failed")
+            progress.advance(ActionProgressStage.FAILED, "The code change could not be drafted.")
+            trace.finish("failed", failure_stage="model", error_type=type(exc).__name__)
+            if self._is_current(gen):
+                self._notice(f"VS Code fix failed: {self._friendly_error(exc)}", severity="error")
+                self._set_idle()
+            return
+        finally:
+            model_finished.set()
+            model_heads_up_timer.cancel()
+        if not self._is_current(gen):
+            progress.advance(ActionProgressStage.CANCELLED, "This code action was replaced by a newer request.")
+            trace.finish("superseded", failure_stage="after_model")
+            self._set_idle()
+            return
+        if not isinstance(result, dict) or str(result.get("tool_name") or "") != planning_tool:
+            progress.advance(ActionProgressStage.FAILED, "The model did not return the required code planning tool.")
+            trace.finish("failed", failure_stage="model_contract", error_type="wrong_planning_tool")
+            self._notice("Wisp couldn't build a safe code plan because the required tool was not returned.", severity="warning")
+            self._set_idle()
+            return
+        planned_arguments = (
+            result.get("arguments") if isinstance(result, dict) and isinstance(result.get("arguments"), dict)
+            else {}
+        )
+        replacement = str(planned_arguments.get("replacement_text") or "")
+        model_summary = str((result or {}).get("visible_text") or "").strip()
+        trace.mark(
+            "model_completed",
+            replacement_chars=len(replacement),
+            summary_chars=len(model_summary),
+        )
+        progress.advance(
+            ActionProgressStage.VALIDATING,
+            "Draft received. Checking its file boundary, selected range, and operation schema...",
+        )
+        try:
+            plan = (
+                build_replace_file_plan(
+                    snapshot,
+                    replacement,
+                    summary=model_summary or f"Proposed content for {snapshot.display_name}",
+                )
+                if snapshot.is_whole_file
+                else build_replace_selection_plan(
+                    snapshot,
+                    replacement,
+                    summary=model_summary or f"Proposed fix for {Path(snapshot.file_path).name}",
+                )
+            )
+            progress.advance(
+                ActionProgressStage.PREPARING_PREVIEW,
+                "Safety checks passed. Building the exact saved-file diff preview...",
+            )
+            preview = VSCodeActionAdapter().render_preview(plan, snapshot)
+        except Exception as exc:  # noqa: BLE001 - invalid model output never reaches Apply
+            progress.advance(ActionProgressStage.FAILED, "The proposed code could not form a safe diff.")
+            trace.finish("failed", failure_stage="preview_build", error_type=type(exc).__name__)
+            self._notice(f"Wisp couldn't build a safe code diff: {exc}", severity="warning")
+            self._set_idle()
+            return
+
+        progress.advance(
+            ActionProgressStage.AWAITING_APPROVAL,
+            preview.summary,
+        )
+        self._set_idle()
+        trace.mark("preview_requested", operation_count=len(plan.operations))
+        decision = self._safe_call(
+            self.ui,
+            "ui.action.preview.request",
+            {
+                "plan_id": preview.plan_id,
+                "title": preview.title,
+                "summary": preview.summary,
+                "html": preview.html,
+                "details": list(preview.details),
+                "warnings": list(preview.warnings),
+            },
+            timeout=300.0,
+        )
+        if isinstance(decision, dict):
+            show_called_at = int(
+                decision.get("show_called_at_unix_ns")
+                or decision.get("presented_at_unix_ns")
+                or 0
+            )
+            topmost_at = int(decision.get("topmost_at_unix_ns") or 0)
+            decided_at = int(decision.get("decided_at_unix_ns") or 0)
+            if show_called_at:
+                trace.mark_at("preview_show_called", show_called_at)
+            if topmost_at:
+                trace.mark_at("preview_raised_topmost", topmost_at)
+            if decided_at:
+                trace.mark_at(
+                    "preview_decided",
+                    decided_at,
+                    approved=bool(decision.get("approved")),
+                    decision_wait_ms=decision.get("decision_wait_ms"),
+                )
+            else:
+                trace.mark("preview_decided", approved=bool(decision.get("approved")))
+        if not isinstance(decision, dict) or not decision.get("approved"):
+            progress.advance(ActionProgressStage.CANCELLED, "Code change cancelled. Nothing was changed.")
+            trace.finish("cancelled", failure_stage="preview_decision")
+            self._notice("VS Code change cancelled. Nothing was changed.")
+            self._set_idle()
+            return
+
+        self._safe_call(self.ui, "ui.overlay.state", {"state": "thinking"}, timeout=30.0)
+        progress.advance(
+            ActionProgressStage.APPLYING,
+            "Rechecking the saved file, applying the reviewed change, and verifying the result...",
+        )
+        trace.mark("apply_requested")
+        response = self._safe_call(
+            self.native,
+            "native.action.vscode.apply",
+            {
+                "plan": plan.to_dict(),
+                "confirmed": True,
+                "idempotency_key": f"{plan.plan_id}:apply",
+            },
+            timeout=15.0,
+        )
+        trace.mark(
+            "apply_returned",
+            ok=bool(isinstance(response, dict) and response.get("ok")),
+            native_timing=(response or {}).get("timing", {}) if isinstance(response, dict) else {},
+        )
+        if isinstance(response, dict) and response.get("ok"):
+            applied = response.get("result") if isinstance(response.get("result"), dict) else {}
+            progress.advance(ActionProgressStage.COMPLETE, "Reviewed code change applied and verified.")
+            trace.finish(
+                "applied",
+                result_status=str(applied.get("status") or "applied"),
+                created_count=len(applied.get("created") or []),
+                verification_count=len(applied.get("verification") or []),
+            )
+            self._status_notice(str(applied.get("message") or "Applied the code change in VS Code."))
+            self._set_idle()
+            return
+        error = str((response or {}).get("error") or "VS Code did not confirm the file change.")
+        progress.advance(ActionProgressStage.FAILED, "The reviewed code change could not be verified.")
+        trace.finish("failed", failure_stage="apply", error_type=error.split(":", 1)[0][:80])
+        self._notice(f"Wisp couldn't apply the code change: {error}", severity="warning")
+        self._set_idle()
+
+    def _run_vscode_untitled_action(
+        self,
+        pending: PendingInvocation,
+        prompt: str,
+        active_app: dict[str, Any],
+        selected_text: str,
+        *,
+        trace: ActionTrace,
+        progress: ActionProgress,
+        generation: int,
+        planning_tool: str = "vscode_plan_replace_selection",
+    ) -> None:
+        """Preview and write through the exact editor range captured at summon time."""
+        focus_token = int(pending.context.get("focus_token") or 0)
+        if not focus_token:
+            progress.advance(
+                ActionProgressStage.FAILED,
+                "Wisp could not capture the exact Untitled editor target safely.",
+            )
+            trace.finish("failed", failure_stage="focus_capture", error_type="missing_focus_token")
+            self._notice(
+                "Keep the caret in the Untitled editor when you press Ctrl+Shift+Q, then try again.\n\n"
+                "Recommendation: Make sure the text editor itself has focus, not a panel or terminal.",
+                severity="warning",
+            )
+            self._set_idle()
+            return
+
+        display_name = str(active_app.get("name") or "Untitled VS Code tab").strip()
+        progress.advance(
+            ActionProgressStage.PLANNING,
+            (
+                "Editor target captured. Reviewing the selected code and drafting the exact change..."
+                if selected_text.strip()
+                else "Editor insertion point captured. Drafting the exact new content..."
+            ),
+        )
+        model_finished = threading.Event()
+        heads_up = self._start_action_progress_heads_up(
+            generation,
+            model_finished,
+            progress,
+            ActionProgressStage.PLANNING,
+            "The model is still drafting the exact code change; this may take a few more seconds.",
+        )
+
+        def on_event(event: str, payload: Any, _req_id: Any = None) -> None:
+            if event == "privacy.review.request":
+                trace.mark("privacy_review_requested")
+                self._handle_privacy_review_request(payload)
+            elif event == "rewrite.first_activity":
+                trace.mark("model_first_activity", event=event)
+            elif event == "rewrite.telemetry":
+                trace.mark("model_worker_telemetry", timing=payload if isinstance(payload, dict) else {})
+
+        model_selected_text = selected_text or "[The captured Untitled VS Code editor is currently empty.]"
+        instruction = (
+            f"{prompt}\n\n"
+            + (
+                "Return the complete replacement for the selected code only. "
+                if selected_text.strip()
+                else "Return the complete content to insert into the empty Untitled editor. "
+            )
+            + "Do not include Markdown fences. In assistant_response, briefly describe the proposed change."
+        )
+        try:
+            trace.mark("model_requested", target_kind="selection" if selected_text.strip() else "caret")
+            result = self._brain_reply_call_with_events(
+                "brain.action.plan",
+                {
+                    "planning_tool_name": planning_tool,
+                    "planning_tool_description": (
+                        "Plan the exact replacement or insertion text for the captured Untitled VS Code editor "
+                        "target. The tool cannot edit any other target or execute commands."
+                    ),
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "replacement_text": {
+                                "type": "string",
+                                "description": "The complete replacement or insertion for the captured target.",
+                            },
+                        },
+                        "required": ["replacement_text"],
+                        "additionalProperties": False,
+                    },
+                    "user_prompt": instruction,
+                    "app_context": {
+                        "selected_text": model_selected_text,
+                        "context": f"Active unsaved VS Code tab: {display_name}",
+                    },
+                },
+                timeout=_INTERACTIVE_LLM_TIMEOUT_SECONDS,
+                on_event=on_event,
+                generation=generation,
+            )
+        except Exception as exc:  # noqa: BLE001 - never touch the editor after a model failure
+            progress.advance(ActionProgressStage.FAILED, "The code change could not be drafted.")
+            trace.finish("failed", failure_stage="model", error_type=type(exc).__name__)
+            if self._is_current(generation):
+                self._notice(f"VS Code fix failed: {self._friendly_error(exc)}", severity="error")
+                self._set_idle()
+            return
+        finally:
+            model_finished.set()
+            heads_up.cancel()
+
+        if not self._is_current(generation):
+            progress.advance(ActionProgressStage.CANCELLED, "This code action was replaced by a newer request.")
+            trace.finish("superseded", failure_stage="after_model")
+            self._set_idle()
+            return
+
+        if not isinstance(result, dict) or str(result.get("tool_name") or "") != planning_tool:
+            progress.advance(ActionProgressStage.FAILED, "The model did not return the required code planning tool.")
+            trace.finish("failed", failure_stage="model_contract", error_type="wrong_planning_tool")
+            self._notice("Wisp couldn't build a safe code plan because the required tool was not returned.", severity="warning")
+            self._set_idle()
+            return
+        planned_arguments = (
+            result.get("arguments") if isinstance(result, dict) and isinstance(result.get("arguments"), dict)
+            else {}
+        )
+        replacement = str(planned_arguments.get("replacement_text") or "")
+        summary = str((result or {}).get("visible_text") or "").strip()
+        trace.mark("model_completed", replacement_chars=len(replacement), summary_chars=len(summary))
+        progress.advance(
+            ActionProgressStage.VALIDATING,
+            "Draft received. Checking the captured editor target and exact replacement...",
+        )
+        if not replacement.strip() or len(replacement) > 24_000:
+            progress.advance(ActionProgressStage.FAILED, "The proposed code could not form a safe diff.")
+            trace.finish("failed", failure_stage="replacement_validation", error_type="invalid_replacement")
+            self._notice("Wisp couldn't build a safe code diff for the Untitled tab.", severity="warning")
+            self._set_idle()
+            return
+
+        from core.actions.adapters.vscode import render_vscode_untitled_preview
+
+        progress.advance(
+            ActionProgressStage.PREPARING_PREVIEW,
+            "Safety checks passed. Building the exact Untitled editor diff preview...",
+        )
+        preview = render_vscode_untitled_preview(
+            replacement,
+            selected_text=selected_text,
+            display_name=display_name,
+            summary=summary or "Proposed change for the Untitled VS Code tab",
+        )
+        progress.advance(
+            ActionProgressStage.AWAITING_APPROVAL,
+            preview.summary,
+        )
+        self._set_idle()
+        decision = self._safe_call(
+            self.ui,
+            "ui.action.preview.request",
+            {
+                "plan_id": preview.plan_id,
+                "title": preview.title,
+                "summary": preview.summary,
+                "html": preview.html,
+                "details": list(preview.details),
+                "warnings": list(preview.warnings),
+            },
+            timeout=300.0,
+        )
+        if not isinstance(decision, dict) or not decision.get("approved"):
+            progress.advance(ActionProgressStage.CANCELLED, "Code change cancelled. Nothing was changed.")
+            trace.finish("cancelled", failure_stage="preview_decision")
+            self._notice("VS Code change cancelled. Nothing was changed.")
+            self._set_idle()
+            return
+
+        self._safe_call(self.ui, "ui.overlay.state", {"state": "thinking"}, timeout=30.0)
+        progress.advance(
+            ActionProgressStage.APPLYING,
+            "Writing the reviewed change to the captured Untitled editor target...",
+        )
+        paste = self._safe_call(
+            self.native,
+            "native.action.vscode.live_apply",
+            {
+                "text": replacement,
+                "active_app": active_app,
+                "editor_point": pending.context.get("editor_point") or {},
+                "confirmed": True,
+            },
+            timeout=30.0,
+        )
+        if isinstance(paste, dict) and paste.get("ok"):
+            progress.advance(ActionProgressStage.COMPLETE, "Reviewed code change written to the Untitled tab.")
+            trace.finish("applied", result_status="vscode_live_api_verified")
+            self._set_idle()
+            return
+
+        error = str((paste or {}).get("error") or "The captured editor target was no longer available.")
+        progress.advance(ActionProgressStage.FAILED, "Wisp could not write to the captured Untitled editor target.")
+        trace.finish("failed", failure_stage="paste_back", error_type=error.split(":", 1)[0][:80])
+        self._notice(
+            "Wisp could not reach this live VS Code editor through its private API bridge.\n\n"
+            "Recommendation: Reopen VS Code through Wisp control, keep the caret in that tab, and try again.",
+            severity="warning",
+            technical_detail=error,
+        )
+        self._set_idle()
+
+    @staticmethod
+    def _is_vscode_untitled_tab(active_app: dict[str, Any]) -> bool:
+        """Return whether the captured editor title identifies a VS Code Untitled buffer."""
+        title = " ".join(str(active_app.get("name") or "").casefold().split())
+        return bool(re.search(r"(?:^|\s|[\-—])untitled(?:[- ]?\d+)?(?:\s|$|[\-—])", title))
+
+    @staticmethod
+    def _is_vscode_save_required_error(error: str) -> bool:
+        """Recognize native failures that the user can resolve with one save."""
+        text = " ".join(str(error or "").casefold().split())
+        return any(
+            marker in text
+            for marker in (
+                "tab is unsaved",
+                "save it once",
+                "save the active vs code file",
+                "before asking wisp to change it",
+            )
+        )
 
     def add_context(self) -> None:
         """Add context."""
@@ -1814,6 +3534,7 @@ class FlowController:
                 "context_items": self._intent_context_items(pending),
                 "initial_custom_text": custom_text,
                 "focus_overlay": True,
+                "action_provider": pending.action_provider_context,
             },
             timeout=30.0,
         )
@@ -1834,6 +3555,7 @@ class FlowController:
                 "context_items": context_items or self._intent_context_items(pending),
                 "initial_custom_text": str(custom_text or ""),
                 "focus_overlay": True,
+                "action_provider": pending.action_provider_context,
             },
             timeout=30.0,
         )
@@ -1971,6 +3693,7 @@ class FlowController:
                 caller_idx=0,
                 caller=self._voice_caller(),
                 context=self._voice_context,
+                action_provider_context=self._action_provider_picker_context(self._voice_context),
                 screenshot_b64=self._voice_screenshot_b64,
             )
             self._voice_screenshot_b64 = None
@@ -1988,6 +3711,7 @@ class FlowController:
                         "context_items": self._intent_context_items(pending),
                         "initial_custom_text": text,
                         "focus_overlay": True,
+                        "action_provider": pending.action_provider_context,
                     },
                     timeout=30.0,
                 )
@@ -2570,6 +4294,65 @@ class FlowController:
             timeout=30.0,
         )
 
+    def _load_addon_tray_actions(
+        self,
+        snapshot: dict[str, Any] | None = None,
+    ) -> list[dict[str, str]]:
+        """Build enabled tray actions from a snapshot or an explicit refresh."""
+        result = snapshot
+        if result is None:
+            result = self._safe_call(self.brain, "brain.addons.list", timeout=30.0) or {}
+        rows = result.get("addons") if isinstance(result, dict) else []
+        actions: list[dict[str, str]] = []
+        for addon in rows or []:
+            if not isinstance(addon, dict) or not bool(addon.get("enabled", True)):
+                continue
+            addon_id = str(addon.get("id") or addon.get("name") or "").strip()
+            for raw_label in addon.get("tray_actions") or []:
+                label = str(raw_label or "").strip()
+                if addon_id and label:
+                    actions.append({"addon_id": addon_id, "label": label})
+        return actions
+
+    @staticmethod
+    def _addon_action_key(actions: list[dict[str, str]]) -> tuple[tuple[str, str], ...]:
+        """Return a deterministic identity for one tray-action snapshot."""
+        return tuple(
+            (str(item.get("addon_id") or ""), str(item.get("label") or ""))
+            for item in actions
+            if str(item.get("addon_id") or "") and str(item.get("label") or "")
+        )
+
+    def _publish_addon_tray_actions(self, actions: list[dict[str, str]]) -> bool:
+        """Rebuild the native tray only when the authoritative action set changed."""
+        key = self._addon_action_key(actions)
+        if key == self._addon_tray_actions_snapshot:
+            return False
+        self._addon_tray_actions_snapshot = key
+        self._safe_call(
+            self.ui,
+            "ui.addons.tray_actions",
+            {"actions": actions},
+            timeout=30.0,
+        )
+        return True
+
+    def _apply_addon_change(self, snapshot: dict[str, Any]) -> None:
+        """Apply a pushed enabled/disabled/installed addon snapshot immediately."""
+        actions = self._load_addon_tray_actions(snapshot)
+        changed = self._publish_addon_tray_actions(actions)
+        if changed:
+            log.info(
+                "addon tray actions updated: reason=%s addon=%s actions=%s",
+                str(snapshot.get("reason") or "changed"),
+                str(snapshot.get("addon_id") or ""),
+                len(actions),
+            )
+
+    def refresh_addon_tray_actions(self) -> None:
+        """Mirror enabled addon actions into the existing native Wisp tray."""
+        self._publish_addon_tray_actions(self._load_addon_tray_actions())
+
     def open_settings(self) -> None:
         """Open settings with live addon model tools from the brain process."""
         self._safe_call(
@@ -2648,7 +4431,72 @@ class FlowController:
         message = "Addon action finished."
         if isinstance(result, dict) and result.get("message"):
             message = str(result["message"])
-        self._notice(message)
+        workspace_opened = False
+        if isinstance(result, dict) and result.get("virtual_workspace_url"):
+            opened = self._safe_call(
+                self.ui,
+                "ui.show_virtual_workspace",
+                {"endpoint": str(result["virtual_workspace_url"])},
+                timeout=10.0,
+            )
+            if not (isinstance(opened, dict) and opened.get("shown")):
+                message = "The workspace started, but its native window could not be shown."
+            else:
+                workspace_opened = True
+        if not workspace_opened:
+            self._notice(message)
+        self.refresh_addon_tray_actions()
+
+    def chat_message_actions(self, data: dict[str, Any] | None = None) -> None:
+        """Send enabled addon message actions to the open Chat window."""
+        result = self._safe_call(
+            self.brain,
+            "brain.addons.message_actions",
+            {"payload": {"surface": "chat", "role": "assistant", **(data or {})}},
+            timeout=30.0,
+        )
+        actions = result.get("actions") if isinstance(result, dict) else []
+        self._safe_call(
+            self.ui,
+            "ui.chat.message_actions",
+            {"actions": actions or []},
+            timeout=30.0,
+        )
+
+    def addon_run_message_action(self, data: dict[str, Any]) -> None:
+        """Run a formatted-message workflow and return it to the canonical turn."""
+        addon_id = str(data.get("addon_id") or "")
+        action_id = str(data.get("action_id") or "")
+        result = self._safe_call(
+            self.brain,
+            "brain.addons.run_message_action",
+            {
+                "addon_id": addon_id,
+                "action_id": action_id,
+                "payload": {
+                    key: data.get(key)
+                    for key in (
+                        "surface", "role", "message_id", "conversation_id",
+                        "text", "user_prompt", "presentation_status",
+                    )
+                },
+            },
+            timeout=300.0,
+        )
+        if not isinstance(result, dict):
+            result = {"status": "Formatting failed. Original kept."}
+        self._safe_call(
+            self.ui,
+            "ui.chat.message_action_result",
+            {
+                "conversation_id": str(data.get("conversation_id") or ""),
+                "message_id": str(data.get("message_id") or ""),
+                "addon_id": addon_id,
+                "action_id": action_id,
+                "result": result,
+            },
+            timeout=30.0,
+        )
 
     def addon_set_enabled(self, data: dict[str, Any]) -> None:
         """Handle addon set enabled for flow controller."""
@@ -2661,6 +4509,8 @@ class FlowController:
             {"addon_id": addon_id, "enabled": bool(data.get("enabled"))},
             timeout=30.0,
         )
+        self.chat_message_actions()
+        self.refresh_addon_tray_actions()
         self.open_addons()  # refresh the dialog so it reflects the new state
 
     def addon_set_setting(self, data: dict[str, Any]) -> None:
@@ -2675,6 +4525,7 @@ class FlowController:
             {"addon_id": addon_id, "key": key, "value": data.get("value")},
             timeout=30.0,
         )
+        self.chat_message_actions()
 
     def addon_repair_environment(self, data: dict[str, Any]) -> None:
         """Handle addon repair environment for flow controller."""
@@ -2691,6 +4542,7 @@ class FlowController:
         if isinstance(result, dict) and not result.get("ready", True):
             message = str(result.get("error") or "Addon dependency environment is not ready.")
         self._notice(message)
+        self.refresh_addon_tray_actions()
         self.open_addons()
 
     def addon_install_archive(self, data: dict[str, Any]) -> None:
@@ -2708,6 +4560,7 @@ class FlowController:
         if isinstance(result, dict) and result.get("id"):
             message = f"Installed addon: {result['id']}"
         self._notice(message)
+        self.refresh_addon_tray_actions()
         self.open_addons()
 
     def addon_install_folder(self, data: dict[str, Any]) -> None:
@@ -2725,6 +4578,7 @@ class FlowController:
         if isinstance(result, dict) and result.get("id"):
             message = f"Installed addon: {result['id']}"
         self._notice(message)
+        self.refresh_addon_tray_actions()
         self.open_addons()
 
     def addon_run_hotkey(self, data: dict[str, Any]) -> None:
@@ -2997,6 +4851,73 @@ class FlowController:
 
     # -- core flows -----------------------------------------------------
 
+    def _new_action_progress(
+        self,
+        action_id: str,
+        *,
+        app: str,
+        trace: ActionTrace | None = None,
+    ) -> ActionProgress:
+        """Create one monotonic action progress stream backed by the reply bubble."""
+
+        def publish(update: ActionProgressUpdate) -> None:
+            self._safe_call(self.ui, "ui.action.progress", update.to_dict(), timeout=30.0)
+
+        def record(update: ActionProgressUpdate) -> None:
+            if trace is not None:
+                trace.mark(
+                    "progress_updated",
+                    progress_stage=update.stage,
+                    progress_sequence=update.sequence,
+                    terminal=update.terminal,
+                )
+
+        return ActionProgress(action_id, app=app, sink=publish, telemetry=record)
+
+    def _start_action_progress_heads_up(
+        self,
+        generation: int,
+        finished: threading.Event,
+        progress: ActionProgress,
+        stage: ActionProgressStage,
+        text: str,
+    ) -> threading.Timer:
+        """Refresh a long-running stage with an honest four-second heads-up."""
+
+        def show_heads_up() -> None:
+            if finished.is_set() or not self._is_current(generation):
+                return
+            try:
+                progress.advance(stage, text)
+            except (RuntimeError, ValueError):
+                # Completion or another stage won the timer race.
+                return
+
+        timer = threading.Timer(_ACTION_PROGRESS_HEADS_UP_SECONDS, show_heads_up)
+        timer.daemon = True
+        timer.start()
+        return timer
+
+    def _start_slow_response_notice(
+        self,
+        generation: int,
+        activity_seen: threading.Event,
+        text: str,
+    ) -> threading.Timer:
+        """Show one honest progress update only when useful output is late."""
+        def show_notice() -> None:
+            if activity_seen.is_set() or not self._is_current(generation):
+                return
+            self._on_reply_chunk(
+                {"text": text, "is_progress": True},
+                thought_parser=None,
+            )
+
+        timer = threading.Timer(_SLOW_RESPONSE_NOTICE_SECONDS, show_notice)
+        timer.daemon = True
+        timer.start()
+        return timer
+
     def _query(
         self,
         prompt: str,
@@ -3015,7 +4936,18 @@ class FlowController:
         if not preserve_reply_bubble:
             self._safe_call(self.ui, "ui.reply.reset", timeout=30.0)
             self._safe_call(self.ui, "ui.reply.thinking", timeout=30.0)
-        params = self._brain_query_params(prompt, pending)
+        response_activity = threading.Event()
+        slow_notice_timer = self._start_slow_response_notice(
+            gen,
+            response_activity,
+            t("This is taking a little longer. I'm still working on it."),
+        )
+        try:
+            params = self._brain_query_params(prompt, pending)
+        except Exception:
+            response_activity.set()
+            slow_notice_timer.cancel()
+            raise
         harness_mode = str(getattr(config, "CHAT_EXECUTION_MODE", "wisp") or "wisp").strip().lower()
         if harness_mode not in {"wisp", "codex", "claude"}:
             harness_mode = "wisp"
@@ -3065,6 +4997,8 @@ class FlowController:
             """Handle event events."""
             nonlocal done_seen, first_chunk_seen, reply_parser_finished
             if event == "reply.chunk":
+                response_activity.set()
+                slow_notice_timer.cancel()
                 if not self._is_current(gen):
                     return
                 if not first_chunk_seen:
@@ -3096,6 +5030,8 @@ class FlowController:
                         for tts_segment in tts_segmenter.feed(segment):
                             self._queue_tts_segment(gen, tts_segment)
             elif event == "reply.done":
+                response_activity.set()
+                slow_notice_timer.cancel()
                 if not self._is_current(gen):
                     return
                 done_seen = True
@@ -3188,6 +5124,8 @@ class FlowController:
                 generation=gen,
             )
         except Exception as exc:  # noqa: BLE001 - surface route/config failures in the UI
+            response_activity.set()
+            slow_notice_timer.cancel()
             log.exception("brain query failed after %.2fs", time.monotonic() - query_started)
             if not self._is_current(gen):
                 if early_chat_index is not None:
@@ -3209,6 +5147,8 @@ class FlowController:
             self._safe_call(self.ui, "ui.reply.done", timeout=30.0)
             self._set_idle()
             return
+        response_activity.set()
+        slow_notice_timer.cancel()
         log.info("query brain call finished after %.2fs", time.monotonic() - query_started)
         if not self._is_current(gen):
             if early_chat_index is not None:
@@ -3352,11 +5292,22 @@ class FlowController:
         self._safe_call(self.ui, "ui.overlay.state", {"state": "thinking"}, timeout=30.0)
         self._safe_call(self.ui, "ui.reply.reset", timeout=30.0)
         self._safe_call(self.ui, "ui.reply.thinking", timeout=30.0)
+        response_activity = threading.Event()
+        slow_notice_timer = self._start_slow_response_notice(
+            gen,
+            response_activity,
+            t("This is taking a little longer. I'm still preparing the rewrite."),
+        )
         def on_event(event: str, payload: Any, _req_id: Any = None) -> None:
             """Handle event events."""
             if event == "reply.chunk":
+                response_activity.set()
+                slow_notice_timer.cancel()
                 if self._is_current(gen):
                     self._on_reply_chunk(payload, thought_parser=None)
+            elif event == "reply.done":
+                response_activity.set()
+                slow_notice_timer.cancel()
             elif event == "privacy.review.request":
                 self._handle_privacy_review_request(payload)
 
@@ -3390,6 +5341,9 @@ class FlowController:
             self._safe_call(self.ui, "ui.reply.done", timeout=30.0)
             self._set_idle()
             return
+        finally:
+            response_activity.set()
+            slow_notice_timer.cancel()
         text = str((result or {}).get("text") or "").strip()
         visible_text = str((result or {}).get("visible_text") or "").strip()
         privacy_report = (result or {}).get("privacy_report") if isinstance(result, dict) else None
@@ -3908,6 +5862,21 @@ class FlowController:
             payload["severity"] = severity_name
         self._safe_call(self.ui, "ui.reply.notice", payload, timeout=30.0)
 
+    def _status_notice(self, text: str) -> None:
+        """Show a successful status without attaching error-recovery advice."""
+        from core.privacy_redaction import redact_text
+
+        clean = redact_text(str(text or "").strip())
+        if not clean:
+            return
+        self.runtime_log.append("assistant", "info", clean, detail="")
+        self._safe_call(
+            self.ui,
+            "ui.reply.notice",
+            {"text": clean, "timeout_ms": 6000, "log_mirrored": True},
+            timeout=30.0,
+        )
+
     def _handle_live_file_approval_request(self, payload: Any) -> None:
         """Ask the UI to approve a live model file edit, then answer the brain."""
         if not isinstance(payload, dict):
@@ -4216,6 +6185,10 @@ class FlowController:
                     # permission or dead native source cannot abort the intent.
                     log.exception("post-picker context snapshot failed")
                     context = {}
+            # Do not invoke Calc's Copy command while the intent picker is a
+            # visible popup: even a background UIA invocation can activate Calc
+            # and dismiss the picker. The selected range is captured only after
+            # the user chooses a Calc action and the picker has closed normally.
             t_ctx = time.monotonic()
             if not self._is_current(generation):
                 return
@@ -4230,6 +6203,7 @@ class FlowController:
             pending.screenshot_tool_b64 = screenshot_tool_b64
             pending.intent_target_pid = target_id
             pending.paste_target_pid = target_id if pending.caller.get("paste_back") else 0
+            pending.context_ready_at_unix_ns = time.time_ns()
             with self._lock:
                 if self._pending is pending:
                     self._pending = pending
@@ -4338,6 +6312,37 @@ class FlowController:
         )
         return text
 
+    @staticmethod
+    def _context_source_app_name(process_name: str, title: str = "") -> str:
+        """Return a concise product name for one captured document source."""
+        process = " ".join(str(process_name or "").split()).strip()
+        lowered = process.casefold()
+        title_lower = str(title or "").casefold()
+        candidates = f"{lowered} {title_lower}"
+        mappings = (
+            (("code - insiders", "visual studio code - insiders"), "VS Code Insiders"),
+            (("cursor",), "Cursor"),
+            (("windsurf",), "Windsurf"),
+            (("visual studio code", "code.exe", " code "), "VS Code"),
+            (("google chrome", "chrome.exe"), "Google Chrome"),
+            (("microsoft edge", "msedge.exe"), "Microsoft Edge"),
+            (("brave",), "Brave"),
+            (("firefox",), "Firefox"),
+            (("libreoffice calc", "soffice", "scalc"), "LibreOffice Calc"),
+            (("excel",), "Microsoft Excel"),
+            (("winword", "microsoft word"), "Microsoft Word"),
+            (("powerpnt", "powerpoint"), "Microsoft PowerPoint"),
+            (("notepad",), "Notepad"),
+        )
+        padded = f" {candidates} "
+        for needles, display_name in mappings:
+            if any(needle in padded for needle in needles):
+                return display_name
+        if not process:
+            return ""
+        fallback = re.sub(r"\.(?:exe|bin|app)$", "", process, flags=re.IGNORECASE)
+        return fallback.replace("_", " ").replace("-", " ").strip()
+
     def _active_document_source_previews(self, text: str, debug: Any) -> list[dict[str, str]]:
         """Split active-document text into labelled preview rows for the overlay."""
         raw = str(text or "").strip()
@@ -4357,18 +6362,55 @@ class FlowController:
                     if str(path or "").strip()
                 ]
         sources: list[dict[str, str]] = []
+        window_candidates = (
+            [item for item in (debug.get("window_candidates") or []) if isinstance(item, dict)]
+            if isinstance(debug, dict)
+            else []
+        )
+        active_window = debug.get("active_window") if isinstance(debug, dict) else {}
+        active_window = active_window if isinstance(active_window, dict) else {}
+        seen_sources: set[tuple[str, str, str]] = set()
         matches = list(re.finditer(r"(?m)^\[([^\]\n]{1,160})\]\n", raw))
         for idx, match in enumerate(matches):
             label = " ".join(match.group(1).split()).strip()
             start = match.end()
             end = matches[idx + 1].start() if idx + 1 < len(matches) else len(raw)
             preview = self._context_preview_text(raw[start:end])
+            normalized_label = label.casefold()
+            candidate = next(
+                (
+                    item for item in window_candidates
+                    if " ".join(str(item.get("label") or item.get("title") or "").split()).casefold()
+                    == normalized_label
+                ),
+                {},
+            )
+            process_name = str(candidate.get("process_name") or "")
+            source_title = str(candidate.get("title") or "")
+            if not process_name and idx == 0:
+                process_name = str(active_window.get("process_name") or "")
+                source_title = str(active_window.get("title") or "")
+            app_name = self._context_source_app_name(process_name, source_title)
             if label and preview:
-                sources.append({"label": label, "preview": preview})
+                source_key = (app_name.casefold(), normalized_label, preview.casefold())
+                if source_key in seen_sources:
+                    continue
+                seen_sources.add(source_key)
+                source = {"label": label, "preview": preview}
+                if app_name:
+                    source["app"] = app_name
+                sources.append(source)
         if sources:
             return sources[:5]
         label = labels[0] if labels else self._active_document_label({})
-        return [{"label": label, "preview": self._context_preview_text(raw)}]
+        app_name = self._context_source_app_name(
+            str(active_window.get("process_name") or ""),
+            str(active_window.get("title") or ""),
+        )
+        source = {"label": label, "preview": self._context_preview_text(raw)}
+        if app_name:
+            source["app"] = app_name
+        return [source]
 
     def _active_document_label(self, context: dict[str, Any]) -> str:
         """Return a human-readable source label for active document context."""

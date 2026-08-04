@@ -15,7 +15,9 @@ from typing import Any
 import pytest
 
 import config
+from core.actions.progress import ActionProgressStage
 from runtime.supervisor import flow_estimates, tool_modes
+from runtime.supervisor import flows as flows_module
 from runtime.supervisor.flows import FlowController, PendingInvocation
 
 
@@ -159,6 +161,60 @@ def make_flow(
     return flow, native, ui, brain, audio
 
 
+def test_slow_response_notice_appears_only_after_the_deadline(monkeypatch):
+    flow, _native, ui, _brain, _audio = make_flow()
+    monkeypatch.setattr(flows_module, "_SLOW_RESPONSE_NOTICE_SECONDS", 0.01)
+    activity = threading.Event()
+
+    timer = flow._start_slow_response_notice(  # noqa: SLF001 - contract-level flow test
+        flow._current_generation,  # noqa: SLF001
+        activity,
+        "Still working.",
+    )
+    timer.join(timeout=1.0)
+
+    chunks = ui.calls_for("ui.reply.chunk")
+    assert chunks[-1]["params"]["text"] == "Still working."
+    assert chunks[-1]["params"]["is_progress"] is True
+
+
+def test_fast_response_cancels_slow_notice(monkeypatch):
+    flow, _native, ui, _brain, _audio = make_flow()
+    monkeypatch.setattr(flows_module, "_SLOW_RESPONSE_NOTICE_SECONDS", 0.01)
+    activity = threading.Event()
+    activity.set()
+
+    timer = flow._start_slow_response_notice(  # noqa: SLF001 - contract-level flow test
+        flow._current_generation,  # noqa: SLF001
+        activity,
+        "Must not appear.",
+    )
+    timer.join(timeout=1.0)
+
+    assert not ui.calls_for("ui.reply.chunk")
+
+
+def test_long_action_stage_gets_an_exact_heads_up(monkeypatch):
+    flow, _native, ui, _brain, _audio = make_flow()
+    monkeypatch.setattr(flows_module, "_ACTION_PROGRESS_HEADS_UP_SECONDS", 0.01)
+    finished = threading.Event()
+    progress = flow._new_action_progress("vscode.code_change", app="vscode")  # noqa: SLF001
+    progress.advance(ActionProgressStage.PLANNING, "Drafting the exact change...")
+
+    timer = flow._start_action_progress_heads_up(  # noqa: SLF001
+        flow._current_generation,  # noqa: SLF001
+        finished,
+        progress,
+        ActionProgressStage.PLANNING,
+        "The model is still drafting; this may take a few more seconds.",
+    )
+    timer.join(timeout=1.0)
+
+    calls = ui.calls_for("ui.action.progress")
+    assert [call["params"]["stage"] for call in calls] == ["planning", "planning"]
+    assert calls[-1]["params"]["text"].startswith("The model is still drafting")
+
+
 def test_start_can_wire_ui_without_unrelated_background_prewarms():
     """Shell acceptance can use real event wiring without loading speech models."""
     native = FakeWorker()
@@ -181,6 +237,135 @@ def test_start_can_wire_ui_without_unrelated_background_prewarms():
     assert not brain.calls_for("brain.harness.prewarm")
     assert not audio.calls_for("audio.prewarm")
     assert ui.events["ui.memory.open_requested"]
+
+
+def test_start_loads_addon_actions_before_showing_first_tray_menu():
+    """Addons that load inside the startup grace period appear in the first menu."""
+    order: list[str] = []
+    brain = FakeWorker(
+        {
+            "brain.addons.ready": lambda _params: order.append("load_addons") or {
+                "ready": True,
+                "addons": [
+                    {
+                        "id": "virtual-workspace",
+                        "enabled": True,
+                        "tray_actions": ["Open Virtual Workspace"],
+                    }
+                ]
+            }
+        }
+    )
+
+    def show_overlay(params: dict[str, Any]) -> dict[str, Any]:
+        order.append("show_overlay")
+        assert params["addon_tray_actions"] == [
+            {
+                "addon_id": "virtual-workspace",
+                "label": "Open Virtual Workspace",
+            }
+        ]
+        return {"shown": True}
+
+    ui = FakeWorker({"ui.show_overlay": show_overlay})
+    flow = FlowController(
+        native=FakeWorker(),
+        ui=ui,
+        brain=brain,
+        audio=FakeWorker(),
+        run_async=False,
+    )
+
+    flow.start(prewarm=False)
+
+    assert order == ["load_addons", "show_overlay"]
+    assert not brain.calls_for("brain.addons.list")
+    assert not ui.calls_for("ui.addons.tray_actions")
+
+
+def test_live_addon_snapshots_rebuild_existing_tray_and_deduplicate():
+    flow, _native, ui, brain, _audio = make_flow()
+    baseline = len(ui.calls_for("ui.addons.tray_actions"))
+    loaded = {
+        "reason": "enabled",
+        "addon_id": "virtual-workspace",
+        "addons": [{
+            "id": "virtual-workspace",
+            "enabled": True,
+            "tray_actions": ["Open Virtual Workspace"],
+        }],
+    }
+
+    brain.emit("addons.changed", loaded)
+
+    assert ui.last_call("ui.addons.tray_actions")["params"]["actions"] == [{
+        "addon_id": "virtual-workspace",
+        "label": "Open Virtual Workspace",
+    }]
+    assert len(ui.calls_for("ui.addons.tray_actions")) == baseline + 1
+
+    brain.emit("addons.changed", loaded)
+    assert len(ui.calls_for("ui.addons.tray_actions")) == baseline + 1
+
+    brain.emit("addons.changed", {
+        "reason": "disabled",
+        "addon_id": "virtual-workspace",
+        "addons": [{
+            "id": "virtual-workspace",
+            "enabled": False,
+            "tray_actions": [],
+        }],
+    })
+    assert ui.last_call("ui.addons.tray_actions")["params"]["actions"] == []
+    assert len(ui.calls_for("ui.addons.tray_actions")) == baseline + 2
+
+
+def test_start_does_not_fall_back_to_slow_addon_listing_when_loading_continues():
+    brain = FakeWorker(
+        {
+            "brain.addons.ready": lambda _params: {
+                "ready": False,
+                "error": "",
+                "addons": [],
+            },
+            "brain.addons.list": lambda _params: pytest.fail(
+                "startup must not use the full addon-manager listing"
+            ),
+        }
+    )
+    ui = FakeWorker()
+    flow = FlowController(
+        native=FakeWorker(),
+        ui=ui,
+        brain=brain,
+        audio=FakeWorker(),
+        run_async=False,
+    )
+
+    flow.start(prewarm=False)
+
+    ready_call = brain.last_call("brain.addons.ready")
+    assert ready_call["params"] == {"timeout_seconds": 3.0}
+    assert ready_call["timeout"] == 5.0
+    assert ui.last_call("ui.show_overlay")["params"]["addon_tray_actions"] == []
+    assert not brain.calls_for("brain.addons.list")
+
+    brain.emit(
+        "addons.changed",
+        {
+            "reason": "loaded",
+            "addons": [{
+                "id": "virtual-workspace",
+                "enabled": True,
+                "tray_actions": ["Open Virtual Workspace"],
+            }],
+        },
+    )
+
+    assert ui.last_call("ui.addons.tray_actions")["params"]["actions"] == [{
+        "addon_id": "virtual-workspace",
+        "label": "Open Virtual Workspace",
+    }]
 
 
 def test_safe_call_quiets_ui_worker_exit(caplog):
@@ -290,6 +475,72 @@ def browser_context_handler(selected: str = "selected"):
     return handler
 
 
+@pytest.mark.parametrize(
+    ("active_app", "provider_id", "suggestion_id"),
+    [
+        (
+            {"name": "Contact - Google Chrome", "process_name": "chrome.exe", "pid": 42},
+            "browser",
+            "browser.fill_form",
+        ),
+        (
+            {"name": "demo.py - Visual Studio Code", "process_name": "Code.exe", "pid": 42},
+            "vscode",
+            "vscode.fix_selection",
+        ),
+        (
+            {"name": "Budget.ods - LibreOffice Calc", "process_name": "soffice.bin", "pid": 42},
+            "libreoffice_calc",
+            "calc.add_chart",
+        ),
+    ],
+)
+def test_caller_detects_action_provider_before_constructing_intent_overlay(
+    active_app: dict[str, Any],
+    provider_id: str,
+    suggestion_id: str,
+) -> None:
+    """Ctrl+Shift+Q derives app suggestions from the hotkey-time app snapshot."""
+    order: list[str] = []
+
+    def snapshot(_params: dict[str, Any]) -> dict[str, Any]:
+        order.append("snapshot")
+        return {"active_app": active_app, "selected_text": "", "clipboard_text": ""}
+
+    def show_intent(params: dict[str, Any]) -> dict[str, Any]:
+        order.append("show_intent")
+        provider = params["action_provider"]
+        assert provider["id"] == provider_id
+        assert provider["suggested_intents"][0]["id"] == suggestion_id
+        assert provider["suggested_intents"][0]["mode"] == "action"
+        assert provider["suggested_intents"][0]["planning_tool"]
+        return {}
+
+    native = FakeWorker({"native.context.snapshot": snapshot})
+    ui = FakeWorker({"ui.show_intent": show_intent})
+    with caller_config([{"context_clipboard": False}]):
+        flow, _native, _ui, _brain, _audio = make_flow(native=native, ui=ui)
+        flow.begin_caller(0)
+
+    assert order[:2] == ["snapshot", "show_intent"]
+
+
+def test_unsupported_app_keeps_generic_intent_picker_fallback() -> None:
+    """Apps without an action provider still receive the ordinary caller picker."""
+    native = FakeWorker({
+        "native.context.snapshot": lambda _params: {
+            "active_app": {"name": "Notes", "process_name": "notes.exe", "pid": 42},
+            "selected_text": "hello",
+            "clipboard_text": "",
+        }
+    })
+    with caller_config([{"context_clipboard": False}]):
+        flow, _native, ui, _brain, _audio = make_flow(native=native)
+        flow.begin_caller(0)
+
+    assert ui.last_call("ui.show_intent")["params"]["action_provider"] == {}
+
+
 def test_wayland_accessibility_text_supplies_active_document_without_brain_read():
     """Hotkey-time AT-SPI text is reused as generic app-document context."""
     flow, _native, _ui, brain, _audio = make_flow()
@@ -335,6 +586,22 @@ def rewrite_stream(replacement: str = "replacement", visible: str = ""):
             on_event("reply.chunk", {"text": visible}, 1)
         on_event("reply.done", {"text": replacement, "visible_text": visible}, 1)
         return {"text": replacement, "visible_text": visible}
+
+    return handler
+
+
+def action_plan_stream(arguments: dict[str, Any], visible: str = "Prepared the action for review."):
+    """Return one forced planning-tool result through the fake brain stream."""
+    def handler(params: dict[str, Any], on_event) -> dict[str, Any]:
+        result = {
+            "tool_name": str(params.get("planning_tool_name") or ""),
+            "arguments": dict(arguments),
+            "visible_text": visible,
+        }
+        if visible:
+            on_event("reply.chunk", {"text": visible, "is_progress": True}, 1)
+        on_event("reply.done", result, 1)
+        return result
 
     return handler
 
@@ -851,6 +1118,694 @@ def test_caller_hotkey_captures_selection_before_intent_steals_focus():
     }
     assert chips["selection"]["state"] == "on"
     assert chips["selection"]["tokens"].startswith("~")
+
+
+def test_calc_selection_is_not_collected_while_intent_picker_is_open() -> None:
+    """Calc must not invoke Copy while the popup-style intent picker is visible."""
+    order: list[str] = []
+    active_app = {
+        "name": "Budget.ods — LibreOffice Calc",
+        "process_name": "soffice.bin",
+        "pid": 42,
+        "window_id": 777,
+    }
+
+    def snapshot(_params: dict[str, Any]) -> dict[str, Any]:
+        order.append("snapshot")
+        return {
+            "platform": "win32",
+            "active_app": active_app,
+            "selected_text": "",
+            "clipboard_text": "",
+            "app_selection_deferred": True,
+        }
+
+    def show_intent(_params: dict[str, Any]) -> dict[str, Any]:
+        order.append("show_intent")
+        return {}
+
+    native = FakeWorker(
+        {
+            "native.context.snapshot": snapshot,
+            "native.context.app_selection": lambda _params: pytest.fail(
+                "Calc selection capture must wait until an action is chosen"
+            ),
+        }
+    )
+    ui = FakeWorker({"ui.show_intent": show_intent})
+    with caller_config([{"context_clipboard": False}]):
+        flow, _native, ui, _brain, _audio = make_flow(native=native, ui=ui)
+        flow.begin_caller(0)
+
+    assert order == ["snapshot", "show_intent"]
+    chips = {
+        item["id"]: item
+        for item in ui.last_call("ui.intent.context_items")["params"]["context_items"]
+    }
+    assert chips["selection"]["state"] == "off"
+    assert flow._pending is not None  # noqa: SLF001 - contract-level flow state
+    assert flow._pending.context["app_selection_deferred"] is True  # noqa: SLF001
+
+
+def test_calc_chart_request_forces_planner_then_applies_without_rewrite() -> None:
+    """A Calc chart is planned through a forced tool, never pasted into cells."""
+    active_app = {
+        "name": "Budget.ods — LibreOffice Calc",
+        "process_name": "soffice.bin",
+        "pid": 42,
+        "window_id": 777,
+    }
+    selection = {
+        "app": "libreoffice_calc",
+        "document_title": active_app["name"],
+        "window_id": 777,
+        "pid": 42,
+        "range": "A1:B3",
+        "rows": 3,
+        "columns": 2,
+        "values": (("Month", "Revenue"), ("Jan", "12"), ("Feb", "20")),
+        "selected_text": "Month\tRevenue\nJan\t12\nFeb\t20",
+        "fingerprint": "test-fingerprint",
+    }
+    native = FakeWorker(
+        {
+            "native.context.snapshot": lambda _params: {
+                "platform": "win32",
+                "active_app": active_app,
+                "selected_text": "",
+                "clipboard_text": "",
+                "app_selection_deferred": True,
+            },
+            "native.action.calc.snapshot": lambda _params: {
+                "ok": True,
+                "selection": selection,
+                "error": "",
+            },
+            "native.action.calc.apply": lambda params: {
+                "ok": True,
+                "result": {
+                    "plan_id": params["plan"]["plan_id"],
+                    "status": "applied",
+                    "message": "Created a vertical bar chart from A1:B3.",
+                },
+                "error": "",
+            },
+        }
+    )
+    ui = FakeWorker(
+        {
+            "ui.show_intent": lambda _params: {},
+            "ui.action.preview.request": lambda _params: {"approved": True},
+        }
+    )
+    brain = FakeWorker(
+        stream_handlers={"brain.action.plan": action_plan_stream({"title": "Revenue by month"})}
+    )
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
+        flow.begin_caller(0)
+        provider = ui.last_call("ui.show_intent")["params"]["action_provider"]
+        suggestion = provider["suggested_intents"][0]
+        ui.emit(
+            "ui.intent.chosen",
+            {
+                "custom": "create a graph",
+                "intent_routing": {
+                    "mode": suggestion["mode"],
+                    "source": "provider",
+                    "suggestion_id": suggestion["id"],
+                    "provider_id": provider["id"],
+                    "app": provider["app"],
+                    "capability_type": suggestion["capability_type"],
+                    "planning_tool": suggestion["planning_tool"],
+                },
+            },
+        )
+
+    preview = ui.last_call("ui.action.preview.request")["params"]
+    assert preview["plan_id"]
+    assert "A1:B3" in preview["html"]
+    applied = native.last_call("native.action.calc.apply")["params"]
+    assert applied["confirmed"] is True
+    assert applied["plan"]["target"]["locator"]["window_id"] == "777"
+    assert not native.calls_for("native.paste_text")
+    assert not brain.calls_for("brain.rewrite")
+    assert not brain.calls_for("brain.query")
+    planner = brain.last_call("brain.action.plan")["params"]
+    assert planner["planning_tool_name"] == "calc_plan_add_chart"
+    assert planner["input_schema"]["required"] == ["title"]
+    assert [
+        call["params"]["stage"] for call in ui.calls_for("ui.action.progress")
+    ] == [
+        "targeting",
+        "reading",
+        "planning",
+        "validating",
+        "preparing_preview",
+        "awaiting_approval",
+        "applying",
+        "complete",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("capability_type", "planning_tool", "arguments", "operation_type", "preview_text"),
+    [
+        (
+            "calc.format_table@1",
+            "calc_plan_format_table",
+            {"has_header": True},
+            "calc.format_table@1",
+            "Keep every cell value",
+        ),
+        (
+            "calc.sort_range@1",
+            "calc_plan_sort_range",
+            {"column_header": "Revenue", "direction": "descending"},
+            "calc.sort_range@1",
+            "Proposed order",
+        ),
+    ],
+)
+def test_calc_non_chart_actions_use_forced_typed_planners(
+    capability_type: str,
+    planning_tool: str,
+    arguments: dict[str, Any],
+    operation_type: str,
+    preview_text: str,
+) -> None:
+    active_app = {
+        "name": "Budget.ods — LibreOffice Calc",
+        "process_name": "soffice.bin",
+        "pid": 42,
+        "window_id": 777,
+    }
+    selection = {
+        "app": "libreoffice_calc",
+        "document_title": active_app["name"],
+        "window_id": 777,
+        "pid": 42,
+        "range": "A1:B3",
+        "values": (("Month", "Revenue"), ("Jan", "12"), ("Feb", "20")),
+        "typed_values": (("Month", "Revenue"), ("Jan", 12.0), ("Feb", 20.0)),
+        "formulas": (("Month", "Revenue"), ("Jan", "12"), ("Feb", "20")),
+        "selected_text": "Month\tRevenue\nJan\t12\nFeb\t20",
+        "fingerprint": "test-fingerprint",
+    }
+    native = FakeWorker({
+        "native.action.calc.snapshot": lambda _params: {"ok": True, "selection": selection, "error": ""},
+        "native.action.calc.apply": lambda params: {
+            "ok": True,
+            "result": {"status": "applied", "message": "Applied", "plan_id": params["plan"]["plan_id"]},
+            "error": "",
+        },
+    })
+    ui = FakeWorker({"ui.action.preview.request": lambda _params: {"approved": True}})
+    brain = FakeWorker(stream_handlers={"brain.action.plan": action_plan_stream(arguments)})
+    flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
+    pending = PendingInvocation(
+        caller_idx=0,
+        caller={"paste_back": True},
+        context={"active_app": active_app},
+    )
+
+    flow._run_calc_chart_action(  # noqa: SLF001 - exercise the shared Calc action boundary
+        pending,
+        {},
+        prompt="Do the selected Calc action",
+        planning_tool=planning_tool,
+        capability_type=capability_type,
+    )
+
+    planner = brain.last_call("brain.action.plan")["params"]
+    assert planner["planning_tool_name"] == planning_tool
+    preview = ui.last_call("ui.action.preview.request")["params"]
+    assert preview_text in preview["html"]
+    applied = native.last_call("native.action.calc.apply")["params"]
+    assert applied["plan"]["operations"][0]["type"] == operation_type
+
+
+def test_calc_selection_failure_after_action_choice_does_not_mutate() -> None:
+    """A failed deferred Calc read warns after choice and never plans or applies."""
+    active_app = {
+        "name": "Budget.ods — LibreOffice Calc",
+        "process_name": "soffice.bin",
+        "pid": 42,
+        "window_id": 777,
+    }
+    native = FakeWorker(
+        {
+            "native.context.snapshot": lambda _params: {
+                "platform": "win32",
+                "active_app": active_app,
+                "selected_text": "",
+                "clipboard_text": "",
+                "app_selection_deferred": True,
+            },
+            "native.action.calc.snapshot": lambda _params: {
+                "ok": False,
+                "selection": {},
+                "error": "RuntimeError: LibreOffice could not snapshot the selected range.",
+            },
+        }
+    )
+    ui = FakeWorker({"ui.show_intent": lambda _params: {}})
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, native, ui, brain, _audio = make_flow(native=native, ui=ui)
+        flow.begin_caller(0)
+        assert not native.calls_for("native.action.calc.snapshot")
+        provider = ui.last_call("ui.show_intent")["params"]["action_provider"]
+        suggestion = provider["suggested_intents"][0]
+        ui.emit(
+            "ui.intent.chosen",
+            {
+                "custom": "create a graph",
+                "intent_routing": {
+                    "mode": suggestion["mode"],
+                    "source": "provider",
+                    "suggestion_id": suggestion["id"],
+                    "provider_id": provider["id"],
+                    "app": provider["app"],
+                    "capability_type": suggestion["capability_type"],
+                    "planning_tool": suggestion["planning_tool"],
+                },
+            },
+        )
+
+    assert native.calls_for("native.action.calc.snapshot")
+    assert "couldn't read the selected Calc cells" in ui.last_call("ui.reply.notice")["params"]["text"]
+    assert not brain.calls_for("brain.action.plan")
+    assert not native.calls_for("native.action.calc.apply")
+
+
+def test_unrecognized_calc_request_never_pastes_over_cells() -> None:
+    pending = PendingInvocation(
+        caller_idx=0,
+        caller={"paste_back": True},
+        context={
+            "app_selection": {
+                "app": "libreoffice_calc",
+                "range": "A1:B3",
+                "selected_text": "Month\tRevenue",
+            }
+        },
+    )
+    pending.context_ready.set()
+    flow, native, _ui, brain, _audio = make_flow(
+        brain=FakeWorker(stream_handlers={"brain.query": query_stream("Here is an explanation.")})
+    )
+    flow._pending = pending  # noqa: SLF001 - direct safety-boundary setup
+
+    flow.intent_chosen("explain these numbers")
+
+    assert brain.calls_for("brain.query")
+    assert not brain.calls_for("brain.rewrite")
+    assert not native.calls_for("native.paste_text")
+
+
+def test_vscode_fix_request_uses_model_diff_preview_then_safe_apply() -> None:
+    """A selected-code fix is an action plan, not direct keyboard paste-back."""
+    selected = "def add_one(value):\n    return value"
+    fixed = "def add_one(value):\n    return value + 1"
+    active_app = {
+        "name": "demo.py - project - Visual Studio Code",
+        "process_name": "Code.exe",
+        "pid": 42,
+        "window_id": 777,
+    }
+    snapshot = {
+        "app": "vscode",
+        "file_path": "C:\\project\\demo.py",
+        "display_name": "demo.py",
+        "window_id": 777,
+        "pid": 42,
+        "text": f"# demo\n{selected}\n",
+        "selected_text": selected,
+        "selection_start": 7,
+        "selection_end": 7 + len(selected),
+        "fingerprint": "file-fingerprint",
+        "selection_fingerprint": __import__("hashlib").sha256(selected.encode()).hexdigest(),
+        "has_utf8_bom": False,
+    }
+    native = FakeWorker(
+        {
+            "native.context.snapshot": lambda _params: {
+                "platform": "win32",
+                "active_app": active_app,
+                "selected_text": selected,
+                "clipboard_text": "",
+                "app_selection_deferred": False,
+            },
+            "native.action.vscode.snapshot": lambda _params: {
+                "ok": True,
+                "snapshot": snapshot,
+                "error": "",
+            },
+            "native.action.vscode.apply": lambda params: {
+                "ok": True,
+                "result": {
+                    "plan_id": params["plan"]["plan_id"],
+                    "status": "applied",
+                    "message": "Updated demo.py.",
+                },
+                "error": "",
+            },
+        }
+    )
+    ui = FakeWorker(
+        {
+            "ui.show_intent": lambda _params: {},
+            "ui.action.preview.request": lambda _params: {"approved": True},
+        }
+    )
+    brain = FakeWorker(
+        stream_handlers={
+            "brain.action.plan": action_plan_stream(
+                {"replacement_text": fixed},
+                "The function returned the input unchanged; the replacement increments it.",
+            )
+        }
+    )
+
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
+        flow.begin_caller(0)
+        ui.emit("ui.intent.chosen", {"custom": "fix this bug"})
+
+    model_call = brain.last_call("brain.action.plan")["params"]
+    assert model_call["planning_tool_name"] == "vscode_plan_replace_selection"
+    assert model_call["app_context"]["selected_text"] == selected
+    assert "state the issue" in model_call["user_prompt"]
+    preview = ui.last_call("ui.action.preview.request")["params"]
+    assert "return value + 1" in preview["html"]
+    applied = native.last_call("native.action.vscode.apply")["params"]
+    assert applied["confirmed"] is True
+    assert applied["plan"]["operations"][0]["type"] == "vscode.replace_selection@1"
+    assert applied["plan"]["operations"][0]["args"]["replacement_text"] == fixed
+    assert not native.calls_for("native.paste_text")
+    assert ui.last_call("ui.overlay.state")["params"]["state"] == "idle"
+    progress_calls = ui.calls_for("ui.action.progress")
+    assert [call["params"]["stage"] for call in progress_calls] == [
+        "reading",
+        "planning",
+        "validating",
+        "preparing_preview",
+        "awaiting_approval",
+        "applying",
+        "complete",
+    ]
+    assert all(call["params"]["action_id"] == "vscode.code_change" for call in progress_calls)
+
+
+def test_vscode_untitled_tab_previews_then_writes_to_captured_editor_target() -> None:
+    """An Untitled tab uses the hotkey-time editor target after approval."""
+    active_app = {
+        "name": "Untitled-1 - Visual Studio Code",
+        "process_name": "Code.exe",
+        "pid": 42,
+        "window_id": 777,
+    }
+    native = FakeWorker(
+        {
+            "native.context.snapshot": lambda _params: {
+                "platform": "win32",
+                "active_app": active_app,
+                "selected_text": "",
+                "clipboard_text": "",
+                "app_selection_deferred": False,
+                "focus_token": 9,
+                "editor_point": {"x": 320.0, "y": 180.0},
+            },
+            "native.action.vscode.snapshot": lambda _params: pytest.fail("Untitled must not use saved-file IO"),
+            "native.action.vscode.live_apply": lambda _params: {
+                "ok": True,
+                "method": "vscode-devtools",
+                "confirmed": True,
+                "text_verified": True,
+            },
+        }
+    )
+    ui = FakeWorker(
+        {
+            "ui.show_intent": lambda _params: {},
+            "ui.action.preview.request": lambda _params: {"approved": True},
+        }
+    )
+    brain = FakeWorker(
+        stream_handlers={
+            "brain.action.plan": action_plan_stream(
+                {"replacement_text": 'def greet(name):\n    return f"Hello, {name}!"\n\nprint(greet("Wisp"))'},
+                "Created a small Python greeting example.",
+            )
+        }
+    )
+
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
+        flow.begin_caller(0)
+        ui.emit("ui.intent.chosen", {"custom": "create a small Python example"})
+
+    assert brain.last_call("brain.action.plan")["params"]["planning_tool_name"] == "vscode_plan_replace_selection"
+    assert not native.calls_for("native.action.vscode.apply")
+    preview = ui.last_call("ui.action.preview.request")["params"]
+    assert preview["title"] == "Apply code to Untitled tab"
+    assert "def greet" in preview["html"]
+    paste = native.last_call("native.action.vscode.live_apply")["params"]
+    assert paste["active_app"] == active_app
+    assert paste["editor_point"] == {"x": 320.0, "y": 180.0}
+    assert paste["confirmed"] is True
+    assert paste["text"].startswith("def greet")
+    assert [call["params"]["stage"] for call in ui.calls_for("ui.action.progress")] == [
+        "reading",
+        "planning",
+        "validating",
+        "preparing_preview",
+        "awaiting_approval",
+        "applying",
+        "complete",
+    ]
+    assert ui.last_call("ui.overlay.state")["params"]["state"] == "idle"
+
+
+def test_browser_form_action_uses_model_preview_and_verified_api_apply() -> None:
+    """A Chrome form-fill request never falls back to keyboard paste or submission."""
+    from core.actions.adapters.browser import BrowserField, BrowserFormSnapshot
+
+    fields = (
+        BrowserField("field_1", "#name", "Name", "text", "", "Full name", True),
+        BrowserField("field_2", "#email", "Email", "email", "", "name@example.com", True),
+    )
+    snapshot = BrowserFormSnapshot(
+        title="Contact form",
+        url="https://example.test/contact",
+        target_id="page-1",
+        fields=fields,
+        fingerprint=BrowserFormSnapshot.compute_fingerprint("https://example.test/contact", fields),
+    )
+    active_app = {
+        "name": "Contact form - Google Chrome",
+        "process_name": "chrome.exe",
+        "pid": 42,
+        "window_id": 777,
+    }
+    native = FakeWorker(
+        {
+            "native.context.snapshot": lambda _params: {
+                "platform": "win32",
+                "active_app": active_app,
+                "browser_url": snapshot.url,
+                "selected_text": "",
+                "clipboard_text": "",
+                "app_selection_deferred": False,
+            },
+            "native.action.browser.form_snapshot": lambda _params: {
+                "ok": True,
+                "snapshot": snapshot.to_dict(),
+            },
+            "native.action.browser.form_apply": lambda _params: {
+                "ok": True,
+                "result": {
+                    "status": "applied",
+                    "message": "Filled and verified 2 fields without submitting the form.",
+                },
+            },
+        }
+    )
+    ui = FakeWorker(
+        {
+            "ui.show_intent": lambda _params: {},
+            "ui.action.preview.request": lambda _params: {"approved": True},
+        }
+    )
+    brain = FakeWorker(
+        stream_handlers={
+            "brain.action.plan": action_plan_stream(
+                {"assignments": [
+                    {"field_id": "field_1", "value": "Sunny"},
+                    {"field_id": "field_2", "value": "sunny@example.test"},
+                ]},
+                "Fill the two requested contact fields.",
+            )
+        }
+    )
+
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
+        flow.begin_caller(0)
+        provider = ui.last_call("ui.show_intent")["params"]["action_provider"]
+        suggestion = provider["suggested_intents"][0]
+        ui.emit(
+            "ui.intent.chosen",
+            {
+                "custom": "Fill this form with name Sunny and email sunny@example.test",
+                "intent_routing": {
+                    "mode": suggestion["mode"],
+                    "source": "provider",
+                    "suggestion_id": suggestion["id"],
+                    "provider_id": provider["id"],
+                    "app": provider["app"],
+                    "capability_type": suggestion["capability_type"],
+                    "planning_tool": suggestion["planning_tool"],
+                },
+            },
+        )
+
+    assert brain.calls_for("brain.action.plan"), {"native": native.calls, "ui": ui.calls}
+    model = brain.last_call("brain.action.plan")["params"]
+    assert model["planning_tool_name"] == "browser_plan_fill_form"
+    assert any(field["field_id"] == "field_1" for field in model["app_context"]["fields"])
+    preview = ui.last_call("ui.action.preview.request")["params"]
+    assert "Sunny" in preview["html"]
+    assert "Will not submit" not in preview["html"]
+    applied = native.last_call("native.action.browser.form_apply")["params"]
+    assert applied["confirmed"] is True
+    assert len(applied["plan"]["operations"]) == 2
+    assert not native.calls_for("native.paste_text")
+    assert [call["params"]["stage"] for call in ui.calls_for("ui.action.progress")] == [
+        "reading",
+        "planning",
+        "validating",
+        "preparing_preview",
+        "awaiting_approval",
+        "applying",
+        "complete",
+    ]
+
+
+def test_supported_app_custom_prompt_forces_disposition_then_exact_action_tool() -> None:
+    """Custom prompts cannot bypass the structured app decision and planning tools."""
+    from core.actions.adapters.browser import BrowserField, BrowserFormSnapshot
+
+    fields = (BrowserField("field_1", "#name", "Name", "text", "", "Full name", True),)
+    snapshot = BrowserFormSnapshot(
+        title="Contact form",
+        url="https://example.test/contact",
+        target_id="page-1",
+        fields=fields,
+        fingerprint=BrowserFormSnapshot.compute_fingerprint("https://example.test/contact", fields),
+    )
+    active_app = {
+        "name": "Contact form - Google Chrome",
+        "process_name": "chrome.exe",
+        "pid": 42,
+        "window_id": 777,
+    }
+    native = FakeWorker({
+        "native.context.snapshot": lambda _params: {
+            "platform": "win32",
+            "active_app": active_app,
+            "browser_url": snapshot.url,
+            "selected_text": "Sunny",
+            "clipboard_text": "",
+        },
+        "native.action.browser.form_snapshot": lambda _params: {"ok": True, "snapshot": snapshot.to_dict()},
+        "native.action.browser.form_apply": lambda _params: {
+            "ok": True,
+            "result": {"status": "applied", "message": "Filled and verified one field."},
+        },
+    })
+    ui = FakeWorker({
+        "ui.show_intent": lambda _params: {},
+        "ui.action.preview.request": lambda _params: {"approved": True},
+    })
+
+    def planned(params: dict[str, Any], on_event) -> dict[str, Any]:
+        name = str(params.get("planning_tool_name") or "")
+        if name == "wisp_choose_app_response":
+            arguments = {
+                "disposition": "action",
+                "capability_type": "browser.fill_form",
+                "action_instruction": "Fill the Name field with Sunny.",
+                "response_text": "",
+            }
+            visible = "This request uses the safe form-fill action."
+        else:
+            assert name == "browser_plan_fill_form"
+            arguments = {"assignments": [{"field_id": "field_1", "value": "Sunny"}]}
+            visible = "Prepared one field for review."
+        result = {"tool_name": name, "arguments": arguments, "visible_text": visible}
+        on_event("reply.done", result, 1)
+        return result
+
+    brain = FakeWorker(stream_handlers={"brain.action.plan": planned})
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
+        flow.begin_caller(0)
+        ui.emit(
+            "ui.intent.chosen",
+            {
+                "custom": "Use my selected name in this form",
+                "intent_routing": {"mode": "auto", "source": "custom"},
+            },
+        )
+
+    assert [
+        call["params"]["planning_tool_name"] for call in brain.calls_for("brain.action.plan")
+    ] == ["wisp_choose_app_response", "browser_plan_fill_form"]
+    assert native.calls_for("native.action.browser.form_apply")
+    assert not native.calls_for("native.paste_text")
+
+
+def test_supported_app_custom_information_prompt_forces_answer_disposition_without_mutation() -> None:
+    """A custom informational prompt uses the forced decision tool and performs no app action."""
+    active_app = {
+        "name": "Contact form - Google Chrome",
+        "process_name": "chrome.exe",
+        "pid": 42,
+        "window_id": 777,
+    }
+    native = FakeWorker({
+        "native.context.snapshot": lambda _params: {
+            "platform": "win32",
+            "active_app": active_app,
+            "browser_url": "https://example.test/contact",
+            "selected_text": "",
+            "clipboard_text": "",
+        },
+    })
+    ui = FakeWorker({"ui.show_intent": lambda _params: {}})
+    brain = FakeWorker(stream_handlers={
+        "brain.action.plan": action_plan_stream({
+            "disposition": "answer",
+            "capability_type": "",
+            "action_instruction": "",
+            "response_text": "This page is asking for contact information.",
+        }, "Prepared a direct answer."),
+    })
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
+        flow.begin_caller(0)
+        ui.emit(
+            "ui.intent.chosen",
+            {"custom": "What is this page asking for?", "intent_routing": {"mode": "auto", "source": "custom"}},
+        )
+
+    planner = brain.last_call("brain.action.plan")["params"]
+    assert planner["planning_tool_name"] == "wisp_choose_app_response"
+    assert ui.last_call("ui.reply.chunk")["params"]["text"] == "This page is asking for contact information."
+    assert not native.calls_for("native.action.browser.form_snapshot")
+    assert not native.calls_for("native.action.browser.form_apply")
+    assert not native.calls_for("native.paste_text")
 
 
 def test_caller_hotkey_captures_selected_file_before_intent_steals_focus(tmp_path):
@@ -2815,6 +3770,36 @@ def test_intent_app_preview_lists_multiple_active_document_sources():
     assert query["active_document_label"] == "Open app documents"
     assert "[Notepad]\nnotepad body" in query["active_document_text"]
     assert "[demo.py]\nVS Code paragraph" in query["active_document_text"]
+
+
+def test_active_document_previews_carry_application_names_for_visible_labels() -> None:
+    """Context rows identify the owning application instead of App 1/App 2."""
+    flow, _native, _ui, _brain, _audio = make_flow()
+
+    sources = flow._active_document_source_previews(  # noqa: SLF001 - focused formatting contract
+        "[demo.py]\ndef greet(): return 'hi'\n\n[Contact form]\nName Email Country",
+        {
+            "window_candidates": [
+                {
+                    "label": "demo.py",
+                    "title": "demo.py - Visual Studio Code",
+                    "process_name": "Code.exe",
+                    "accepted": True,
+                },
+                {
+                    "label": "Contact form",
+                    "title": "Contact form - Google Chrome",
+                    "process_name": "chrome.exe",
+                    "accepted": True,
+                },
+            ],
+        },
+    )
+
+    assert sources == [
+        {"label": "demo.py", "preview": "def greet(): return 'hi'", "app": "VS Code"},
+        {"label": "Contact form", "preview": "Name Email Country", "app": "Google Chrome"},
+    ]
 
 
 def test_context_priority_marks_browser_when_browser_was_active():
@@ -6171,11 +7156,19 @@ def test_settings_open_includes_live_addon_tools():
 def test_addon_and_agent_tray_events_route_through_supervisor():
     brain = FakeWorker(
         {
+            "brain.addons.ready": lambda _params: {
+                "ready": True,
+                "addons": [{"name": "demo", "status": "loaded", "tray_actions": ["Run"]}],
+            },
             "brain.addons.list": lambda _params: {
                 "addons_dir": "/tmp/addons",
                 "addons": [{"name": "demo", "status": "loaded", "tray_actions": ["Run"]}],
             },
-            "brain.addons.run_action": lambda _params: {"ok": True, "message": "ran demo"},
+            "brain.addons.run_action": lambda _params: {
+                "ok": True,
+                "message": "ran demo",
+                "virtual_workspace_url": "http://127.0.0.1:8765/?token=test",
+            },
             "brain.addons.repair_environment": lambda _params: {"ready": True},
             "brain.addons.install_archive": lambda _params: {"id": "demo2"},
             "brain.addons.install_folder": lambda _params: {"id": "demo3"},
@@ -6189,6 +7182,10 @@ def test_addon_and_agent_tray_events_route_through_supervisor():
     )
     _flow, native, ui, brain, _audio = make_flow(brain=brain)
 
+    assert ui.last_call("ui.show_overlay")["params"]["addon_tray_actions"] == [
+        {"addon_id": "demo", "label": "Run"}
+    ]
+
     ui.emit("ui.addons.open_requested", {})
     ui.emit("ui.addons.run_action", {"addon_id": "demo", "label": "Run"})
     ui.emit("ui.addons.repair_environment", {"addon_id": "demo"})
@@ -6200,6 +7197,9 @@ def test_addon_and_agent_tray_events_route_through_supervisor():
 
     assert ui.last_call("ui.show_addons")["params"]["addons"][0]["name"] == "demo"
     assert brain.last_call("brain.addons.run_action")["params"]["addon_id"] == "demo"
+    assert ui.last_call("ui.show_virtual_workspace")["params"]["endpoint"].startswith(
+        "http://127.0.0.1:"
+    )
     assert brain.last_call("brain.addons.repair_environment")["params"]["addon_id"] == "demo"
     assert brain.last_call("brain.addons.install_archive")["params"]["path"] == "/tmp/demo.wisp"
     assert brain.last_call("brain.addons.install_folder")["params"]["path"] == "/tmp/demo-folder"
@@ -6207,6 +7207,28 @@ def test_addon_and_agent_tray_events_route_through_supervisor():
     assert ui.calls_for("ui.reply.notice")
     assert ui.calls_for("ui.show_agent_task")
     assert ui.last_call("ui.show_agent_history")["params"]["runs"][0]["title"] == "recent"
+
+
+def test_opening_virtual_workspace_does_not_show_a_redundant_speech_notice():
+    brain = FakeWorker(
+        {
+            "brain.addons.run_action": lambda _params: {
+                "ok": True,
+                "message": "Virtual Workspace opened.",
+                "virtual_workspace_url": "http://127.0.0.1:8765/?token=test",
+            },
+        }
+    )
+    ui = FakeWorker({"ui.show_virtual_workspace": lambda _params: {"shown": True}})
+    flow, _native, ui, _brain, _audio = make_flow(ui=ui, brain=brain)
+    notices_before = len(ui.calls_for("ui.reply.notice"))
+
+    flow.addon_run_action({"addon_id": "virtual-workspace", "label": "Open Virtual Workspace"})
+
+    assert len(ui.calls_for("ui.reply.notice")) == notices_before
+    assert ui.last_call("ui.show_virtual_workspace")["params"]["endpoint"].startswith(
+        "http://127.0.0.1:"
+    )
 
 
 def test_addon_startup_notifications_reach_the_native_desktop_boundary():

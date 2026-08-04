@@ -5837,5 +5837,245 @@ Shared uv/pip caches and unrelated Hugging Face models will not be removed.</sou
     <message><source>The text was replaced, but Wisp couldn't restore your previous clipboard.</source><translation>文本已替换，但 Wisp 无法恢复你之前的剪贴板内容。</translation></message>
     <message><source>ElevenLabs is downloaded only when you install it, keeping release downloads smaller. Source checkouts may use the SDK from their Python environment.</source><translation>ElevenLabs 仅在你安装时下载，以减小发布版下载体积。源码签出可使用其 Python 环境中的 SDK。</translation></message>
     <message><source>Packages are downloaded and staged. Restart Wisp to apply and verify them.</source><translation>软件包已下载并暂存。重启 Wisp 以应用并验证它们。</translation></message>
+    <message><source>API token</source><translation>API 令牌</translation></message>
+    <message><source>Account ID</source><translation>账户 ID</translation></message>
+    <message><source>Account identifier from the Workers AI dashboard; this is not your email or zone ID.</source><translation>Workers AI 控制面板中的账户标识符；这不是你的电子邮件地址或区域 ID。</translation></message>
+    <message><source>Cloudflare Account ID</source><translation>Cloudflare 账户 ID</translation></message>
+    <message><source>Cloudflare STT needs: {items}.</source><translation>Cloudflare 语音转文字需要：{items}。</translation></message>
+    <message><source>Cloudflare Whisper Large v3 Turbo is configured. Click Test Cloudflare STT to verify access.</source><translation>Cloudflare Whisper Large v3 Turbo 已配置。点击“测试 Cloudflare 语音转文字”以验证访问权限。</translation></message>
+    <message><source>Cloudflare mode sends each speech clip to Workers AI after Wisp's local silence check. It needs internet access and does not provide live streaming transcription.</source><translation>Cloudflare 模式会在 Wisp 本地静音检查后将每段语音发送到 Workers AI。它需要互联网连接，且不提供实时流式转写。</translation></message>
+    <message><source>Cloudflare — Whisper Large v3 Turbo</source><translation>Cloudflare — Whisper Large v3 Turbo</translation></message>
+    <message><source>Falls back only when local STT is installed; otherwise the Cloudflare error is shown.</source><translation>仅在已安装本地语音转文字时回退；否则会显示 Cloudflare 错误。</translation></message>
+    <message><source>Find this in the Cloudflare Workers AI dashboard under Use REST API.</source><translation>可在 Cloudflare Workers AI 控制面板的“使用 REST API”中找到。</translation></message>
+    <message><source>Install or repair faster-whisper, then download and load the speech model so the first hold-to-talk does not stall.</source><translation>安装或修复 faster-whisper，然后下载并加载语音模型，避免首次按住说话时卡住。</translation></message>
+    <message><source>Local — faster-whisper</source><translation>本地 — faster-whisper</translation></message>
+    <message><source>Send a half-second silent clip to verify Workers AI access.</source><translation>发送半秒静音片段以验证 Workers AI 访问权限。</translation></message>
+    <message><source>Stored in your operating system keychain and never written to the profile file.</source><translation>存储在操作系统钥匙串中，绝不会写入配置文件。</translation></message>
+    <message><source>Test Cloudflare STT</source><translation>测试 Cloudflare 语音转文字</translation></message>
+    <message><source>Use a dedicated token with Workers AI Read and Edit permissions.</source><translation>请使用具有 Workers AI 读取和编辑权限的专用令牌。</translation></message>
+    <message><source>Use local Whisper if Cloudflare is unavailable</source><translation>Cloudflare 不可用时使用本地 Whisper</translation></message>
+    <message><source>Workers AI API token</source><translation>Workers AI API 令牌</translation></message>
+    <message><source>Review action</source><translation>Review action</translation></message>
+    <message><source>Checking the active Calc sheet and action connection...</source><translation>Checking the active Calc sheet and action connection...</translation></message>
+    <message><source>Calc is not ready for a background action.</source><translation>Calc is not ready for a background action.</translation></message>
+    <message><source>Reading the selected Calc range and checking its current values...</source><translation>Reading the selected Calc range and checking its current values...</translation></message>
+    <message><source>Selection checked. Validating the exact chart operation...</source><translation>Selection checked. Validating the exact chart operation...</translation></message>
+    <message><source>Building the chart preview from the validated range...</source><translation>Building the chart preview from the validated range...</translation></message>
+    <message><source>The Calc chart preview could not be prepared.</source><translation>The Calc chart preview could not be prepared.</translation></message>
+    <message><source>Preview ready. Waiting for Apply or Cancel; nothing has changed yet.</source><translation>Preview ready. Waiting for Apply or Cancel; nothing has changed yet.</translation></message>
+    <message><source>Chart cancelled. Nothing was changed.</source><translation>Chart cancelled. Nothing was changed.</translation></message>
+    <message><source>Applying the chart in Calc…</source><translation>Applying the chart in Calc…</translation></message>
+    <message><source>Rechecking the range, creating the reviewed chart, and verifying the result...</source><translation>Rechecking the range, creating the reviewed chart, and verifying the result...</translation></message>
+    <message><source>Chart created and verified in Calc.</source><translation>Chart created and verified in Calc.</translation></message>
+    <message><source>Calc could not verify the reviewed chart action.</source><translation>Calc could not verify the reviewed chart action.</translation></message>
+    <message><source>This Calc window was opened before Wisp's background action session. Save your work and restart LibreOffice once; Wisp will then create charts without taking focus.</source><translation>This Calc window was opened before Wisp's background action session. Save your work and restart LibreOffice once; Wisp will then create charts without taking focus.</translation></message>
+    <message><source>Focusless Calc actions are not available in this session. Wisp did not change the spreadsheet.</source><translation>Focusless Calc actions are not available in this session. Wisp did not change the spreadsheet.</translation></message>
+    <message><source>Calc chart cancelled. Nothing was changed.</source><translation>Calc chart cancelled. Nothing was changed.</translation></message>
+    <message><source>Chart created in LibreOffice Calc.</source><translation>Chart created in LibreOffice Calc.</translation></message>
+    <message><source>Calc did not confirm the change.</source><translation>Calc did not confirm the change.</translation></message>
+    <message><source>Wisp couldn't prepare the Calc chart preview: {error}</source><translation>Wisp couldn't prepare the Calc chart preview: {error}</translation></message>
+    <message><source>Wisp couldn't create the chart: {error}</source><translation>Wisp couldn't create the chart: {error}</translation></message>
+    <message><source>Create chart in Calc</source><translation>Create chart in Calc</translation></message>
+    <message><source>CALC ACTION · PREVIEW</source><translation>CALC ACTION · PREVIEW</translation></message>
+    <message><source>Wisp will add this chart in the same open Calc window.</source><translation>Wisp will add this chart in the same open Calc window.</translation></message>
+    <message><source>Workbook</source><translation>Workbook</translation></message>
+    <message><source>Source</source><translation>Source</translation></message>
+    <message><source>Size</source><translation>Size</translation></message>
+    <message><source>{rows} rows × {columns} columns</source><translation>{rows} rows × {columns} columns</translation></message>
+    <message><source>Vertical bar chart preview</source><translation>Vertical bar chart preview</translation></message>
+    <message><source>Nothing has changed yet.</source><translation>Nothing has changed yet.</translation></message>
+    <message><source>This preview uses the same typed cell values Calc will chart. Apply creates one vertical bar chart; the source cells stay in place.</source><translation>This preview uses the same typed cell values Calc will chart. Apply creates one vertical bar chart; the source cells stay in place.</translation></message>
+    <message><source>Wisp could not find a numeric series in this selection. The final chart may be empty.</source><translation>Wisp could not find a numeric series in this selection. The final chart may be empty.</translation></message>
+    <message><source>Vertical bar chart from {range}</source><translation>Vertical bar chart from {range}</translation></message>
+    <message><source>Calc must still be showing the same selected data when you Apply.</source><translation>Calc must still be showing the same selected data when you Apply.</translation></message>
+    <message><source>Selection checked. Validating the exact Calc operation...</source><translation>Selection checked. Validating the exact Calc operation...</translation></message>
+    <message><source>Building the exact preview from the validated range...</source><translation>Building the exact preview from the validated range...</translation></message>
+    <message><source>The Calc action preview could not be prepared.</source><translation>The Calc action preview could not be prepared.</translation></message>
+    <message><source>The model is still preparing the Calc operation; this may take a few more seconds.</source><translation>The model is still preparing the Calc operation; this may take a few more seconds.</translation></message>
+    <message><source>Calc action cancelled. Nothing was changed.</source><translation>Calc action cancelled. Nothing was changed.</translation></message>
+    <message><source>Applying the reviewed action in Calc...</source><translation>Applying the reviewed action in Calc...</translation></message>
+    <message><source>Rechecking the range, applying the reviewed action, and verifying the result...</source><translation>Rechecking the range, applying the reviewed action, and verifying the result...</translation></message>
+    <message><source>Calc action applied and verified.</source><translation>Calc action applied and verified.</translation></message>
+    <message><source>Calc could not verify the reviewed action.</source><translation>Calc could not verify the reviewed action.</translation></message>
+    <message><source>Wisp couldn't prepare the Calc action preview: {error}</source><translation>Wisp couldn't prepare the Calc action preview: {error}</translation></message>
+    <message><source>Wisp couldn't apply the Calc action: {error}</source><translation>Wisp couldn't apply the Calc action: {error}</translation></message>
+    <message><source>Selection checked. Planning the exact formatting-only changes...</source><translation>Selection checked. Planning the exact formatting-only changes...</translation></message>
+    <message><source>Selection checked. Choosing the exact sort column and direction...</source><translation>Selection checked. Choosing the exact sort column and direction...</translation></message>
+    <message><source>Clean up table in Calc</source><translation>Clean up table in Calc</translation></message>
+    <message><source>Wisp will improve the selected table's presentation without changing its contents.</source><translation>Wisp will improve the selected table's presentation without changing its contents.</translation></message>
+    <message><source>Cell contents</source><translation>Cell contents</translation></message>
+    <message><source>Unchanged</source><translation>Unchanged</translation></message>
+    <message><source>Exact formatting changes</source><translation>Exact formatting changes</translation></message>
+    <message><source>Proposed appearance</source><translation>Proposed appearance</translation></message>
+    <message><source>Make the first selected row a clear, bold header</source><translation>Make the first selected row a clear, bold header</translation></message>
+    <message><source>Fit selected columns to their contents</source><translation>Fit selected columns to their contents</translation></message>
+    <message><source>Keep every cell value, formula, and number format unchanged</source><translation>Keep every cell value, formula, and number format unchanged</translation></message>
+    <message><source>Apply changes formatting and column widths only.</source><translation>Apply changes formatting and column widths only.</translation></message>
+    <message><source>Format {range} without changing contents</source><translation>Format {range} without changing contents</translation></message>
+    <message><source>Sort rows in Calc</source><translation>Sort rows in Calc</translation></message>
+    <message><source>Wisp will reorder complete rows; it will not sort one column independently.</source><translation>Wisp will reorder complete rows; it will not sort one column independently.</translation></message>
+    <message><source>Sort by</source><translation>Sort by</translation></message>
+    <message><source>Direction</source><translation>Direction</translation></message>
+    <message><source>Ascending</source><translation>Ascending</translation></message>
+    <message><source>Descending</source><translation>Descending</translation></message>
+    <message><source>Current order</source><translation>Current order</translation></message>
+    <message><source>Proposed order</source><translation>Proposed order</translation></message>
+    <message><source>Apply sorts only {range} and keeps the header row in place.</source><translation>Apply sorts only {range} and keeps the header row in place.</translation></message>
+    <message><source>Sort by {label} ({direction})</source><translation>Sort by {label} ({direction})</translation></message>
+    <message><source>Clean up this table</source><translation>Clean up this table</translation></message>
+    <message><source>Sort this table</source><translation>Sort this table</translation></message>
+    <message><source>Analyze this data</source><translation>Analyze this data</translation></message>
+    <message><source>Excel changes</source><translation>Excel changes</translation></message>
+    <message><source>EXCEL ACTION · PREVIEW</source><translation>EXCEL ACTION · PREVIEW</translation></message>
+    <message><source>Review the exact workbook changes before Wisp applies them.</source><translation>Review the exact workbook changes before Wisp applies them.</translation></message>
+    <message><source>Create table {name} from {range}</source><translation>Create table {name} from {range}</translation></message>
+    <message><source>Add {kind} chart {name}</source><translation>Add {kind} chart {name}</translation></message>
+    <message><source>Showing a preview of {rows} rows × {columns} columns.</source><translation>Showing a preview of {rows} rows × {columns} columns.</translation></message>
+    <message><source>Preview only — Excel has not been changed.</source><translation>Preview only — Excel has not been changed.</translation></message>
+    <message><source>Apply creates only the reviewed Excel objects.</source><translation>Apply creates only the reviewed Excel objects.</translation></message>
+    <message><source>Creating the table cannot yet be completely undone by Wisp.</source><translation>Creating the table cannot yet be completely undone by Wisp.</translation></message>
+    <message><source>column</source><translation>column</translation></message>
+    <message><source>line</source><translation>line</translation></message>
+    <message><source>bar</source><translation>bar</translation></message>
+    <message><source>pie</source><translation>pie</translation></message>
+    <message><source>Reading the active saved VS Code file and exact selected range...</source><translation>Reading the active saved VS Code file and exact selected range...</translation></message>
+    <message><source>The active saved file could not be read safely.</source><translation>The active saved file could not be read safely.</translation></message>
+    <message><source>This VS Code tab must be saved before Wisp can change it safely.</source><translation>This VS Code tab must be saved before Wisp can change it safely.</translation></message>
+    <message><source>Save this tab once, then press Ctrl+Shift+Q again. Wisp did not change anything.</source><translation>Save this tab once, then press Ctrl+Shift+Q again. Wisp did not change anything.</translation></message>
+    <message><source>Recommendation: Press Ctrl+S to choose a filename, then run the same request again.</source><translation>Recommendation: Press Ctrl+S to choose a filename, then run the same request again.</translation></message>
+    <message><source>The saved-file target did not pass safety checks.</source><translation>The saved-file target did not pass safety checks.</translation></message>
+    <message><source>Target checked. Drafting the exact contents for the new file...</source><translation>Target checked. Drafting the exact contents for the new file...</translation></message>
+    <message><source>Target checked. Reviewing the selected code and drafting the exact change...</source><translation>Target checked. Reviewing the selected code and drafting the exact change...</translation></message>
+    <message><source>The model is still drafting the exact code change; this may take a few more seconds.</source><translation>The model is still drafting the exact code change; this may take a few more seconds.</translation></message>
+    <message><source>The code change could not be drafted.</source><translation>The code change could not be drafted.</translation></message>
+    <message><source>This code action was replaced by a newer request.</source><translation>This code action was replaced by a newer request.</translation></message>
+    <message><source>Draft received. Checking its file boundary, selected range, and operation schema...</source><translation>Draft received. Checking its file boundary, selected range, and operation schema...</translation></message>
+    <message><source>Safety checks passed. Building the exact saved-file diff preview...</source><translation>Safety checks passed. Building the exact saved-file diff preview...</translation></message>
+    <message><source>The proposed code could not form a safe diff.</source><translation>The proposed code could not form a safe diff.</translation></message>
+    <message><source>Code change cancelled. Nothing was changed.</source><translation>Code change cancelled. Nothing was changed.</translation></message>
+    <message><source>Rechecking the saved file, applying the reviewed change, and verifying the result...</source><translation>Rechecking the saved file, applying the reviewed change, and verifying the result...</translation></message>
+    <message><source>Reviewed code change applied and verified.</source><translation>Reviewed code change applied and verified.</translation></message>
+    <message><source>The reviewed code change could not be verified.</source><translation>The reviewed code change could not be verified.</translation></message>
+    <message><source>The active saved file could not be read.</source><translation>The active saved file could not be read.</translation></message>
+    <message><source>VS Code change cancelled. Nothing was changed.</source><translation>VS Code change cancelled. Nothing was changed.</translation></message>
+    <message><source>Applied the code change in VS Code.</source><translation>Applied the code change in VS Code.</translation></message>
+    <message><source>VS Code did not confirm the file change.</source><translation>VS Code did not confirm the file change.</translation></message>
+    <message><source>Wisp couldn't prepare the VS Code action: {error}</source><translation>Wisp couldn't prepare the VS Code action: {error}</translation></message>
+    <message><source>VS Code fix failed: {error}</source><translation>VS Code fix failed: {error}</translation></message>
+    <message><source>Wisp couldn't build a safe code diff: {error}</source><translation>Wisp couldn't build a safe code diff: {error}</translation></message>
+    <message><source>Wisp couldn't apply the code change: {error}</source><translation>Wisp couldn't apply the code change: {error}</translation></message>
+    <message><source>Apply code fix</source><translation>Apply code fix</translation></message>
+    <message><source>VS CODE ACTION - PREVIEW</source><translation>VS CODE ACTION - PREVIEW</translation></message>
+    <message><source>Review the exact saved-file change before Wisp applies it.</source><translation>Review the exact saved-file change before Wisp applies it.</translation></message>
+    <message><source>File</source><translation>File</translation></message>
+    <message><source>Changed lines</source><translation>Changed lines</translation></message>
+    <message><source>No textual difference was produced.</source><translation>No textual difference was produced.</translation></message>
+    <message><source>... diff preview truncated ...</source><translation>... diff preview truncated ...</translation></message>
+    <message><source>(current)</source><translation>(current)</translation></message>
+    <message><source>(proposed)</source><translation>(proposed)</translation></message>
+    <message><source>Apply writes only this fingerprint-checked file range.</source><translation>Apply writes only this fingerprint-checked file range.</translation></message>
+    <message><source>Replace selected code in {file}</source><translation>Replace selected code in {file}</translation></message>
+    <message><source>Apply is refused if the saved file changes after this preview.</source><translation>Apply is refused if the saved file changes after this preview.</translation></message>
+    <message><source>Wisp could not capture the exact Untitled editor target safely.</source><translation>Wisp could not capture the exact Untitled editor target safely.</translation></message>
+    <message><source>Keep the caret in the Untitled editor when you press Ctrl+Shift+Q, then try again.</source><translation>Keep the caret in the Untitled editor when you press Ctrl+Shift+Q, then try again.</translation></message>
+    <message><source>Recommendation: Make sure the text editor itself has focus, not a panel or terminal.</source><translation>Recommendation: Make sure the text editor itself has focus, not a panel or terminal.</translation></message>
+    <message><source>Editor target captured. Reviewing the selected code and drafting the exact change...</source><translation>Editor target captured. Reviewing the selected code and drafting the exact change...</translation></message>
+    <message><source>Editor insertion point captured. Drafting the exact new content...</source><translation>Editor insertion point captured. Drafting the exact new content...</translation></message>
+    <message><source>Draft received. Checking the captured editor target and exact replacement...</source><translation>Draft received. Checking the captured editor target and exact replacement...</translation></message>
+    <message><source>Wisp couldn't build a safe code diff for the Untitled tab.</source><translation>Wisp couldn't build a safe code diff for the Untitled tab.</translation></message>
+    <message><source>Safety checks passed. Building the exact Untitled editor diff preview...</source><translation>Safety checks passed. Building the exact Untitled editor diff preview...</translation></message>
+    <message><source>Apply code to Untitled tab</source><translation>Apply code to Untitled tab</translation></message>
+    <message><source>Review the exact change before Wisp writes it into the captured Untitled editor.</source><translation>Review the exact change before Wisp writes it into the captured Untitled editor.</translation></message>
+    <message><source>Tab</source><translation>Tab</translation></message>
+    <message><source>Target</source><translation>Target</translation></message>
+    <message><source>Insertion point</source><translation>Insertion point</translation></message>
+    <message><source>Apply writes only to the editor target captured when you opened Wisp.</source><translation>Apply writes only to the editor target captured when you opened Wisp.</translation></message>
+    <message><source>Keep the same Untitled tab open until Apply finishes.</source><translation>Keep the same Untitled tab open until Apply finishes.</translation></message>
+    <message><source>Writing the reviewed change to the captured Untitled editor target...</source><translation>Writing the reviewed change to the captured Untitled editor target...</translation></message>
+    <message><source>Reviewed code change written to the Untitled tab.</source><translation>Reviewed code change written to the Untitled tab.</translation></message>
+    <message><source>Wisp could not write to the captured Untitled editor target.</source><translation>Wisp could not write to the captured Untitled editor target.</translation></message>
+    <message><source>The Untitled editor target changed before Apply, so Wisp did not paste the code.</source><translation>The Untitled editor target changed before Apply, so Wisp did not paste the code.</translation></message>
+    <message><source>Recommendation: Put the caret back in that tab and run the request again.</source><translation>Recommendation: Put the caret back in that tab and run the request again.</translation></message>
+    <message><source>Identifying the recorded application window...</source><translation>Identifying the recorded application window...</translation></message>
+    <message><source>Reading the bounded semantic targets...</source><translation>Reading the bounded semantic targets...</translation></message>
+    <message><source>Resolving the registered semantic operations...</source><translation>Resolving the registered semantic operations...</translation></message>
+    <message><source>Checking targets and preconditions...</source><translation>Checking targets and preconditions...</translation></message>
+    <message><source>Building the exact interaction preview...</source><translation>Building the exact interaction preview...</translation></message>
+    <message><source>Waiting for Apply; nothing has changed.</source><translation>Waiting for Apply; nothing has changed.</translation></message>
+    <message><source>The interaction plan was refused safely.</source><translation>The interaction plan was refused safely.</translation></message>
+    <message><source>Cancelled before any interaction changes.</source><translation>Cancelled before any interaction changes.</translation></message>
+    <message><source>Cancelled after {done} of {total} operations.</source><translation>Cancelled after {done} of {total} operations.</translation></message>
+    <message><source>Applying step {step} of {total}: {operation}...</source><translation>Applying step {step} of {total}: {operation}...</translation></message>
+    <message><source>Verifying the exact semantic results...</source><translation>Verifying the exact semantic results...</translation></message>
+    <message><source>Applied and verified {count} semantic operations.</source><translation>Applied and verified {count} semantic operations.</translation></message>
+    <message><source>The interaction stopped safely before continuing.</source><translation>The interaction stopped safely before continuing.</translation></message>
+    <message><source>Set value to {value}</source><translation>Set value to {value}</translation></message>
+    <message><source>Set toggle to {state}</source><translation>Set toggle to {state}</translation></message>
+    <message><source>Scroll by {amount} bounded units</source><translation>Scroll by {amount} bounded units</translation></message>
+    <message><source>Select this exact item</source><translation>Select this exact item</translation></message>
+    <message><source>Invoke this exact control</source><translation>Invoke this exact control</translation></message>
+    <message><source>Read a bounded accessibility tree</source><translation>Read a bounded accessibility tree</translation></message>
+    <message><source>Reading safe editable fields from the current browser page...</source><translation>Reading safe editable fields from the current browser page...</translation></message>
+    <message><source>The browser page is not ready for a safe action.</source><translation>The browser page is not ready for a safe action.</translation></message>
+    <message><source>Wisp could not inspect this page through its private browser API. Reopen Chrome through Wisp control and try again.</source><translation>Wisp could not inspect this page through its private browser API. Reopen Chrome through Wisp control and try again.</translation></message>
+    <message><source>The browser fields did not pass safety checks.</source><translation>The browser fields did not pass safety checks.</translation></message>
+    <message><source>Found {count} safe field(s). Drafting the exact values to fill...</source><translation>Found {count} safe field(s). Drafting the exact values to fill...</translation></message>
+    <message><source>The model is still matching your request to the page fields; this may take a few more seconds.</source><translation>The model is still matching your request to the page fields; this may take a few more seconds.</translation></message>
+    <message><source>The form values could not be drafted.</source><translation>The form values could not be drafted.</translation></message>
+    <message><source>This browser action was replaced by a newer request.</source><translation>This browser action was replaced by a newer request.</translation></message>
+    <message><source>Draft received. Checking every field, value, and page boundary...</source><translation>Draft received. Checking every field, value, and page boundary...</translation></message>
+    <message><source>Safety checks passed. Building the exact field-by-field preview...</source><translation>Safety checks passed. Building the exact field-by-field preview...</translation></message>
+    <message><source>The proposed values could not form a safe browser action.</source><translation>The proposed values could not form a safe browser action.</translation></message>
+    <message><source>Browser form action cancelled. Nothing was changed.</source><translation>Browser form action cancelled. Nothing was changed.</translation></message>
+    <message><source>Rechecking the page, filling the reviewed fields, and verifying every value...</source><translation>Rechecking the page, filling the reviewed fields, and verifying every value...</translation></message>
+    <message><source>Reviewed browser fields filled and verified.</source><translation>Reviewed browser fields filled and verified.</translation></message>
+    <message><source>The reviewed browser action could not be verified.</source><translation>The reviewed browser action could not be verified.</translation></message>
+    <message><source>Filled the browser form without submitting it.</source><translation>Filled the browser form without submitting it.</translation></message>
+    <message><source>The browser did not verify the reviewed field values.</source><translation>The browser did not verify the reviewed field values.</translation></message>
+    <message><source>Wisp couldn't prepare this browser action: {error}</source><translation>Wisp couldn't prepare this browser action: {error}</translation></message>
+    <message><source>Browser form action failed: {error}</source><translation>Browser form action failed: {error}</translation></message>
+    <message><source>Wisp couldn't build a safe form preview: {error}</source><translation>Wisp couldn't build a safe form preview: {error}</translation></message>
+    <message><source>Wisp couldn't fill the browser form: {error}</source><translation>Wisp couldn't fill the browser form: {error}</translation></message>
+    <message><source>Fill web form</source><translation>Fill web form</translation></message>
+    <message><source>BROWSER ACTION - PREVIEW</source><translation>BROWSER ACTION - PREVIEW</translation></message>
+    <message><source>Review every value before Wisp fills the current page.</source><translation>Review every value before Wisp fills the current page.</translation></message>
+    <message><source>Page</source><translation>Page</translation></message>
+    <message><source>Fields</source><translation>Fields</translation></message>
+    <message><source>Submission</source><translation>Submission</translation></message>
+    <message><source>Will not submit</source><translation>Will not submit</translation></message>
+    <message><source>Field</source><translation>Field</translation></message>
+    <message><source>Current</source><translation>Current</translation></message>
+    <message><source>Proposed</source><translation>Proposed</translation></message>
+    <message><source>Empty</source><translation>Empty</translation></message>
+    <message><source>Apply fills only these fingerprint-checked fields and does not click Submit.</source><translation>Apply fills only these fingerprint-checked fields and does not click Submit.</translation></message>
+    <message><source>Fill {label}</source><translation>Fill {label}</translation></message>
+    <message><source>Apply is refused if the page or any captured field changes after this preview.</source><translation>Apply is refused if the page or any captured field changes after this preview.</translation></message>
+    <message><source>Search chats</source><translation>搜索对话</translation></message>
+    <message><source>Chats</source><translation>对话</translation></message>
+    <message><source>Delete all conversations</source><translation>删除所有对话</translation></message>
+    <message><source>Delete every Wisp conversation after confirmation</source><translation>确认后删除所有 Wisp 对话</translation></message>
+    <message><source>Formatted replies</source><translation>格式化回复</translation></message>
+    <message><source>Message model</source><translation>消息模型</translation></message>
+    <message><source>Wisp model</source><translation>Wisp 模型</translation></message>
+    <message><source>Models can make mistakes.</source><translation>模型可能会出错。</translation></message>
+    <message><source>Formatting…</source><translation>正在格式化…</translation></message>
+    <message><source>Wait for the current reply to finish before deleting conversation history.</source><translation>请等待当前回复完成后再删除对话历史。</translation></message>
+    <message><source>Delete all {count} Wisp conversations?
+
+This cannot be undone. Imported ChatGPT and Claude source files will not be deleted.</source><translation>要删除全部 {count} 个 Wisp 对话吗？
+
+此操作无法撤销。已导入的 ChatGPT 和 Claude 源文件不会被删除。</translation></message>
+    <message><source>Delete all conversations failed</source><translation>删除所有对话失败</translation></message>
+    <message><source>Checking meaning…</source><translation>正在检查含义…</translation></message>
+    <message><source>Copy</source><translation>复制</translation></message>
+    <message><source>Copy reply</source><translation>复制回复</translation></message>
+    <message><source>Show original</source><translation>显示原文</translation></message>
+    <message><source>Reformat</source><translation>重新格式化</translation></message>
+    <message><source>Format this reply in place</source><translation>就地格式化此回复</translation></message>
+    <message><source>Formatting reply</source><translation>正在格式化回复</translation></message>
+    <message><source>Wisp could not delete the conversations: {error}</source><translation>Wisp 无法删除对话：{error}</translation></message>
+    <message><source>Show formatted</source><translation>显示格式化版本</translation></message>
+    <message><source>This is taking a little longer. I'm still working on it.</source><translation>这需要更长一点时间。我仍在处理中。</translation></message>
+    <message><source>This is taking a little longer. I'm still preparing the rewrite.</source><translation>这需要更长一点时间。我仍在准备重写内容。</translation></message>
   </context>
 </TS>

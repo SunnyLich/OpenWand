@@ -22,17 +22,14 @@ def test_every_general_and_rewrite_action_runs_by_key_and_click(qapp) -> None:
         (caller_idx, row["key"].upper(), row["prompt"])
         for caller_idx in (0, 1)
         for row in config.CALLER_ROWS[caller_idx]["intents"]
-        if row["label"]
-        in {
-            "What is this?",
-            "Explain simply",
-            "How do I fix this?",
-            "Fix grammar",
-            "Simplify",
-            "Improve tone",
-        }
+        if row.get("label") and row.get("key") and row.get("prompt")
     ]
-    assert len(expected) == 6
+    assert len(expected) == sum(
+        1
+        for caller_idx in (0, 1)
+        for row in config.CALLER_ROWS[caller_idx]["intents"]
+        if row.get("label")
+    )
 
     for selection_mode in ("key", "click"):
         for caller_idx, glyph, prompt in expected:

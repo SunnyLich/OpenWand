@@ -122,6 +122,74 @@ def test_paste_text_uses_windows_uia_focus_token(monkeypatch):
     ]
 
 
+def test_windows_focus_capture_keeps_a_collapsed_editor_caret(monkeypatch):
+    """A caret-only editor target is cacheable for later Untitled insertion."""
+    import sys
+    import types
+
+    fake_uiac = types.ModuleType("comtypes.gen.UIAutomationClient")
+    fake_uiac.IUIAutomation = object
+    fake_uiac.IUIAutomationTextPattern = object
+    fake_uiac.TextPatternRangeEndpoint_Start = 0
+    fake_uiac.TextPatternRangeEndpoint_End = 1
+
+    class FakeRange:
+        def CompareEndpoints(self, *_args):
+            return 0
+
+    class FakeSelections:
+        Length = 1
+
+        def GetElement(self, _index):
+            return FakeRange()
+
+    class FakeTextPattern:
+        def GetSelection(self):
+            return FakeSelections()
+
+    class FakeRawPattern:
+        def QueryInterface(self, _interface):
+            return FakeTextPattern()
+
+    class FakeElement:
+        def GetCurrentPattern(self, _pattern_id):
+            return FakeRawPattern()
+
+    class FakeUia:
+        def GetFocusedElement(self):
+            return FakeElement()
+
+    fake_client = types.ModuleType("comtypes.client")
+    fake_client.GetModule = lambda _name: None
+    fake_client.CreateObject = lambda *_args, **_kwargs: FakeUia()
+    fake_comtypes = types.ModuleType("comtypes")
+    fake_comtypes.__path__ = []
+    fake_comtypes.client = fake_client
+    fake_gen = types.ModuleType("comtypes.gen")
+    fake_gen.__path__ = []
+    fake_gen.UIAutomationClient = fake_uiac
+
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(native_host, "_focus_seq", 0)
+    native_host._focus_cache.clear()
+    monkeypatch.setitem(sys.modules, "comtypes", fake_comtypes)
+    monkeypatch.setitem(sys.modules, "comtypes.client", fake_client)
+    monkeypatch.setitem(sys.modules, "comtypes.gen", fake_gen)
+    monkeypatch.setitem(sys.modules, "comtypes.gen.UIAutomationClient", fake_uiac)
+
+    token = native_host._win_uia_capture_focus()
+
+    assert token == 1
+    assert native_host._focus_cache["range"].CompareEndpoints(0, None, 1) == 0
+    assert native_host._focus_cache["collapsed"] is True
+
+
+def test_windows_background_text_units_preserve_unicode_and_normalize_newlines():
+    units = native_host._win_background_text_units("A\n\U0001f642")
+
+    assert units == [0x0041, 0x000D, 0xD83D, 0xDE42]
+
+
 def test_paste_text_refuses_windows_unanchored_fallback_when_focus_token_fails(monkeypatch):
     """Verify failed anchored paste-back does not paste into the current caret."""
     monkeypatch.setattr(native_host, "IS_MAC", False)
@@ -346,6 +414,33 @@ def test_context_snapshot_text_app_selection_uses_text_not_paths(monkeypatch):
     assert snapshot["selected_text"] == "selected text"
     assert snapshot["selected_paths"] == []
     assert snapshot["clipboard_text"] == "clipboard text"
+
+
+def test_context_snapshot_skips_text_focus_capture_for_calc(monkeypatch):
+    """Calc cells use the structured action API and must not enter UIA paste-back."""
+    monkeypatch.setattr(native_host, "IS_MAC", False)
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(
+        native_host,
+        "_active_app",
+        lambda: {
+            "name": "Budget.ods — LibreOffice Calc",
+            "process_name": "soffice.bin",
+            "pid": 42,
+            "window_id": 777,
+        },
+    )
+    monkeypatch.setattr(native_host, "_screen_size", lambda: {"width": 0, "height": 0})
+    monkeypatch.setattr(native_host, "_capture_focus", lambda: pytest.fail("Calc must not capture text focus"))
+
+    snapshot = native_host.context_snapshot(
+        include_clipboard=False,
+        include_selection=True,
+        capture_focus=True,
+    )
+
+    assert snapshot["focus_token"] == 0
+    assert snapshot["app_selection_deferred"] is True
 
 
 def test_context_snapshot_wayland_includes_active_window_accessible_text(monkeypatch):

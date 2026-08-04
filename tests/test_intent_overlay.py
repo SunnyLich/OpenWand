@@ -69,6 +69,7 @@ def test_addon_intent_rows_render_and_run_from_the_visible_picker(qapp, monkeypa
             "hint": "Addon: demo",
             "prompt": "Research the current selection with the add-on.",
             "is_custom": False,
+            "routing": {"mode": "legacy", "source": "addon"},
         }
 
         QTest.keyClick(overlay, Qt.Key.Key_X)
@@ -81,6 +82,203 @@ def test_addon_intent_rows_render_and_run_from_the_visible_picker(qapp, monkeypa
     finally:
         config.CALLER_ROWS[:] = old_rows
         _close_overlay_if_valid(overlay, qapp)
+
+
+def test_provider_suggestions_precede_but_preserve_configured_and_custom_rows(qapp):
+    """The captured app can tailor shortcuts without replacing user configuration."""
+    import config
+    import ui.intent_overlay as intent_overlay
+
+    old_rows = list(config.CALLER_ROWS)
+    config.CALLER_ROWS[:] = [{
+        "intents": [{
+            "key": "f",
+            "label": "Configured fix",
+            "hint": "Existing behavior",
+            "prompt": "Use my configured fix prompt.",
+        }],
+        "custom_key": "s",
+        "custom_label": "Freeform",
+    }]
+    provider = {
+        "id": "vscode",
+        "app": "vscode",
+        "display_name": "VS Code",
+        "suggested_intents": [{
+            "id": "vscode.fix_selection",
+            "label": "Fix selected code",
+            "hint": "Preview and apply a focused code change",
+            "prompt": "Fix the selected code.",
+            "preferred_key": "F",
+            "mode": "action",
+            "capability_type": "vscode.replace_selection@1",
+            "planning_tool": "vscode_plan_replace_selection",
+        }],
+    }
+    overlay = intent_overlay.IntentOverlay(caller_idx=0, action_provider=provider)
+    try:
+        assert [row["label"] for row in overlay._rows] == [
+            "Fix selected code",
+            "Configured fix",
+            "Freeform",
+        ]
+        assert overlay._rows[0]["glyph"] != "F"
+        assert overlay._rows[1]["glyph"] == "F"
+        assert overlay._rows[1]["routing"] == {"mode": "answer", "source": "configured"}
+        assert overlay._rows[-1]["routing"] == {"mode": "auto", "source": "custom"}
+        assert overlay._provider_display_name() == "VS Code"
+
+        overlay._selection_pending_idx = 0
+        overlay._fire(0)
+        assert overlay.selected_intent_routing() == {
+            "mode": "action",
+            "source": "provider",
+            "suggestion_id": "vscode.fix_selection",
+            "capability_type": "vscode.replace_selection@1",
+            "planning_tool": "vscode_plan_replace_selection",
+            "provider_id": "vscode",
+            "app": "vscode",
+        }
+    finally:
+        config.CALLER_ROWS[:] = old_rows
+        _close_overlay_if_valid(overlay, qapp)
+
+
+def test_rewrite_presets_use_structured_auto_routing_when_an_app_provider_is_active(qapp):
+    """Configured rewrite choices join the provider decision boundary instead of legacy paste."""
+    import config
+    import ui.intent_overlay as intent_overlay
+
+    old_rows = list(config.CALLER_ROWS)
+    config.CALLER_ROWS[:] = [{
+        "paste_back": True,
+        "intents": [{
+            "key": "w",
+            "label": "Fix grammar",
+            "hint": "Correct the selection",
+            "prompt": "Fix the grammar.",
+        }],
+        "custom_key": "s",
+    }]
+    provider = {
+        "id": "vscode",
+        "app": "vscode",
+        "suggested_intents": [{
+            "id": "vscode.fix_selection",
+            "label": "Fix selected code",
+            "hint": "Preview and apply a focused code change",
+            "prompt": "Fix the selected code.",
+            "preferred_key": "F",
+            "mode": "action",
+            "capability_type": "vscode.replace_selection@1",
+            "planning_tool": "vscode_plan_replace_selection",
+        }],
+    }
+    overlay = intent_overlay.IntentOverlay(caller_idx=0, action_provider=provider)
+    try:
+        configured = next(row for row in overlay._rows if row["label"] == "Fix grammar")
+        assert configured["routing"] == {"mode": "auto", "source": "configured"}
+    finally:
+        config.CALLER_ROWS[:] = old_rows
+        _close_overlay_if_valid(overlay, qapp)
+
+
+def test_unavailable_provider_action_is_visible_but_cannot_fire(qapp):
+    """Missing account bridges are explained in-place instead of exposing a fake action."""
+    import config
+    import ui.intent_overlay as intent_overlay
+
+    old_rows = list(config.CALLER_ROWS)
+    config.CALLER_ROWS[:] = [{"intents": [], "custom_key": "s"}]
+    provider = {
+        "id": "gmail",
+        "app": "email",
+        "display_name": "Gmail",
+        "suggested_intents": [{
+            "id": "gmail.create_draft",
+            "label": "Create email draft",
+            "hint": "Preview recipients, subject, and body",
+            "prompt": "Create a draft email.",
+            "mode": "action",
+            "capability_type": "email.create_draft@1",
+            "planning_tool": "email_plan_create_draft",
+            "available": False,
+            "unavailable_reason": "Connect this account to Wisp first",
+        }],
+    }
+    overlay = intent_overlay.IntentOverlay(caller_idx=0, action_provider=provider)
+    chosen = []
+    overlay.intent_chosen.connect(lambda *value: chosen.append(value))
+    try:
+        row = overlay._rows[0]
+        assert row["label"] == "Create email draft"
+        assert row["hint"] == "Connect this account to Wisp first"
+        assert row["available"] is False
+
+        overlay._select(0, drop_trigger_key=False)
+        qapp.processEvents()
+        assert chosen == []
+        assert overlay._selection_pending_idx is None
+    finally:
+        config.CALLER_ROWS[:] = old_rows
+        _close_overlay_if_valid(overlay, qapp)
+
+
+def test_ui_host_emits_provider_routing_with_chosen_intent(qapp, monkeypatch):
+    """Provider routing survives the visible picker and UI event boundary."""
+    import ui.intent_overlay as intent_overlay
+    from runtime.workers.ui_host import QtProtocolHost
+
+    monkeypatch.setattr(intent_overlay, "_IS_WIN", False)
+
+    events = []
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host._intent = None
+    host._active_project_id = "general"
+    host._intent_conversation_options = lambda: []
+    host._intent_project_options = lambda: [{"id": "general", "name": "General"}]
+    host._intent_active_project_id = lambda: "general"
+    host._intent_conversation_namespace_label = lambda: ""
+    host._apply_intent_project_choice = lambda value: value
+    host._apply_intent_conversation_choice = lambda value: value
+    host.emit = lambda event, payload: events.append((event, payload))
+
+    provider = {
+        "id": "libreoffice_calc",
+        "app": "libreoffice_calc",
+        "display_name": "LibreOffice Calc",
+        "suggested_intents": [{
+            "id": "calc.add_chart",
+            "label": "Create a bar chart",
+            "hint": "Build a reviewed chart from the selected cells",
+            "prompt": "Create a vertical bar chart from the selected cells.",
+            "preferred_key": "C",
+            "mode": "action",
+            "capability_type": "calc.add_chart@1",
+            "planning_tool": "calc_plan_add_chart",
+        }],
+    }
+    try:
+        host._show_intent(caller_idx=0, action_provider=provider)
+        host._intent._selection_pending_idx = 0
+        host._intent._fire(0)
+        qapp.processEvents()
+
+        event, payload = next(item for item in events if item[0] == "ui.intent.chosen")
+        assert event == "ui.intent.chosen"
+        assert payload["custom"] == "Create a vertical bar chart from the selected cells."
+        assert payload["intent_routing"] == {
+            "mode": "action",
+            "source": "provider",
+            "suggestion_id": "calc.add_chart",
+            "capability_type": "calc.add_chart@1",
+            "planning_tool": "calc_plan_add_chart",
+            "provider_id": "libreoffice_calc",
+            "app": "libreoffice_calc",
+        }
+    finally:
+        if host._intent is not None:
+            _close_overlay_if_valid(host._intent, qapp)
 
 
 def test_custom_prompt_wraps_and_grows_vertically(qapp, monkeypatch):
@@ -292,16 +490,16 @@ def test_context_preview_entries_expand_item_sources(monkeypatch):
                 "label": "App",
                 "state": "on",
                 "sources": [
-                    {"label": "Notepad", "preview": "notepad body"},
-                    {"label": "demo.py", "preview": "VS Code paragraph"},
+                    {"app": "Notepad", "label": "Notes.txt", "preview": "notepad body"},
+                    {"app": "VS Code", "label": "demo.py", "preview": "VS Code paragraph"},
                 ],
             }
         ],
     )
     try:
         assert overlay._context_preview_entries() == [
-            ("App 1: Notepad", "notepad body", "ambient", "Notepad"),
-            ("App 2: demo.py", "VS Code paragraph", "ambient", "demo.py"),
+            ("Notepad: Notes.txt", "notepad body", "ambient", "Notes.txt"),
+            ("VS Code: demo.py", "VS Code paragraph", "ambient", "demo.py"),
         ]
     finally:
         config.CALLER_ROWS[:] = old_rows
@@ -1677,7 +1875,7 @@ def test_intent_overlay_remove_buttons_remove_rows_and_disable_groups(qapp):
     try:
         overlay._remove_context_entry("ambient", "Doc A")
         assert removed == [("ambient", "Doc A")]
-        assert ("App 1: Doc B", "beta", "ambient", "Doc B") in overlay._context_preview_entries()
+        assert ("Doc B", "beta", "ambient", "Doc B") in overlay._context_preview_entries()
         choices = {c["id"]: c for c in overlay.context_choices()}
         assert choices["ambient"]["state"] == "on"
 

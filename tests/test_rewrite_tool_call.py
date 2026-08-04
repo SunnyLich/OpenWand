@@ -84,3 +84,69 @@ def test_responses_rewrite_forces_tool_call_and_extracts_replacement(monkeypatch
         ("progress", "I used the source text for the replacement."),
         ("rewrite_result", "Text 2 body"),
     ]
+
+
+def test_responses_rewrite_streams_safe_reasoning_before_tool_result(monkeypatch):
+    """Rewrite uses low-effort streaming and surfaces only provider summaries."""
+    calls: list[dict] = []
+    arguments = (
+        '{"replacement_text": "Welcome, Sam!", '
+        '"assistant_response": "I made the greeting warmer."}'
+    )
+    events = [
+        SimpleNamespace(type="response.reasoning_summary_text.delta", delta="Updating the greeting. "),
+        SimpleNamespace(
+            type="response.output_item.added",
+            output_index=0,
+            item=SimpleNamespace(
+                id="item_1",
+                type="function_call",
+                call_id="call_1",
+                name="rewrite_selection",
+                arguments="",
+            ),
+        ),
+        SimpleNamespace(
+            type="response.function_call_arguments.delta",
+            output_index=0,
+            item_id="item_1",
+            call_id="call_1",
+            name="rewrite_selection",
+            delta=arguments,
+            arguments="",
+        ),
+        SimpleNamespace(
+            type="response.function_call_arguments.done",
+            output_index=0,
+            item_id="item_1",
+            call_id="call_1",
+            name="rewrite_selection",
+            delta="",
+            arguments=arguments,
+        ),
+    ]
+
+    class FakeStream:
+        def __enter__(self):
+            return iter(events)
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class Responses:
+        def stream(self, **kwargs):
+            calls.append(kwargs)
+            return FakeStream()
+
+    fake_client = SimpleNamespace(responses=Responses())
+    monkeypatch.setattr(llm, "_get_codex_client", lambda: fake_client)
+
+    chunks = list(llm._stream_responses_rewrite_tool("gpt-test", "prompt"))
+
+    assert calls[0]["reasoning"] == {"effort": "none"}
+    assert calls[0]["extra_body"]["stream"] is True
+    assert [(getattr(chunk, "kind", ""), str(chunk)) for chunk in chunks] == [
+        ("thought", "Updating the greeting. "),
+        ("progress", "I made the greeting warmer."),
+        ("rewrite_result", "Welcome, Sam!"),
+    ]

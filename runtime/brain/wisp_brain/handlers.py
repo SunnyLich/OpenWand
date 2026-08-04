@@ -44,6 +44,13 @@ _LIVE_FILE_APPROVALS_LOCK = threading.Lock()
 _PRIVACY_APPROVALS: dict[str, dict[str, Any]] = {}
 _PRIVACY_APPROVALS_LOCK = threading.Lock()
 _LIVE_FILE_TOOL_NAMES = {"list_files", "read_file", "create_file", "edit_file", "write_file"}
+_ADDON_MANAGER_LOCK = threading.Lock()
+_ADDON_BOOTSTRAP_STATE_LOCK = threading.Lock()
+_ADDON_BOOTSTRAP_READY = threading.Event()
+_ADDON_BOOTSTRAP_STARTED = False
+_ADDON_BOOTSTRAP_ERROR = ""
+_ADDON_BOOTSTRAP_EVENT_PUBLISHED = False
+_RUNTIME_EVENT_EMITTER: Callable[[str, Any], None] | None = None
 
 
 class StreamContext:
@@ -77,6 +84,24 @@ def handler(name: str, *, streaming: bool = False) -> Callable[[Callable[..., An
 def _log(msg: str) -> None:
     """Print a brain-worker log line to stderr."""
     print(f"[brain] {msg}", flush=True)  # -> stderr (host redirects fd 1 to fd 2)
+
+
+def set_runtime_event_emitter(emitter: Callable[[str, Any], None] | None) -> None:
+    """Install the host's thread-safe unscoped event publisher."""
+    global _RUNTIME_EVENT_EMITTER
+    _RUNTIME_EVENT_EMITTER = emitter
+    if emitter is not None:
+        _publish_addon_bootstrap_if_ready()
+
+
+def _emit_runtime_event(name: str, data: Any) -> None:
+    emitter = _RUNTIME_EVENT_EMITTER
+    if emitter is None:
+        return
+    try:
+        emitter(name, data)
+    except Exception as exc:  # noqa: BLE001 - state mutation already succeeded
+        _log(f"could not emit {name}: {type(exc).__name__}: {exc}")
 
 
 def _reload_config_for_live_file_tools(
@@ -724,6 +749,23 @@ def brain_addons_list() -> dict[str, Any]:
     }
 
 
+@handler("brain.addons.ready")
+def brain_addons_ready(timeout_seconds: float = 3.0) -> dict[str, Any]:
+    """Wait for background addon loading and return its cached startup snapshot."""
+    from core.system.paths import ADDONS_DIR
+
+    start_addon_bootstrap()
+    timeout = max(0.0, min(float(timeout_seconds or 0.0), 10.0))
+    ready = _ADDON_BOOTSTRAP_READY.wait(timeout)
+    addons_dir = Path(ADDONS_DIR)
+    return {
+        "ready": ready and not _ADDON_BOOTSTRAP_ERROR,
+        "error": _ADDON_BOOTSTRAP_ERROR,
+        "addons_dir": str(addons_dir),
+        "addons": _addon_summaries(addons_dir) if ready else [],
+    }
+
+
 @handler("brain.addons.tools")
 def brain_addons_tools() -> dict[str, Any]:
     """Return enabled addon model tools for supervisor tool policy."""
@@ -761,11 +803,21 @@ def brain_addons_run_action(addon_id: str = "", label: str = "") -> dict[str, An
     if not label:
         raise ValueError("label is required")
 
+    # Tray actions can be invoked before the first chat query. Ensure lifecycle
+    # setup (especially each addon's private data directory) has happened.
+    run_addon_startup()
+
     from core.system.paths import ADDONS_DIR
 
     manager = _loaded_addon_manager(Path(ADDONS_DIR))
-    manager.run_tray_action(addon_id, label)
-    return {"ok": True, "message": f"Ran addon action: {addon_id} / {label}"}
+    action_result = manager.run_tray_action(addon_id, label)
+    result = {"ok": True, "message": f"Ran addon action: {addon_id} / {label}"}
+    if isinstance(action_result, dict):
+        if action_result.get("message"):
+            result["message"] = str(action_result["message"])
+        if action_result.get("virtual_workspace_url"):
+            result["virtual_workspace_url"] = str(action_result["virtual_workspace_url"])
+    return result
 
 
 @handler("brain.addons.set_enabled")
@@ -778,6 +830,7 @@ def brain_addons_set_enabled(addon_id: str = "", enabled: bool = True) -> dict[s
 
     manager = _loaded_addon_manager(Path(ADDONS_DIR))
     state = manager.set_enabled(addon_id, bool(enabled))
+    _publish_addon_change("enabled" if state else "disabled", addon_id)
     return {"ok": True, "id": addon_id, "enabled": bool(state)}
 
 
@@ -794,6 +847,7 @@ def brain_addons_set_setting(addon_id: str = "", key: str = "", value: Any = "")
 
     manager = _loaded_addon_manager(Path(ADDONS_DIR))
     manager.set_setting(addon_id, key, value)
+    _publish_addon_change("setting_changed", addon_id)
     return {"ok": True, "id": addon_id, "key": key}
 
 
@@ -807,6 +861,7 @@ def brain_addons_repair_environment(addon_id: str = "") -> dict[str, Any]:
 
     manager = _loaded_addon_manager(Path(ADDONS_DIR))
     result = manager.repair_environment(addon_id)
+    _publish_addon_change("repaired", addon_id)
     return result if isinstance(result, dict) else {"ready": False, "error": "environment repair failed"}
 
 
@@ -823,6 +878,10 @@ def brain_addons_install_archive(path: str = "") -> dict[str, Any]:
     manager = _loaded_addon_manager(Path(ADDONS_DIR))
     if hasattr(manager, "load_all"):
         manager.load_all()
+    _publish_addon_change(
+        "installed",
+        str(result.get("id") or "") if isinstance(result, dict) else "",
+    )
     return result
 
 
@@ -839,6 +898,10 @@ def brain_addons_install_folder(path: str = "") -> dict[str, Any]:
     manager = _loaded_addon_manager(Path(ADDONS_DIR))
     if hasattr(manager, "load_all"):
         manager.load_all()
+    _publish_addon_change(
+        "installed",
+        str(result.get("id") or "") if isinstance(result, dict) else "",
+    )
     return result
 
 
@@ -858,6 +921,65 @@ def brain_addons_run_hotkey(addon_id: str = "", hotkey_id: str = "") -> dict[str
     return result if isinstance(result, dict) else {}
 
 
+@handler("brain.addons.message_actions")
+def brain_addons_message_actions(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """List addon actions that may appear beside chat messages."""
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    return {"actions": manager.get_message_actions(payload or {})}
+
+
+@handler("brain.addons.run_message_action")
+def brain_addons_run_message_action(
+    addon_id: str = "",
+    action_id: str = "",
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run a user-requested message action, including bounded host LLM work."""
+    addon_id = str(addon_id or "").strip()
+    action_id = str(action_id or "").strip()
+    if not addon_id:
+        raise ValueError("addon_id is required")
+    if not action_id:
+        raise ValueError("action_id is required")
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    result = manager.run_message_action(addon_id, action_id, payload or {})
+    for _phase in range(3):
+        operation = result.get("llm") if isinstance(result, dict) else None
+        if not isinstance(operation, dict):
+            return result if isinstance(result, dict) else {}
+        prompt = str(operation.get("prompt") or "").strip()
+        if not prompt:
+            raise ValueError("addon message action returned an empty LLM prompt")
+        llm_result = _run_addon_llm_call(
+            addon_id=addon_id,
+            prompt=prompt,
+            max_tokens=int(operation.get("max_tokens") or 2048),
+            temperature=operation.get("temperature"),
+            limit=30,
+            route=str(operation.get("route") or "llm"),
+            max_cap=4096,
+            route_model_hint=str(operation.get("model") or ""),
+        )
+        result = manager.resume_message_action(
+            addon_id,
+            action_id,
+            {
+                "operation": "llm",
+                "text": str(llm_result.get("text") or ""),
+                "state": result.get("state") if isinstance(result, dict) else {},
+                "input_tokens_estimate": llm_result.get("input_tokens_estimate", 0),
+                "output_tokens_estimate": llm_result.get("output_tokens_estimate", 0),
+            },
+        )
+    if not isinstance(result, dict) or not isinstance(result.get("llm"), dict):
+        return result if isinstance(result, dict) else {}
+    raise RuntimeError("addon message action exceeded the three-operation limit")
+
+
 @handler("brain.addons.llm_call")
 def brain_addons_llm_call(
     addon_id: str = "",
@@ -866,6 +988,27 @@ def brain_addons_llm_call(
     temperature: float | None = None,
 ) -> dict[str, Any]:
     """Run a capped LLM call for an addon without exposing provider secrets."""
+    return _run_addon_llm_call(
+        addon_id=addon_id,
+        prompt=prompt,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        limit=5,
+    )
+
+
+def _run_addon_llm_call(
+    *,
+    addon_id: str,
+    prompt: str,
+    max_tokens: int,
+    temperature: float | None,
+    limit: int,
+    route: str = "llm",
+    max_cap: int = 2048,
+    route_model_hint: str = "",
+) -> dict[str, Any]:
+    """Run one permission-checked addon LLM operation."""
     addon_id = addon_id.strip()
     prompt = str(prompt or "").strip()
     if not addon_id:
@@ -882,12 +1025,45 @@ def brain_addons_llm_call(
     if not bool(addon.manifest.permissions.get("llm")):
         raise PermissionError(f"Addon is missing llm permission: {addon_id}")
     stored_addon_id = str(getattr(addon, "id", addon_id) or addon_id)
-    allowed, remaining = addon_store.record_llm_call(stored_addon_id, limit=5, window_seconds=3600)
+    allowed, remaining = addon_store.record_llm_call(
+        stored_addon_id,
+        limit=max(1, int(limit)),
+        window_seconds=3600,
+    )
     if not allowed:
         raise PermissionError(f"Addon LLM call cap reached: {addon_id}")
 
+    import config
     from core.llm_clients import client as llm_client
     from core.privacy_gateway import scrub_cloud_fields
+
+    route = str(route or "llm").strip().lower()
+    if route not in {"llm", "chat", "chatgpt-mini", "chatgpt-nano", "ollama-local"}:
+        route = "llm"
+    if route == "chat":
+        route_provider = config.CHAT_LLM_PROVIDER
+        route_model = config.CHAT_LLM_MODEL
+        route_fallbacks = config.CHAT_LLM_FALLBACKS
+    elif route in {"chatgpt-mini", "chatgpt-nano"}:
+        route_provider = "chatgpt"
+        route_model = "gpt-5.4-mini" if route == "chatgpt-mini" else "gpt-5.4-nano"
+        route_fallbacks = None
+    elif route == "ollama-local":
+        route_provider = "ollama"
+        route_model = str(route_model_hint or "").strip()
+        if not route_model:
+            models, error = llm_client.safe_list_models("ollama")
+            if not models:
+                detail = f" ({error})" if error else ""
+                raise RuntimeError(f"No installed Ollama formatting model was found{detail}.")
+            route_model = str(models[0])
+        # A local-only selection must never fall through to a metered cloud
+        # fallback when Ollama is unavailable or the chosen model fails.
+        route_fallbacks = ""
+    else:
+        route_provider = None
+        route_model = None
+        route_fallbacks = None
 
     privacy_session, scrubbed, privacy_report = scrub_cloud_fields(
         {"addon_prompt": prompt},
@@ -898,18 +1074,34 @@ def brain_addons_llm_call(
         ai_enabled=bool(privacy_report.get("ai_enabled")),
     )
     try:
+        request_kwargs: dict[str, Any] = {
+            "use_tools": False,
+            "max_tokens": max(1, min(int(max_tokens or 512), max(1, int(max_cap)))),
+            "temperature": temperature,
+        }
+        if route != "llm":
+            request_kwargs.update({
+                "route_provider": route_provider,
+                "route_model": route_model,
+                "route_fallbacks": route_fallbacks,
+            })
         chunks = list(llm_client.stream_response(
             scrubbed["addon_prompt"],
-            use_tools=False,
-            max_tokens=max(1, min(int(max_tokens or 512), 2048)),
-            temperature=temperature,
+            **request_kwargs,
         ))
     finally:
         llm_client.set_live_privacy_context(None)
     text = "".join(chunks)
     if privacy_session is not None:
         text = privacy_session.restore(text)
-    result = {"text": text, "remaining": remaining}
+    result = {
+        "text": text,
+        "remaining": remaining,
+        "route": route,
+        "model": route_model or "",
+        "input_tokens_estimate": max(1, (len(prompt) + 3) // 4),
+        "output_tokens_estimate": max(1, (len(text) + 3) // 4),
+    }
     if privacy_report.get("count"):
         result["privacy_report"] = privacy_report
     return result
@@ -920,21 +1112,82 @@ def _addon_summaries(addons_dir: Path) -> list[dict[str, Any]]:
     try:
         manager = _loaded_addon_manager(addons_dir)
         if hasattr(manager, "summaries"):
-            return manager.summaries()
+            try:
+                return manager.summaries(
+                    refresh_host=False,
+                    resolve_dynamic_options=False,
+                )
+            except TypeError:
+                return manager.summaries()
         mods = getattr(manager, "_mods", [])
         return [_loaded_addon_payload(mod, manager) for mod in mods]
     except Exception:
         return _discover_addon_payloads(addons_dir)
 
 
+def _publish_addon_change(reason: str, addon_id: str = "") -> None:
+    """Publish one authoritative cached addon snapshot after a live state change."""
+    from core.system.paths import ADDONS_DIR
+
+    addons_dir = Path(ADDONS_DIR)
+    _emit_runtime_event(
+        "addons.changed",
+        {
+            "reason": str(reason or "changed"),
+            "addon_id": str(addon_id or ""),
+            "addons_dir": str(addons_dir),
+            "addons": _addon_summaries(addons_dir),
+        },
+    )
+
+
+def _publish_addon_bootstrap_if_ready() -> None:
+    """Push the initial addon snapshot once both loading and IPC events are ready."""
+    global _ADDON_BOOTSTRAP_EVENT_PUBLISHED
+    with _ADDON_BOOTSTRAP_STATE_LOCK:
+        if (
+            _ADDON_BOOTSTRAP_EVENT_PUBLISHED
+            or not _ADDON_BOOTSTRAP_READY.is_set()
+            or bool(_ADDON_BOOTSTRAP_ERROR)
+            or _RUNTIME_EVENT_EMITTER is None
+        ):
+            return
+        _ADDON_BOOTSTRAP_EVENT_PUBLISHED = True
+    _publish_addon_change("loaded")
+
+
 def _loaded_addon_manager(addons_dir: Path) -> Any:
     """Return the shared addon manager, initializing it when needed."""
     addon_manager = importlib.import_module("core.addon_manager")
+    with _ADDON_MANAGER_LOCK:
+        try:
+            return addon_manager.get_manager()
+        except Exception:
+            return addon_manager.init(addons_dir)
 
-    try:
-        return addon_manager.get_manager()
-    except Exception:
-        return addon_manager.init(addons_dir)
+
+def start_addon_bootstrap() -> None:
+    """Begin addon loading as soon as the brain worker boots, without delaying ping."""
+    global _ADDON_BOOTSTRAP_STARTED
+    with _ADDON_BOOTSTRAP_STATE_LOCK:
+        if _ADDON_BOOTSTRAP_STARTED:
+            return
+        _ADDON_BOOTSTRAP_STARTED = True
+
+    def load() -> None:
+        global _ADDON_BOOTSTRAP_ERROR
+        try:
+            from core.system.paths import ADDONS_DIR
+
+            _loaded_addon_manager(Path(ADDONS_DIR))
+        except Exception as exc:  # noqa: BLE001 - surfaced through brain.addons.ready
+            _ADDON_BOOTSTRAP_ERROR = f"{type(exc).__name__}: {exc}"
+            _log(f"addon bootstrap failed: {_ADDON_BOOTSTRAP_ERROR}")
+        finally:
+            _ADDON_BOOTSTRAP_READY.set()
+            _publish_addon_bootstrap_if_ready()
+
+    threading.Thread(target=load, name="wisp-addon-bootstrap", daemon=True).start()
 
 
 _addon_startup_done = False
@@ -2117,8 +2370,9 @@ def brain_rewrite(
     privacy_session_id: str = "",
 ) -> dict[str, Any]:
     """Stream an inline rewrite for native paste-back callers."""
-    selected_text = selected_text.strip()
-    if not selected_text:
+    handler_started = time.perf_counter()
+    selected_text = str(selected_text or "")
+    if not selected_text.strip():
         raise ValueError("selected_text is required")
 
     privacy_session = None
@@ -2147,9 +2401,18 @@ def brain_rewrite(
 
     replacement_parts: list[str] = []
     visible_parts: list[str] = []
+    chunk_count = 0
+    first_chunk_ms: float | None = None
     for chunk in _stream_rewrite_reply(selected_text, intent_prompt, rewrite_context):
         if ctx.cancelled:
             break
+        chunk_count += 1
+        if first_chunk_ms is None:
+            first_chunk_ms = (time.perf_counter() - handler_started) * 1000
+            ctx.emit(
+                "rewrite.first_activity",
+                {"kind": str(getattr(chunk, "kind", "answer") or "answer")},
+            )
         kind = str(getattr(chunk, "kind", "answer") or "answer")
         text = str(chunk)
         if privacy_session is not None:
@@ -2157,8 +2420,16 @@ def brain_rewrite(
         if kind == "rewrite_result":
             replacement_parts.append(text)
             continue
-        visible_parts.append(text)
-        ctx.emit("reply.chunk", {"text": text})
+        if kind != "thought":
+            visible_parts.append(text)
+        ctx.emit(
+            "reply.chunk",
+            {
+                "text": text,
+                "is_thought": kind == "thought",
+                "is_progress": kind == "progress",
+            },
+        )
 
     full = "".join(replacement_parts)
     visible = "".join(visible_parts).strip()
@@ -2168,6 +2439,18 @@ def brain_rewrite(
     done_payload = {"text": full, "visible_text": visible}
     if privacy_report.get("count"):
         done_payload["privacy_report"] = privacy_report
+    ctx.emit(
+        "rewrite.telemetry",
+        {
+            "handler_total_ms": round((time.perf_counter() - handler_started) * 1000, 3),
+            "first_chunk_ms": round(first_chunk_ms, 3) if first_chunk_ms is not None else None,
+            "chunk_count": chunk_count,
+            "replacement_chars": len(full),
+            "visible_chars": len(visible),
+            "cancelled": bool(ctx.cancelled),
+            "privacy_matches": int(privacy_report.get("count") or 0),
+        },
+    )
     ctx.emit("reply.done", done_payload)
     return done_payload
 
@@ -2184,6 +2467,133 @@ def _stream_rewrite_reply(selected_text: str, intent_prompt: str, rewrite_contex
     from core.llm_clients.client import stream_rewrite
 
     yield from stream_rewrite(selected_text, intent_prompt, rewrite_context=rewrite_context)
+
+
+@handler("brain.action.plan", streaming=True)
+def brain_action_plan(
+    ctx: StreamContext,
+    planning_tool_name: str = "",
+    planning_tool_description: str = "",
+    input_schema: dict[str, Any] | None = None,
+    user_prompt: str = "",
+    app_context: Any = None,
+    privacy_session_id: str = "",
+) -> dict[str, Any]:
+    """Force one typed app-action plan; never execute the proposed action."""
+    from core.llm_clients.client import _validated_action_planning_spec
+
+    # Validate caller-controlled tool metadata before it reaches any provider.
+    name, description, frozen_schema, _tool_schema = _validated_action_planning_spec(
+        planning_tool_name,
+        planning_tool_description,
+        input_schema or {},
+    )
+    prompt = str(user_prompt or "")
+    if isinstance(app_context, str):
+        context_text = app_context
+    else:
+        try:
+            context_text = json.dumps(app_context or {}, ensure_ascii=False, sort_keys=True)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("app_context must be a string or JSON-compatible value") from exc
+
+    privacy_session = None
+    privacy_report: dict[str, Any] = {}
+    import config
+    if bool(getattr(config, "TRUST_PRIVACY_MODE", True)):
+        from core.privacy_gateway import ai_detection_enabled, get_session, review_enabled
+
+        privacy_session = get_session(privacy_session_id or f"action-plan:{ctx.req_id}")
+        scrubbed, privacy_report = privacy_session.scrub_fields(
+            {"user_prompt": prompt, "app_context": context_text},
+            ai_enabled=ai_detection_enabled(),
+            review=(
+                _privacy_review_callback(ctx)
+                if review_enabled() and not _offline_brain()
+                else None
+            ),
+        )
+        prompt = scrubbed["user_prompt"]
+        context_text = scrubbed["app_context"]
+
+    plan_result: dict[str, Any] | None = None
+    visible_parts: list[str] = []
+    for chunk in _stream_action_plan_reply(name, description, frozen_schema, prompt, context_text):
+        if ctx.cancelled:
+            break
+        kind = str(getattr(chunk, "kind", "answer") or "answer")
+        text = str(chunk)
+        if kind == "action_plan_result":
+            try:
+                parsed = json.loads(text)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Action planner returned an invalid internal result") from exc
+            if not isinstance(parsed, dict) or parsed.get("tool_name") != name:
+                raise ValueError("Action planner returned the wrong planning tool")
+            arguments = parsed.get("arguments")
+            if not isinstance(arguments, dict):
+                raise ValueError("Action planner returned non-object arguments")
+            plan_result = {"tool_name": name, "arguments": arguments}
+            continue
+        if privacy_session is not None:
+            text = privacy_session.restore(text)
+        if kind != "thought":
+            visible_parts.append(text)
+        ctx.emit(
+            "reply.chunk",
+            {
+                "text": text,
+                "is_thought": kind == "thought",
+                "is_progress": kind == "progress",
+            },
+        )
+
+    if ctx.cancelled:
+        return {"tool_name": name, "arguments": {}, "visible_text": "", "cancelled": True}
+    if plan_result is None:
+        raise ValueError(f"Planning model did not return required tool {name}")
+
+    def restore_value(value):
+        if privacy_session is None:
+            return value
+        if isinstance(value, str):
+            return privacy_session.restore(value)
+        if isinstance(value, list):
+            return [restore_value(item) for item in value]
+        if isinstance(value, dict):
+            return {key: restore_value(item) for key, item in value.items()}
+        return value
+
+    result = {
+        "tool_name": name,
+        "arguments": restore_value(plan_result["arguments"]),
+        "visible_text": "".join(visible_parts).strip(),
+    }
+    if privacy_report.get("count"):
+        result["privacy_report"] = privacy_report
+    ctx.emit("reply.done", result)
+    return result
+
+
+def _stream_action_plan_reply(
+    planning_tool_name: str,
+    planning_tool_description: str,
+    input_schema: dict[str, Any],
+    user_prompt: str,
+    app_context: str,
+) -> Iterator[str]:
+    """Call the provider-neutral forced planner without any executor access."""
+    if _offline_brain():
+        raise RuntimeError("Forced application-action planning is unavailable in fake LLM mode")
+    from core.llm_clients.client import stream_action_plan
+
+    yield from stream_action_plan(
+        planning_tool_name,
+        planning_tool_description,
+        input_schema,
+        user_prompt,
+        app_context=app_context,
+    )
 
 
 @handler("brain.chat", streaming=True)
@@ -3194,11 +3604,58 @@ def brain_agent_run(ctx: StreamContext, spec: Any = None, log_root: str | None =
     if error_path.exists():
         error_text = error_path.read_text(encoding="utf-8", errors="replace")
 
+    file_tool_successes = 0
+    file_tool_failures = 0
+    file_tool_results: list[dict[str, Any]] = []
+    model_errors: list[str] = []
+    turns_path = run_dir / "turns.json"
+    if turns_path.exists():
+        try:
+            turns_payload = json.loads(turns_path.read_text(encoding="utf-8", errors="replace"))
+            for turn in turns_payload if isinstance(turns_payload, list) else []:
+                if isinstance(turn, dict):
+                    response_payload = turn.get("model_response")
+                    if isinstance(response_payload, str):
+                        try:
+                            response_payload = json.loads(response_payload)
+                        except (TypeError, ValueError):
+                            response_payload = None
+                    if isinstance(response_payload, dict):
+                        model_error = str(response_payload.get("model_error") or "").strip()
+                        if model_error and model_error not in model_errors:
+                            model_errors.append(model_error[:2_000])
+                for tool_result in turn.get("tool_results", []) if isinstance(turn, dict) else []:
+                    if not isinstance(tool_result, dict) or tool_result.get("tool") not in {
+                        "create_file",
+                        "create_file_base64",
+                        "edit_file",
+                        "write_file",
+                        "write_file_base64",
+                        "patch_file",
+                    }:
+                        continue
+                    if tool_result.get("ok"):
+                        file_tool_successes += 1
+                    else:
+                        file_tool_failures += 1
+                    file_tool_results.append({
+                        "tool": str(tool_result.get("tool") or "file")[:80],
+                        "ok": bool(tool_result.get("ok")),
+                        "message": str(tool_result.get("message") or "")[:1_000],
+                    })
+        except (OSError, TypeError, ValueError):
+            pass
+
     result = {
         "run_dir": str(run_dir),
         "final": final_text,
         "error": error_text,
         "cancelled": control.is_cancelled(),
+        "file_tool_successes": file_tool_successes,
+        "file_tool_failures": file_tool_failures,
+        "file_tool_results": file_tool_results,
+        "model_errors": model_errors[-5:],
+        "run_log_path": str(run_dir / "run.log"),
     }
     ctx.emit("agent.done", result)
     return result

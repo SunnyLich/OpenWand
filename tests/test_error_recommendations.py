@@ -62,3 +62,22 @@ def test_worker_recovery_failure_matrix_always_preserves_diagnostic_action():
     unknown = recommendation_for("unclassified runtime fault zeta-17")
     assert "Runtime Status" in unknown
     assert "recent logs" in unknown
+
+
+def test_libreoffice_connection_failure_is_not_reported_as_internet_failure():
+    rendered = format_error(
+        "Wisp couldn't create the chart: RuntimeError: "
+        "com.sun.star.connection.NoConnectException: connection refused"
+    )
+
+    assert "local LibreOffice connection" in rendered
+    assert "not an internet failure" in rendered
+    assert "network/provider" not in rendered
+
+
+def test_calc_stale_preview_reports_no_mutation_instead_of_crash_recovery():
+    rendered = format_error("Calc data changed after the preview; refusing to apply.")
+
+    assert "Wisp made no change" in rendered
+    assert "new preview" in rendered
+    assert "crash report" not in rendered

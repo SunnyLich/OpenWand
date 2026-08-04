@@ -23,6 +23,7 @@ from typing import Any
 from runtime import VERSION, protocol
 from runtime.bootstrap import configure_paths
 from runtime.boundaries import boundary_status
+from ui.action_i18n import localize_action_preview_html, translate_action_text
 from ui.agent.activity_i18n import (
     translate_agent_activity_text,
     translate_agent_health_badge,
@@ -350,7 +351,8 @@ def _translate_notice_line(line: str) -> str:
             if groups.get("status"):
                 groups["status"] = t(groups["status"])
             return t(template).format(**groups)
-    return t(line)
+    translated = translate_action_text(line)
+    return translated if translated != line else t(line)
 
 
 def _translate_notice_text(text: str) -> str:
@@ -2069,9 +2071,13 @@ class QtProtocolHost:
         self._snip = None
         self._bubble = None
         self._chat = None
+        self._chat_message_actions_cache: list[dict[str, Any]] = []
+        self._chat_message_actions_ready = False
+        self._pending_chat_show_new: bool | None = None
         self._memory = None
         self._memory_viewer = None
         self._addons_dialog = None
+        self._virtual_workspace_window = None
         self._addon_settings_dialogs: dict[str, Any] = {}
         self._addon_log_dialogs: dict[str, Any] = {}
         self._status_dialogs: list[Any] = []
@@ -2433,7 +2439,7 @@ class QtProtocolHost:
         if method == "ui.reload_config":
             return self._reload_config()
         if method == "ui.show_overlay":
-            return self._show_overlay()
+            return self._show_overlay(**params)
         if method == "ui.prewarm_intent":
             return self._prewarm_intent()
         if method == "ui.show_intent":
@@ -2510,6 +2516,10 @@ class QtProtocolHost:
             return self._chat_capture_context(**params)
         if method == "ui.chat.capture_cancelled":
             return self._chat_capture_cancelled(**params)
+        if method == "ui.chat.message_actions":
+            return self._chat_message_actions(**params)
+        if method == "ui.chat.message_action_result":
+            return self._chat_message_action_result(**params)
         if method == "ui.chat.add_conversation":
             return self._chat_add_conversation(**params)
         if method == "ui.chat.begin_conversation":
@@ -2520,6 +2530,10 @@ class QtProtocolHost:
             return self._chat_ingest()
         if method == "ui.live_file.approval.request":
             return self._live_file_approval_request(**params)
+        if method == "ui.action.preview.request":
+            return self._action_preview_request(**params)
+        if method == "ui.action.progress":
+            return self._action_progress(**params)
         if method == "ui.privacy.review.request":
             return self._privacy_review_request(**params)
         if method == "ui.show_chat":
@@ -2532,6 +2546,10 @@ class QtProtocolHost:
             return self._show_memory(**params)
         if method == "ui.show_addons":
             return self._show_addons(**params)
+        if method == "ui.addons.tray_actions":
+            return self._set_addon_tray_actions(**params)
+        if method == "ui.show_virtual_workspace":
+            return self._show_virtual_workspace(**params)
         if method == "ui.show_agent_task":
             return self._show_agent_task(**params)
         if method == "ui.show_agent_history":
@@ -2569,13 +2587,19 @@ class QtProtocolHost:
             traceback.print_exc()
         return {"ok": True}
 
-    def _ensure_overlay(self):
+    def _ensure_overlay(
+        self,
+        addon_tray_actions: list[dict[str, Any]] | None = None,
+    ):
         """Ensure overlay."""
         if self._overlay is None:
             from ui.overlay import IconOverlay, OverlaySignals
 
             self._overlay_signals = OverlaySignals()
-            self._overlay = IconOverlay(self._overlay_signals)
+            self._overlay = IconOverlay(
+                self._overlay_signals,
+                addon_tray_actions=addon_tray_actions,
+            )
             # Keep audio ownership out of the UI process. Bubble fast-forward
             # and hide/reset callbacks are routed over protocol to the supervisor.
             try:
@@ -2607,6 +2631,12 @@ class QtProtocolHost:
             self._overlay_signals.show_addon_manager.connect(
                 lambda: self.emit("ui.addons.open_requested", {})
             )
+            self._overlay_signals.run_addon_tray_action.connect(
+                lambda addon_id, label: self.emit(
+                    "ui.addons.run_action",
+                    {"addon_id": str(addon_id), "label": str(label)},
+                )
+            )
             self._overlay_signals.show_runtime_status.connect(
                 lambda: self.emit("ui.runtime_status.open_requested", {})
             )
@@ -2625,7 +2655,163 @@ class QtProtocolHost:
             )
             self._overlay_signals.bubble_highlight.connect(self._bubble_highlight)
             self._overlay_signals.settings_applied.connect(self._settings_applied)
+        elif addon_tray_actions is not None:
+            self._overlay.set_addon_tray_actions(addon_tray_actions)
         return self._overlay
+
+    def _set_addon_tray_actions(
+        self,
+        actions: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Publish enabled addon actions into Wisp's native tray menu."""
+        overlay = self._ensure_overlay()
+        normalized = list(actions or [])
+        overlay.set_addon_tray_actions(normalized)
+        return {"ok": True, "count": len(normalized)}
+
+    def _show_virtual_workspace(self, endpoint: str = "") -> dict[str, Any]:
+        """Show the addon workspace in a real Wisp-owned Qt window."""
+        from ui.virtual_workspace_window import VirtualWorkspaceWindow, _validated_endpoint
+
+        base_url, _token = _validated_endpoint(endpoint)
+        existing = getattr(self, "_virtual_workspace_window", None)
+        if existing is not None and existing.isVisible() and existing.endpoint_base == base_url:
+            existing.raise_()
+            existing.activateWindow()
+            return {"shown": True, "reused": True, "native": True}
+        if existing is not None:
+            existing.close()
+
+        window = VirtualWorkspaceWindow(
+            endpoint,
+            on_start_task=self._start_virtual_workspace_task,
+            on_agent_control=self._control_virtual_workspace_agent,
+        )
+        self._virtual_workspace_window = window
+
+        def _clear(_obj: Any = None, current: Any = window) -> None:
+            if self._virtual_workspace_window is current:
+                self._virtual_workspace_window = None
+
+        window.destroyed.connect(_clear)
+        window.show()
+        window.raise_()
+        window.activateWindow()
+        return {"shown": True, "reused": False, "native": True}
+
+    def _start_virtual_workspace_task(self, objective: str, scope_folder: str) -> None:
+        """Start a scoped task, splitting only clearly independent file work."""
+        from dataclasses import asdict
+
+        import config
+        from core.agent.task_spec import agent_task_spec_from_dict
+        from core.agent.workspace_parallel import split_independent_workspace_objective
+
+        clean_objective = str(objective or "").strip()[:8_000]
+        scope = str(scope_folder or "").strip()
+        if not clean_objective or not scope:
+            return
+        first_line = clean_objective.splitlines()[0].strip()
+        title = (first_line[:72] or "Virtual workspace task").rstrip(" .")
+        independent_tasks = split_independent_workspace_objective(clean_objective)
+        agents = []
+        if independent_tasks:
+            agents = [{
+                "name": "Coordinator",
+                "role": "Coordinator",
+                "provider": "same as task",
+                "model": "same as task",
+                "responsibility": (
+                    "Watch the independent worker results, identify any unfinished requested file, "
+                    "and return the final completion summary. Do not create or edit files yourself."
+                ),
+            }]
+            agents.extend({
+                "name": f"Worker {index}",
+                "role": "Implementer",
+                "provider": "same as task",
+                "model": "same as task",
+                "responsibility": (
+                    f"Complete only this independent task: {task.objective} "
+                    f"Your sole writable target is {task.target_path}. Return at most one file-changing tool call."
+                ),
+            } for index, task in enumerate(independent_tasks, 1))
+        spec = agent_task_spec_from_dict({
+            "title": title,
+            "objective": (
+                clean_objective
+                + "\n\nWork only inside the assigned Wisp Virtual Workspace. "
+                "Use only the tools listed in the agent prompt. For a new file, call "
+                "create_file with a concrete relative path and the complete content. "
+                "Use create_file_base64 only for short binary content. The workspace can preview "
+                "text, code, Markdown, HTML, CSV/TSV, SVG and common images, and PDF files. "
+                "Do not call virtual_workspace_* tools; they are not available to this runner."
+            ),
+            "scope_folder": scope,
+            "sandbox_mode": "workspace-write: virtual workspace only",
+            "approval_policy": "per-tool permissions",
+            "provider": "same as app",
+            "model": "",
+            "reasoning_effort": str(getattr(config, "CHAT_REASONING_EFFORT", "") or "medium"),
+            "max_runtime_minutes": 30,
+            "max_turns": 12,
+            "full_turn_max_tokens": 4096,
+            "delta_turn_max_tokens": 3072,
+            "pause_holds_terminal_final": False,
+            "finish_on_successful_tools": True,
+            "max_tool_calls_per_turn": 0,
+            "allow_shell": False,
+            "allow_network": False,
+            "allow_git": False,
+            "allow_file_create": True,
+            "allow_file_edit": True,
+            "allow_file_delete": False,
+            "shell_permission_mode": "never permit",
+            "network_permission_mode": "never permit",
+            "git_permission_mode": "never permit",
+            "file_create_permission_mode": "auto",
+            "file_edit_permission_mode": "auto",
+            "file_delete_permission_mode": "never permit",
+            "required_context": (
+                "The user is watching a graphical virtual desktop. Keep useful artifacts inside "
+                "the assigned scope and use clear filenames so changes are visible. Use only tools "
+                "listed in the agent prompt. For a new file, use create_file with a concrete path "
+                "and content; short binary files may use create_file_base64. Prefer text-native "
+                "formats such as HTML, Markdown, CSV, or SVG when they satisfy the request because "
+                "the user can see them immediately. Never call virtual_workspace_* tools. "
+                "Follow the user's exact requested filenames. Keep an explicit checklist of requested "
+                "targets and never invent support files. When the user explicitly requests several "
+                "independent files or multiple file tool calls in one response, include all of those "
+                "file calls in that response; Wisp will display and apply each completed call as it "
+                "arrives. After successful writes, do not list or read files unless the user explicitly "
+                "requested verification. "
+                "A successful file tool result verifies the exact written content; do not spend "
+                "another turn reading it unless the user explicitly requested separate verification."
+            ),
+            "completion_criteria": (
+                "The requested artifacts exist inside the virtual workspace and their contents "
+                "match the request. A successful create or write result is sufficient verification."
+            ),
+            "report_format": "Short completion summary and files created or updated",
+            "parallel_read_only_briefing": False,
+            "agents": agents,
+            "parallel_execution": bool(independent_tasks),
+            "max_parallel_agents": min(4, len(independent_tasks or ())) if independent_tasks else 1,
+        })
+        self._virtual_workspace_agent_active = True
+        self.emit("ui.agent.run_requested", {"spec": asdict(spec)})
+
+    def _control_virtual_workspace_agent(self, action: str) -> None:
+        """Route the embedded desktop controls to the active scoped agent run."""
+        action = str(action or "").strip().lower()
+        if not bool(getattr(self, "_virtual_workspace_agent_active", False)):
+            return
+        if action == "cancel":
+            self.emit("ui.agent.cancel_requested", {})
+        elif action == "pause":
+            self.emit("ui.agent.pause_requested", {})
+        elif action == "resume":
+            self.emit("ui.agent.resume_requested", {})
 
     def _settings_applied(self, payload: dict[str, Any] | None = None) -> None:
         """Handle settings applied for qt protocol host."""
@@ -2644,9 +2830,12 @@ class QtProtocolHost:
                 self._bubble.set_stop_callback(lambda: self.emit("ui.bubble.stop", {}))
         return self._bubble
 
-    def _show_overlay(self) -> dict[str, Any]:
+    def _show_overlay(
+        self,
+        addon_tray_actions: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Show overlay."""
-        overlay = self._ensure_overlay()
+        overlay = self._ensure_overlay(addon_tray_actions)
         overlay.show()
         overlay.raise_()
         self._show_onboarding_if_needed()
@@ -2722,6 +2911,7 @@ class QtProtocolHost:
         initial_custom_text: str = "",
         focus_overlay: bool = False,
         defer_focus: bool = False,
+        action_provider: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Show intent."""
         from ui.intent_overlay import IntentOverlay
@@ -2740,6 +2930,7 @@ class QtProtocolHost:
             initial_custom_text=initial_custom_text,
             focus_overlay=focus_overlay,
             defer_focus=defer_focus,
+            action_provider=action_provider,
         )
         def _chosen(intent: str, custom: str) -> None:
             overlay = self._intent
@@ -2753,6 +2944,11 @@ class QtProtocolHost:
                     "caller_idx": caller_idx,
                     "intent": intent,
                     "custom": custom,
+                    "intent_routing": (
+                        overlay.selected_intent_routing()
+                        if overlay and hasattr(overlay, "selected_intent_routing")
+                        else {"mode": "auto", "source": "custom"}
+                    ),
                     "context_choices": overlay.context_choices() if overlay else [],
                     "project_choice": applied_project,
                     "conversation_choice": applied_choice,
@@ -3193,6 +3389,25 @@ class QtProtocolHost:
             visible_text = _translate_notice_text(text) if is_progress else text
             bubble.append_chunk(visible_text, is_thought=is_thought, annotations=annotations)
         return {"appended": len(text or ""), "is_progress": bool(is_progress)}
+
+    def _action_progress(
+        self,
+        text: str = "",
+        stage: str = "",
+        sequence: int = 0,
+        terminal: bool = False,
+        **_extra: Any,
+    ) -> dict[str, Any]:
+        """Replace the bubble's single truthful action-status line."""
+        clean_text = _translate_notice_text(text)
+        if clean_text:
+            self._ensure_bubble().show_progress(clean_text)
+        return {
+            "shown": bool(clean_text),
+            "stage": str(stage or ""),
+            "sequence": int(sequence or 0),
+            "terminal": bool(terminal),
+        }
 
     def _reply_image(self, attachments: list | None = None) -> dict[str, Any]:
         """Render the first safe generated-image attachment in the speech bubble."""
@@ -4021,6 +4236,156 @@ class QtProtocolHost:
         approved = box.exec() == QMessageBox.StandardButton.Yes
         return {"approved": bool(approved), "feedback": "", "surface": "modal"}
 
+    def _action_preview_request(
+        self,
+        title: str = "",
+        summary: str = "",
+        html: str = "",
+        warnings: list[str] | None = None,
+        **_extra: Any,
+    ) -> dict[str, Any]:
+        """Show an exact HTML/CSS action preview and wait for Apply or Cancel."""
+        from PySide6.QtCore import QTimer
+        from PySide6.QtGui import QColor
+        from PySide6.QtWidgets import (
+            QApplication,
+            QDialog,
+            QDialogButtonBox,
+            QLabel,
+            QScrollArea,
+            QVBoxLayout,
+            QWidget,
+        )
+
+        from ui.addon_presentations import RichPresentationView
+        from ui.shared.theme import is_dark_mode, theme_colors
+        from ui.shared.window_utils import enable_standard_window_controls, fit_window_to_screen
+
+        colors = theme_colors(is_dark_mode())
+        light = QColor(colors["bg"]).lightness() > 128
+        palette = {
+            "bg": colors["bg"],
+            "text": colors["text"],
+            "muted": colors["text_dim"],
+            "line": colors["border"],
+            "accent": colors["accent"],
+            "warm": "#9b5429" if light else "#f0ae72",
+            "warm_soft": "#f4e4d8" if light else "#3c2b25",
+            "soft": colors["accent_hint"],
+            "code": "#f1f1ef" if light else "#15171c",
+            "code_text": "#242424" if light else "#eff6ff",
+        }
+
+        dialog = QDialog(self._overlay)
+        dialog.setWindowTitle(translate_action_text(title or "Review action"))
+        dialog.setModal(True)
+        dialog.setMinimumSize(760, 580)
+        apply_text = "#ffffff" if light else "#15151a"
+        dialog.setStyleSheet(
+            f"QDialog {{ background: {colors['bg']}; color: {colors['text']}; }}"
+            f"QScrollArea {{ background: transparent; border: none; }}"
+            f"QDialogButtonBox {{ border-top: 1px solid {colors['border']}; padding-top: 13px; }}"
+            f"QPushButton {{ min-width: 108px; padding: 9px 18px; border: 1px solid {colors['text']}; "
+            f"border-radius: 4px; background: transparent; color: {colors['text']}; }}"
+            f"QPushButton#actionApplyButton {{ border-color: {colors['accent']}; "
+            f"background: {colors['accent']}; color: {apply_text}; font-weight: 600; }}"
+        )
+        enable_standard_window_controls(dialog)
+        root = QVBoxLayout(dialog)
+        root.setContentsMargins(18, 18, 18, 18)
+        root.setSpacing(12)
+
+        scroll = QScrollArea(dialog)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        content = QWidget(scroll)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        localized_html = localize_action_preview_html(html)
+        content_layout.addWidget(RichPresentationView(localized_html, palette, 15, content))
+        content_layout.addStretch(1)
+        scroll.setWidget(content)
+        root.addWidget(scroll, 1)
+
+        warning_text = "\n".join(
+            translate_action_text(str(item))
+            for item in (warnings or [])
+            if str(item).strip()
+        )
+        if warning_text:
+            warning = QLabel(warning_text, dialog)
+            warning.setWordWrap(True)
+            warning.setStyleSheet(f"color: {colors['text_dim']};")
+            root.addWidget(warning)
+
+        buttons = QDialogButtonBox(dialog)
+        apply_button = buttons.addButton(t("Apply"), QDialogButtonBox.ButtonRole.AcceptRole)
+        cancel_button = buttons.addButton(t("Cancel"), QDialogButtonBox.ButtonRole.RejectRole)
+        apply_button.setObjectName("actionApplyButton")
+        cancel_button.setObjectName("actionCancelButton")
+        apply_button.setDefault(True)
+        apply_button.clicked.connect(dialog.accept)
+        cancel_button.clicked.connect(dialog.reject)
+        root.addWidget(buttons)
+        localize_widget_tree(dialog)
+        fit_window_to_screen(dialog, preferred_width=820, preferred_height=680)
+
+        show_called_at_unix_ns = 0
+        topmost_at_unix_ns = 0
+
+        def present_preview() -> None:
+            """Raise the exact review surface instead of silently waiting behind another app."""
+            nonlocal show_called_at_unix_ns, topmost_at_unix_ns
+            show_called_at_unix_ns = time.time_ns()
+            dialog.show()
+            if sys.platform == "win32":
+                try:
+                    import ctypes
+                    from ctypes import wintypes
+
+                    user32 = ctypes.WinDLL("user32", use_last_error=True)
+                    user32.SetWindowPos.argtypes = [
+                        wintypes.HWND,
+                        wintypes.HWND,
+                        ctypes.c_int,
+                        ctypes.c_int,
+                        ctypes.c_int,
+                        ctypes.c_int,
+                        wintypes.UINT,
+                    ]
+                    user32.SetWindowPos.restype = wintypes.BOOL
+                    user32.SetWindowPos(
+                        int(dialog.winId()),
+                        -1,  # HWND_TOPMOST
+                        0,
+                        0,
+                        0,
+                        0,
+                        0x0001 | 0x0002 | 0x0010 | 0x0040,  # NOSIZE|NOMOVE|NOACTIVATE|SHOW
+                    )
+                    topmost_at_unix_ns = time.time_ns()
+                except Exception:
+                    log.exception("could not raise action preview topmost")
+            dialog.raise_()
+            dialog.activateWindow()
+            QApplication.alert(dialog, 0)
+
+        QTimer.singleShot(0, present_preview)
+        approved = dialog.exec() == QDialog.DialogCode.Accepted
+        decided_at_unix_ns = time.time_ns()
+        return {
+            "approved": bool(approved),
+            "surface": "action_preview",
+            "summary": str(summary or ""),
+            "show_called_at_unix_ns": show_called_at_unix_ns,
+            "topmost_at_unix_ns": topmost_at_unix_ns,
+            "decided_at_unix_ns": decided_at_unix_ns,
+            "decision_wait_ms": round(
+                max(0, decided_at_unix_ns - (topmost_at_unix_ns or show_called_at_unix_ns)) / 1_000_000,
+                3,
+            ) if (topmost_at_unix_ns or show_called_at_unix_ns) else None,
+        }
+
     def _live_file_approval_bubble(
         self,
         request: dict[str, Any],
@@ -4532,6 +4897,11 @@ class QtProtocolHost:
         """Show chat."""
         from ui.chat_window import ChatWindow
 
+        if self._chat is None and not getattr(self, "_chat_message_actions_ready", True):
+            pending = getattr(self, "_pending_chat_show_new", None)
+            self._pending_chat_show_new = bool(force_new or pending)
+            self.emit("ui.chat.message_actions.requested", {})
+            return {"shown": False, "pending_actions": True}
         if self._chat is not None:
             if force_new:
                 self._chat.start_new_conversation()
@@ -4545,6 +4915,7 @@ class QtProtocolHost:
             self._chat.raise_()
             self._chat.activateWindow()
             self._chat.request_context_preview()
+            self.emit("ui.chat.message_actions.requested", {})
             return {"shown": True, "reused": True}
         start_new = force_new or not self._all_conversations
         from core.conversation_store import store as conversation_store
@@ -4569,12 +4940,20 @@ class QtProtocolHost:
                 on_select=self._set_active_conversation,
                 on_context_preview=lambda payload: self.emit("ui.chat.context_preview", payload),
                 on_context_capture=self._chat_context_capture_requested,
+                on_addon_message_action=lambda payload: self.emit(
+                    "ui.chat.message_action.requested",
+                    payload,
+                ),
+                addon_message_actions=list(
+                    getattr(self, "_chat_message_actions_cache", []) or []
+                ),
                 auto_message=auto_message or None,
             )
             self._chat.destroyed.connect(lambda: setattr(self, "_chat", None))
             self._chat.show()
             self._chat.raise_()
             self._chat.activateWindow()
+            self.emit("ui.chat.message_actions.requested", {})
         finally:
             if watchdog is not None:
                 watchdog.beat()
@@ -4641,6 +5020,31 @@ class QtProtocolHost:
         self._chat.activateWindow()
         return result if isinstance(result, dict) else {"cancelled": bool(result)}
 
+    def _chat_message_actions(self, actions: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        """Refresh addon actions shown beneath stored chat messages."""
+        normalized = [dict(item) for item in (actions or []) if isinstance(item, dict)]
+        self._chat_message_actions_cache = normalized
+        self._chat_message_actions_ready = True
+        pending_show = getattr(self, "_pending_chat_show_new", None)
+        self._pending_chat_show_new = None
+        if self._chat is None and pending_show is not None:
+            result = self._show_chat(force_new=bool(pending_show))
+            return {
+                "updated": True,
+                "count": len(normalized),
+                "chat": result,
+            }
+        if self._chat is None:
+            return {"updated": False, "reason": "no_chat"}
+        self._chat.update_addon_message_actions(normalized)
+        return {"updated": True, "count": len(normalized)}
+
+    def _chat_message_action_result(self, **payload: Any) -> dict[str, Any]:
+        """Apply an addon presentation result to its canonical message."""
+        if self._chat is None:
+            return {"updated": False, "reason": "no_chat"}
+        return self._chat.apply_addon_message_action_result(**payload)
+
     def _show_settings(self, extra_tools: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         """Show settings."""
         from PySide6.QtCore import QTimer
@@ -4686,6 +5090,7 @@ class QtProtocolHost:
             ("chat", self._chat),
             ("memory", self._memory_viewer),
             ("addons", self._addons_dialog),
+            ("virtual_workspace", getattr(self, "_virtual_workspace_window", None)),
             ("runtime_status", self._runtime_status_dialog),
         ]
         try:
@@ -5916,29 +6321,72 @@ class QtProtocolHost:
 
     def _agent_log(self, **params: Any) -> dict[str, Any]:
         """Handle agent log for qt protocol host."""
+        accepted = False
+        workspace = getattr(self, "_virtual_workspace_window", None)
+        if (
+            bool(getattr(self, "_virtual_workspace_agent_active", False))
+            and workspace is not None
+            and workspace.isVisible()
+        ):
+            workspace.append_agent_event(params)
+            accepted = True
         if self._agent_run_dialog is not None:
             self._agent_run_dialog.append_log(params)
-            return {"accepted": True}
-        return {"accepted": False}
+            accepted = True
+        return {"accepted": accepted}
 
     def _agent_trace(self, **params: Any) -> dict[str, Any]:
         """Handle agent trace for qt protocol host."""
+        accepted = False
+        workspace = getattr(self, "_virtual_workspace_window", None)
+        if (
+            bool(getattr(self, "_virtual_workspace_agent_active", False))
+            and workspace is not None
+            and workspace.isVisible()
+        ):
+            accepted = bool(workspace.append_agent_trace(params))
         if self._agent_run_dialog is not None:
             self._agent_run_dialog.append_trace(params)
-            return {"accepted": True}
-        return {"accepted": False}
+            accepted = True
+        return {"accepted": accepted}
 
     def _agent_done(self, **params: Any) -> dict[str, Any]:
         """Handle agent done for qt protocol host."""
+        accepted = False
+        workspace = getattr(self, "_virtual_workspace_window", None)
+        workspace_task_active = bool(getattr(self, "_virtual_workspace_agent_active", False))
+        if (
+            workspace_task_active
+            and workspace is not None
+            and workspace.isVisible()
+        ):
+            workspace.finish_agent_task(params)
+            accepted = True
+        if workspace_task_active:
+            self._virtual_workspace_agent_active = False
         if self._agent_run_dialog is not None:
             self._agent_run_dialog.finish(params)
-            return {"accepted": True}
-        return {"accepted": False}
+            accepted = True
+        return {"accepted": accepted}
 
     def _agent_approval_request(self, **params: Any) -> dict[str, Any]:
         """Handle agent approval request for qt protocol host."""
         if self._agent_run_dialog is not None:
             self._agent_run_dialog.request_approval(params)
+            return {"accepted": True}
+        workspace = getattr(self, "_virtual_workspace_window", None)
+        approval_id = str(params.get("approval_id") or "").strip()
+        if (
+            bool(getattr(self, "_virtual_workspace_agent_active", False))
+            and workspace is not None
+            and workspace.isVisible()
+            and approval_id
+        ):
+            approved = workspace.request_agent_approval(params)
+            self.emit(
+                "ui.agent.approval.respond",
+                {"approval_id": approval_id, "approved": approved},
+            )
             return {"accepted": True}
         result = self._agent_notify_approval("Agent approval requested.", resolved=False, data=params)
         return {"accepted": bool(result.get("actionable"))}

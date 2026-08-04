@@ -364,7 +364,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 177
+      "node_count": 200
     },
     {
       "path": "tests/runtime/test_flows_live_voice.py",
@@ -454,7 +454,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 27
+      "node_count": 30
     },
     {
       "path": "tests/runtime/test_runtime_log.py",
@@ -514,7 +514,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 48
+      "node_count": 54
     },
     {
       "path": "tests/runtime/test_ui_host_runtime_status.py",
@@ -757,6 +757,96 @@
       "node_count": 1
     },
     {
+      "path": "tests/test_account_actions.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 10
+    },
+    {
+      "path": "tests/test_action_i18n.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 3
+    },
+    {
+      "path": "tests/test_action_planning_tool_call.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 12
+    },
+    {
+      "path": "tests/test_action_progress.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 2
+    },
+    {
+      "path": "tests/test_action_runner.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 5
+    },
+    {
+      "path": "tests/test_action_telemetry.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 3
+    },
+    {
       "path": "tests/test_addon_manager.py",
       "kind": "pytest",
       "scope": "integration",
@@ -967,6 +1057,21 @@
       "node_count": 4
     },
     {
+      "path": "tests/test_browser_actions.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 5
+    },
+    {
       "path": "tests/test_bubble_transcript.py",
       "kind": "pytest",
       "scope": "ui",
@@ -995,6 +1100,36 @@
       ],
       "schedule": "github-actions",
       "node_count": 36
+    },
+    {
+      "path": "tests/test_calc_actions.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 20
+    },
+    {
+      "path": "tests/test_calc_bridge.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 3
     },
     {
       "path": "tests/test_capture.py",
@@ -1318,7 +1453,22 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 4
+      "node_count": 6
+    },
+    {
+      "path": "tests/test_excel_actions.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 8
     },
     {
       "path": "tests/test_external_conversation_sync.py",
@@ -1524,7 +1674,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 49
+      "node_count": 53
     },
     {
       "path": "tests/test_intent_overlay_keyboard_hook.py",
@@ -1540,6 +1690,21 @@
       ],
       "schedule": "github-actions",
       "node_count": 3
+    },
+    {
+      "path": "tests/test_interaction_driver.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 12
     },
     {
       "path": "tests/test_launcher_acceptance.py",
@@ -1935,6 +2100,21 @@
       "node_count": 19
     },
     {
+      "path": "tests/test_presentation_actions.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 12
+    },
+    {
       "path": "tests/test_privacy_gateway.py",
       "kind": "pytest",
       "scope": "integration",
@@ -2127,7 +2307,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 2
+      "node_count": 3
     },
     {
       "path": "tests/test_screenshot_capability.py",
@@ -2323,6 +2503,21 @@
       ],
       "schedule": "github-actions",
       "node_count": 8
+    },
+    {
+      "path": "tests/test_spreadsheet_advanced_actions.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 5
     },
     {
       "path": "tests/test_ssl_init_concurrency.py",
@@ -2531,6 +2726,36 @@
       "node_count": 6
     },
     {
+      "path": "tests/test_vscode_actions.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 10
+    },
+    {
+      "path": "tests/test_vscode_advanced_actions.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 4
+    },
+    {
       "path": "tests/test_window_chrome.py",
       "kind": "pytest",
       "scope": "ui",
@@ -2544,6 +2769,19 @@
       ],
       "schedule": "github-actions",
       "node_count": 3
+    },
+    {
+      "path": "tests/test_windows_uia_interaction.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows"
+      ],
+      "schedule": "github-actions",
+      "node_count": 6
     },
     {
       "path": "tools/test_mic.py",

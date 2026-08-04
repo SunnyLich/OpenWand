@@ -5840,5 +5840,246 @@ Shared uv/pip caches and unrelated Hugging Face models will not be removed.</sou
     <message><source>Run details</source><translation>執行詳細資料</translation></message>
     <message><source>Wisp pasted the rewrite</source><translation>Wisp 已貼上重寫文字</translation></message>
     <message><source>The text was replaced, but Wisp couldn't restore your previous clipboard.</source><translation>文字已替換，但 Wisp 無法還原你先前的剪貼簿內容。</translation></message>
+    <message><source>API token</source><translation>API 權杖</translation></message>
+    <message><source>Account ID</source><translation>帳戶 ID</translation></message>
+    <message><source>Account identifier from the Workers AI dashboard; this is not your email or zone ID.</source><translation>Workers AI 控制面板中的帳戶識別碼；這不是你的電子郵件地址或區域 ID。</translation></message>
+    <message><source>Cloudflare Account ID</source><translation>Cloudflare 帳戶 ID</translation></message>
+    <message><source>Cloudflare STT needs: {items}.</source><translation>Cloudflare 語音轉文字需要：{items}。</translation></message>
+    <message><source>Cloudflare Whisper Large v3 Turbo is configured. Click Test Cloudflare STT to verify access.</source><translation>Cloudflare Whisper Large v3 Turbo 已設定。按一下「測試 Cloudflare 語音轉文字」以驗證存取權限。</translation></message>
+    <message><source>Cloudflare mode sends each speech clip to Workers AI after Wisp's local silence check. It needs internet access and does not provide live streaming transcription.</source><translation>Cloudflare 模式會在 Wisp 本機靜音檢查後，將每段語音傳送至 Workers AI。它需要網際網路連線，且不提供即時串流轉寫。</translation></message>
+    <message><source>Cloudflare — Whisper Large v3 Turbo</source><translation>Cloudflare — Whisper Large v3 Turbo</translation></message>
+    <message><source>Falls back only when local STT is installed; otherwise the Cloudflare error is shown.</source><translation>僅在已安裝本機語音轉文字時回退；否則會顯示 Cloudflare 錯誤。</translation></message>
+    <message><source>Find this in the Cloudflare Workers AI dashboard under Use REST API.</source><translation>可在 Cloudflare Workers AI 控制面板的「使用 REST API」中找到。</translation></message>
+    <message><source>Install or repair faster-whisper, then download and load the speech model so the first hold-to-talk does not stall.</source><translation>安裝或修復 faster-whisper，然後下載並載入語音模型，避免首次按住說話時卡住。</translation></message>
+    <message><source>Local — faster-whisper</source><translation>本機 — faster-whisper</translation></message>
+    <message><source>Send a half-second silent clip to verify Workers AI access.</source><translation>傳送半秒靜音片段以驗證 Workers AI 存取權限。</translation></message>
+    <message><source>Stored in your operating system keychain and never written to the profile file.</source><translation>儲存在作業系統鑰匙圈中，絕不會寫入設定檔。</translation></message>
+    <message><source>Test Cloudflare STT</source><translation>測試 Cloudflare 語音轉文字</translation></message>
+    <message><source>Use a dedicated token with Workers AI Read and Edit permissions.</source><translation>請使用具有 Workers AI 讀取與編輯權限的專用權杖。</translation></message>
+    <message><source>Use local Whisper if Cloudflare is unavailable</source><translation>Cloudflare 無法使用時改用本機 Whisper</translation></message>
+    <message><source>Workers AI API token</source><translation>Workers AI API 權杖</translation></message>
+    <!-- Preview-first actions: shared status, review, failure, and completion language. -->
+    <message><source>Review action</source><translation>檢視操作</translation></message>
+    <message><source>Checking the active Calc sheet and action connection...</source><translation>正在檢查使用中的 Calc 工作表與操作連線...</translation></message>
+    <message><source>Calc is not ready for a background action.</source><translation>Calc 尚未準備好執行背景操作。</translation></message>
+    <message><source>Reading the selected Calc range and checking its current values...</source><translation>正在讀取選取的 Calc 範圍並檢查目前值...</translation></message>
+    <message><source>Selection checked. Validating the exact chart operation...</source><translation>已檢查選取範圍。正在驗證確切的圖表操作...</translation></message>
+    <message><source>Building the chart preview from the validated range...</source><translation>正在依據已驗證的範圍建立圖表預覽...</translation></message>
+    <message><source>The Calc chart preview could not be prepared.</source><translation>無法準備 Calc 圖表預覽。</translation></message>
+    <message><source>Preview ready. Waiting for Apply or Cancel; nothing has changed yet.</source><translation>預覽已就緒。正在等待「套用」或「取消」；目前尚未變更任何內容。</translation></message>
+    <message><source>Chart cancelled. Nothing was changed.</source><translation>已取消圖表操作。未變更任何內容。</translation></message>
+    <message><source>Applying the chart in Calc…</source><translation>正在 Calc 中套用圖表…</translation></message>
+    <message><source>Rechecking the range, creating the reviewed chart, and verifying the result...</source><translation>正在重新檢查範圍、建立已檢視的圖表並驗證結果...</translation></message>
+    <message><source>Chart created and verified in Calc.</source><translation>已在 Calc 中建立並驗證圖表。</translation></message>
+    <message><source>Calc could not verify the reviewed chart action.</source><translation>Calc 無法驗證已檢視的圖表操作。</translation></message>
+    <message><source>This Calc window was opened before Wisp's background action session. Save your work and restart LibreOffice once; Wisp will then create charts without taking focus.</source><translation>此 Calc 視窗是在 Wisp 背景操作工作階段之前開啟的。請儲存工作並重新啟動一次 LibreOffice；之後 Wisp 建立圖表時不會搶走焦點。</translation></message>
+    <message><source>Focusless Calc actions are not available in this session. Wisp did not change the spreadsheet.</source><translation>此工作階段無法使用不搶焦點的 Calc 操作。Wisp 未變更試算表。</translation></message>
+    <message><source>Calc chart cancelled. Nothing was changed.</source><translation>已取消 Calc 圖表操作。未變更任何內容。</translation></message>
+    <message><source>Chart created in LibreOffice Calc.</source><translation>已在 LibreOffice Calc 中建立圖表。</translation></message>
+    <message><source>Calc did not confirm the change.</source><translation>Calc 未確認變更。</translation></message>
+    <message><source>Wisp couldn't prepare the Calc chart preview: {error}</source><translation>Wisp 無法準備 Calc 圖表預覽：{error}</translation></message>
+    <message><source>Wisp couldn't create the chart: {error}</source><translation>Wisp 無法建立圖表：{error}</translation></message>
+    <message><source>Create chart in Calc</source><translation>在 Calc 中建立圖表</translation></message>
+    <message><source>CALC ACTION · PREVIEW</source><translation>CALC 操作 · 預覽</translation></message>
+    <message><source>Wisp will add this chart in the same open Calc window.</source><translation>Wisp 將在目前開啟的同一個 Calc 視窗中加入此圖表。</translation></message>
+    <message><source>Workbook</source><translation>活頁簿</translation></message>
+    <message><source>Source</source><translation>資料來源</translation></message>
+    <message><source>Size</source><translation>大小</translation></message>
+    <message><source>{rows} rows × {columns} columns</source><translation>{rows} 列 × {columns} 欄</translation></message>
+    <message><source>Vertical bar chart preview</source><translation>直條圖預覽</translation></message>
+    <message><source>Nothing has changed yet.</source><translation>目前尚未變更任何內容。</translation></message>
+    <message><source>This preview uses the same typed cell values Calc will chart. Apply creates one vertical bar chart; the source cells stay in place.</source><translation>此預覽使用 Calc 將繪製成圖表的相同型別儲存格值。「套用」會建立一個直條圖；來源儲存格會保留在原位。</translation></message>
+    <message><source>Wisp could not find a numeric series in this selection. The final chart may be empty.</source><translation>Wisp 在此選取範圍中找不到數值資料序列。最終圖表可能是空白的。</translation></message>
+    <message><source>Vertical bar chart from {range}</source><translation>來自 {range} 的直條圖</translation></message>
+    <message><source>Calc must still be showing the same selected data when you Apply.</source><translation>按下「套用」時，Calc 必須仍顯示相同的選取資料。</translation></message>
+    <message><source>Selection checked. Validating the exact Calc operation...</source><translation>已檢查選取範圍。正在驗證確切的 Calc 操作...</translation></message>
+    <message><source>Building the exact preview from the validated range...</source><translation>正在從已驗證的範圍建立確切預覽...</translation></message>
+    <message><source>The Calc action preview could not be prepared.</source><translation>無法準備 Calc 操作預覽。</translation></message>
+    <message><source>The model is still preparing the Calc operation; this may take a few more seconds.</source><translation>模型仍在準備 Calc 操作；可能還需要幾秒鐘。</translation></message>
+    <message><source>Calc action cancelled. Nothing was changed.</source><translation>已取消 Calc 操作。未變更任何內容。</translation></message>
+    <message><source>Applying the reviewed action in Calc...</source><translation>正在 Calc 中套用已檢視的操作...</translation></message>
+    <message><source>Rechecking the range, applying the reviewed action, and verifying the result...</source><translation>正在重新檢查範圍、套用已檢視的操作並驗證結果...</translation></message>
+    <message><source>Calc action applied and verified.</source><translation>已套用並驗證 Calc 操作。</translation></message>
+    <message><source>Calc could not verify the reviewed action.</source><translation>Calc 無法驗證已檢視的操作。</translation></message>
+    <message><source>Wisp couldn't prepare the Calc action preview: {error}</source><translation>Wisp 無法準備 Calc 操作預覽：{error}</translation></message>
+    <message><source>Wisp couldn't apply the Calc action: {error}</source><translation>Wisp 無法套用 Calc 操作：{error}</translation></message>
+    <message><source>Selection checked. Planning the exact formatting-only changes...</source><translation>已檢查選取範圍。正在規劃確切且僅限格式的變更...</translation></message>
+    <message><source>Selection checked. Choosing the exact sort column and direction...</source><translation>已檢查選取範圍。正在選擇確切的排序欄與方向...</translation></message>
+    <message><source>Clean up table in Calc</source><translation>整理 Calc 表格</translation></message>
+    <message><source>Wisp will improve the selected table's presentation without changing its contents.</source><translation>Wisp 將改善所選表格的外觀，而不變更內容。</translation></message>
+    <message><source>Cell contents</source><translation>儲存格內容</translation></message>
+    <message><source>Unchanged</source><translation>不變</translation></message>
+    <message><source>Exact formatting changes</source><translation>確切的格式變更</translation></message>
+    <message><source>Proposed appearance</source><translation>建議外觀</translation></message>
+    <message><source>Make the first selected row a clear, bold header</source><translation>將所選第一列設為清楚的粗體標題列</translation></message>
+    <message><source>Fit selected columns to their contents</source><translation>依內容調整所選欄寬</translation></message>
+    <message><source>Keep every cell value, formula, and number format unchanged</source><translation>保持每個儲存格的值、公式與數字格式不變</translation></message>
+    <message><source>Apply changes formatting and column widths only.</source><translation>「套用」只會變更格式與欄寬。</translation></message>
+    <message><source>Format {range} without changing contents</source><translation>格式化 {range} 而不變更內容</translation></message>
+    <message><source>Sort rows in Calc</source><translation>在 Calc 中排序資料列</translation></message>
+    <message><source>Wisp will reorder complete rows; it will not sort one column independently.</source><translation>Wisp 會重新排列完整資料列；不會單獨排序某一欄。</translation></message>
+    <message><source>Sort by</source><translation>排序依據</translation></message>
+    <message><source>Direction</source><translation>方向</translation></message>
+    <message><source>Ascending</source><translation>遞增</translation></message>
+    <message><source>Descending</source><translation>遞減</translation></message>
+    <message><source>Current order</source><translation>目前順序</translation></message>
+    <message><source>Proposed order</source><translation>建議順序</translation></message>
+    <message><source>Apply sorts only {range} and keeps the header row in place.</source><translation>「套用」只會排序 {range}，並保持標題列位置不變。</translation></message>
+    <message><source>Sort by {label} ({direction})</source><translation>依 {label} 排序（{direction}）</translation></message>
+    <message><source>Clean up this table</source><translation>整理此表格</translation></message>
+    <message><source>Sort this table</source><translation>排序此表格</translation></message>
+    <message><source>Analyze this data</source><translation>分析此資料</translation></message>
+    <message><source>Excel changes</source><translation>Excel 變更</translation></message>
+    <message><source>EXCEL ACTION · PREVIEW</source><translation>EXCEL 操作 · 預覽</translation></message>
+    <message><source>Review the exact workbook changes before Wisp applies them.</source><translation>請在 Wisp 套用前檢視確切的活頁簿變更。</translation></message>
+    <message><source>Create table {name} from {range}</source><translation>從 {range} 建立表格 {name}</translation></message>
+    <message><source>Add {kind} chart {name}</source><translation>新增{kind}圖表 {name}</translation></message>
+    <message><source>Showing a preview of {rows} rows × {columns} columns.</source><translation>正在顯示 {rows} 列 × {columns} 欄的預覽。</translation></message>
+    <message><source>Preview only — Excel has not been changed.</source><translation>僅供預覽 — 尚未變更 Excel。</translation></message>
+    <message><source>Apply creates only the reviewed Excel objects.</source><translation>「套用」只會建立已檢視的 Excel 物件。</translation></message>
+    <message><source>Creating the table cannot yet be completely undone by Wisp.</source><translation>Wisp 目前還無法完整復原表格建立操作。</translation></message>
+    <message><source>column</source><translation>直條</translation></message>
+    <message><source>line</source><translation>折線</translation></message>
+    <message><source>bar</source><translation>橫條</translation></message>
+    <message><source>pie</source><translation>圓餅</translation></message>
+    <message><source>Reading the active saved VS Code file and exact selected range...</source><translation>正在讀取使用中的已儲存 VS Code 檔案與確切選取範圍...</translation></message>
+    <message><source>The active saved file could not be read safely.</source><translation>無法安全地讀取使用中的已儲存檔案。</translation></message>
+    <message><source>This VS Code tab must be saved before Wisp can change it safely.</source><translation>必須先儲存此 VS Code 分頁，Wisp 才能安全地變更內容。</translation></message>
+    <message><source>Save this tab once, then press Ctrl+Shift+Q again. Wisp did not change anything.</source><translation>請先儲存此分頁一次，然後再次按下 Ctrl+Shift+Q。Wisp 尚未變更任何內容。</translation></message>
+    <message><source>Recommendation: Press Ctrl+S to choose a filename, then run the same request again.</source><translation>建議：按下 Ctrl+S 選擇檔名，然後再次執行相同的要求。</translation></message>
+    <message><source>The saved-file target did not pass safety checks.</source><translation>已儲存檔案目標未通過安全檢查。</translation></message>
+    <message><source>Target checked. Drafting the exact contents for the new file...</source><translation>已檢查目標。正在草擬新檔案的確切內容...</translation></message>
+    <message><source>Target checked. Reviewing the selected code and drafting the exact change...</source><translation>已檢查目標。正在檢視選取的程式碼並草擬確切變更...</translation></message>
+    <message><source>The model is still drafting the exact code change; this may take a few more seconds.</source><translation>模型仍在草擬確切的程式碼變更；可能還需要幾秒鐘。</translation></message>
+    <message><source>The code change could not be drafted.</source><translation>無法草擬程式碼變更。</translation></message>
+    <message><source>This code action was replaced by a newer request.</source><translation>此程式碼操作已被較新的要求取代。</translation></message>
+    <message><source>Draft received. Checking its file boundary, selected range, and operation schema...</source><translation>已收到草稿。正在檢查檔案邊界、選取範圍與操作結構...</translation></message>
+    <message><source>Safety checks passed. Building the exact saved-file diff preview...</source><translation>已通過安全檢查。正在建立已儲存檔案的確切差異預覽...</translation></message>
+    <message><source>The proposed code could not form a safe diff.</source><translation>建議的程式碼無法形成安全的差異內容。</translation></message>
+    <message><source>Code change cancelled. Nothing was changed.</source><translation>已取消程式碼變更。未變更任何內容。</translation></message>
+    <message><source>Rechecking the saved file, applying the reviewed change, and verifying the result...</source><translation>正在重新檢查已儲存檔案、套用已檢視的變更並驗證結果...</translation></message>
+    <message><source>Reviewed code change applied and verified.</source><translation>已套用並驗證檢視過的程式碼變更。</translation></message>
+    <message><source>The reviewed code change could not be verified.</source><translation>無法驗證檢視過的程式碼變更。</translation></message>
+    <message><source>The active saved file could not be read.</source><translation>無法讀取使用中的已儲存檔案。</translation></message>
+    <message><source>VS Code change cancelled. Nothing was changed.</source><translation>已取消 VS Code 變更。未變更任何內容。</translation></message>
+    <message><source>Applied the code change in VS Code.</source><translation>已在 VS Code 中套用程式碼變更。</translation></message>
+    <message><source>VS Code did not confirm the file change.</source><translation>VS Code 未確認檔案變更。</translation></message>
+    <message><source>Wisp couldn't prepare the VS Code action: {error}</source><translation>Wisp 無法準備 VS Code 操作：{error}</translation></message>
+    <message><source>VS Code fix failed: {error}</source><translation>VS Code 修正失敗：{error}</translation></message>
+    <message><source>Wisp couldn't build a safe code diff: {error}</source><translation>Wisp 無法建立安全的程式碼差異：{error}</translation></message>
+    <message><source>Wisp couldn't apply the code change: {error}</source><translation>Wisp 無法套用程式碼變更：{error}</translation></message>
+    <message><source>Apply code fix</source><translation>套用程式碼修正</translation></message>
+    <message><source>VS CODE ACTION - PREVIEW</source><translation>VS CODE 操作 - 預覽</translation></message>
+    <message><source>Review the exact saved-file change before Wisp applies it.</source><translation>請在 Wisp 套用前檢視已儲存檔案的確切變更。</translation></message>
+    <message><source>File</source><translation>檔案</translation></message>
+    <message><source>Changed lines</source><translation>變更行數</translation></message>
+    <message><source>No textual difference was produced.</source><translation>沒有產生文字差異。</translation></message>
+    <message><source>... diff preview truncated ...</source><translation>... 差異預覽已截短 ...</translation></message>
+    <message><source>(current)</source><translation>（目前）</translation></message>
+    <message><source>(proposed)</source><translation>（建議）</translation></message>
+    <message><source>Apply writes only this fingerprint-checked file range.</source><translation>「套用」只會寫入這個已核對指紋的檔案範圍。</translation></message>
+    <message><source>Replace selected code in {file}</source><translation>取代 {file} 中選取的程式碼</translation></message>
+    <message><source>Apply is refused if the saved file changes after this preview.</source><translation>若已儲存檔案在此預覽後發生變更，Wisp 將拒絕套用。</translation></message>
+    <message><source>Wisp could not capture the exact Untitled editor target safely.</source><translation>Wisp 無法安全地擷取確切的「未命名」編輯器目標。</translation></message>
+    <message><source>Keep the caret in the Untitled editor when you press Ctrl+Shift+Q, then try again.</source><translation>按下 Ctrl+Shift+Q 時，請將游標留在「未命名」編輯器中，然後再試一次。</translation></message>
+    <message><source>Recommendation: Make sure the text editor itself has focus, not a panel or terminal.</source><translation>建議：請確認焦點位於文字編輯器本身，而不是面板或終端機。</translation></message>
+    <message><source>Editor target captured. Reviewing the selected code and drafting the exact change...</source><translation>已擷取編輯器目標。正在檢視選取的程式碼並草擬確切變更...</translation></message>
+    <message><source>Editor insertion point captured. Drafting the exact new content...</source><translation>已擷取編輯器插入點。正在草擬確切的新內容...</translation></message>
+    <message><source>Draft received. Checking the captured editor target and exact replacement...</source><translation>已收到草稿。正在檢查擷取的編輯器目標與確切替代內容...</translation></message>
+    <message><source>Wisp couldn't build a safe code diff for the Untitled tab.</source><translation>Wisp 無法為「未命名」分頁建立安全的程式碼差異。</translation></message>
+    <message><source>Safety checks passed. Building the exact Untitled editor diff preview...</source><translation>已通過安全檢查。正在建立「未命名」編輯器的確切差異預覽...</translation></message>
+    <message><source>Apply code to Untitled tab</source><translation>將程式碼套用至「未命名」分頁</translation></message>
+    <message><source>Review the exact change before Wisp writes it into the captured Untitled editor.</source><translation>請在 Wisp 寫入擷取的「未命名」編輯器前檢視確切變更。</translation></message>
+    <message><source>Tab</source><translation>分頁</translation></message>
+    <message><source>Target</source><translation>目標</translation></message>
+    <message><source>Insertion point</source><translation>插入點</translation></message>
+    <message><source>Apply writes only to the editor target captured when you opened Wisp.</source><translation>「套用」只會寫入你開啟 Wisp 時擷取的編輯器目標。</translation></message>
+    <message><source>Keep the same Untitled tab open until Apply finishes.</source><translation>在「套用」完成前，請保持同一個「未命名」分頁開啟。</translation></message>
+    <message><source>Writing the reviewed change to the captured Untitled editor target...</source><translation>正在將已檢視的變更寫入擷取的「未命名」編輯器目標...</translation></message>
+    <message><source>Reviewed code change written to the Untitled tab.</source><translation>已將檢視過的程式碼變更寫入「未命名」分頁。</translation></message>
+    <message><source>Wisp could not write to the captured Untitled editor target.</source><translation>Wisp 無法寫入擷取的「未命名」編輯器目標。</translation></message>
+    <message><source>The Untitled editor target changed before Apply, so Wisp did not paste the code.</source><translation>「未命名」編輯器目標在套用前已變更，因此 Wisp 未貼上程式碼。</translation></message>
+    <message><source>Recommendation: Put the caret back in that tab and run the request again.</source><translation>建議：將游標放回該分頁，然後再次執行要求。</translation></message>
+    <message><source>Identifying the recorded application window...</source><translation>正在識別已記錄的應用程式視窗...</translation></message>
+    <message><source>Reading the bounded semantic targets...</source><translation>正在讀取受限的語意目標...</translation></message>
+    <message><source>Resolving the registered semantic operations...</source><translation>正在解析已註冊的語意操作...</translation></message>
+    <message><source>Checking targets and preconditions...</source><translation>正在檢查目標與前置條件...</translation></message>
+    <message><source>Building the exact interaction preview...</source><translation>正在建立確切的互動預覽...</translation></message>
+    <message><source>Waiting for Apply; nothing has changed.</source><translation>正在等待「套用」；尚未變更任何內容。</translation></message>
+    <message><source>The interaction plan was refused safely.</source><translation>已安全拒絕此互動計畫。</translation></message>
+    <message><source>Cancelled before any interaction changes.</source><translation>已在任何互動變更前取消。</translation></message>
+    <message><source>Cancelled after {done} of {total} operations.</source><translation>已在完成 {total} 個操作中的 {done} 個後取消。</translation></message>
+    <message><source>Applying step {step} of {total}: {operation}...</source><translation>正在套用第 {step}/{total} 步：{operation}...</translation></message>
+    <message><source>Verifying the exact semantic results...</source><translation>正在驗證確切的語意結果...</translation></message>
+    <message><source>Applied and verified {count} semantic operations.</source><translation>已套用並驗證 {count} 個語意操作。</translation></message>
+    <message><source>The interaction stopped safely before continuing.</source><translation>互動已在繼續前安全停止。</translation></message>
+    <message><source>Set value to {value}</source><translation>將值設為 {value}</translation></message>
+    <message><source>Set toggle to {state}</source><translation>將切換狀態設為 {state}</translation></message>
+    <message><source>Scroll by {amount} bounded units</source><translation>捲動 {amount} 個受限單位</translation></message>
+    <message><source>Select this exact item</source><translation>選取這個確切項目</translation></message>
+    <message><source>Invoke this exact control</source><translation>叫用這個確切控制項</translation></message>
+    <message><source>Read a bounded accessibility tree</source><translation>讀取受限的無障礙樹狀結構</translation></message>
+    <message><source>Reading safe editable fields from the current browser page...</source><translation>正在讀取目前瀏覽器頁面中可安全編輯的欄位...</translation></message>
+    <message><source>The browser page is not ready for a safe action.</source><translation>此瀏覽器頁面尚未準備好執行安全操作。</translation></message>
+    <message><source>Wisp could not inspect this page through its private browser API. Reopen Chrome through Wisp control and try again.</source><translation>Wisp 無法透過私有瀏覽器 API 檢查此頁面。請透過 Wisp 控制重新開啟 Chrome，然後再試一次。</translation></message>
+    <message><source>The browser fields did not pass safety checks.</source><translation>瀏覽器欄位未通過安全檢查。</translation></message>
+    <message><source>Found {count} safe field(s). Drafting the exact values to fill...</source><translation>找到 {count} 個安全欄位。正在擬定要填入的確切值...</translation></message>
+    <message><source>The model is still matching your request to the page fields; this may take a few more seconds.</source><translation>模型仍在將你的要求配對至頁面欄位；可能還需要幾秒鐘。</translation></message>
+    <message><source>The form values could not be drafted.</source><translation>無法擬定表單值。</translation></message>
+    <message><source>This browser action was replaced by a newer request.</source><translation>此瀏覽器操作已由較新的要求取代。</translation></message>
+    <message><source>Draft received. Checking every field, value, and page boundary...</source><translation>已收到草稿。正在檢查每個欄位、值與頁面邊界...</translation></message>
+    <message><source>Safety checks passed. Building the exact field-by-field preview...</source><translation>已通過安全檢查。正在建立逐欄位的確切預覽...</translation></message>
+    <message><source>The proposed values could not form a safe browser action.</source><translation>建議的值無法形成安全的瀏覽器操作。</translation></message>
+    <message><source>Browser form action cancelled. Nothing was changed.</source><translation>已取消瀏覽器表單操作。未變更任何內容。</translation></message>
+    <message><source>Rechecking the page, filling the reviewed fields, and verifying every value...</source><translation>正在重新檢查頁面、填入已檢視的欄位，並驗證每個值...</translation></message>
+    <message><source>Reviewed browser fields filled and verified.</source><translation>已填入並驗證檢視過的瀏覽器欄位。</translation></message>
+    <message><source>The reviewed browser action could not be verified.</source><translation>無法驗證已檢視的瀏覽器操作。</translation></message>
+    <message><source>Filled the browser form without submitting it.</source><translation>已填入瀏覽器表單，但未提交。</translation></message>
+    <message><source>The browser did not verify the reviewed field values.</source><translation>瀏覽器未能驗證已檢視的欄位值。</translation></message>
+    <message><source>Wisp couldn't prepare this browser action: {error}</source><translation>Wisp 無法準備此瀏覽器操作：{error}</translation></message>
+    <message><source>Browser form action failed: {error}</source><translation>瀏覽器表單操作失敗：{error}</translation></message>
+    <message><source>Wisp couldn't build a safe form preview: {error}</source><translation>Wisp 無法建立安全的表單預覽：{error}</translation></message>
+    <message><source>Wisp couldn't fill the browser form: {error}</source><translation>Wisp 無法填入瀏覽器表單：{error}</translation></message>
+    <message><source>Fill web form</source><translation>填寫網頁表單</translation></message>
+    <message><source>BROWSER ACTION - PREVIEW</source><translation>瀏覽器操作 - 預覽</translation></message>
+    <message><source>Review every value before Wisp fills the current page.</source><translation>請在 Wisp 填入目前頁面前檢視每個值。</translation></message>
+    <message><source>Page</source><translation>頁面</translation></message>
+    <message><source>Fields</source><translation>欄位</translation></message>
+    <message><source>Submission</source><translation>提交</translation></message>
+    <message><source>Will not submit</source><translation>不會提交</translation></message>
+    <message><source>Field</source><translation>欄位</translation></message>
+    <message><source>Current</source><translation>目前值</translation></message>
+    <message><source>Proposed</source><translation>建議值</translation></message>
+    <message><source>Empty</source><translation>空白</translation></message>
+    <message><source>Apply fills only these fingerprint-checked fields and does not click Submit.</source><translation>「套用」只會填入這些已核對指紋的欄位，不會按下「提交」。</translation></message>
+    <message><source>Fill {label}</source><translation>填入「{label}」</translation></message>
+    <message><source>Apply is refused if the page or any captured field changes after this preview.</source><translation>若頁面或任何已擷取欄位在預覽後發生變更，將拒絕套用。</translation></message>
+    <message><source>Search chats</source><translation>搜尋對話</translation></message>
+    <message><source>Chats</source><translation>對話</translation></message>
+    <message><source>Delete all conversations</source><translation>刪除所有對話</translation></message>
+    <message><source>Delete every Wisp conversation after confirmation</source><translation>確認後刪除所有 Wisp 對話</translation></message>
+    <message><source>Formatted replies</source><translation>格式化回覆</translation></message>
+    <message><source>Message model</source><translation>訊息模型</translation></message>
+    <message><source>Wisp model</source><translation>Wisp 模型</translation></message>
+    <message><source>Models can make mistakes.</source><translation>模型可能會出錯。</translation></message>
+    <message><source>Formatting…</source><translation>正在格式化…</translation></message>
+    <message><source>Wait for the current reply to finish before deleting conversation history.</source><translation>請等待目前回覆完成後再刪除對話記錄。</translation></message>
+    <message><source>Delete all {count} Wisp conversations?
+
+This cannot be undone. Imported ChatGPT and Claude source files will not be deleted.</source><translation>要刪除全部 {count} 個 Wisp 對話嗎？
+
+此操作無法復原。已匯入的 ChatGPT 和 Claude 來源檔案不會被刪除。</translation></message>
+    <message><source>Delete all conversations failed</source><translation>刪除所有對話失敗</translation></message>
+    <message><source>Checking meaning…</source><translation>正在檢查含義…</translation></message>
+    <message><source>Copy</source><translation>複製</translation></message>
+    <message><source>Copy reply</source><translation>複製回覆</translation></message>
+    <message><source>Show original</source><translation>顯示原文</translation></message>
+    <message><source>Reformat</source><translation>重新格式化</translation></message>
+    <message><source>Format this reply in place</source><translation>就地格式化此回覆</translation></message>
+    <message><source>Formatting reply</source><translation>正在格式化回覆</translation></message>
+    <message><source>Wisp could not delete the conversations: {error}</source><translation>Wisp 無法刪除對話：{error}</translation></message>
+    <message><source>Show formatted</source><translation>顯示格式化版本</translation></message>
+    <message><source>This is taking a little longer. I'm still working on it.</source><translation>這需要更長一點時間。我仍在處理中。</translation></message>
+    <message><source>This is taking a little longer. I'm still preparing the rewrite.</source><translation>這需要更長一點時間。我仍在準備重寫內容。</translation></message>
   </context>
 </TS>
