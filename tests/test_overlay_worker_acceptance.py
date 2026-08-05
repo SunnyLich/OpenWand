@@ -4,12 +4,22 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 import time
 from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.workflow
+pytestmark = [
+    pytest.mark.workflow,
+    pytest.mark.skipif(
+        sys.platform == "win32" and os.environ.get("GITHUB_ACTIONS") == "true",
+        reason=(
+            "real-worker Qt acceptance requires an interactive Windows desktop; "
+            "Linux CI and local Windows runs cover this workflow"
+        ),
+    ),
+]
 
 _AUXILIARY_VISIBILITY_KEYS = (
     "chat_visible",
