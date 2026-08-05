@@ -155,6 +155,33 @@ def test_keyed_notice_updates_respect_user_dismissal() -> None:
     assert bubble.notices == [("Preparing local voice... for 0s", 0)]
 
 
+def test_rewrite_completion_exposes_working_undo_action(monkeypatch) -> None:
+    """The completed response bubble emits the supervisor undo event when clicked."""
+    from runtime.workers import ui_host
+    from runtime.workers.ui_host import QtProtocolHost
+
+    shown: list[dict] = []
+    emitted: list[tuple[str, dict]] = []
+
+    class Bubble:
+        def show_notice(self, text: str, *, timeout_ms: int, actions: list) -> None:
+            shown.append({"text": text, "timeout_ms": timeout_ms, "actions": actions})
+
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host._ensure_bubble = lambda: Bubble()  # type: ignore[attr-defined]
+    host.emit = lambda event, data=None, req_id=None: emitted.append((event, data or {}))  # type: ignore[method-assign]
+    monkeypatch.setattr(ui_host, "t", lambda text: f"translated:{text}")
+
+    result = host._reply_undo_ready("Fixed the grammar.", timeout_ms=30000)
+    label, callback = shown[0]["actions"][0]
+    callback()
+
+    assert result == {"shown": True, "text": "translated:Fixed the grammar.", "action": "undo"}
+    assert shown[0]["timeout_ms"] == 30000
+    assert label == "translated:Undo"
+    assert emitted == [("ui.rewrite.undo", {})]
+
+
 def test_speech_status_notice_does_not_replace_active_reply() -> None:
     """Speech warmup/readiness notices must not overwrite model reply bubbles."""
     from runtime.workers.ui_host import QtProtocolHost

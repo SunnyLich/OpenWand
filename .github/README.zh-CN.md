@@ -59,7 +59,8 @@ Wisp 专为那些打开聊天应用会打断工作流的时刻而设计。
 - **自带提供商** — 支持 Groq、Anthropic、OpenAI、Google、DeepSeek、OpenRouter、Mistral、XAI、Together、Cerebras、自定义 OpenAI 兼容服务器、GitHub Copilot 等。
 - **本地记忆** — 可选的短期和长期记忆存储在本地，支持查看器编辑或删除记录。
 - **插件** — 通过钩子、托盘操作、设置、模型可调用工具、可配置操作和快捷键扩展 Wisp。
-- **代理任务** — 用于需要分解、审查和产出物的长期任务的沙盒任务框架。
+- **聊天后台任务** — 启用本地项目写入后，聊天模型可以委派较复杂的编程工作、立即回复，并在完成后将报告添加回同一对话。
+- **代理团队** — 由你直接配置项目、目标、代理、模型和权限，并通过可见的实时进度与可审查产出物运行团队。
 
 ## 演示
 
@@ -71,9 +72,9 @@ Wisp 专为那些打开聊天应用会打断工作流的时刻而设计。
 
 **上下文感知重写：** Wisp 可以在不截图的情况下收集有用的应用上下文，让模型了解您正在做什么。然后重写快捷键只重写选中文本，并把回贴目标指向按下快捷键时捕获的原始字段。
 
-![Wisp 多代理任务演示](readme-assets/readme-4th-demo.gif)
+![Wisp 代理团队演示](readme-assets/readme-4th-demo.gif)
 
-**沙盒代理运行：** 代理任务流程适用于较长的工作空间任务。Wisp 可以将任务分配给协调者、构建者和审查者角色，检查项目文件，进行有针对性的更改，运行检查，并为该次运行留下最终报告和产出物。
+**代理团队：** 将较长的工作委派给协调者、构建者和审查者。团队可以检查项目文件、进行有针对性的更改、运行检查，并在你继续使用 Wisp 时留下最终报告和可审查的产出物。
 
 ## 工作流程
 
@@ -103,7 +104,7 @@ Wisp 有两种支持的启动方式。
 
 如果您希望使用应用程序而无需克隆仓库或管理 Python 依赖项，请使用此选项。
 
-1. 从 [GitHub Releases](https://github.com/SunnyLich/Python-AI-assistant-overlay/releases) 下载适用于您平台的最新资源。
+1. 从 [GitHub Releases](https://github.com/SunnyLich/Wisp-AI-Assistant/releases) 下载适用于您平台的最新资源。
 2. 解压存档并启动打包应用程序。
 3. 打开设置以添加您的模型提供商密钥、语音设置和首选快捷键。
 
@@ -120,8 +121,8 @@ Wisp 有两种支持的启动方式。
 克隆仓库：
 
 ```bash
-git clone https://github.com/SunnyLich/Python-AI-assistant-overlay.git
-cd Python-AI-assistant-overlay
+git clone https://github.com/SunnyLich/Wisp-AI-Assistant.git
+cd Wisp-AI-Assistant
 ```
 
 然后使用适合您平台的仓库启动器启动 Wisp：

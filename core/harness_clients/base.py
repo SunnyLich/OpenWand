@@ -1,7 +1,7 @@
 """Provider-neutral entry point for live agent harnesses."""
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -66,8 +66,13 @@ def run_harness(
     cwd: str | Path | None = None,
     on_event: EventCallback | None = None,
     approval_callback: ApprovalCallback | None = None,
+    images: Sequence[str] = (),
 ) -> HarnessResult:
-    """Run one turn through the selected local agent harness."""
+    """Run one turn through the selected local agent harness.
+
+    ``images`` are local files attached to the turn's input; only the codex
+    harness ingests them today, and callers own the files' cleanup.
+    """
     selected = str(provider or "").strip().lower()
     if selected == "codex":
         from core.harness_clients.codex import run_codex
@@ -78,6 +83,7 @@ def run_harness(
             cwd=cwd,
             on_event=on_event,
             approval_callback=approval_callback,
+            images=images,
         )
     if selected == "claude":
         from core.harness_clients.claude import run_claude

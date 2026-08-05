@@ -234,7 +234,7 @@ I18N.register('fr', {
     /* Installation */
     'Portable version': 'Version portable',
     'For most people, start with a portable package from GitHub Releases. Download the package for your OS, unzip it anywhere, and run the included Wisp app or launcher.':
-      'Pour la plupart des utilisateurs, commencez par un paquet portable depuis <a href="https://github.com/SunnyLich/Python-AI-assistant-overlay/releases" target="_blank">GitHub Releases</a>. Téléchargez le paquet pour votre système, décompressez-le où vous voulez, puis lancez l’app ou le lanceur Wisp inclus.',
+      'Pour la plupart des utilisateurs, commencez par un paquet portable depuis <a href="https://github.com/SunnyLich/Wisp-AI-Assistant/releases" target="_blank">GitHub Releases</a>. Téléchargez le paquet pour votre système, décompressez-le où vous voulez, puis lancez l’app ou le lanceur Wisp inclus.',
     'Path': 'Chemin',
     'Use it when': 'À utiliser si',
     'How to start': 'Comment démarrer',
@@ -306,7 +306,7 @@ I18N.register('fr', {
     'There are two ways to start Wisp.': 'Il y a deux façons de démarrer Wisp.',
     'Repo version': 'Version du dépôt',
     'Recommended: download a portable package from GitHub Releases, unzip it, and run the included Wisp app or launcher. No repo checkout is needed for that path.':
-      'Recommandé : téléchargez un paquet portable depuis <a href="https://github.com/SunnyLich/Python-AI-assistant-overlay/releases" target="_blank">GitHub Releases</a>, décompressez-le, puis lancez l’app ou le lanceur Wisp inclus. Aucun checkout du dépôt n’est nécessaire pour ce chemin.',
+      'Recommandé : téléchargez un paquet portable depuis <a href="https://github.com/SunnyLich/Wisp-AI-Assistant/releases" target="_blank">GitHub Releases</a>, décompressez-le, puis lancez l’app ou le lanceur Wisp inclus. Aucun checkout du dépôt n’est nécessaire pour ce chemin.',
     'If you are running from the repo instead, download or clone the source and use the launcher for your platform:':
       'Si vous lancez plutôt depuis le dépôt, téléchargez ou clonez le code source et utilisez le lanceur de votre plateforme :',
     'For the repo version, the first run installs everything Wisp needs and then starts the app. Requires Python 3.12 (see Installation).':
@@ -391,7 +391,7 @@ I18N.register('fr', {
       "Vous n'avez pas à nous croire sur parole. Wisp est entièrement open source — les motifs de caviardage, la gestion du trousseau, les appels réseau, tout est dans le dépôt pour que vous (ou votre équipe sécurité) puissiez le lire et le vérifier.",
     'Verify it yourself': 'Vérifiez par vous-même',
     'Read the source on GitHub — start with core/context_fetcher.py for redaction and context handling.':
-      "Lisez le code sur <a href=\"https://github.com/SunnyLich/Python-AI-assistant-overlay\" target=\"_blank\">GitHub</a> — commencez par <code>core/context_fetcher.py</code> pour le caviardage et la gestion du contexte.",
+      "Lisez le code sur <a href=\"https://github.com/SunnyLich/Wisp-AI-Assistant\" target=\"_blank\">GitHub</a> — commencez par <code>core/context_fetcher.py</code> pour le caviardage et la gestion du contexte.",
 
     /* Overlay */
     'Overview': 'Présentation',

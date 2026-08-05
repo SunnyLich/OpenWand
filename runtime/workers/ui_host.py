@@ -2446,6 +2446,8 @@ class QtProtocolHost:
             return self._show_intent(**params)
         if method == "ui.intent.context_items":
             return self._update_intent_context_items(**params)
+        if method == "ui.intent.action_provider":
+            return self._update_intent_action_provider(**params)
         if method == "ui.intent.activate":
             return self._activate_intent()
         if method == "ui.show_snip":
@@ -3049,6 +3051,20 @@ class QtProtocolHost:
             return {"updated": False, "reason": "no_intent"}
         try:
             self._intent.update_context_items(_localized_context_items(context_items))
+        except RuntimeError:
+            self._intent = None
+            return {"updated": False, "reason": "closed"}
+        return {"updated": True}
+
+    def _update_intent_action_provider(
+        self,
+        action_provider: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Refresh app-specific actions on the currently open intent overlay."""
+        if self._intent is None:
+            return {"updated": False, "reason": "no_intent"}
+        try:
+            self._intent.update_action_provider(action_provider)
         except RuntimeError:
             self._intent = None
             return {"updated": False, "reason": "closed"}

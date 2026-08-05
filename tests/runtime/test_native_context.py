@@ -68,6 +68,7 @@ def test_paste_text_can_restore_clipboard(monkeypatch):
     monkeypatch.setattr(native_host, "clipboard_get", lambda: {"text": "original clipboard"})
     monkeypatch.setattr(native_host, "clipboard_set", lambda text="": clipboard_sets.append(text) or {"ok": True})
     monkeypatch.setattr(platform_utils, "set_foreground_window", lambda wid: focused.append(wid))
+    monkeypatch.setattr(platform_utils, "get_foreground_window", lambda: 777)
     monkeypatch.setattr(platform_utils, "send_keys", lambda combo: keys.append(combo))
     monkeypatch.setattr(native_host.time, "sleep", lambda _seconds: None)
 
@@ -78,6 +79,70 @@ def test_paste_text_can_restore_clipboard(monkeypatch):
     assert focused == [777]
     assert keys == [platform_utils.PASTE_COMBO]
     assert clipboard_sets == ["model reply", "original clipboard"]
+
+
+def test_undo_edit_refocuses_original_window_before_sending_undo(monkeypatch):
+    """Undo is sent only after the captured target is confirmed foreground."""
+    monkeypatch.setattr(native_host, "IS_MAC", False)
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    focused: list[int] = []
+    keys: list[str] = []
+
+    import core.platform_utils as platform_utils
+
+    monkeypatch.setattr(platform_utils, "set_foreground_window", focused.append)
+    monkeypatch.setattr(platform_utils, "get_foreground_window", lambda: 7007)
+    monkeypatch.setattr(platform_utils, "send_keys", keys.append)
+    monkeypatch.setattr(native_host, "_win_window_for_pid", lambda pid: 7007 if pid == 777 else 0)
+    monkeypatch.setattr(native_host, "_win_window_pid", lambda hwnd: 777 if hwnd == 7007 else 0)
+    monkeypatch.setattr(native_host, "_focus_cached_edit_target", lambda token: token == 9)
+    monkeypatch.setattr(native_host.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(native_host, "clipboard_set", lambda _text="": pytest.fail("fallback used"))
+
+    result = native_host.undo_edit(
+        target_pid=777,
+        focus_token=9,
+        original_text="before",
+        replacement_text="after",
+    )
+
+    assert result == {"ok": True, "method": "app-undo", "clipboard_ok": False}
+    assert focused == [7007]
+    assert keys == ["ctrl+z"]
+
+
+def test_undo_edit_copies_original_when_target_cannot_be_confirmed(monkeypatch):
+    """A focus race must never send undo to the wrong app."""
+    monkeypatch.setattr(native_host, "IS_MAC", False)
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    copied: list[str] = []
+
+    import core.platform_utils as platform_utils
+
+    monkeypatch.setattr(platform_utils, "set_foreground_window", lambda _wid: None)
+    monkeypatch.setattr(platform_utils, "get_foreground_window", lambda: 9009)
+    monkeypatch.setattr(platform_utils, "send_keys", lambda _combo: pytest.fail("undo sent to wrong app"))
+    monkeypatch.setattr(native_host, "_win_window_for_pid", lambda _pid: 7007)
+    monkeypatch.setattr(native_host, "_win_window_pid", lambda hwnd: 999 if hwnd == 9009 else 777)
+    monkeypatch.setattr(native_host, "_focus_cached_edit_target", lambda _token: True)
+    monkeypatch.setattr(native_host.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        native_host,
+        "clipboard_set",
+        lambda text="": copied.append(text) or {"ok": True},
+    )
+
+    result = native_host.undo_edit(
+        target_pid=777,
+        focus_token=9,
+        original_text="before",
+        replacement_text="after",
+    )
+
+    assert result["ok"] is False
+    assert result["clipboard_ok"] is True
+    assert result["method"] == "clipboard-fallback"
+    assert copied == ["before"]
 
 
 def test_paste_text_uses_windows_uia_focus_token(monkeypatch):
@@ -215,6 +280,29 @@ def test_paste_text_refuses_windows_unanchored_fallback_when_focus_token_fails(m
     assert result["keystroke_sent"] is False
 
 
+def test_paste_text_refuses_unconfirmed_windows_target_without_focus_token(monkeypatch):
+    """A rejected SetForegroundWindow call must never become a false success."""
+    monkeypatch.setattr(native_host, "IS_MAC", False)
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+
+    import core.platform_utils as platform_utils
+
+    monkeypatch.setattr(platform_utils, "set_foreground_window", lambda _wid: None)
+    monkeypatch.setattr(platform_utils, "get_foreground_window", lambda: 9009)
+    monkeypatch.setattr(native_host, "_win_window_pid", lambda hwnd: {7007: 777, 9009: 999}.get(hwnd, 0))
+    monkeypatch.setattr(platform_utils, "send_keys", lambda _combo: pytest.fail("paste sent to wrong app"))
+    monkeypatch.setattr(native_host, "clipboard_set", lambda _text="": pytest.fail("clipboard overwritten"))
+    monkeypatch.setattr(native_host.time, "sleep", lambda _seconds: None)
+
+    result = native_host.paste_text("model reply", target_pid=7007, focus_token=0)
+
+    assert result["ok"] is False
+    assert result["confirmed"] is False
+    assert result["keystroke_sent"] is False
+    assert result["frontmost_pid"] == 999
+    assert result["error"] == "target window could not be confirmed"
+
+
 def test_paste_failure_matrix_is_controlled_at_native_boundary(monkeypatch):
     """Clipboard, focus, synthetic-input, overwrite, and AX faults stay in band."""
     import core.platform_utils as platform_utils
@@ -224,6 +312,7 @@ def test_paste_failure_matrix_is_controlled_at_native_boundary(monkeypatch):
     monkeypatch.setattr(native_host.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(native_host, "clipboard_get", lambda: {"text": "original"})
     monkeypatch.setattr(platform_utils, "set_foreground_window", lambda _wid: None)
+    monkeypatch.setattr(platform_utils, "get_foreground_window", lambda: 777)
 
     sent: list[str] = []
     monkeypatch.setattr(platform_utils, "send_keys", sent.append)

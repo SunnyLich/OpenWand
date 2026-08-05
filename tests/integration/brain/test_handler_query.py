@@ -100,6 +100,73 @@ def test_external_query_does_not_paste_wisp_system_prompt_into_user_message(
     assert captured["prompt"].endswith("how are you")
 
 
+def test_external_query_forwards_screenshot_as_turn_image(record_ctx, monkeypatch, tmp_path):
+    """The captured screenshot reaches the harness as a temp file, then goes away."""
+    import base64
+    from pathlib import Path
+
+    from core import harness_clients
+    from core.harness_clients.base import HarnessResult
+    from core.system import paths
+
+    captured = {}
+
+    def fake_run(provider, prompt, **kwargs):
+        image_paths = [Path(value) for value in kwargs.get("images", ())]
+        captured["paths"] = image_paths
+        captured["bytes"] = [path.read_bytes() for path in image_paths]
+        return HarnessResult(provider, "Done", "thread-1", "/repo")
+
+    monkeypatch.setattr(harness_clients, "run_harness", fake_run)
+    monkeypatch.setattr(paths, "USER_DATA_DIR", tmp_path)
+    monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", False)
+    _events, ctx = record_ctx()
+
+    png = b"\x89PNG\r\n\x1a\n" + b"fake-pixels"
+    handlers.HANDLERS["brain.query"](
+        ctx,
+        intent_prompt="what is on my screen",
+        screenshot_b64=base64.b64encode(png).decode("ascii"),
+        memory_enabled=False,
+        harness_provider="codex",
+    )
+
+    # The harness saw the real bytes while the turn ran...
+    assert captured["bytes"] == [png]
+    assert captured["paths"][0].suffix == ".png"
+    assert captured["paths"][0].parent == tmp_path / "harness_attachments"
+    # ...and the temp file is deleted once the turn returns.
+    assert not captured["paths"][0].exists()
+
+
+def test_external_query_without_screenshot_sends_no_images(record_ctx, monkeypatch, tmp_path):
+    """Text-only queries do not create attachment files."""
+    from core import harness_clients
+    from core.harness_clients.base import HarnessResult
+    from core.system import paths
+
+    captured = {}
+
+    def fake_run(provider, prompt, **kwargs):
+        captured["images"] = list(kwargs.get("images", ()))
+        return HarnessResult(provider, "Done", "thread-1", "/repo")
+
+    monkeypatch.setattr(harness_clients, "run_harness", fake_run)
+    monkeypatch.setattr(paths, "USER_DATA_DIR", tmp_path)
+    monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", False)
+    _events, ctx = record_ctx()
+
+    handlers.HANDLERS["brain.query"](
+        ctx,
+        intent_prompt="hello",
+        memory_enabled=False,
+        harness_provider="codex",
+    )
+
+    assert captured["images"] == []
+    assert not (tmp_path / "harness_attachments").exists()
+
+
 def test_query_memory_disabled_skips_retrieval(record_ctx, monkeypatch):
     """Verify query memory disabled skips retrieval behavior."""
     from core.memory_store import store
@@ -712,3 +779,39 @@ def test_rewrite_requires_selected_text(record_ctx):
 
     with pytest.raises(ValueError, match="selected_text"):
         handlers.HANDLERS["brain.rewrite"](ctx, intent_prompt="Fix grammar")
+def test_chat_stream_routes_background_task_lifecycle_to_supervisor(monkeypatch):
+    """A model tool launch emits once during chat and clears request-local state."""
+    from core.llm_clients import client as llm_client
+    from runtime.brain.wisp_brain.handlers import StreamContext, _stream_chat_reply
+
+    monkeypatch.delenv("WISP_BRAIN_FAKE_LLM", raising=False)
+    events: list[tuple[str, dict, object]] = []
+    ctx = StreamContext(lambda event, data, req_id: events.append((event, data, req_id)), "chat-7")
+
+    def fake_stream(*_args, **_kwargs):
+        callback = llm_client._effective_background_task_event_callback()
+        assert callback is not None
+        callback({"job_id": "job-0123456789", "state_path": "state.json"})
+        yield "Started."
+
+    monkeypatch.setattr(llm_client, "stream_response_with_history", fake_stream)
+    chunks = list(
+        _stream_chat_reply(
+            [{"role": "user", "content": "Do the work in the background."}],
+            "",
+            use_tools=True,
+            allowed_tools=["delegate_background_task"],
+            ctx=ctx,
+            file_access_mode="auto",
+        )
+    )
+
+    assert chunks == ["Started."]
+    assert events == [
+        (
+            "background_task.started",
+            {"job_id": "job-0123456789", "state_path": "state.json"},
+            "chat-7",
+        )
+    ]
+    assert llm_client._effective_background_task_event_callback() is None

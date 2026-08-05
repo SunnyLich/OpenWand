@@ -466,6 +466,7 @@ class IntentOverlay(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
 
+        self._caller_idx = int(caller_idx)
         self._action_provider = dict(action_provider or {})
         provider_suggestions = self._action_provider.get("suggested_intents")
         self._rows = _build_rows(
@@ -645,6 +646,24 @@ class IntentOverlay(QWidget):
     def context_choices(self) -> list[dict]:
         """Return the current per-prompt context source states."""
         return [dict(item) for item in self._context_items]
+
+    def update_action_provider(self, action_provider: dict | None = None) -> None:
+        """Load app-specific actions after deferred hotkey context capture."""
+        if self._handled:
+            return
+        self._action_provider = dict(action_provider or {})
+        provider_suggestions = self._action_provider.get("suggested_intents")
+        self._rows = _build_rows(
+            self._caller_idx,
+            provider_suggestions if isinstance(provider_suggestions, list) else [],
+        )
+        self._auto_custom_mode = self._custom_row_index_without_key()
+        height = self._base_height()
+        self._normal_h = height
+        self.setFixedSize(_W, height)
+        self._layout_conversation_selector(_PAD_V)
+        self._move_to_screen_center(height)
+        self.update()
 
     def current_custom_text(self) -> str:
         """Return the currently typed custom prompt text, if any."""

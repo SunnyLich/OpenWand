@@ -26,7 +26,7 @@ const DOCS_PAGES = {
   <div class="sec-pillar"><span class="sec-pillar-k">Sees your work</span><div class="sec-pillar-t">Context, no copy-paste</div><p>Wisp reads your selection, clipboard, focused app, open documents, browser tab, memory, local files, Git/GitHub context, or a region you draw.</p></div>
   <div class="sec-pillar"><span class="sec-pillar-k">Yours</span><div class="sec-pillar-t">Any model, cloud/local</div><p>Choose your provider, keep data on your machine, and remap every hotkey. Your setup stays portable.</p></div>
 </div>
-<p>Click the icon any time to open a full chat window that remembers past conversations and can continue from context captured in the overlay. For bigger, multi-step jobs there's an experimental <a onclick="navigate('team-mode')">agent framework</a> that works a task on its own.</p>
+<p>Click the icon any time to open a full chat window that remembers past conversations and can continue from context captured in the overlay. With project writes enabled, the chat model can delegate substantial coding work to the background and return the result to that conversation. Separately, <a onclick="navigate('team-mode')">Agent Team</a> lets you configure the project, goal, team, models, and permissions yourself.</p>
 
 <hr />
 <h2 id="design-goals">Design goals</h2>
@@ -43,10 +43,10 @@ const DOCS_PAGES = {
 
 'technical-demos': {
   title: 'Technical Demos',
-  sub: 'Real runs of Wisp capturing context, rewriting text, and driving longer agent tasks.',
-  toc: ['overlay-query','vision-snip','rewrite-flow','agent-task'],
+  sub: 'Real runs of Wisp capturing context, rewriting text, and delegating longer jobs to an Agent Team.',
+  toc: ['overlay-query','vision-snip','rewrite-flow','agent-team'],
   html: `
-<p>These clips show Wisp doing the practical work behind the docs: staying in the current app, collecting the right context, and handing longer tasks to the experimental agent framework.</p>
+<p>These clips show Wisp doing the practical work behind the docs: staying in the current app, collecting the right context, and handing longer jobs to an Agent Team.</p>
 <div class="demo-grid">
   <figure class="demo-card">
     <button class="demo-media" type="button" onclick="openDemoLightbox('assets/readme-1st-demo.gif', 'Wisp hotkey overlay query demo')">
@@ -79,12 +79,12 @@ const DOCS_PAGES = {
   </figure>
 
   <figure class="demo-card">
-    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/readme-4th-demo.gif', 'Wisp multi-agent task demo')">
-      <img src="assets/readme-4th-demo.gif" alt="Wisp multi-agent task demo" loading="lazy" />
+    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/readme-4th-demo.gif', 'Wisp Agent Team demo')">
+      <img src="assets/readme-4th-demo.gif" alt="Wisp Agent Team demo" loading="lazy" />
     </button>
     <figcaption>
-      <h2 id="agent-task">Sandboxed agent run</h2>
-      <p>Longer workspace tasks can run through coordinator, builder, and reviewer roles. The run inspects files, makes a focused change, verifies it, and saves artifacts for review.</p>
+      <h2 id="agent-team">Agent Team</h2>
+      <p>Delegate a longer workspace job to coordinator, builder, and reviewer roles. The team inspects files, makes a focused change, verifies it, and saves artifacts for review while you keep using Wisp.</p>
     </figcaption>
   </figure>
 </div>`
@@ -96,7 +96,7 @@ const DOCS_PAGES = {
   toc: ['portable-build','updates','source-launch','source-requirements','install-steps','lite-vs-full','running'],
   html: `
 <h2 id="portable-build">Portable version</h2>
-<p>For most people, start with a portable package from <a href="https://github.com/SunnyLich/Python-AI-assistant-overlay/releases" target="_blank">GitHub Releases</a>. Download the package for your OS, unzip it anywhere, and run the included Wisp app or launcher.</p>
+<p>For most people, start with a portable package from <a href="https://github.com/SunnyLich/Wisp-AI-Assistant/releases" target="_blank">GitHub Releases</a>. Download the package for your OS, unzip it anywhere, and run the included Wisp app or launcher.</p>
 <table>
   <thead><tr><th>Path</th><th>Use it when</th><th>How to start</th></tr></thead>
   <tbody>
@@ -148,8 +148,8 @@ const DOCS_PAGES = {
 <h2 id="install-steps">Manual source install</h2>
 <p>Prefer to set up the repo version yourself? This is exactly what the source launcher does:</p>
 <pre><span class="pre-lang">powershell</span><code><span class="c-comment"># 1. Clone the repo</span>
-git clone https://github.com/SunnyLich/Python-AI-assistant-overlay
-cd Python-AI-assistant-overlay
+git clone https://github.com/SunnyLich/Wisp-AI-Assistant
+cd Wisp-AI-Assistant
 
 <span class="c-comment"># 2. Create a virtual environment (Python 3.12)</span>
 python -m venv .venv
@@ -199,7 +199,7 @@ python -m runtime.supervisor.app</code></pre>
 <h2 id="step-1">1. Start</h2>
 <p>There are two ways to start Wisp.</p>
 
-<div class="callout tip"><div class="callout-label">Portable version</div><p>Recommended: download a portable package from <a href="https://github.com/SunnyLich/Python-AI-assistant-overlay/releases" target="_blank">GitHub Releases</a>, unzip it, and run the included Wisp app or launcher. No repo checkout is needed for that path.</p></div>
+<div class="callout tip"><div class="callout-label">Portable version</div><p>Recommended: download a portable package from <a href="https://github.com/SunnyLich/Wisp-AI-Assistant/releases" target="_blank">GitHub Releases</a>, unzip it, and run the included Wisp app or launcher. No repo checkout is needed for that path.</p></div>
 <table>
   <thead><tr><th>Platform</th><th>Double-click</th></tr></thead>
   <tbody>
@@ -803,24 +803,28 @@ Release             → <span class="c-blue">stop_and_transcribe()</span> → te
 },
 
 'team-mode': {
-  title: 'Agent framework',
-  sub: 'An experimental background task runner for bigger, multi-step jobs.',
-  toc: ['concept','status','when-to-use','anatomy','workspace','safety','tips'],
+  title: 'Agent Team',
+  sub: 'A scoped background team for bigger, multi-step jobs.',
+  toc: ['concept','chat-background','status','when-to-use','anatomy','workspace','safety','tips'],
   html: `
-<div class="callout warn"><div class="callout-label">Experimental</div><p>The agent framework is early and <strong>experimental</strong>. You can launch a run from the tray's <strong>right-click menu</strong>.</p></div>
+<div class="callout note"><div class="callout-label">You configure this team</div><p>Choose <strong>Start Agent Team...</strong> from the tray menu, then set the project folder, goal, agents, models, and permissions. You can close the activity window and keep using Wisp while the team works.</p></div>
 
 <h2 id="concept">Concept</h2>
-<p>Where the overlay answers a single prompt in one shot, the agent framework is built for jobs that need decomposition — research then write, plan then implement, draft then review. You hand it a goal and it works the task turn by turn in a sandboxed workspace, leaving artifacts behind for you to inspect.</p>
+<p>Where the overlay answers a single prompt in one shot, Agent Team is built for jobs that benefit from collaboration — plan then implement, build then test, draft then review. Give the team a goal and a folder; coordinator, builder, and reviewer roles work it turn by turn and leave reviewable artifacts behind.</p>
+
+<hr />
+<h2 id="chat-background">Chat background delegation is separate</h2>
+<p>Normal Wisp chat can delegate substantial coding work automatically when its <strong>Files</strong> control is set to <strong>Ask before write</strong> or <strong>Auto</strong>. That model-invoked background task does not open this setup screen: it uses the configured local-file root, returns control to chat immediately, and adds its final report to the same conversation. Use Agent Team when you want to choose the project, goal, team, models, and permissions yourself.</p>
 
 <hr />
 <h2 id="status">Status</h2>
-<p>This is a foundation, not a finished feature. You launch a run from the tray's right-click menu; the full task window is still being built. Expect rough edges.</p>
+<p>Agent Team is available from the tray menu. Its activity window shows the live meeting, shared board, logs, model trace, approvals, pause and nudge controls, diff, final report, and previous runs.</p>
 
 <hr />
-<h2 id="when-to-use">When to reach for an agent task</h2>
-<p>Use an agent task when a job benefits from decomposition — research + writing, plan + implement, draft + review. For quick one-shot queries, the standard overlay is faster and cheaper.</p>
+<h2 id="when-to-use">When to use Agent Team</h2>
+<p>Use Agent Team when a job benefits from decomposition — research + writing, plan + implement, draft + review. For quick one-shot queries, the standard overlay is faster and cheaper.</p>
 <table>
-  <thead><tr><th>Good fit for a task</th><th>Better as a regular query</th></tr></thead>
+  <thead><tr><th>Good fit for Agent Team</th><th>Better as a regular query</th></tr></thead>
   <tbody>
     <tr><td>Rewrite a whole document section</td><td>Explain this error</td></tr>
     <tr><td>Research a topic and draft a summary</td><td>Fix this sentence</td></tr>
@@ -830,15 +834,11 @@ Release             → <span class="c-blue">stop_and_transcribe()</span> → te
 </table>
 
 <hr />
-<h2 id="anatomy">Anatomy of a task run</h2>
-<pre><code data-i18n-text-block>1. A TaskSpec is built from your goal + captured context
-2. The runner works the goal turn by turn:
-   a. plans the steps
-   b. gathers facts / reads files via the toolbox
-   c. produces the output artifact
-   d. reviews the work, iterating if needed
-3. Every step is logged auditably
-4. Artifacts land in the sandboxed workspace for you to inspect</code></pre>
+<h2 id="anatomy">How an Agent Team run works</h2>
+<pre><code data-i18n-text-block>1. Wisp builds a team plan from your goal, context, folder, and permissions
+2. Coordinator, builder, and reviewer work turn by turn
+3. Scoped tools read files, make approved changes, and run local checks
+4. Every step is logged, and the final report and artifacts stay available for review</code></pre>
 
 <hr />
 <h2 id="workspace">Workspace</h2>
@@ -846,15 +846,15 @@ Release             → <span class="c-blue">stop_and_transcribe()</span> → te
 
 <hr />
 <h2 id="safety">Safety</h2>
-<div class="callout note"><div class="callout-label">Approval before writes</div><p>Runs are sandboxed to their workspace and ask for approval before mutating files. Together with auditable step logs and the <code>max_turns</code> cap, this keeps an experimental run from doing anything irreversible while the framework matures.</p></div>
+<div class="callout note"><div class="callout-label">Scoped permissions</div><p>Agent Team runs stay inside the selected folder. Shell, network, Git, file creation, editing, and deletion each have their own permission mode, and approval-gated actions wait for your decision.</p></div>
 
 <hr />
 <h2 id="tips">Tips</h2>
 <ul style="padding-left:20px;color:var(--text);font-size:14px;line-height:2">
   <li>Be specific in the goal. "Rewrite the README to be friendlier" works better than "improve the README".</li>
-  <li>Put relevant material in the spec's <code>context</code> up front — a run can't read your screen the way the overlay does.</li>
-  <li>Set <code>TOOL_LLM_MODEL</code> to a model that supports tool calling (e.g. <code>claude-sonnet-4-6</code>); blank reuses <code>LLM_MODEL</code>.</li>
-  <li>Check the workspace directory for artifacts when the run completes.</li>
+  <li>Add relevant context up front, or use <strong>Copy current app context</strong> before starting.</li>
+  <li>Choose a capable tool-using model for the team and add fallback models when the job matters.</li>
+  <li>Open <strong>Agent Team Activity</strong> to review final reports, diffs, logs, and previous runs.</li>
 </ul>`
 },
 
@@ -1003,7 +1003,7 @@ Release             → <span class="c-blue">stop_and_transcribe()</span> → te
 <hr />
 <h2 id="open-source">Open source &amp; auditable</h2>
 <p>You don't have to take our word for any of this. Wisp is fully open source — the redaction patterns, the keychain handling, the network calls, all of it is right there in the repository for you (or your security team) to read and verify.</p>
-<div class="callout tip"><div class="callout-label">Verify it yourself</div><p>Read the source on <a href="https://github.com/SunnyLich/Python-AI-assistant-overlay" target="_blank">GitHub</a> — start with <code>core/context_fetcher.py</code> for redaction and context handling.</p></div>`
+<div class="callout tip"><div class="callout-label">Verify it yourself</div><p>Read the source on <a href="https://github.com/SunnyLich/Wisp-AI-Assistant" target="_blank">GitHub</a> — start with <code>core/context_fetcher.py</code> for redaction and context handling.</p></div>`
 },
 
 /* -------------------------------------------------------
@@ -2121,7 +2121,7 @@ const NAV_TREE = [
     { id: 'context-capture', label: 'Context capture' },
     { id: 'voice',           label: 'Voice mode' },
     { id: 'live-agents',     label: 'ChatGPT, Codex & Claude CLI' },
-    { id: 'team-mode',       label: 'Agent framework' },
+    { id: 'team-mode',       label: 'Agent Team' },
     { id: 'memory',          label: 'Memory' },
     { id: 'addons',          label: 'Add-ons' },
   ]},

@@ -328,9 +328,9 @@ class IconOverlay(QMainWindow):
         menu.setWindowFlags(Qt.WindowType.Popup)
 
         if os.environ.get("WISP_MACOS_PY_UI_HOST") == "1":
-            agent_task_action = QAction(t("Start agent task..."), self)
+            agent_task_action = QAction(t("Start Agent Team..."), self)
             agent_task_action.triggered.connect(self.signals.show_agent_task.emit)
-            agent_history_action = QAction(t("Agent task history..."), self)
+            agent_history_action = QAction(t("Agent Team Activity..."), self)
             agent_history_action.triggered.connect(self.signals.show_agent_history.emit)
             menu.addAction(agent_task_action)
             menu.addAction(agent_history_action)

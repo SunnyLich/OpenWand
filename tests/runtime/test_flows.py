@@ -495,7 +495,7 @@ def browser_context_handler(selected: str = "selected"):
         ),
     ],
 )
-def test_caller_detects_action_provider_before_constructing_intent_overlay(
+def test_caller_detects_action_provider_after_constructing_intent_overlay(
     active_app: dict[str, Any],
     provider_id: str,
     suggestion_id: str,
@@ -509,11 +509,8 @@ def test_caller_detects_action_provider_before_constructing_intent_overlay(
 
     def show_intent(params: dict[str, Any]) -> dict[str, Any]:
         order.append("show_intent")
-        provider = params["action_provider"]
-        assert provider["id"] == provider_id
-        assert provider["suggested_intents"][0]["id"] == suggestion_id
-        assert provider["suggested_intents"][0]["mode"] == "action"
-        assert provider["suggested_intents"][0]["planning_tool"]
+        assert params["action_provider"] == {}
+        assert params["defer_focus"] is True
         return {}
 
     native = FakeWorker({"native.context.snapshot": snapshot})
@@ -522,7 +519,12 @@ def test_caller_detects_action_provider_before_constructing_intent_overlay(
         flow, _native, _ui, _brain, _audio = make_flow(native=native, ui=ui)
         flow.begin_caller(0)
 
-    assert order[:2] == ["snapshot", "show_intent"]
+    provider = ui.last_call("ui.intent.action_provider")["params"]["action_provider"]
+    assert provider["id"] == provider_id
+    assert provider["suggested_intents"][0]["id"] == suggestion_id
+    assert provider["suggested_intents"][0]["mode"] == "action"
+    assert provider["suggested_intents"][0]["planning_tool"]
+    assert order[:2] == ["show_intent", "snapshot"]
 
 
 def test_unsupported_app_keeps_generic_intent_picker_fallback() -> None:
@@ -539,6 +541,7 @@ def test_unsupported_app_keeps_generic_intent_picker_fallback() -> None:
         flow.begin_caller(0)
 
     assert ui.last_call("ui.show_intent")["params"]["action_provider"] == {}
+    assert ui.last_call("ui.intent.action_provider")["params"]["action_provider"] == {}
 
 
 def test_wayland_accessibility_text_supplies_active_document_without_brain_read():
@@ -1074,7 +1077,7 @@ def test_late_audio_progress_after_done_cannot_reopen_timer_notice():
 
 
 def test_caller_hotkey_captures_selection_before_intent_steals_focus():
-    """Verify selected text is captured before the Wisp picker becomes focused."""
+    """The picker renders first but cannot steal focus until selection is captured."""
     rows = [
         {
             "paste_back": False,
@@ -1100,18 +1103,23 @@ def test_caller_hotkey_captures_selection_before_intent_steals_focus():
             "active_app": {"name": "Codex", "pid": 42, "window_id": 777, "bundle_id": ""},
         }
 
-    def show_intent(_params: dict[str, Any]) -> dict[str, Any]:
-        """Record when the picker is shown."""
+    def show_intent(params: dict[str, Any]) -> dict[str, Any]:
+        """Record when the non-activating picker shell is shown."""
+        assert params["defer_focus"] is True
         order.append("show_intent")
         return {}
 
+    def activate_intent(_params: dict[str, Any]) -> dict[str, Any]:
+        order.append("activate_intent")
+        return {}
+
     native = FakeWorker({"native.context.snapshot": snapshot})
-    ui = FakeWorker({"ui.show_intent": show_intent})
+    ui = FakeWorker({"ui.show_intent": show_intent, "ui.intent.activate": activate_intent})
     with caller_config(rows):
         _flow, _native, ui, _brain, _audio = make_flow(native=native, ui=ui)
         _flow.begin_caller(0)
 
-    assert order[:2] == ["snapshot", "show_intent"]
+    assert order == ["show_intent", "snapshot", "activate_intent"]
     chips = {
         item["id"]: item
         for item in ui.last_call("ui.intent.context_items")["params"]["context_items"]
@@ -1157,7 +1165,7 @@ def test_calc_selection_is_not_collected_while_intent_picker_is_open() -> None:
         flow, _native, ui, _brain, _audio = make_flow(native=native, ui=ui)
         flow.begin_caller(0)
 
-    assert order == ["snapshot", "show_intent"]
+    assert order == ["show_intent", "snapshot"]
     chips = {
         item["id"]: item
         for item in ui.last_call("ui.intent.context_items")["params"]["context_items"]
@@ -1224,7 +1232,7 @@ def test_calc_chart_request_forces_planner_then_applies_without_rewrite() -> Non
     with caller_config([{"paste_back": True, "context_clipboard": False}]):
         flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
         flow.begin_caller(0)
-        provider = ui.last_call("ui.show_intent")["params"]["action_provider"]
+        provider = ui.last_call("ui.intent.action_provider")["params"]["action_provider"]
         suggestion = provider["suggested_intents"][0]
         ui.emit(
             "ui.intent.chosen",
@@ -1374,7 +1382,7 @@ def test_calc_selection_failure_after_action_choice_does_not_mutate() -> None:
         flow, native, ui, brain, _audio = make_flow(native=native, ui=ui)
         flow.begin_caller(0)
         assert not native.calls_for("native.action.calc.snapshot")
-        provider = ui.last_call("ui.show_intent")["params"]["action_provider"]
+        provider = ui.last_call("ui.intent.action_provider")["params"]["action_provider"]
         suggestion = provider["suggested_intents"][0]
         ui.emit(
             "ui.intent.chosen",
@@ -1652,7 +1660,7 @@ def test_browser_form_action_uses_model_preview_and_verified_api_apply() -> None
     with caller_config([{"paste_back": True, "context_clipboard": False}]):
         flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
         flow.begin_caller(0)
-        provider = ui.last_call("ui.show_intent")["params"]["action_provider"]
+        provider = ui.last_call("ui.intent.action_provider")["params"]["action_provider"]
         suggestion = provider["suggested_intents"][0]
         ui.emit(
             "ui.intent.chosen",
@@ -1806,8 +1814,6 @@ def test_supported_app_custom_information_prompt_forces_answer_disposition_witho
     assert not native.calls_for("native.action.browser.form_snapshot")
     assert not native.calls_for("native.action.browser.form_apply")
     assert not native.calls_for("native.paste_text")
-
-
 def test_caller_hotkey_captures_selected_file_before_intent_steals_focus(tmp_path):
     """Verify Explorer/Finder-selected files are captured before the picker focuses."""
     picked = tmp_path / "already-selected.md"
@@ -3059,7 +3065,7 @@ def test_context_policy_failure_contract_fails_closed_at_runtime_boundary():
         flow.begin_caller(0)
     selection = next(
         item
-        for item in ui.last_call("ui.show_intent")["params"]["context_items"]
+        for item in ui.last_call("ui.intent.context_items")["params"]["context_items"]
         if item["id"] == "selection"
     )
     assert selection["state"] == "off"
@@ -3461,7 +3467,7 @@ def test_macos_begin_caller_captures_safari_before_intent_overlay(monkeypatch):
         )
         ui.emit("ui.intent.chosen", {"custom": "What is this page?"})
 
-    assert order[:2] == ["snapshot", "show"]
+    assert order[:2] == ["show", "snapshot"]
     assert len(native.calls_for("native.context.snapshot")) == 1
     assert first_browser_chip["tokens"] == "? tok"
     assert updated_browser_chip["tokens"].startswith("~")
@@ -4979,7 +4985,7 @@ def test_intent_selection_capture_uses_selected_paths_without_file_permission(tm
 
 
 def test_caller_screenshot_precaptures_before_intent_overlay(monkeypatch):
-    """Verify enabled screenshot context is captured before the picker appears."""
+    """Desktop capture precedes the shell; selection capture precedes activation."""
     monkeypatch.setattr(sys, "platform", "linux")
     image_bytes = b"target screen"
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
@@ -5014,8 +5020,18 @@ def test_caller_screenshot_precaptures_before_intent_overlay(monkeypatch):
         order.append("show_intent")
         return {}
 
+    def activate_intent(_params: dict[str, Any]) -> dict[str, Any]:
+        order.append("activate_intent")
+        return {}
+
     native = FakeWorker({"native.context.snapshot": context, "native.capture.fullscreen": capture})
-    ui = FakeWorker({"ui.overlay.state": overlay_state, "ui.show_intent": show_intent})
+    ui = FakeWorker(
+        {
+            "ui.overlay.state": overlay_state,
+            "ui.show_intent": show_intent,
+            "ui.intent.activate": activate_intent,
+        }
+    )
     try:
         with caller_config(rows):
             flow, _native, _ui, _brain, _audio = make_flow(native=native, ui=ui)
@@ -5023,7 +5039,7 @@ def test_caller_screenshot_precaptures_before_intent_overlay(monkeypatch):
     finally:
         image_path.unlink(missing_ok=True)
 
-    assert order == ["overlay_state", "context", "capture", "show_intent"]
+    assert order == ["overlay_state", "capture", "show_intent", "context", "activate_intent"]
     assert flow._pending is not None
     assert flow._pending.screenshot_tool_b64 == base64.b64encode(image_bytes).decode("ascii")
 
@@ -5067,7 +5083,7 @@ def test_intent_cancel_after_show_does_not_recapture_screenshot(monkeypatch):
     finally:
         image_path.unlink(missing_ok=True)
 
-    assert order == ["context", "capture"]
+    assert order == ["capture", "context"]
     assert flow._pending is None
     assert len(native.calls_for("native.capture.fullscreen")) == 1
     assert not ui.calls_for("ui.chat.add_conversation")
@@ -5289,6 +5305,78 @@ def test_rewrite_flow_pastes_back_to_original_pid():
     assert "[Selected text]\nbad grammar" in chat_params["context"]
 
 
+def test_rewrite_undo_restores_original_text_in_original_app():
+    """The bubble undo action must target the exact app and selection Wisp edited."""
+    rows = [
+        {
+            "paste_back": True,
+            "context_ambient": False,
+            "context_documents": False,
+            "context_tools": False,
+            "context_screenshot": "off",
+            "context_clipboard": False,
+        },
+    ]
+    native = FakeWorker(
+        {
+            "native.context.snapshot": context_handler(
+                selected="bad grammar",
+                pid=777,
+                focus_token=9,
+            ),
+            "native.paste_text": lambda _params: {"ok": True, "method": "uia-range"},
+            "native.undo_edit": lambda _params: {"ok": True, "method": "app-undo"},
+        }
+    )
+    brain = FakeWorker(
+        stream_handlers={"brain.rewrite": rewrite_stream("good grammar", "Fixed the grammar.")}
+    )
+    with caller_config(rows):
+        flow, native, ui, _brain, _audio = make_flow(native=native, brain=brain)
+        native.emit("native.hotkey", {"kind": "caller", "index": 0})
+        ui.emit("ui.intent.chosen", {"custom": "Fix grammar"})
+
+        undo_ready = ui.last_call("ui.reply.undo_ready")["params"]
+        assert undo_ready == {"text": "Fixed the grammar.", "timeout_ms": 30000}
+        assert flow._last_undoable_edit is not None
+
+        ui.emit("ui.rewrite.undo", {})
+
+    assert native.last_call("native.undo_edit")["params"] == {
+        "target_pid": 777,
+        "focus_token": 9,
+        "original_text": "bad grammar",
+        "replacement_text": "good grammar",
+    }
+    assert ui.last_call("ui.reply.notice")["params"]["text"] == "Last Wisp edit undone."
+    assert flow._last_undoable_edit is None
+
+
+def test_rewrite_undo_reports_clipboard_fallback():
+    """If the original app cannot be focused, the original remains recoverable."""
+    rows = [{"paste_back": True, "context_ambient": False, "context_screenshot": "off"}]
+    native = FakeWorker(
+        {
+            "native.context.snapshot": context_handler(selected="before", pid=321, focus_token=4),
+            "native.paste_text": lambda _params: {"ok": True},
+            "native.undo_edit": lambda _params: {
+                "ok": False,
+                "clipboard_ok": True,
+                "method": "clipboard-fallback",
+            },
+        }
+    )
+    brain = FakeWorker(stream_handlers={"brain.rewrite": rewrite_stream("after")})
+    with caller_config(rows):
+        _flow, _native, ui, _brain, _audio = make_flow(native=native, brain=brain)
+        ui.emit("ui.intent.chosen", {"custom": "Rewrite"})
+        ui.emit("ui.rewrite.undo", {})
+
+    notice = ui.last_call("ui.reply.notice")["params"]
+    assert notice["text"] == "Couldn't safely undo in the app. Original text copied to clipboard."
+    assert notice["severity"] == "warning"
+
+
 def test_rewrite_flow_includes_app_context_as_source():
     """Verify paste-back rewrite can use App context without changing the paste target."""
     rows = [
@@ -5473,6 +5561,37 @@ def test_rewrite_does_not_treat_clipboard_only_paste_as_success():
     assert paste["restore_clipboard"] is True
     notify = native.last_call("native.notify")["params"]
     assert "replace the selected text" in notify["message"]
+
+
+def test_rewrite_warns_when_paste_succeeds_but_clipboard_restore_fails():
+    """A successful replacement must not silently discard the prior clipboard."""
+    rows = [
+        {
+            "paste_back": True,
+            "context_ambient": False,
+            "context_screenshot": "off",
+            "context_clipboard": False,
+        }
+    ]
+    native = FakeWorker(
+        {
+            "native.context.snapshot": context_handler(selected="before", pid=777, focus_token=9),
+            "native.paste_text": lambda _params: {
+                "ok": True,
+                "clipboard_ok": True,
+                "clipboard_restored": False,
+                "method": "uia-range",
+            },
+        }
+    )
+    brain = FakeWorker(stream_handlers={"brain.rewrite": rewrite_stream("after")})
+    with caller_config(rows):
+        _flow, native, _ui, _brain, _audio = make_flow(native=native, brain=brain)
+        _ui.emit("ui.intent.chosen", {"custom": "Rewrite"})
+
+    notify = native.last_call("native.notify")["params"]
+    assert notify["title"] == "Wisp pasted the rewrite"
+    assert "couldn't restore your previous clipboard" in notify["message"]
 
 
 def test_rewrite_failure_reports_notice_and_returns_idle():
@@ -7470,3 +7589,51 @@ def test_start_hotkeys_surfaces_failed_registration_to_user():
     notice = ui.last_call("ui.reply.notice")["params"]
     assert notice["text"].startswith("Global hotkeys did not start")
     assert notice["severity"] == "warning"
+def test_model_background_task_completion_returns_to_originating_chat(tmp_path, monkeypatch):
+    """Detached completion is delivered by stable chat id after the foreground reply ends."""
+    import json
+
+    from core.system import paths as system_paths
+
+    runs = tmp_path / "agent_runs"
+    jobs = runs / "background_jobs"
+    jobs.mkdir(parents=True)
+    final = tmp_path / "final.md"
+    final.write_text("Implemented the change and tests passed.", encoding="utf-8")
+    state = jobs / "job-0123456789.json"
+    state.write_text(
+        json.dumps(
+            {
+                "job_id": "job-0123456789",
+                "status": "completed",
+                "title": "Repair export",
+                "final_path": str(final),
+                "run_dir": str(tmp_path / "run"),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(system_paths, "AGENT_RUNS_DIR", runs)
+    ui = FakeWorker({"ui.chat.background_result": lambda _params: {"appended": True}})
+    flow, _native, ui, _brain, _audio = make_flow(ui=ui)
+
+    flow._watch_model_background_task(
+        {"job_id": "job-0123456789", "state_path": str(state)},
+        conversation_id="conversation-origin",
+    )
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline and not ui.calls_for("ui.chat.background_result"):
+        time.sleep(0.02)
+
+    delivered = ui.last_call("ui.chat.background_result")["params"]
+    assert delivered["conversation_id"] == "conversation-origin"
+    assert delivered["job_id"] == "job-0123456789"
+    assert delivered["text"] == "Implemented the change and tests passed."
+    deadline = time.monotonic() + 3
+    persisted = {}
+    while time.monotonic() < deadline:
+        persisted = json.loads(state.read_text(encoding="utf-8"))
+        if persisted.get("delivered_at"):
+            break
+        time.sleep(0.02)
+    assert persisted["delivered_at"]

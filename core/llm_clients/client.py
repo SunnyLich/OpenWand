@@ -147,9 +147,11 @@ from core.system import macos_safety, sdk_clients
 from core.system.native_locks import native_init_lock, ssl_init_lock
 from core.tool_registry import ToolRegistry, ToolSpec
 from core.tools.local_files import (
+    configured_file_blocked_globs,
     configured_file_roots,
     execute_live_file_tool,
     normalize_file_access_mode,
+    workspace_for_input,
 )
 
 __all__ = [
@@ -160,6 +162,7 @@ __all__ = [
 
 _TOOL_REGISTRY = ToolRegistry()
 _LOCAL_FILE_TOOLS = {"list_files", "read_file", "create_file", "edit_file", "write_file"}
+_BACKGROUND_TASK_TOOLS = {"delegate_background_task", "background_task_status"}
 _FILE_EDIT_APPROVAL_CALLBACK: Callable[[dict], bool] | None = None
 _LIVE_TOOL_CONTEXT = _threading.local()
 
@@ -354,6 +357,15 @@ def set_live_file_event_callback(callback: Callable[[dict], None] | None) -> Non
     _LIVE_TOOL_CONTEXT.file_event_callback = callback
 
 
+def set_live_background_task_event_callback(callback: Callable[[dict], None] | None) -> None:
+    """Set the lifecycle callback for background tasks started by this model request."""
+    if callback is None:
+        if hasattr(_LIVE_TOOL_CONTEXT, "background_task_event_callback"):
+            delattr(_LIVE_TOOL_CONTEXT, "background_task_event_callback")
+        return
+    _LIVE_TOOL_CONTEXT.background_task_event_callback = callback
+
+
 def set_live_privacy_context(
     session,
     *,
@@ -402,6 +414,11 @@ def _effective_live_file_approval_callback() -> Callable[[dict], bool] | None:
 def _effective_live_file_event_callback() -> Callable[[dict], None] | None:
     """Return the live request file metadata callback."""
     return getattr(_LIVE_TOOL_CONTEXT, "file_event_callback", None)
+
+
+def _effective_background_task_event_callback() -> Callable[[dict], None] | None:
+    """Return the lifecycle callback for model-delegated background work."""
+    return getattr(_LIVE_TOOL_CONTEXT, "background_task_event_callback", None)
 
 
 def _tool_turn_budget():
@@ -612,6 +629,136 @@ def _execute_web_search(inputs: dict) -> str:
     return "\n".join(lines)[:12000]
 
 
+def _background_jobs_root() -> Path:
+    """Return the persistent directory shared by detached tasks and the app."""
+    from core.system.paths import AGENT_RUNS_DIR
+
+    root = Path(AGENT_RUNS_DIR) / "background_jobs"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _execute_delegate_background_task(inputs: dict) -> str:
+    """Start scoped project work and return immediately to the chat model."""
+    objective = str((inputs or {}).get("objective") or "").strip()
+    if not objective:
+        return "delegate_background_task requires an objective."
+    mode = _effective_live_file_access_mode()
+    if mode not in {"ask", "auto"}:
+        return (
+            "Background task delegation is disabled. Set Chat's Files control "
+            "to Ask before write or Auto first."
+        )
+    try:
+        workspace, rel_folder = workspace_for_input(
+            {
+                "folder": str((inputs or {}).get("folder") or "."),
+                "root": str((inputs or {}).get("root") or ""),
+            },
+            path_key="folder",
+            allow_missing=True,
+        )
+        scope = workspace.resolve(rel_folder or ".")
+    except Exception as exc:  # noqa: BLE001 - tool errors are returned in-band
+        return f"Could not select the background task folder: {exc}"
+    if not scope.is_dir():
+        return f"Background task folder does not exist: {scope}"
+
+    if mode == "ask":
+        callback = _effective_live_file_approval_callback()
+        request = {
+            "tool": "delegate_background_task",
+            "action": "run a background coding task",
+            "path": str(scope),
+            "details": {
+                "objective": objective,
+                "scope_folder": str(scope),
+                "capabilities": "read, create, and edit files; run local commands; no network or deletion",
+            },
+        }
+        decision = callback(request) if callback is not None else False
+        approved = (
+            bool(decision.get("approved"))
+            if isinstance(decision, dict)
+            else bool(decision)
+        )
+        if not approved:
+            return "The user declined the background task."
+
+    try:
+        from standalone.background_agents import quick_task_payload, start_payload_detached
+
+        payload = quick_task_payload(objective, scope)
+        payload.update(
+            {
+                "title": str((inputs or {}).get("title") or payload["title"]).strip(),
+                "approval_policy": "never escalate",
+                "allow_network": False,
+                "allow_git": False,
+                "git_permission_mode": "never permit",
+                "shell_permission_mode": "auto",
+                "file_create_permission_mode": "auto",
+                "file_edit_permission_mode": "auto",
+                "file_delete_permission_mode": "never permit",
+                "blocked_file_globs": configured_file_blocked_globs(),
+            }
+        )
+        result = start_payload_detached(
+            payload,
+            log_root=_background_jobs_root().parent,
+            metadata={"source": "chat_model"},
+        )
+    except Exception as exc:  # noqa: BLE001 - tool errors are returned in-band
+        return f"Could not start the background task: {type(exc).__name__}: {exc}"
+
+    callback = _effective_background_task_event_callback()
+    if callback is not None:
+        try:
+            callback(dict(result))
+        except Exception:
+            pass
+    return _stdlib_json.dumps(
+        {
+            "status": "started",
+            "job_id": result.get("job_id"),
+            "scope_folder": str(scope),
+            "message": (
+                "The task is running independently. Tell the user they can keep chatting; "
+                "Wisp will add the final report to this conversation when it finishes."
+            ),
+        },
+        ensure_ascii=False,
+    )
+
+
+def _execute_background_task_status(inputs: dict) -> str:
+    """Read one model-delegated job by its opaque identifier."""
+    import re
+
+    job_id = str((inputs or {}).get("job_id") or "").strip()
+    if not re.fullmatch(r"job-[a-f0-9]{10}", job_id):
+        return "background_task_status requires a valid job_id."
+    state_path = _background_jobs_root() / f"{job_id}.json"
+    if not state_path.is_file():
+        return f"No background task was found for {job_id}."
+    try:
+        state = _stdlib_json.loads(state_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 - tool errors are returned in-band
+        return f"Could not read background task {job_id}: {type(exc).__name__}: {exc}"
+    status = str(state.get("status") or "unknown")
+    result: dict[str, object] = {
+        "job_id": job_id,
+        "status": status,
+        "title": state.get("title"),
+        "last_log": state.get("last_log"),
+        "error": state.get("error"),
+    }
+    final_path = Path(str(state.get("final_path") or ""))
+    if status == "completed" and final_path.is_file():
+        result["final"] = final_path.read_text(encoding="utf-8", errors="replace")[:12000]
+    return _stdlib_json.dumps(result, ensure_ascii=False)
+
+
 def _register_builtin_tools() -> None:
     """Handle register builtin tools for LLM clients client."""
     _TOOL_REGISTRY.register_builtin(
@@ -638,6 +785,48 @@ def _register_builtin_tools() -> None:
                 "name": "web_search",
                 "max_uses": 2,
             },
+        )
+    )
+    _TOOL_REGISTRY.register_builtin(
+        ToolSpec(
+            name="delegate_background_task",
+            description=(
+                "Delegate explicit, multi-step coding or project work to background agents and return immediately. "
+                "Use this only when the user has asked Wisp to perform substantial work that can continue while "
+                "they chat. This is not the user-configured Agent Team setup screen. The folder must be inside a "
+                "configured local-file root; execution is offline with no network or file deletion."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "objective": {"type": "string", "description": "Complete, self-contained work objective."},
+                    "title": {"type": "string", "description": "Optional short task title."},
+                    "folder": {
+                        "type": "string",
+                        "description": "Existing project folder, absolute or relative to root. Defaults to the root.",
+                    },
+                    "root": {
+                        "type": "string",
+                        "description": "Configured local-file root; required for relative folders when several exist.",
+                    },
+                },
+                "required": ["objective"],
+            },
+            executor=_execute_delegate_background_task,
+        )
+    )
+    _TOOL_REGISTRY.register_builtin(
+        ToolSpec(
+            name="background_task_status",
+            description="Check a background task previously started in this chat by its job_id.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "job_id": {"type": "string", "description": "Opaque job identifier returned when starting the task."}
+                },
+                "required": ["job_id"],
+            },
+            executor=_execute_background_task_status,
         )
     )
     _TOOL_REGISTRY.register_builtin(

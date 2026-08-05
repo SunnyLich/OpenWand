@@ -6835,9 +6835,9 @@
         1179
       ],
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix"
+        "tests/test_harness_clients.py::test_codex_turn_attaches_local_images"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix",
+      "production_entry_point": "Section-level production surface represented by tests/test_harness_clients.py::test_codex_turn_attaches_local_images",
       "scenarios": [
         "normal",
         "repeat",
@@ -6855,7 +6855,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.358,
+      "mapping_score": 0.36,
       "source_section": "external_conversations"
     },
     {
@@ -12496,9 +12496,9 @@
         2300
       ],
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow",
+      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text",
       "scenarios": [
         "normal",
         "repeat",
@@ -12516,7 +12516,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.093,
+      "mapping_score": 0.244,
       "source_section": "tools_permissions"
     },
     {
@@ -14538,9 +14538,9 @@
         2699
       ],
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow",
+      "production_entry_point": "Section-level production surface represented by tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test",
       "scenarios": [
         "normal",
         "repeat",
@@ -14559,7 +14559,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.252,
+      "mapping_score": 0.368,
       "source_section": "agent_tasks"
     },
     {
@@ -14653,9 +14653,9 @@
         2726
       ],
       "test_node_ids": [
-        "tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes",
+      "production_entry_point": "Section-level production surface represented by tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test",
       "scenarios": [
         "normal",
         "repeat",
@@ -14673,7 +14673,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.239,
+      "mapping_score": 0.313,
       "source_section": "agent_tasks"
     },
     {
@@ -15141,7 +15141,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.215,
+      "mapping_score": 0.216,
       "source_section": "agent_tasks"
     },
     {
@@ -16180,9 +16180,9 @@
         3029
       ],
       "test_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated",
+      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation",
       "scenarios": [
         "normal",
         "repeat",
@@ -16193,16 +16193,14 @@
         "macos",
         "linux"
       ],
-      "optional_components": [
-        "PySide6"
-      ],
+      "optional_components": [],
       "timeout_seconds": 30,
       "persistent_state": [],
       "cleanup": [
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.265,
+      "mapping_score": 0.272,
       "source_section": "settings_profiles"
     },
     {
@@ -16289,9 +16287,9 @@
         3047
       ],
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens",
+      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation",
       "scenarios": [
         "normal",
         "repeat",
@@ -16309,7 +16307,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.219,
+      "mapping_score": 0.237,
       "source_section": "settings_profiles"
     },
     {

@@ -95,7 +95,7 @@ class AgentRunControl:
     def raise_if_cancelled(self) -> None:
         """Handle raise if cancelled for agent run control."""
         if self.is_cancelled():
-            raise AgentCancelled("Agent task was cancelled by the user.")
+            raise AgentCancelled("Agent Team was cancelled by the user.")
 
     def pause_after_turn(self) -> None:
         """Handle pause after turn for agent run control."""

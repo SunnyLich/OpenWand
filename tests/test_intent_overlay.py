@@ -115,8 +115,9 @@ def test_provider_suggestions_precede_but_preserve_configured_and_custom_rows(qa
             "planning_tool": "vscode_plan_replace_selection",
         }],
     }
-    overlay = intent_overlay.IntentOverlay(caller_idx=0, action_provider=provider)
+    overlay = intent_overlay.IntentOverlay(caller_idx=0)
     try:
+        overlay.update_action_provider(provider)
         assert [row["label"] for row in overlay._rows] == [
             "Fix selected code",
             "Configured fix",

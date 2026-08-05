@@ -2519,7 +2519,12 @@ def paste_text(
             "error": act.get("error") or "",
         }
     try:
-        from core.platform_utils import PASTE_COMBO, send_keys, set_foreground_window
+        from core.platform_utils import (
+            PASTE_COMBO,
+            get_foreground_window,
+            send_keys,
+            set_foreground_window,
+        )
 
         if focus_token:
             uia = _win_uia_apply_selected_text(
@@ -2543,11 +2548,53 @@ def paste_text(
             }
 
         activated = False
+        confirmed = False
         original_clipboard = clipboard_get().get("text", "") if restore_clipboard else ""
         if target_pid:
             set_foreground_window(int(target_pid))
-            activated = True
             time.sleep(0.15)
+            foreground_window = int(get_foreground_window() or 0)
+            target_window = int(target_pid)
+            # Windows callers normally pass the captured HWND. Retain PID
+            # compatibility for older callers, but never infer success merely
+            # because SetForegroundWindow did not raise: Windows can legally
+            # reject it and return zero.
+            if IS_WIN:
+                target_is_window = bool(_win_window_pid(target_window))
+                confirmed = bool(
+                    foreground_window == target_window
+                    if target_is_window
+                    else _win_window_pid(foreground_window) == target_window
+                )
+            else:
+                confirmed = foreground_window == target_window
+            activated = confirmed
+            if not confirmed:
+                _plog(
+                    f"paste target_pid={target_pid} focus confirmation FAILED "
+                    f"foreground={foreground_window}"
+                )
+                return {
+                    "ok": False,
+                    "activated": False,
+                    "confirmed": False,
+                    "keystroke_sent": False,
+                    "clipboard_ok": False,
+                    "clipboard_restored": False,
+                    "target_pid": int(target_pid or 0),
+                    "frontmost_pid": int(_win_window_pid(foreground_window) or 0) if IS_WIN else 0,
+                    "error": "target window could not be confirmed",
+                }
+        else:
+            return {
+                "ok": False,
+                "activated": False,
+                "confirmed": False,
+                "keystroke_sent": False,
+                "clipboard_ok": False,
+                "clipboard_restored": False,
+                "error": "missing paste target",
+            }
         if not clipboard_set(text).get("ok"):
             _plog(f"paste target_pid={target_pid} clipboard write FAILED")
             return {"ok": False, "activated": activated, "clipboard_ok": False, "error": "clipboard write failed"}
@@ -2560,7 +2607,7 @@ def paste_text(
         return {
             "ok": True,
             "activated": activated,
-            "confirmed": activated,
+            "confirmed": confirmed,
             "keystroke_sent": True,
             "clipboard_ok": True,
             "clipboard_restored": restored,
@@ -2568,6 +2615,110 @@ def paste_text(
     except Exception as exc:  # noqa: BLE001 - report pasteback failure to caller
         _plog(f"paste target_pid={target_pid} raised {type(exc).__name__}: {exc}")
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def _focus_cached_edit_target(token: int) -> bool:
+    """Best-effort focus of the exact text control captured for paste-back."""
+    if not token or _focus_cache.get("token") != token:
+        return False
+    expected_kind = "mac-ax" if IS_MAC else "win-uia" if IS_WIN else ""
+    if expected_kind and _focus_cache.get("kind") != expected_kind:
+        return False
+    element = _focus_cache.get("element")
+    if element is None:
+        return False
+    try:
+        if IS_MAC:
+            import HIServices  # type: ignore
+
+            return bool(
+                HIServices.AXUIElementSetAttributeValue(element, "AXFocused", True)
+                == _AX_ERROR_SUCCESS
+            )
+        if IS_WIN:
+            element.SetFocus()
+            return True
+    except Exception:
+        return False
+    return False
+
+
+def _win_window_for_pid(pid: int) -> int:
+    """Return the topmost visible Windows HWND owned by ``pid``."""
+    if not IS_WIN or not pid:
+        return 0
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        matches: list[int] = []
+        callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+        def callback(hwnd: int, _lparam: int) -> bool:
+            if not ctypes.windll.user32.IsWindowVisible(hwnd):
+                return True
+            if _win_window_pid(int(hwnd)) == int(pid):
+                matches.append(int(hwnd))
+                return False
+            return True
+
+        callback_ref = callback_type(callback)
+        ctypes.windll.user32.EnumWindows(callback_ref, 0)
+        return matches[0] if matches else 0
+    except Exception:
+        return 0
+
+
+def undo_edit(
+    target_pid: int = 0,
+    focus_token: int = 0,
+    original_text: str = "",
+    replacement_text: str = "",
+) -> dict[str, Any]:
+    """Undo a recent paste-back in its original app, with clipboard fallback."""
+    del replacement_text  # Reserved for future target-content verification.
+    try:
+        if IS_MAC:
+            from core.platform import macos_native
+
+            activated = _activate_pid(int(target_pid or 0))
+            if activated.get("confirmed"):
+                control_focused = bool(focus_token) and _focus_cached_edit_target(int(focus_token))
+                if control_focused and macos_native.send_key_combo("cmd+z"):
+                    _plog(f"undo target_pid={target_pid} via cmd+z ok")
+                    return {"ok": True, "method": "app-undo", "clipboard_ok": False}
+        else:
+            from core.platform_utils import get_foreground_window, send_keys, set_foreground_window
+
+            target = int(target_pid or 0)
+            target_window = _win_window_for_pid(target)
+            if target_window:
+                set_foreground_window(target_window)
+                time.sleep(0.1)
+            control_focused = bool(focus_token) and _focus_cached_edit_target(int(focus_token))
+            foreground_window = int(get_foreground_window() or 0)
+            focused = bool(
+                target
+                and target_window
+                and _win_window_pid(foreground_window) == target
+                and control_focused
+            )
+            if focused:
+                send_keys("ctrl+z")
+                _plog(f"undo target_pid={target_pid} hwnd={target_window} via ctrl+z ok")
+                return {"ok": True, "method": "app-undo", "clipboard_ok": False}
+    except Exception as exc:  # noqa: BLE001 - clipboard fallback remains available
+        _plog(f"undo target_pid={target_pid} raised {type(exc).__name__}: {exc}")
+
+    copied = clipboard_set(str(original_text or ""))
+    clipboard_ok = bool(isinstance(copied, dict) and copied.get("ok"))
+    _plog(f"undo target_pid={target_pid} app undo unavailable clipboard={clipboard_ok}")
+    return {
+        "ok": False,
+        "method": "clipboard-fallback" if clipboard_ok else "failed",
+        "clipboard_ok": clipboard_ok,
+        "error": "could not safely focus the original app",
+    }
 
 
 def notify(title: str = "Wisp", message: str = "") -> dict[str, Any]:
@@ -2720,6 +2871,7 @@ HANDLERS = {
     "native.clipboard.get": clipboard_get,
     "native.clipboard.set": clipboard_set,
     "native.paste_text": paste_text,
+    "native.undo_edit": undo_edit,
     "native.notify": notify,
     "native.open_privacy_settings": open_privacy_settings,
 }

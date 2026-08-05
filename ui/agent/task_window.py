@@ -199,7 +199,7 @@ def make_agent_task_action(
     ``owner`` should normally be the overlay object so the QAction lifetime is
     tied to the app.  ``on_submit`` is where a future runner would be invoked.
     """
-    action = QAction(t("Start agent task..."), owner)
+    action = QAction(t("Start Agent Team..."), owner)
     notice_callback = _approval_notice_callback_for(owner)
     # Defer to the next event-loop turn: opening a window synchronously from a
     # QMenu action segfaults on macOS while the menu's Cocoa tracking loop unwinds.
@@ -211,7 +211,7 @@ def make_agent_task_action(
 
 def make_agent_history_action(owner: QWidget, parent: QWidget | None = None) -> QAction:
     """Create the tray QAction for browsing previous agent runs."""
-    action = QAction(t("Agent task history..."), owner)
+    action = QAction(t("Agent Team Activity..."), owner)
     notice_callback = _approval_notice_callback_for(owner)
     # Deferred for the same reason as the agent-task action above.
     action.triggered.connect(
@@ -342,7 +342,7 @@ class AgentTaskDialog(QDialog):
         self._advanced_groups: list[QGroupBox] = []
         self._advanced_visible = False
 
-        self.setWindowTitle(t("Start Agent Task"))
+        self.setWindowTitle(t("Start Agent Team"))
         self.setMinimumSize(680, 520)
         enable_standard_window_controls(self)
 
@@ -362,8 +362,11 @@ class AgentTaskDialog(QDialog):
         root.setSpacing(12)
 
         intro = QLabel(
-            "Create a scoped autonomous task. The selected folder is the future "
-            "filesystem boundary for reads and writes."
+            t(
+                "Create a scoped Agent Team that keeps working in the background. You can close "
+                "the activity window and keep using Wisp while the team works. The selected "
+                "folder is its filesystem boundary."
+            )
         )
         intro.setWordWrap(True)
         intro.setStyleSheet("color: #777;")
@@ -539,9 +542,9 @@ class AgentTaskDialog(QDialog):
         context_layout.setSpacing(6)
         context_layout.addWidget(self.required_context_edit)
         context_button_row = QHBoxLayout()
-        self.copy_context_btn = QPushButton("Copy current app context")
+        self.copy_context_btn = QPushButton(t("Copy current app context"))
         self.copy_context_btn.setToolTip(
-            "Append readable text and window details from the application behind Wisp."
+            t("Append readable text and window details from the application behind Wisp.")
         )
         self.copy_context_btn.clicked.connect(self._copy_context_from_app)
         context_button_row.addWidget(self.copy_context_btn)
@@ -857,7 +860,7 @@ class AgentTaskDialog(QDialog):
 
         self.runtime_minutes = QSpinBox()
         self.runtime_minutes.setRange(1, 480)
-        self.runtime_minutes.setSuffix(" min")
+        self.runtime_minutes.setSuffix(" " + t("minutes"))
 
         self.max_turns = QSpinBox()
         self.max_turns.setRange(1, 200)
@@ -1261,14 +1264,14 @@ class AgentTaskDialog(QDialog):
         try:
             spec = self._collect_spec()
         except ValueError as exc:
-            QMessageBox.warning(self, t("Invalid Agent Task"), str(exc))
+            QMessageBox.warning(self, t("Invalid Agent Team"), str(exc))
             return
         self._show_spec_preview(self._format_spec(spec))
 
     def _show_spec_preview(self, text: str) -> None:
         """Show the task spec in a resizable, scrollable preview dialog."""
         dialog = QDialog(self)
-        dialog.setWindowTitle(t("Agent Task Spec"))
+        dialog.setWindowTitle(t("Agent Team Spec"))
         dialog.setMinimumSize(720, 520)
         enable_standard_window_controls(dialog)
 
@@ -1294,7 +1297,7 @@ class AgentTaskDialog(QDialog):
         try:
             spec = self._collect_spec()
         except ValueError as exc:
-            QMessageBox.warning(self, t("Invalid Agent Task"), str(exc))
+            QMessageBox.warning(self, t("Invalid Agent Team"), str(exc))
             return
 
         self.task_spec = spec
@@ -2639,7 +2642,7 @@ class AgentRunWindow(QDialog):
             }
             for name in self._agent_names
         }
-        self.setWindowTitle(f"{t('Agent Task')} - {spec.title}")
+        self.setWindowTitle(f"{t('Agent Team')} - {spec.title}")
         self.setMinimumSize(960, 620)
         enable_standard_window_controls(self)
 
@@ -2656,7 +2659,7 @@ class AgentRunWindow(QDialog):
         banner_layout = QVBoxLayout(self.completion_banner)
         banner_layout.setContentsMargins(14, 10, 14, 10)
         banner_layout.setSpacing(2)
-        self.completion_banner_title = QLabel(t("Agent Task Running"))
+        self.completion_banner_title = QLabel(t("Agent Team Running"))
         self.completion_banner_title.setObjectName("agentCompletionBannerTitle")
         self.completion_banner_detail = QLabel(t("The run is still working."))
         self.completion_banner_detail.setWordWrap(True)
@@ -3371,7 +3374,7 @@ class AgentRunWindow(QDialog):
         self._run_dir = run_dir
         self.status_lbl.setText(f"{t('Finished. Log:')} {run_dir}")
         self._show_completion_banner(
-            t("Agent Task Finished"),
+            t("Agent Team Finished"),
             f"{t('Final report is ready. Log:')} {run_dir}",
             "success",
         )
@@ -3385,7 +3388,7 @@ class AgentRunWindow(QDialog):
         self._load_finished_artifacts(Path(run_dir))
         self.tabs.setCurrentWidget(self.final_view)
         if self._approval_notice_callback:
-            self._approval_notice_callback(f"{t('Agent Task Finished')}\n{run_dir}", True)
+            self._approval_notice_callback(f"{t('Agent Team Finished')}\n{run_dir}", True)
         self.raise_()
         self.activateWindow()
         QApplication.alert(self, 0)
@@ -3397,7 +3400,10 @@ class AgentRunWindow(QDialog):
         if trace_path.exists():
             self._set_plain_text_preserving_scroll(self.trace_view, trace_path.read_text(encoding="utf-8", errors="replace"))
         if final_path.exists():
-            self._set_plain_text_preserving_scroll(self.final_view, final_path.read_text(encoding="utf-8", errors="replace"))
+            final_text = final_path.read_text(encoding="utf-8", errors="replace")
+            if final_text == "Agent Team was cancelled by the user.":
+                final_text = t(final_text)
+            self._set_plain_text_preserving_scroll(self.final_view, final_text)
 
     def _show_completion_banner(self, title: str, detail: str, kind: str) -> None:
         """Show a prominent completion banner at the top of the run window."""
@@ -3566,7 +3572,7 @@ class AgentRunHistoryWindow(QDialog):
         self._approval_notice_callback = approval_notice_callback
         self._runs_root = AGENT_RUNS_DIR
         self._current_run: Path | None = None
-        self.setWindowTitle(t("Agent Task History"))
+        self.setWindowTitle(t("Agent Team History"))
         self.setMinimumSize(940, 580)
         enable_standard_window_controls(self)
 
@@ -3637,7 +3643,7 @@ class AgentRunHistoryWindow(QDialog):
         if self.run_list.count():
             self.run_list.setCurrentRow(0)
         else:
-            self._clear_views("No agent task runs yet.")
+            self._clear_views(t("No Agent Team runs yet."))
 
     def _load_selected_run(self, current: QListWidgetItem | None, _previous: QListWidgetItem | None) -> None:
         """Load selected run."""

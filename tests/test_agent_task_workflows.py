@@ -96,6 +96,8 @@ def test_agent_tray_setup_copy_preview_and_submit_real_workflow(tmp_path, monkey
     try:
         task_action = task_window.make_agent_task_action(owner, on_submit=submitted.append)
         history_action = task_window.make_agent_history_action(owner)
+        assert task_action.text() == "Start Agent Team..."
+        assert history_action.text() == "Agent Team Activity..."
 
         task_action.trigger()
         history_action.trigger()
@@ -109,6 +111,8 @@ def test_agent_tray_setup_copy_preview_and_submit_real_workflow(tmp_path, monkey
         widgets.extend([tray_dialog, history_window])
         assert tray_dialog.isVisible()
         assert history_window.isVisible()
+        assert tray_dialog.windowTitle() == "Start Agent Team"
+        assert history_window.windowTitle() == "Agent Team History"
         _button(tray_dialog, "Cancel").click()
 
         dialog = task_window.AgentTaskDialog(on_submit=submitted.append)

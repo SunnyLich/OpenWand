@@ -248,6 +248,56 @@ def test_chat_harness_streams_thought_and_reply_and_returns_session(record_ctx, 
     ]
 
 
+def test_chat_harness_forwards_newest_user_image_as_turn_input(record_ctx, monkeypatch, tmp_path):
+    """The latest attached image reaches the harness as a temp file, then goes away."""
+    import base64
+    from pathlib import Path
+
+    import config
+    from core import harness_clients
+    from core.harness_clients.base import HarnessResult
+    from core.system import paths
+
+    monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", False)
+    captured = {}
+
+    def fake_run(provider, prompt, **kwargs):
+        image_paths = [Path(value) for value in kwargs.get("images", ())]
+        captured["bytes"] = [path.read_bytes() for path in image_paths]
+        captured["paths"] = image_paths
+        return HarnessResult("codex", "A chart", "thread-new", "/repo")
+
+    monkeypatch.setattr(harness_clients, "run_harness", fake_run)
+    monkeypatch.setattr(paths, "USER_DATA_DIR", tmp_path)
+    events, ctx = record_ctx()
+
+    old_png = b"\x89PNG\r\n\x1a\n" + b"old"
+    new_png = b"\x89PNG\r\n\x1a\n" + b"new"
+    handlers.HANDLERS["brain.chat"](
+        ctx,
+        messages=[
+            {
+                "role": "user",
+                "content": "first image",
+                "image_base64": base64.b64encode(old_png).decode("ascii"),
+            },
+            {"role": "assistant", "content": "noted"},
+            {
+                "role": "user",
+                "content": "what is in this one?",
+                "image_base64": base64.b64encode(new_png).decode("ascii"),
+            },
+        ],
+        memory_enabled=False,
+        harness_provider="codex",
+    )
+
+    # Only the newest user turn's image is this turn's input; older images
+    # stay in the text history. The temp file is gone after the turn.
+    assert captured["bytes"] == [new_png]
+    assert not captured["paths"][0].exists()
+
+
 def test_chat_harness_returns_image_when_the_turn_has_no_text(record_ctx, monkeypatch):
     """Image-only harness output remains a durable result and visible live status."""
     import config

@@ -18972,7 +18972,7 @@
         "tests/test_harness_clients.py::test_codex_client_unavailable_is_reported_before_process_start"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix"
+        "tests/test_harness_clients.py::test_codex_turn_attaches_local_images"
       ]
     },
     {
@@ -18988,7 +18988,7 @@
         "tests/test_harness_clients.py::test_codex_session_auth_and_provider_rejections_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix"
+        "tests/test_harness_clients.py::test_codex_turn_attaches_local_images"
       ]
     },
     {
@@ -19004,7 +19004,7 @@
         "tests/test_harness_clients.py::test_codex_session_auth_and_provider_rejections_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix"
+        "tests/test_harness_clients.py::test_codex_turn_attaches_local_images"
       ]
     },
     {
@@ -19020,7 +19020,7 @@
         "tests/test_external_conversation_sync.py::test_push_rejects_source_outside_provider_root"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix"
+        "tests/test_harness_clients.py::test_codex_turn_attaches_local_images"
       ]
     },
     {
@@ -19036,7 +19036,7 @@
         "tests/test_external_conversation_sync.py::test_external_path_and_format_changes_are_rejected_without_mutation"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix"
+        "tests/test_harness_clients.py::test_codex_turn_attaches_local_images"
       ]
     },
     {
@@ -19052,7 +19052,7 @@
         "tests/test_external_conversation_sync.py::test_external_path_and_format_changes_are_rejected_without_mutation"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix"
+        "tests/test_harness_clients.py::test_codex_turn_attaches_local_images"
       ]
     },
     {
@@ -19068,7 +19068,7 @@
         "tests/test_external_conversation_sync.py::test_external_locked_file_and_backup_failures_preserve_source"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix"
+        "tests/test_harness_clients.py::test_codex_turn_attaches_local_images"
       ]
     },
     {
@@ -19084,7 +19084,7 @@
         "tests/test_external_conversation_sync.py::test_external_locked_file_and_backup_failures_preserve_source"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix"
+        "tests/test_harness_clients.py::test_codex_turn_attaches_local_images"
       ]
     },
     {
@@ -19100,7 +19100,7 @@
         "tests/test_harness_clients.py::test_codex_session_auth_and_provider_rejections_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix"
+        "tests/test_harness_clients.py::test_codex_turn_attaches_local_images"
       ]
     },
     {
@@ -37100,7 +37100,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
       ]
     },
     {
@@ -37116,7 +37116,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
       ]
     },
     {
@@ -37132,7 +37132,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
       ]
     },
     {
@@ -37148,7 +37148,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
       ]
     },
     {
@@ -37164,7 +37164,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
       ]
     },
     {
@@ -37180,7 +37180,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_tool_file_permission_and_approval_workflow"
+        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
       ]
     },
     {
@@ -43502,7 +43502,7 @@
         "tests/integration/brain/test_handler_agent.py::test_agent_requires_spec_dict"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43518,7 +43518,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_invalid_selected_model_stops_as_a_controlled_failure"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43534,7 +43534,7 @@
         "tests/test_agent_runner.py::ScopedWorkspaceTests::test_invalid_scope_folder_is_recorded_as_a_controlled_run_failure"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43550,7 +43550,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_llm_auth_failure_stops_instead_of_retrying"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43566,7 +43566,7 @@
         "tests/test_agent_runner.py::AgentToolboxTests::test_toolbox_rejects_edit_without_permission"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43582,7 +43582,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_unexpected_agent_runtime_exit_writes_failure_artifacts"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43598,7 +43598,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_mutating_tools_run_under_write_lock"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43614,7 +43614,7 @@
         "tests/test_agent_runner.py::ParallelWorkRoundTests::test_same_file_write_is_leased_to_exactly_one_agent"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43630,7 +43630,7 @@
         "tests/test_agent_task_retry.py::AgentTaskRetryTests::test_retry_spec_rejects_unavailable_task_artifact"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_addon_update_remove_bad_archive_and_credentials_reset_workflow"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43934,7 +43934,7 @@
         "tests/integration/brain/test_handler_agent.py::test_agent_requires_spec_dict"
       ],
       "function_workflow_node_ids": [
-        "tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43950,7 +43950,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_invalid_selected_model_stops_as_a_controlled_failure"
       ],
       "function_workflow_node_ids": [
-        "tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43966,7 +43966,7 @@
         "tests/test_agent_runner.py::ScopedWorkspaceTests::test_invalid_scope_folder_is_recorded_as_a_controlled_run_failure"
       ],
       "function_workflow_node_ids": [
-        "tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43982,7 +43982,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_llm_auth_failure_stops_instead_of_retrying"
       ],
       "function_workflow_node_ids": [
-        "tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -43998,7 +43998,7 @@
         "tests/test_agent_runner.py::AgentToolboxTests::test_toolbox_rejects_edit_without_permission"
       ],
       "function_workflow_node_ids": [
-        "tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -44014,7 +44014,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_unexpected_agent_runtime_exit_writes_failure_artifacts"
       ],
       "function_workflow_node_ids": [
-        "tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -44030,7 +44030,7 @@
         "tests/test_agent_runner.py::AgentRunnerTests::test_mutating_tools_run_under_write_lock"
       ],
       "function_workflow_node_ids": [
-        "tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -44048,7 +44048,7 @@
         "tests/test_agent_runner.py::ParallelWorkRoundTests::test_same_file_write_is_leased_to_exactly_one_agent"
       ],
       "function_workflow_node_ids": [
-        "tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -44064,7 +44064,7 @@
         "tests/test_agent_task_retry.py::AgentTaskRetryTests::test_retry_spec_rejects_unavailable_task_artifact"
       ],
       "function_workflow_node_ids": [
-        "tests/test_virtual_workspace_addon.py::test_native_workspace_is_editable_and_marks_agent_file_changes"
+        "tests/test_standalone_background_agents.py::test_standalone_offline_demo_runs_agents_code_and_test"
       ]
     },
     {
@@ -48864,7 +48864,7 @@
         "tests/test_settings_failure_matrix.py::test_invalid_settings_values_use_safe_widget_and_runtime_fallbacks"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -48880,7 +48880,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_write_and_resource_failures_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -48896,7 +48896,7 @@
         "tests/test_settings_failure_matrix.py::test_corrupt_settings_store_loads_safe_defaults"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -48912,7 +48912,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_write_and_resource_failures_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -48928,7 +48928,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_cancel_discards_pending_change"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -48944,7 +48944,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_failed_live_reload_does_not_claim_restart_applied"
       ],
       "function_workflow_node_ids": [
-        "tests/test_settings_dialog_controls.py::test_harness_login_surface_is_translated"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -49158,7 +49158,7 @@
         "tests/test_settings_failure_matrix.py::test_invalid_settings_values_use_safe_widget_and_runtime_fallbacks"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -49174,7 +49174,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_write_and_resource_failures_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -49190,7 +49190,7 @@
         "tests/test_settings_failure_matrix.py::test_corrupt_settings_store_loads_safe_defaults"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -49206,7 +49206,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_write_and_resource_failures_are_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -49222,7 +49222,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_cancel_discards_pending_change"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {
@@ -49238,7 +49238,7 @@
         "tests/test_settings_failure_matrix.py::test_settings_failed_live_reload_does_not_claim_restart_applied"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens"
+        "tests/test_app_user_workflows.py::test_background_result_returns_to_originating_conversation"
       ]
     },
     {

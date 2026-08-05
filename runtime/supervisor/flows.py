@@ -32,6 +32,7 @@ _TTS_SEGMENT_MAX_CHARS = 520
 _READ_ALOUD_MIN_WORDS = 50
 _READ_ALOUD_MAX_WORDS = 110
 _SPEECH_WARMUP_NOTICE_INTERVAL_SECONDS = 5.0
+_UNDO_EDIT_WINDOW_SECONDS = 30.0
 _READ_ALOUD_PAUSE_RE = re.compile(r"[.!?;:][\"')\]}]*$")
 _USE_SHARED_REPLY_PARSER = object()
 _BROWSER_APP_NAMES = {
@@ -220,6 +221,17 @@ class PendingInvocation:
     context_ready_at_unix_ns: int = 0
 
 
+@dataclass
+class UndoableEdit:
+    """The most recent successful paste-back that Wisp can safely undo."""
+
+    original_text: str
+    replacement_text: str
+    target_pid: int
+    focus_token: int
+    created_at: float = field(default_factory=time.monotonic)
+
+
 class _TtsSegmentBuffer:
     """Collect streamed reply text into stable TTS-sized segments."""
 
@@ -319,9 +331,11 @@ class FlowController:
         self._drop_context_items: list[dict[str, Any]] = []
         self._pending_context_capture: dict[str, Any] | None = None
         self._last_reply = ""
+        self._last_undoable_edit: UndoableEdit | None = None
         self._last_privacy_report: dict[str, Any] = {}
         self._addon_tray_actions_snapshot: tuple[tuple[str, str], ...] = ()
         self._active_agent_stream_id: Any = None
+        self._background_task_watchers: set[str] = set()
         self._active_reply_stream_id: Any = None
         self._active_reply_stream_generation = 0
         self._reply_thought_parser = None
@@ -403,6 +417,7 @@ class FlowController:
         self.ui.on_event("ui.health.requested", self._on_health_requested)
         self.ui.on_event("ui.bubble.speed", self._on_bubble_speed)
         self.ui.on_event("ui.bubble.stop", self._on_bubble_stop)
+        self.ui.on_event("ui.rewrite.undo", self._on_rewrite_undo)
         self.brain.on_event("reply.chunk", self._on_reply_chunk)
         self.brain.on_event("reply.done", self._on_reply_done)
         self.brain.on_event("agent.log", self._forward_agent_event("ui.agent.log"))
@@ -571,6 +586,10 @@ class FlowController:
             pending.context_ready.set()
         self._new_generation()
         self._set_idle()
+
+    def _on_rewrite_undo(self, _data: dict[str, Any], _req_id: Any = None) -> None:
+        """Restore the text replaced by the most recent Wisp rewrite."""
+        self._schedule(self.undo_last_wisp_edit)
 
     def _on_intent_snip_requested(self, data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle screenshot-chip snip requests from an open intent picker."""
@@ -1320,21 +1339,10 @@ class FlowController:
         # it - audio.stop just flips a flag in the audio worker.
         self._fire(self.audio, "audio.stop")
         self._fire(self.ui, "ui.overlay.state", {"state": "listening"})
-        initial_context: dict[str, Any] = {}
-        try:
-            initial_context = self._context_snapshot(
-                caller,
-                include_browser=False,
-                include_selected_paths=True,
-                preview_context_sources=True,
-                dedupe_selection=True,
-            )
-        except Exception:
-            log.exception("pre-picker context snapshot failed")
-            initial_context = {}
-        initial_context_at_unix_ns = time.time_ns()
-        if not self._is_current(generation):
-            return
+        # Capture the desktop before showing Wisp, but defer active-app and
+        # selection capture until the non-activating picker shell is visible.
+        # App-specific actions are injected into that shell as soon as the
+        # hotkey-time context arrives.
         screenshot_b64 = None
         screenshot_tool_b64 = None
         t_shot0 = time.monotonic()
@@ -1348,19 +1356,20 @@ class FlowController:
         pending = PendingInvocation(
             caller_idx=caller_idx,
             caller=caller,
-            context=initial_context,
-            action_provider_context=self._action_provider_picker_context(initial_context),
+            context={},
+            action_provider_context={},
             screenshot_b64=screenshot_b64,
             screenshot_tool_b64=screenshot_tool_b64,
             invoked_at_unix_ns=invoked_at_unix_ns,
-            initial_context_at_unix_ns=initial_context_at_unix_ns,
+            initial_context_at_unix_ns=0,
         )
         with self._lock:
             self._pending = pending
-        # Capture before showing the picker so Selection still belongs to the
-        # user's app. The native clipboard fallback saves and restores clipboard
-        # contents, preserving the next paste.
-        self._fire(
+        # Render immediately, but leave the picker inert and non-activating so
+        # the native worker can still capture the original app's selection and
+        # exact paste-back target. ui.intent.activate makes it interactive once
+        # that capture is complete.
+        self._safe_call(
             self.ui,
             "ui.show_intent",
             {
@@ -1368,13 +1377,15 @@ class FlowController:
                 "target_hwnd": 0,
                 "context_items": self._intent_context_items(pending),
                 "action_provider": pending.action_provider_context,
+                "defer_focus": True,
             },
+            timeout=30.0,
         )
         pending.intent_shown_at_unix_ns = time.time_ns()
         t_show = time.monotonic()
         self._schedule(self._collect_initial_intent_context, pending, generation, t0, t_show)
         log.info(
-            "caller %d picker shown after pre-capture screenshot=%.2fs total=%.2fs",
+            "caller %d picker shell shown screenshot=%.2fs total=%.2fs",
             caller_idx, t_shot - t_shot0, t_show - t0,
         )
 
@@ -4054,6 +4065,11 @@ class FlowController:
                 self._handle_live_file_approval_request(payload)
             elif event == "privacy.review.request":
                 self._handle_privacy_review_request(payload)
+            elif event == "background_task.started":
+                self._watch_model_background_task(
+                    dict(payload or {}),
+                    conversation_id=str(data.get("conversation_id") or ""),
+                )
 
         try:
             caller_idx = int(data.get("caller_idx", 0) or 0)
@@ -4704,7 +4720,7 @@ class FlowController:
     def run_agent_task(self, spec: dict[str, Any]) -> None:
         """Run agent task."""
         if not isinstance(spec, dict) or not spec:
-            self._notice("Agent task spec was empty.")
+            self._notice("Agent Team spec was empty.")
             return
 
         timeout = max(600.0, float(spec.get("max_runtime_minutes") or 60) * 60.0 + 120.0)
@@ -4772,20 +4788,20 @@ class FlowController:
         with self._lock:
             target = self._active_agent_stream_id
         if target is None:
-            self._notice("No agent task is running.")
+            self._notice("No Agent Team is running.")
             return
         result = self._safe_call(self.brain, "brain.cancel", {"target": target}, timeout=10.0) or {}
         if isinstance(result, dict) and result.get("cancelled"):
-            self._notice("Agent task cancellation requested.")
+            self._notice("Agent Team cancellation requested.")
         else:
-            self._notice("Agent task was not running.")
+            self._notice("Agent Team was not running.")
 
     def control_agent_task(self, data: dict[str, Any]) -> None:
         """Send a cooperative control command to the active agent task."""
         with self._lock:
             target = self._active_agent_stream_id
         if target is None:
-            self._notice("No agent task is running.")
+            self._notice("No Agent Team is running.")
             return
         payload = dict(data or {})
         payload["target"] = target
@@ -4847,7 +4863,7 @@ class FlowController:
         if isinstance(spec, dict) and spec:
             self.open_agent_task(spec)
         else:
-            self._notice("Could not load that agent task spec.")
+            self._notice("Could not load that Agent Team spec.")
 
     # -- core flows -----------------------------------------------------
 
@@ -5393,7 +5409,27 @@ class FlowController:
             # notification, which needs user action / awareness.
             self._safe_call(self.ui, "ui.reply.done", timeout=30.0)
             if paste.get("ok"):
-                pass  # silent success
+                if paste.get("clipboard_ok") and paste.get("clipboard_restored") is False:
+                    self._native_notify(
+                        t("Wisp pasted the rewrite"),
+                        t("The text was replaced, but Wisp couldn't restore your previous clipboard."),
+                    )
+                with self._lock:
+                    self._last_undoable_edit = UndoableEdit(
+                        original_text=selected,
+                        replacement_text=text,
+                        target_pid=int(pending.paste_target_pid or 0),
+                        focus_token=int(pending.context.get("focus_token") or 0),
+                    )
+                self._safe_call(
+                    self.ui,
+                    "ui.reply.undo_ready",
+                    {
+                        "text": visible_text,
+                        "timeout_ms": int(_UNDO_EDIT_WINDOW_SECONDS * 1000),
+                    },
+                    timeout=30.0,
+                )
             elif paste.get("clipboard_ok"):
                 app = str(paste.get("app_name") or "").strip()
                 where = f" into {app}" if app else ""
@@ -5428,6 +5464,77 @@ class FlowController:
             log.warning("rewrite returned empty text; paste-back skipped")
             self._native_notify("Wisp rewrite returned nothing", "The model returned no replacement text.")
         self._set_idle()
+
+    def undo_last_wisp_edit(self) -> None:
+        """Undo the most recent confirmed rewrite, or copy its original text."""
+        with self._lock:
+            edit = self._last_undoable_edit
+            self._last_undoable_edit = None
+        if edit is None:
+            self._undo_result_notice("There is no recent Wisp edit to undo.", severity="warning")
+            return
+        if time.monotonic() - edit.created_at > _UNDO_EDIT_WINDOW_SECONDS:
+            copied = self._safe_call(
+                self.native,
+                "native.clipboard.set",
+                {"text": edit.original_text},
+                timeout=5.0,
+            ) or {}
+            if isinstance(copied, dict) and copied.get("ok"):
+                self._undo_result_notice(
+                    "The undo window expired. Original text copied to clipboard.",
+                    severity="warning",
+                )
+            else:
+                self._undo_result_notice(
+                    "The undo window expired and the original text could not be copied.",
+                    severity="error",
+                )
+            return
+        try:
+            result = self.native.call(
+                "native.undo_edit",
+                {
+                    "target_pid": edit.target_pid,
+                    "focus_token": edit.focus_token,
+                    "original_text": edit.original_text,
+                    "replacement_text": edit.replacement_text,
+                },
+                timeout=10.0,
+            )
+        except Exception as exc:  # noqa: BLE001 - keep the original recoverable
+            log.exception("native undo failed")
+            result = {"ok": False, "clipboard_ok": False, "error": str(exc)}
+        result = result if isinstance(result, dict) else {}
+        if result.get("ok"):
+            self._undo_result_notice("Last Wisp edit undone.")
+        elif result.get("clipboard_ok"):
+            self._undo_result_notice(
+                "Couldn't safely undo in the app. Original text copied to clipboard.",
+                severity="warning",
+            )
+        else:
+            self._undo_result_notice(
+                "Couldn't undo the last Wisp edit or copy the original text.",
+                severity="error",
+            )
+
+    def _undo_result_notice(self, text: str, *, severity: str = "") -> None:
+        """Show an undo outcome without attaching generic error advice."""
+        severity_name = str(severity or "").strip().lower()
+        self.runtime_log.append(
+            "assistant",
+            normalize_severity(severity_name) if severity_name else "info",
+            text,
+        )
+        payload: dict[str, Any] = {
+            "text": text,
+            "timeout_ms": 6000,
+            "log_mirrored": True,
+        }
+        if severity_name:
+            payload["severity"] = severity_name
+        self._safe_call(self.ui, "ui.reply.notice", payload, timeout=30.0)
 
     # -- helpers --------------------------------------------------------
 
@@ -6176,6 +6283,7 @@ class FlowController:
                     context = self._context_snapshot(
                         pending.caller,
                         include_browser=False,
+                        include_selected_paths=True,
                         preview_context_sources=True,
                         dedupe_selection=True,
                     )
@@ -6199,10 +6307,12 @@ class FlowController:
                 return
             target_id = self._intent_target_id(context)
             pending.context = context
+            pending.action_provider_context = self._action_provider_picker_context(context)
             pending.screenshot_b64 = screenshot_b64
             pending.screenshot_tool_b64 = screenshot_tool_b64
             pending.intent_target_pid = target_id
             pending.paste_target_pid = target_id if pending.caller.get("paste_back") else 0
+            pending.initial_context_at_unix_ns = time.time_ns()
             pending.context_ready_at_unix_ns = time.time_ns()
             with self._lock:
                 if self._pending is pending:
@@ -6213,6 +6323,11 @@ class FlowController:
                     "ui.intent.context_items",
                     {"context_items": self._intent_context_items(pending)},
                 )
+                self._fire(
+                    self.ui,
+                    "ui.intent.action_provider",
+                    {"action_provider": pending.action_provider_context},
+                )
             log.info(
                 "caller %d context ready after show=%.2fs context=%.2fs screenshot=%.2fs total=%.2fs",
                 pending.caller_idx,
@@ -6222,6 +6337,8 @@ class FlowController:
                 t_shot - started_at,
             )
             pending.context_ready.set()
+            if self._is_current(generation):
+                self._fire(self.ui, "ui.intent.activate")
             self._prefetch_intent_context(pending, generation)
         finally:
             pending.context_ready.set()
@@ -6807,6 +6924,92 @@ class FlowController:
                 payloads.append({"name": name, "description": description})
         return payloads
 
+    def _watch_model_background_task(
+        self,
+        payload: dict[str, Any],
+        *,
+        conversation_id: str,
+    ) -> None:
+        """Deliver a detached model-delegated task back to its originating chat."""
+        import json
+
+        from core.system.paths import AGENT_RUNS_DIR
+
+        state_text = str(payload.get("state_path") or "").strip()
+        job_id = str(payload.get("job_id") or "").strip()
+        if not state_text or not job_id or not conversation_id:
+            return
+        try:
+            state_path = Path(state_text).expanduser().resolve()
+            jobs_root = (Path(AGENT_RUNS_DIR) / "background_jobs").resolve()
+        except Exception:
+            return
+        if state_path.parent != jobs_root or state_path.suffix.lower() != ".json":
+            log.warning("ignored background task state outside the jobs root: %s", state_path)
+            return
+        key = str(state_path)
+        with self._lock:
+            if key in self._background_task_watchers:
+                return
+            self._background_task_watchers.add(key)
+
+        def watch() -> None:
+            deadline = time.monotonic() + (65 * 60)
+            state: dict[str, Any] = {}
+            try:
+                while time.monotonic() < deadline:
+                    try:
+                        loaded = json.loads(state_path.read_text(encoding="utf-8"))
+                        state = loaded if isinstance(loaded, dict) else {}
+                    except (OSError, ValueError, json.JSONDecodeError):
+                        state = {}
+                    if str(state.get("status") or "") in {"completed", "failed", "cancelled"}:
+                        break
+                    time.sleep(0.5)
+                else:
+                    state = {
+                        **state,
+                        "status": "failed",
+                        "error": "The background task did not finish before its monitoring deadline.",
+                    }
+
+                status = str(state.get("status") or "failed")
+                text = str(state.get("error") or "").strip()
+                final_path = Path(str(state.get("final_path") or ""))
+                if status == "completed" and final_path.is_file():
+                    text = final_path.read_text(encoding="utf-8", errors="replace").strip()
+                if not text:
+                    text = str(state.get("last_log") or "The background task finished without a report.")
+                result = self._safe_call(
+                    self.ui,
+                    "ui.chat.background_result",
+                    {
+                        "conversation_id": conversation_id,
+                        "job_id": job_id,
+                        "status": status,
+                        "title": str(state.get("title") or payload.get("title") or "Background task"),
+                        "text": text[:50000],
+                        "run_dir": str(state.get("run_dir") or ""),
+                    },
+                    timeout=30.0,
+                ) or {}
+                if isinstance(result, dict) and (result.get("appended") or result.get("duplicate")):
+                    state["delivered_at"] = time.time()
+                    temporary = state_path.with_name(f".{state_path.name}.delivered.tmp")
+                    temporary.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+                    temporary.replace(state_path)
+            except Exception:  # noqa: BLE001 - watcher failure must not affect foreground chat
+                log.exception("background task watcher failed for %s", job_id)
+            finally:
+                with self._lock:
+                    self._background_task_watchers.discard(key)
+
+        threading.Thread(
+            target=watch,
+            name=f"wisp-background-task-{job_id}",
+            daemon=True,
+        ).start()
+
     def _chat_text_annotations(self, text: str, *, role: str) -> list[dict[str, Any]]:
         """Return display-only chat annotations from the brain-owned addon manager."""
         text = str(text or "")
@@ -7134,6 +7337,11 @@ class FlowController:
         keys = self._intent_context_keys()
         caller = pending.caller if pending else {}
         context = pending.context if pending else {}
+        context_loading = bool(
+            pending is not None
+            and not pending.context_ready.is_set()
+            and not context
+        )
         active_app = context.get("active_app") if isinstance(context.get("active_app"), dict) else {}
         document_window = context.get("document_window") if isinstance(context.get("document_window"), dict) else {}
         active_document_text = str(context.get("active_document_text") or "")
@@ -7165,7 +7373,15 @@ class FlowController:
         if caller.get("_context_ambient_enabled") is False:
             # Every app document row was removed via the picker's X buttons.
             app_state = "off"
-        app_deferred = app_state != "off" and document_state in {"on", "auto"} and app_available and not active_document_text
+        elif context_loading and (caller.get("context_ambient", True) or document_state != "off"):
+            app_state = "auto" if document_state == "auto" else "on"
+        app_deferred = bool(
+            app_state != "off"
+            and (
+                context_loading
+                or (document_state in {"on", "auto"} and app_available and not active_document_text)
+            )
+        )
 
         browser_text = "\n".join(
             str(part)
@@ -7183,7 +7399,13 @@ class FlowController:
         browser_state = self._mode_to_context_state(self._context_mode(caller, "browser"))
         browser_tokens = self._estimate_context_tokens(browser_text)
         browser_requested = browser_state != "off"
-        browser_deferred = browser_requested and browser_available and not context.get("browser_content")
+        browser_deferred = bool(
+            browser_requested
+            and (
+                context_loading
+                or (browser_available and not context.get("browser_content"))
+            )
+        )
 
         selected_text = str(context.get("selected_text") or "")
         selected_paths = self._selected_paths_from_context(context)
