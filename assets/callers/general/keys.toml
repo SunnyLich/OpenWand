@@ -1,0 +1,4 @@
+# Which letter runs which action.
+w = "what_is_this"
+a = "explain_simply"
+d = "how_do_i_fix"

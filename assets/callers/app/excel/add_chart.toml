@@ -1,0 +1,11 @@
+# Create a chart from a range or table in the active worksheet.
+#
+# The plan is previewed before anything is written, and Excel is left
+# untouched if the preview is declined.
+
+label = "Create a chart"
+hint = "Build a reviewed chart from the selected cells"
+prompt = "Create a chart from the selected cells."
+capability = "excel.add_chart@1"
+planner = "excel_plan_add_chart"
+access = ["files"]

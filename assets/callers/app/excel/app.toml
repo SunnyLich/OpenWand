@@ -1,0 +1,7 @@
+# Microsoft Excel on the desktop. Matched on the process only: a browser tab
+# titled "Microsoft Excel" is Excel for the web, which is a different surface.
+display_name = "Microsoft Excel"
+priority = 10
+
+[match]
+process = ["excel.exe"]

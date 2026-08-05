@@ -3983,6 +3983,175 @@ Demander avant d’écrire — afficher les différences avant toute modificatio
 Écrire automatiquement — appliquer les modifications sans demander.</translation></message>
     <message><source>Open the intent overlay for selected text or the active project.</source><translation>Ouvre le sélecteur d’intentions pour le texte sélectionné ou le projet actif.</translation></message>
     <message><source>Select a screen region, attach it, and open the intent overlay.</source><translation>Sélectionne une zone de l’écran, la joint et ouvre le sélecteur d’intentions.</translation></message>
+    <message><source>(The model returned an empty response.)</source><translation>(Le modèle a renvoyé une réponse vide.)</translation></message>
+    <message><source>A save is already in progress</source><translation>Un enregistrement est déjà en cours</translation></message>
+    <message><source>ACTIVITY</source><translation>ACTIVITÉ</translation></message>
+    <message><source>ASK WISP TO WORK IN THESE FILES</source><translation>DEMANDEZ À WISP DE TRAVAILLER DANS CES FICHIERS</translation></message>
+    <message><source>Activity</source><translation>Activité</translation></message>
+    <message><source>Agent: {agent}</source><translation>Agent : {agent}</translation></message>
+    <message><source>Allow this task step?</source><translation>Autoriser cette étape de la tâche ?</translation></message>
+    <message><source>Another file operation is still finishing</source><translation>Une autre opération de fichier est encore en cours</translation></message>
+    <message><source>Check finished</source><translation>Vérification terminée</translation></message>
+    <message><source>Cloudflare Whisper — configure in Settings</source><translation>Cloudflare Whisper — configurer dans Paramètres</translation></message>
+    <message><source>Collapse</source><translation>Réduire</translation></message>
+    <message><source>Connecting to the isolated session…</source><translation>Connexion à la session isolée…</translation></message>
+    <message><source>Contacting model</source><translation>Connexion au modèle</translation></message>
+    <message><source>Contacting the model…</source><translation>Connexion au modèle…</translation></message>
+    <message><source>Copy path</source><translation>Copier le chemin</translation></message>
+    <message><source>Could not check {path}: {error}</source><translation>Impossible de vérifier {path} : {error}</translation></message>
+    <message><source>Could not open {path}</source><translation>Impossible d’ouvrir {path}</translation></message>
+    <message><source>Could not open {path}: {error}</source><translation>Impossible d’ouvrir {path} : {error}</translation></message>
+    <message><source>Could not save your changes</source><translation>Impossible d’enregistrer vos modifications</translation></message>
+    <message><source>Create folder</source><translation>Créer un dossier</translation></message>
+    <message><source>Create text document</source><translation>Créer un document texte</translation></message>
+    <message><source>Created by Wisp</source><translation>Créé par Wisp</translation></message>
+    <message><source>Created {path}</source><translation>{path} a été créé</translation></message>
+    <message><source>Creating…</source><translation>Création…</translation></message>
+    <message><source>Current step finished; task is now paused</source><translation>L’étape actuelle est terminée ; la tâche est en pause</translation></message>
+    <message><source>Deleted by Wisp</source><translation>Supprimé par Wisp</translation></message>
+    <message><source>Deleted by Wisp · no longer in the workspace</source><translation>Supprimé par Wisp · absent de l’espace de travail</translation></message>
+    <message><source>Deleting…</source><translation>Suppression…</translation></message>
+    <message><source>Describe what Wisp should do first.</source><translation>Décrivez ce que Wisp doit faire en premier.</translation></message>
+    <message><source>Detector: {detector}</source><translation>Détecteur : {detector}</translation></message>
+    <message><source>Drafting {path} · {count} characters</source><translation>Rédaction de {path} · {count} caractères</translation></message>
+    <message><source>Edit</source><translation>Modifier</translation></message>
+    <message><source>Edited by Wisp</source><translation>Modifié par Wisp</translation></message>
+    <message><source>Example: Create a project folder, write a short README, and add a notes file.</source><translation>Exemple : créez un dossier de projet, rédigez un court README et ajoutez un fichier de notes.</translation></message>
+    <message><source>Expand</source><translation>Développer</translation></message>
+    <message><source>Failed file operations: {count}</source><translation>Opérations de fichier échouées : {count}</translation></message>
+    <message><source>File operation failed</source><translation>Échec de l’opération de fichier</translation></message>
+    <message><source>File updated</source><translation>Fichier mis à jour</translation></message>
+    <message><source>Finishing the current response before pausing… {seconds}s elapsed</source><translation>Fin de la réponse actuelle avant la pause… {seconds}s écoulées</translation></message>
+    <message><source>Finishing the current step before pausing…</source><translation>Fin de l’étape actuelle avant la pause…</translation></message>
+    <message><source>Full run log: {path}</source><translation>Journal d’exécution complet : {path}</translation></message>
+    <message><source>Hidden from: {fields}</source><translation>Masqué dans : {fields}</translation></message>
+    <message><source>Keep the task under {count} characters.</source><translation>Limitez la tâche à moins de {count} caractères.</translation></message>
+    <message><source>Model responded · receiving result ({elapsed})</source><translation>Le modèle a répondu · réception du résultat ({elapsed})</translation></message>
+    <message><source>Model response still pending ({quiet}s; task elapsed {total}s)</source><translation>Réponse du modèle en attente ({quiet}s ; tâche : {total}s)</translation></message>
+    <message><source>Move to workspace trash?</source><translation>Déplacer vers la corbeille de l’espace de travail ?</translation></message>
+    <message><source>Move {name} to the workspace trash?</source><translation>Déplacer {name} vers la corbeille de l’espace de travail ?</translation></message>
+    <message><source>Moved {path} to workspace trash</source><translation>{path} a été déplacé vers la corbeille de l’espace de travail</translation></message>
+    <message><source>New Text Document.txt</source><translation>Nouveau document texte.txt</translation></message>
+    <message><source>New folder</source><translation>Nouveau dossier</translation></message>
+    <message><source>New name:</source><translation>Nouveau nom :</translation></message>
+    <message><source>New text document</source><translation>Nouveau document texte</translation></message>
+    <message><source>No workspace files were created or updated.</source><translation>Aucun fichier de l’espace de travail n’a été créé ou mis à jour.</translation></message>
+    <message><source>Open</source><translation>Ouvrir</translation></message>
+    <message><source>Open in default app</source><translation>Ouvrir dans l’application par défaut</translation></message>
+    <message><source>Pause</source><translation>Mettre en pause</translation></message>
+    <message><source>Pause requested after the current step</source><translation>Pause demandée après l’étape actuelle</translation></message>
+    <message><source>Paused before the next step</source><translation>En pause avant l’étape suivante</translation></message>
+    <message><source>Paused — current step finished</source><translation>En pause — l’étape actuelle est terminée</translation></message>
+    <message><source>Pausing after the current step</source><translation>Mise en pause après l’étape actuelle</translation></message>
+    <message><source>Pausing…</source><translation>Mise en pause…</translation></message>
+    <message><source>Preview</source><translation>Aperçu</translation></message>
+    <message><source>Previewing {kind}</source><translation>Aperçu de {kind}</translation></message>
+    <message><source>Privacy filter hid {count} item(s)</source><translation>Le filtre de confidentialité a masqué {count} élément(s)</translation></message>
+    <message><source>Private items hidden: {count}</source><translation>Éléments privés masqués : {count}</translation></message>
+    <message><source>Ready</source><translation>Prêt</translation></message>
+    <message><source>Ready for a task</source><translation>Prêt pour une tâche</translation></message>
+    <message><source>Reason: {reason}</source><translation>Motif : {reason}</translation></message>
+    <message><source>Receiving model result · {detail}</source><translation>Réception du résultat du modèle · {detail}</translation></message>
+    <message><source>Receiving {agent}'s real reply… {count} characters</source><translation>Réception de la réponse réelle de {agent}… {count} caractères</translation></message>
+    <message><source>Receiving {agent}'s reply · {count} characters</source><translation>Réception de la réponse de {agent} · {count} caractères</translation></message>
+    <message><source>Renamed to {path}</source><translation>Renommé en {path}</translation></message>
+    <message><source>Renaming…</source><translation>Changement de nom…</translation></message>
+    <message><source>Resuming task</source><translation>Reprise de la tâche</translation></message>
+    <message><source>Resuming…</source><translation>Reprise…</translation></message>
+    <message><source>SHARED WORKSPACE</source><translation>ESPACE DE TRAVAIL PARTAGÉ</translation></message>
+    <message><source>Saving your changes…</source><translation>Enregistrement de vos modifications…</translation></message>
+    <message><source>Show in File Explorer</source><translation>Afficher dans l’Explorateur de fichiers</translation></message>
+    <message><source>Start a task below. The file Wisp creates will open here.</source><translation>Lancez une tâche ci-dessous. Le fichier créé par Wisp s’ouvrira ici.</translation></message>
+    <message><source>Start task</source><translation>Démarrer la tâche</translation></message>
+    <message><source>Stop</source><translation>Arrêter</translation></message>
+    <message><source>Stop requested; workspace file actions locked</source><translation>Arrêt demandé ; les actions sur les fichiers sont verrouillées</translation></message>
+    <message><source>Stopped — Wisp cannot make further changes to this screen</source><translation>Arrêté — Wisp ne peut plus modifier cet écran</translation></message>
+    <message><source>Stopped. Ready for another task.</source><translation>Arrêté. Prêt pour une autre tâche.</translation></message>
+    <message><source>Successful file operations: {count}</source><translation>Opérations de fichier réussies : {count}</translation></message>
+    <message><source>Task complete</source><translation>Tâche terminée</translation></message>
+    <message><source>Task failed</source><translation>Échec de la tâche</translation></message>
+    <message><source>Task failed — model connection</source><translation>Échec de la tâche — connexion au modèle</translation></message>
+    <message><source>Task incomplete — turn limit reached</source><translation>Tâche incomplète — limite de tours atteinte</translation></message>
+    <message><source>Task result: {result}</source><translation>Résultat de la tâche : {result}</translation></message>
+    <message><source>Task resumed</source><translation>Tâche reprise</translation></message>
+    <message><source>Task runner has not connected yet ({seconds}s)</source><translation>Le moteur de tâches n’est pas encore connecté ({seconds}s)</translation></message>
+    <message><source>Task started — changes will appear above</source><translation>Tâche démarrée — les modifications apparaîtront ci-dessus</translation></message>
+    <message><source>Task stopped</source><translation>Tâche arrêtée</translation></message>
+    <message><source>Task submitted to the workspace agent</source><translation>Tâche envoyée à l’agent de l’espace de travail</translation></message>
+    <message><source>That file is no longer available</source><translation>Ce fichier n’est plus disponible</translation></message>
+    <message><source>The current step will finish; no new step will begin</source><translation>L’étape actuelle se terminera ; aucune nouvelle étape ne commencera</translation></message>
+    <message><source>The task runner is not connected yet.</source><translation>Le moteur de tâches n’est pas encore connecté.</translation></message>
+    <message><source>The workspace folder is not ready yet</source><translation>Le dossier de l’espace de travail n’est pas encore prêt</translation></message>
+    <message><source>This file was deleted by Wisp</source><translation>Ce fichier a été supprimé par Wisp</translation></message>
+    <message><source>Updated {path}</source><translation>{path} a été mis à jour</translation></message>
+    <message><source>Updating…</source><translation>Mise à jour…</translation></message>
+    <message><source>Waiting for first model response · {elapsed}</source><translation>Attente de la première réponse du modèle · {elapsed}</translation></message>
+    <message><source>Waiting for model response · {seconds}s</source><translation>Attente de la réponse du modèle · {seconds}s</translation></message>
+    <message><source>Waiting for task runner · {seconds}s</source><translation>Attente du moteur de tâches · {seconds}s</translation></message>
+    <message><source>Waiting for the model response… {seconds}s elapsed</source><translation>Attente de la réponse du modèle… {seconds}s écoulées</translation></message>
+    <message><source>Waiting for the task runner to connect… {seconds}s elapsed</source><translation>Attente de la connexion du moteur de tâches… {seconds}s écoulées</translation></message>
+    <message><source>Windows could not open {name}</source><translation>Windows n’a pas pu ouvrir {name}</translation></message>
+    <message><source>Wisp Shared Workspace</source><translation>Espace de travail partagé de Wisp</translation></message>
+    <message><source>Wisp agent</source><translation>Agent Wisp</translation></message>
+    <message><source>Wisp changed this file while you are editing · your text is preserved</source><translation>Wisp a modifié ce fichier pendant votre saisie · votre texte est conservé</translation></message>
+    <message><source>Wisp is starting the task…</source><translation>Wisp démarre la tâche…</translation></message>
+    <message><source>Wisp task approval</source><translation>Approbation de tâche Wisp</translation></message>
+    <message><source>Workspace</source><translation>Espace de travail</translation></message>
+    <message><source>Workspace connection unavailable: {detail}</source><translation>Connexion à l’espace de travail indisponible : {detail}</translation></message>
+    <message><source>You are editing · Ctrl+S to save</source><translation>Vous modifiez le fichier · Ctrl+S pour enregistrer</translation></message>
+    <message><source>Your changes are saved and visible to Wisp</source><translation>Vos modifications sont enregistrées et visibles par Wisp</translation></message>
+    <message><source>Your changes were saved</source><translation>Vos modifications ont été enregistrées</translation></message>
+    <message><source>Your save was not applied: {error}</source><translation>Votre enregistrement n’a pas été appliqué : {error}</translation></message>
+    <message><source>detected</source><translation>détecté</translation></message>
+    <message><source>model reply</source><translation>réponse du modèle</translation></message>
+    <message><source>privacy</source><translation>confidentialité</translation></message>
+    <message><source>redacted</source><translation>masqué</translation></message>
+    <message><source>streaming</source><translation>diffusion</translation></message>
+    <message><source>{agent} has a live draft · your unsaved text is preserved</source><translation>{agent} a un brouillon actif · votre texte non enregistré est conservé</translation></message>
+    <message><source>{agent} is drafting {path} · {count} characters received</source><translation>{agent} rédige {path} · {count} caractères reçus</translation></message>
+    <message><source>{agent} replied</source><translation>{agent} a répondu</translation></message>
+    <message><source>{agent} replied: {summary}</source><translation>{agent} a répondu : {summary}</translation></message>
+    <message><source>{agent} reply complete · {count} characters</source><translation>Réponse de {agent} terminée · {count} caractères</translation></message>
+    <message><source>{agent} reply streaming · {count} characters</source><translation>Réponse de {agent} en cours · {count} caractères</translation></message>
+    <message><source>{agent}'s full reply is available in Activity</source><translation>La réponse complète de {agent} est disponible dans Activité</translation></message>
+    <message><source>{agent}: Drafting {path} · {count} characters</source><translation>{agent} : rédaction de {path} · {count} caractères</translation></message>
+    <message><source>{path} · deleted by Wisp</source><translation>{path} · supprimé par Wisp</translation></message>
+    <message><source>{path} · live draft</source><translation>{path} · brouillon actif</translation></message>
+    <message><source>{path} · moved to workspace trash</source><translation>{path} · déplacé vers la corbeille de l’espace de travail</translation></message>
+    <message><source>• {label} × {count}</source><translation>• {label} × {count}</translation></message>
+    <message><source>● Live</source><translation>● En direct</translation></message>
+    <message><source>● Offline</source><translation>● Hors ligne</translation></message>
+    <message><source>activity</source><translation>activité</translation></message>
+    <message><source>agent</source><translation>assistant</translation></message>
+    <message><source>check</source><translation>vérification</translation></message>
+    <message><source>conflict</source><translation>conflit</translation></message>
+    <message><source>control</source><translation>commande</translation></message>
+    <message><source>failed</source><translation>échec</translation></message>
+    <message><source>info</source><translation>informations</translation></message>
+    <message><source>task</source><translation>tâche</translation></message>
+    <message><source>wait</source><translation>attente</translation></message>
+    <message><source>Agent task finished</source><translation>La tâche de l’agent est terminée</translation></message>
+    <message><source>Agent task started in the virtual desktop</source><translation>La tâche de l’agent a démarré dans le bureau virtuel</translation></message>
+    <message><source>Wisp paused</source><translation>Wisp est en pause</translation></message>
+    <message><source>Wisp resumed</source><translation>Wisp a repris</translation></message>
+    <message><source>Workspace started</source><translation>Espace de travail démarré</translation></message>
+    <message><source>Workspace stopped</source><translation>Espace de travail arrêté</translation></message>
+    <message><source>Created folder {path}</source><translation>Dossier {path} créé</translation></message>
+    <message><source>Created file {path}</source><translation>Fichier {path} créé</translation></message>
+    <message><source>You edited file {path}</source><translation>Vous avez modifié le fichier {path}</translation></message>
+    <message><source>You created folder {path}</source><translation>Vous avez créé le dossier {path}</translation></message>
+    <message><source>You created file {path}</source><translation>Vous avez créé le fichier {path}</translation></message>
+    <message><source>You renamed {old} to {new}</source><translation>Vous avez renommé {old} en {new}</translation></message>
+    <message><source>You moved {path} to workspace trash</source><translation>Vous avez déplacé {path} vers la corbeille de l’espace de travail</translation></message>
+    <message><source>{actor} created folder {path}</source><translation>{actor} a créé le dossier {path}</translation></message>
+    <message><source>{actor} created file {path}</source><translation>{actor} a créé le fichier {path}</translation></message>
+    <message><source>{actor} updated file {path}</source><translation>{actor} a mis à jour le fichier {path}</translation></message>
+    <message><source>{actor} removed {path}</source><translation>{actor} a supprimé {path}</translation></message>
+    <message><source>file</source><translation>fichier</translation></message>
+    <message><source>folder</source><translation>dossier</translation></message>
+    <message><source>progress</source><translation>progression</translation></message>
+    <message><source>session</source><translation>session active</translation></message>
+    <message><source>user file</source><translation>fichier utilisateur</translation></message>
   </context>
   <context>
     <name>Wisp</name>

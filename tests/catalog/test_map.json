@@ -772,6 +772,36 @@
       "node_count": 10
     },
     {
+      "path": "tests/test_action_files_loader.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 26
+    },
+    {
+      "path": "tests/test_action_files_shipped.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 13
+    },
+    {
       "path": "tests/test_action_i18n.py",
       "kind": "pytest",
       "scope": "component",
@@ -1603,7 +1633,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 15
+      "node_count": 19
     },
     {
       "path": "tests/test_hotkey_capture.py",
@@ -1659,7 +1689,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 6
+      "node_count": 9
     },
     {
       "path": "tests/test_intent_actions_acceptance.py",
@@ -2871,7 +2901,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 8
+      "node_count": 10
     },
     {
       "path": "tests/test_workspace_file_tree.py",

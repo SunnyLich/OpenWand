@@ -1,0 +1,11 @@
+# Which folder opens on which hotkey, in the order they are shown.
+
+[[callers]]
+folder = "general"
+hotkey = "ctrl+q"
+enabled = true
+
+[[callers]]
+folder = "rewrite"
+hotkey = "ctrl+shift+q"
+enabled = true

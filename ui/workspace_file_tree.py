@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
 )
 
+from ui.i18n import t
+
 PATH_ROLE = int(Qt.ItemDataRole.UserRole)
 KIND_ROLE = PATH_ROLE + 1
 CHANGE_ROLE = PATH_ROLE + 2
@@ -79,7 +81,7 @@ class WorkspaceFileTree(QTreeWidget):
         """Attach the real session folder used by user-invoked system actions."""
         self._workspace_root = str(root or "")
         if self._root_item is not None:
-            self._root_item.setToolTip(0, self._workspace_root or "Wisp Shared Workspace")
+            self._root_item.setToolTip(0, self._workspace_root or t("Wisp Shared Workspace"))
 
     def set_entries(self, entries: Iterable[Mapping[str, Any]]) -> None:
         """Replace the flat snapshot while preserving user navigation state."""
@@ -102,7 +104,7 @@ class WorkspaceFileTree(QTreeWidget):
             self.clear()
             self._items_by_path = {}
             style = QApplication.style()
-            root_item = QTreeWidgetItem(["Workspace"])
+            root_item = QTreeWidgetItem([t("Workspace")])
             root_item.setData(0, PATH_ROLE, "")
             root_item.setData(0, KIND_ROLE, "folder")
             root_item.setIcon(0, style.standardIcon(QStyle.StandardPixmap.SP_DirIcon))
@@ -111,7 +113,7 @@ class WorkspaceFileTree(QTreeWidget):
             root_item.setFont(0, root_font)
             root_item.setSizeHint(0, QSize(0, 30))
             root_item.setExpanded(True)
-            root_item.setToolTip(0, self._workspace_root or "Wisp Shared Workspace")
+            root_item.setToolTip(0, self._workspace_root or t("Wisp Shared Workspace"))
             self.addTopLevelItem(root_item)
             self._root_item = root_item
             for path in sorted(
@@ -260,45 +262,45 @@ class WorkspaceFileTree(QTreeWidget):
         menu = QMenu(self)
 
         if kind == "file" and not deleted:
-            open_action = QAction("Open", menu)
+            open_action = QAction(t("Open"), menu)
             open_action.triggered.connect(lambda: self._activate_item(item))
             menu.addAction(open_action)
-            external_action = QAction("Open in default app", menu)
+            external_action = QAction(t("Open in default app"), menu)
             external_action.triggered.connect(lambda: self.open_external_requested.emit(path))
             menu.addAction(external_action)
         elif kind == "folder":
-            expand_action = QAction("Collapse" if item.isExpanded() else "Expand", menu)
+            expand_action = QAction(t("Collapse") if item.isExpanded() else t("Expand"), menu)
             expand_action.triggered.connect(lambda: item.setExpanded(not item.isExpanded()))
             menu.addAction(expand_action)
 
         if not deleted:
             menu.addSeparator()
-            new_folder = QAction("New folder", menu)
+            new_folder = QAction(t("New folder"), menu)
             new_folder.triggered.connect(lambda: self._request_create("folder"))
             menu.addAction(new_folder)
-            new_file = QAction("New text document", menu)
+            new_file = QAction(t("New text document"), menu)
             new_file.triggered.connect(lambda: self._request_create("file"))
             menu.addAction(new_file)
 
         if path and not deleted:
             menu.addSeparator()
-            rename_action = QAction("Rename", menu)
+            rename_action = QAction(t("Rename"), menu)
             rename_action.setShortcut("F2")
             rename_action.triggered.connect(self._request_rename)
             menu.addAction(rename_action)
-            delete_action = QAction("Delete", menu)
+            delete_action = QAction(t("Delete"), menu)
             delete_action.setShortcut("Del")
             delete_action.triggered.connect(self._request_delete)
             menu.addAction(delete_action)
 
         menu.addSeparator()
-        reveal_action = QAction("Show in File Explorer", menu)
+        reveal_action = QAction(t("Show in File Explorer"), menu)
         reveal_action.triggered.connect(lambda: self.reveal_requested.emit(path))
         menu.addAction(reveal_action)
-        copy_action = QAction("Copy path", menu)
+        copy_action = QAction(t("Copy path"), menu)
         copy_action.triggered.connect(lambda: self._copy_path(path))
         menu.addAction(copy_action)
-        refresh_action = QAction("Refresh", menu)
+        refresh_action = QAction(t("Refresh"), menu)
         refresh_action.setShortcut("F5")
         refresh_action.triggered.connect(self.refresh_requested.emit)
         menu.addAction(refresh_action)
@@ -316,9 +318,9 @@ class WorkspaceFileTree(QTreeWidget):
 
     def _request_create(self, kind: str) -> None:
         parent = self._operation_parent_path()
-        default = "New folder" if kind == "folder" else "New Text Document.txt"
-        title = "Create folder" if kind == "folder" else "Create text document"
-        name, accepted = QInputDialog.getText(self, title, "Name:", text=default)
+        default = t("New folder") if kind == "folder" else t("New Text Document.txt")
+        title = t("Create folder") if kind == "folder" else t("Create text document")
+        name, accepted = QInputDialog.getText(self, title, t("Name:"), text=default)
         if accepted and str(name).strip():
             self.file_operation_requested.emit("create", parent, str(name).strip(), kind)
 
@@ -330,7 +332,7 @@ class WorkspaceFileTree(QTreeWidget):
         if not path or item.data(0, CHANGE_ROLE) == "deleted":
             return
         old_name = PurePosixPath(path).name
-        name, accepted = QInputDialog.getText(self, "Rename", "New name:", text=old_name)
+        name, accepted = QInputDialog.getText(self, t("Rename"), t("New name:"), text=old_name)
         clean_name = str(name).strip()
         if accepted and clean_name and clean_name != old_name:
             self.file_operation_requested.emit("rename", path, clean_name, "")
@@ -344,8 +346,8 @@ class WorkspaceFileTree(QTreeWidget):
             return
         answer = QMessageBox.question(
             self,
-            "Move to workspace trash?",
-            f"Move {PurePosixPath(path).name} to the workspace trash?",
+            t("Move to workspace trash?"),
+            t("Move {name} to the workspace trash?").format(name=PurePosixPath(path).name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -406,9 +408,9 @@ class WorkspaceFileTree(QTreeWidget):
         if color is not None:
             item.setForeground(0, color)
         tooltip = {
-            "created": "Created by Wisp",
-            "edited": "Edited by Wisp",
-            "deleted": "Deleted by Wisp",
+            "created": t("Created by Wisp"),
+            "edited": t("Edited by Wisp"),
+            "deleted": t("Deleted by Wisp"),
         }.get(change)
         if tooltip:
             item.setToolTip(0, tooltip)
@@ -416,7 +418,7 @@ class WorkspaceFileTree(QTreeWidget):
             font = item.font(0)
             font.setStrikeOut(True)
             item.setFont(0, font)
-            item.setToolTip(0, "Deleted by Wisp · no longer in the workspace")
+            item.setToolTip(0, t("Deleted by Wisp · no longer in the workspace"))
 
 
 def _normalize_change(value: Any) -> str:

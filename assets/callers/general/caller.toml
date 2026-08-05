@@ -1,0 +1,17 @@
+label = "General"
+paste_back = false
+custom_key = "s"
+space_starts_new_chat = true
+file_access = "off"
+
+# The overlay's numbered toggles, keyed by source so a number always means the
+# same thing in every caller. Values: "off", "on", or "model" where supported.
+[context]
+ambient = "off"
+browser = "off"
+selection = "on"
+clipboard = "off"
+screenshot = "off"
+github = "off"
+memory = "off"
+files = "off"

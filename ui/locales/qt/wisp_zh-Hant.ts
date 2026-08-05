@@ -3949,6 +3949,175 @@ Write automatically — apply edits without asking.</source><translation>本機�
     <message><source>Select a screen region, attach it, and open the intent overlay.</source><translation>選取螢幕區域、附加影像並開啟意圖浮層。</translation></message>
     <message><source>ElevenLabs is downloaded only when you install it, keeping release downloads smaller. Source checkouts may use the SDK from their Python environment.</source><translation>ElevenLabs 僅在你安裝時下載，以減少發行版下載大小。原始碼簽出可使用其 Python 環境中的 SDK。</translation></message>
     <message><source>Packages are downloaded and staged. Restart Wisp to apply and verify them.</source><translation>套件已下載並暫存。重新啟動 Wisp 以套用並驗證它們。</translation></message>
+    <message><source>(The model returned an empty response.)</source><translation>（模型傳回了空白回應。）</translation></message>
+    <message><source>A save is already in progress</source><translation>已有儲存作業正在進行</translation></message>
+    <message><source>ACTIVITY</source><translation>活動</translation></message>
+    <message><source>ASK WISP TO WORK IN THESE FILES</source><translation>讓 WISP 處理這些檔案</translation></message>
+    <message><source>Activity</source><translation>活動</translation></message>
+    <message><source>Agent: {agent}</source><translation>代理程式：{agent}</translation></message>
+    <message><source>Allow this task step?</source><translation>允許執行此工作步驟嗎？</translation></message>
+    <message><source>Another file operation is still finishing</source><translation>另一個檔案作業仍在完成中</translation></message>
+    <message><source>Check finished</source><translation>檢查完成</translation></message>
+    <message><source>Cloudflare Whisper — configure in Settings</source><translation>Cloudflare Whisper — 在設定中配置</translation></message>
+    <message><source>Collapse</source><translation>收合</translation></message>
+    <message><source>Connecting to the isolated session…</source><translation>正在連線至隔離工作階段…</translation></message>
+    <message><source>Contacting model</source><translation>正在聯絡模型</translation></message>
+    <message><source>Contacting the model…</source><translation>正在聯絡模型…</translation></message>
+    <message><source>Copy path</source><translation>複製路徑</translation></message>
+    <message><source>Could not check {path}: {error}</source><translation>無法檢查 {path}：{error}</translation></message>
+    <message><source>Could not open {path}</source><translation>無法開啟 {path}</translation></message>
+    <message><source>Could not open {path}: {error}</source><translation>無法開啟 {path}：{error}</translation></message>
+    <message><source>Could not save your changes</source><translation>無法儲存你的變更</translation></message>
+    <message><source>Create folder</source><translation>建立資料夾</translation></message>
+    <message><source>Create text document</source><translation>建立文字文件</translation></message>
+    <message><source>Created by Wisp</source><translation>由 Wisp 建立</translation></message>
+    <message><source>Created {path}</source><translation>已建立 {path}</translation></message>
+    <message><source>Creating…</source><translation>正在建立…</translation></message>
+    <message><source>Current step finished; task is now paused</source><translation>目前步驟已完成；工作現已暫停</translation></message>
+    <message><source>Deleted by Wisp</source><translation>由 Wisp 刪除</translation></message>
+    <message><source>Deleted by Wisp · no longer in the workspace</source><translation>由 Wisp 刪除 · 已不在工作區中</translation></message>
+    <message><source>Deleting…</source><translation>正在刪除…</translation></message>
+    <message><source>Describe what Wisp should do first.</source><translation>請描述 Wisp 首先應該做什麼。</translation></message>
+    <message><source>Detector: {detector}</source><translation>偵測器：{detector}</translation></message>
+    <message><source>Drafting {path} · {count} characters</source><translation>正在草擬 {path} · {count} 個字元</translation></message>
+    <message><source>Edit</source><translation>編輯</translation></message>
+    <message><source>Edited by Wisp</source><translation>由 Wisp 編輯</translation></message>
+    <message><source>Example: Create a project folder, write a short README, and add a notes file.</source><translation>範例：建立專案資料夾、撰寫簡短的 README，並新增筆記檔案。</translation></message>
+    <message><source>Expand</source><translation>展開</translation></message>
+    <message><source>Failed file operations: {count}</source><translation>失敗的檔案作業：{count}</translation></message>
+    <message><source>File operation failed</source><translation>檔案作業失敗</translation></message>
+    <message><source>File updated</source><translation>檔案已更新</translation></message>
+    <message><source>Finishing the current response before pausing… {seconds}s elapsed</source><translation>正在暫停前完成目前回應… 已經過 {seconds} 秒</translation></message>
+    <message><source>Finishing the current step before pausing…</source><translation>正在暫停前完成目前步驟…</translation></message>
+    <message><source>Full run log: {path}</source><translation>完整執行記錄：{path}</translation></message>
+    <message><source>Hidden from: {fields}</source><translation>已從以下位置隱藏：{fields}</translation></message>
+    <message><source>Keep the task under {count} characters.</source><translation>請將工作限制在 {count} 個字元以內。</translation></message>
+    <message><source>Model responded · receiving result ({elapsed})</source><translation>模型已回應 · 正在接收結果（{elapsed}）</translation></message>
+    <message><source>Model response still pending ({quiet}s; task elapsed {total}s)</source><translation>模型回應仍在等待中（{quiet} 秒；工作已經過 {total} 秒）</translation></message>
+    <message><source>Move to workspace trash?</source><translation>移至工作區回收筒嗎？</translation></message>
+    <message><source>Move {name} to the workspace trash?</source><translation>將 {name} 移至工作區回收筒嗎？</translation></message>
+    <message><source>Moved {path} to workspace trash</source><translation>已將 {path} 移至工作區回收筒</translation></message>
+    <message><source>New Text Document.txt</source><translation>新增文字文件.txt</translation></message>
+    <message><source>New folder</source><translation>新增資料夾</translation></message>
+    <message><source>New name:</source><translation>新名稱：</translation></message>
+    <message><source>New text document</source><translation>新增文字文件</translation></message>
+    <message><source>No workspace files were created or updated.</source><translation>沒有建立或更新任何工作區檔案。</translation></message>
+    <message><source>Open</source><translation>開啟</translation></message>
+    <message><source>Open in default app</source><translation>在預設應用程式中開啟</translation></message>
+    <message><source>Pause</source><translation>暫停</translation></message>
+    <message><source>Pause requested after the current step</source><translation>已要求在目前步驟後暫停</translation></message>
+    <message><source>Paused before the next step</source><translation>已在下一步驟前暫停</translation></message>
+    <message><source>Paused — current step finished</source><translation>已暫停 — 目前步驟已完成</translation></message>
+    <message><source>Pausing after the current step</source><translation>將在目前步驟後暫停</translation></message>
+    <message><source>Pausing…</source><translation>正在暫停…</translation></message>
+    <message><source>Preview</source><translation>預覽</translation></message>
+    <message><source>Previewing {kind}</source><translation>正在預覽 {kind}</translation></message>
+    <message><source>Privacy filter hid {count} item(s)</source><translation>隱私篩選器隱藏了 {count} 個項目</translation></message>
+    <message><source>Private items hidden: {count}</source><translation>已隱藏的隱私項目：{count}</translation></message>
+    <message><source>Ready</source><translation>就緒</translation></message>
+    <message><source>Ready for a task</source><translation>已準備好接收工作</translation></message>
+    <message><source>Reason: {reason}</source><translation>原因：{reason}</translation></message>
+    <message><source>Receiving model result · {detail}</source><translation>正在接收模型結果 · {detail}</translation></message>
+    <message><source>Receiving {agent}'s real reply… {count} characters</source><translation>正在接收 {agent} 的實際回覆… {count} 個字元</translation></message>
+    <message><source>Receiving {agent}'s reply · {count} characters</source><translation>正在接收 {agent} 的回覆 · {count} 個字元</translation></message>
+    <message><source>Renamed to {path}</source><translation>已重新命名為 {path}</translation></message>
+    <message><source>Renaming…</source><translation>正在重新命名…</translation></message>
+    <message><source>Resuming task</source><translation>正在繼續工作</translation></message>
+    <message><source>Resuming…</source><translation>正在繼續…</translation></message>
+    <message><source>SHARED WORKSPACE</source><translation>共享工作區</translation></message>
+    <message><source>Saving your changes…</source><translation>正在儲存你的變更…</translation></message>
+    <message><source>Show in File Explorer</source><translation>在檔案總管中顯示</translation></message>
+    <message><source>Start a task below. The file Wisp creates will open here.</source><translation>請在下方開始工作。Wisp 建立的檔案將在此開啟。</translation></message>
+    <message><source>Start task</source><translation>開始工作</translation></message>
+    <message><source>Stop</source><translation>停止</translation></message>
+    <message><source>Stop requested; workspace file actions locked</source><translation>已要求停止；工作區檔案作業已鎖定</translation></message>
+    <message><source>Stopped — Wisp cannot make further changes to this screen</source><translation>已停止 — Wisp 無法再變更此畫面</translation></message>
+    <message><source>Stopped. Ready for another task.</source><translation>已停止。可開始其他工作。</translation></message>
+    <message><source>Successful file operations: {count}</source><translation>成功的檔案作業：{count}</translation></message>
+    <message><source>Task complete</source><translation>工作完成</translation></message>
+    <message><source>Task failed</source><translation>工作失敗</translation></message>
+    <message><source>Task failed — model connection</source><translation>工作失敗 — 模型連線</translation></message>
+    <message><source>Task incomplete — turn limit reached</source><translation>工作未完成 — 已達回合限制</translation></message>
+    <message><source>Task result: {result}</source><translation>工作結果：{result}</translation></message>
+    <message><source>Task resumed</source><translation>工作已繼續</translation></message>
+    <message><source>Task runner has not connected yet ({seconds}s)</source><translation>工作執行器尚未連線（{seconds} 秒）</translation></message>
+    <message><source>Task started — changes will appear above</source><translation>工作已開始 — 變更將顯示在上方</translation></message>
+    <message><source>Task stopped</source><translation>工作已停止</translation></message>
+    <message><source>Task submitted to the workspace agent</source><translation>工作已提交給工作區代理程式</translation></message>
+    <message><source>That file is no longer available</source><translation>該檔案已無法使用</translation></message>
+    <message><source>The current step will finish; no new step will begin</source><translation>目前步驟將完成；不會開始新步驟</translation></message>
+    <message><source>The task runner is not connected yet.</source><translation>工作執行器尚未連線。</translation></message>
+    <message><source>The workspace folder is not ready yet</source><translation>工作區資料夾尚未就緒</translation></message>
+    <message><source>This file was deleted by Wisp</source><translation>此檔案已被 Wisp 刪除</translation></message>
+    <message><source>Updated {path}</source><translation>已更新 {path}</translation></message>
+    <message><source>Updating…</source><translation>正在更新…</translation></message>
+    <message><source>Waiting for first model response · {elapsed}</source><translation>正在等待模型的首次回應 · {elapsed}</translation></message>
+    <message><source>Waiting for model response · {seconds}s</source><translation>正在等待模型回應 · {seconds} 秒</translation></message>
+    <message><source>Waiting for task runner · {seconds}s</source><translation>正在等待工作執行器 · {seconds} 秒</translation></message>
+    <message><source>Waiting for the model response… {seconds}s elapsed</source><translation>正在等待模型回應… 已經過 {seconds} 秒</translation></message>
+    <message><source>Waiting for the task runner to connect… {seconds}s elapsed</source><translation>正在等待工作執行器連線… 已經過 {seconds} 秒</translation></message>
+    <message><source>Windows could not open {name}</source><translation>Windows 無法開啟 {name}</translation></message>
+    <message><source>Wisp Shared Workspace</source><translation>Wisp 共享工作區</translation></message>
+    <message><source>Wisp agent</source><translation>Wisp 代理程式</translation></message>
+    <message><source>Wisp changed this file while you are editing · your text is preserved</source><translation>Wisp 在你編輯時變更了此檔案 · 你的文字已保留</translation></message>
+    <message><source>Wisp is starting the task…</source><translation>Wisp 正在啟動工作…</translation></message>
+    <message><source>Wisp task approval</source><translation>Wisp 工作核准</translation></message>
+    <message><source>Workspace</source><translation>工作區</translation></message>
+    <message><source>Workspace connection unavailable: {detail}</source><translation>工作區連線無法使用：{detail}</translation></message>
+    <message><source>You are editing · Ctrl+S to save</source><translation>你正在編輯 · 按 Ctrl+S 儲存</translation></message>
+    <message><source>Your changes are saved and visible to Wisp</source><translation>你的變更已儲存，Wisp 可以看到</translation></message>
+    <message><source>Your changes were saved</source><translation>你的變更已儲存</translation></message>
+    <message><source>Your save was not applied: {error}</source><translation>未套用你的儲存：{error}</translation></message>
+    <message><source>detected</source><translation>已偵測</translation></message>
+    <message><source>model reply</source><translation>模型回覆</translation></message>
+    <message><source>privacy</source><translation>隱私</translation></message>
+    <message><source>redacted</source><translation>已隱藏</translation></message>
+    <message><source>streaming</source><translation>接收中</translation></message>
+    <message><source>{agent} has a live draft · your unsaved text is preserved</source><translation>{agent} 有即時草稿 · 你的未儲存文字已保留</translation></message>
+    <message><source>{agent} is drafting {path} · {count} characters received</source><translation>{agent} 正在草擬 {path} · 已接收 {count} 個字元</translation></message>
+    <message><source>{agent} replied</source><translation>{agent} 已回覆</translation></message>
+    <message><source>{agent} replied: {summary}</source><translation>{agent} 已回覆：{summary}</translation></message>
+    <message><source>{agent} reply complete · {count} characters</source><translation>{agent} 的回覆已完成 · {count} 個字元</translation></message>
+    <message><source>{agent} reply streaming · {count} characters</source><translation>{agent} 的回覆正在接收 · {count} 個字元</translation></message>
+    <message><source>{agent}'s full reply is available in Activity</source><translation>{agent} 的完整回覆可在「活動」中檢視</translation></message>
+    <message><source>{agent}: Drafting {path} · {count} characters</source><translation>{agent}：正在草擬 {path} · {count} 個字元</translation></message>
+    <message><source>{path} · deleted by Wisp</source><translation>{path} · 已被 Wisp 刪除</translation></message>
+    <message><source>{path} · live draft</source><translation>{path} · 即時草稿</translation></message>
+    <message><source>{path} · moved to workspace trash</source><translation>{path} · 已移至工作區回收筒</translation></message>
+    <message><source>• {label} × {count}</source><translation>• {label} × {count}</translation></message>
+    <message><source>● Live</source><translation>● 連線中</translation></message>
+    <message><source>● Offline</source><translation>● 離線</translation></message>
+    <message><source>activity</source><translation>活動</translation></message>
+    <message><source>agent</source><translation>代理程式</translation></message>
+    <message><source>check</source><translation>檢查</translation></message>
+    <message><source>conflict</source><translation>衝突</translation></message>
+    <message><source>control</source><translation>控制</translation></message>
+    <message><source>failed</source><translation>失敗</translation></message>
+    <message><source>info</source><translation>資訊</translation></message>
+    <message><source>task</source><translation>工作</translation></message>
+    <message><source>wait</source><translation>等待</translation></message>
+    <message><source>Agent task finished</source><translation>代理程式工作已完成</translation></message>
+    <message><source>Agent task started in the virtual desktop</source><translation>代理程式工作已在虛擬桌面中開始</translation></message>
+    <message><source>Wisp paused</source><translation>Wisp 已暫停</translation></message>
+    <message><source>Wisp resumed</source><translation>Wisp 已繼續</translation></message>
+    <message><source>Workspace started</source><translation>工作區已啟動</translation></message>
+    <message><source>Workspace stopped</source><translation>工作區已停止</translation></message>
+    <message><source>Created folder {path}</source><translation>已建立資料夾 {path}</translation></message>
+    <message><source>Created file {path}</source><translation>已建立檔案 {path}</translation></message>
+    <message><source>You edited file {path}</source><translation>你編輯了檔案 {path}</translation></message>
+    <message><source>You created folder {path}</source><translation>你建立了資料夾 {path}</translation></message>
+    <message><source>You created file {path}</source><translation>你建立了檔案 {path}</translation></message>
+    <message><source>You renamed {old} to {new}</source><translation>你將 {old} 重新命名為 {new}</translation></message>
+    <message><source>You moved {path} to workspace trash</source><translation>你將 {path} 移至工作區回收筒</translation></message>
+    <message><source>{actor} created folder {path}</source><translation>{actor} 建立了資料夾 {path}</translation></message>
+    <message><source>{actor} created file {path}</source><translation>{actor} 建立了檔案 {path}</translation></message>
+    <message><source>{actor} updated file {path}</source><translation>{actor} 更新了檔案 {path}</translation></message>
+    <message><source>{actor} removed {path}</source><translation>{actor} 刪除了 {path}</translation></message>
+    <message><source>file</source><translation>檔案</translation></message>
+    <message><source>folder</source><translation>資料夾</translation></message>
+    <message><source>progress</source><translation>進度</translation></message>
+    <message><source>session</source><translation>工作階段</translation></message>
+    <message><source>user file</source><translation>使用者檔案</translation></message>
   </context>
   <context>
     <name>Wisp</name>

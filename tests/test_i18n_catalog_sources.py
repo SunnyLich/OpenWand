@@ -66,6 +66,47 @@ LOCAL_FILE_TOOL_SOURCES = {
     "Patch files in configured file roots.",
     "Create or overwrite files in configured file roots.",
 }
+WORKSPACE_ACTIVITY_META_SOURCES = {
+    "activity",
+    "agent",
+    "check",
+    "complete",
+    "conflict",
+    "control",
+    "detected",
+    "failed",
+    "info",
+    "model reply",
+    "privacy",
+    "file",
+    "folder",
+    "progress",
+    "redacted",
+    "session",
+    "streaming",
+    "task",
+    "user file",
+    "wait",
+}
+WORKSPACE_OPERATION_SOURCES = {
+    "Agent task finished",
+    "Agent task started in the virtual desktop",
+    "Created file {path}",
+    "Created folder {path}",
+    "Workspace started",
+    "Workspace stopped",
+    "Wisp paused",
+    "Wisp resumed",
+    "You created file {path}",
+    "You created folder {path}",
+    "You edited file {path}",
+    "You moved {path} to workspace trash",
+    "You renamed {old} to {new}",
+    "{actor} created file {path}",
+    "{actor} created folder {path}",
+    "{actor} removed {path}",
+    "{actor} updated file {path}",
+}
 
 # These are characteristic artifacts of UTF-8 text decoded as a single-byte
 # encoding.  The narrower patterns avoid flagging legitimate accented text.
@@ -174,6 +215,95 @@ def test_qt_catalogs_translate_local_file_tool_rows() -> None:
         }
         assert set(translations) == LOCAL_FILE_TOOL_SOURCES, language
         assert all(translation != source for source, translation in translations.items())
+
+
+def test_qt_catalogs_translate_workspace_activity_metadata() -> None:
+    """Workspace activity chips translate while retaining stable internal properties."""
+    for language in LANGUAGES:
+        translations = {
+            source: translation
+            for source, translation, unfinished in _catalog_messages(language)
+            if source in WORKSPACE_ACTIVITY_META_SOURCES and not unfinished
+        }
+        assert set(translations) == WORKSPACE_ACTIVITY_META_SOURCES, language
+        assert all(translation != source for source, translation in translations.items())
+
+
+def test_qt_catalogs_translate_workspace_operation_messages() -> None:
+    """Structured journal messages translate without losing runtime placeholders."""
+    for language in LANGUAGES:
+        translations = {
+            source: translation
+            for source, translation, unfinished in _catalog_messages(language)
+            if source in WORKSPACE_OPERATION_SOURCES and not unfinished
+        }
+        assert set(translations) == WORKSPACE_OPERATION_SOURCES, language
+        for source, translation in translations.items():
+            assert translation != source, (language, source)
+            for placeholder in re.findall(r"\{[^}]+\}", source):
+                assert placeholder in translation, (language, source, placeholder)
+
+
+def test_workspace_windows_do_not_bypass_translation_calls() -> None:
+    """New hand-built workspace windows route direct English widget text through ``t``."""
+
+    def is_translation(node: ast.AST) -> bool:
+        if not isinstance(node, ast.Call):
+            return False
+        if isinstance(node.func, ast.Name) and node.func.id == "t":
+            return True
+        return (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "format"
+            and is_translation(node.func.value)
+        )
+
+    direct_text_calls = {
+        "QAction",
+        "QLabel",
+        "QPushButton",
+        "setPlaceholderText",
+        "setText",
+        "setToolTip",
+        "setWindowTitle",
+        "set_status",
+    }
+    problems: list[str] = []
+    for relative in (
+        "ui/virtual_workspace_window.py",
+        "ui/workspace_file_tree.py",
+    ):
+        path = ROOT / relative
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            call_name = (
+                node.func.id
+                if isinstance(node.func, ast.Name)
+                else node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else ""
+            )
+            if call_name not in direct_text_calls:
+                continue
+            source = node.args[0]
+            if is_translation(source):
+                continue
+            if isinstance(source, ast.IfExp) and is_translation(source.body) and is_translation(source.orelse):
+                continue
+            literal_text = ""
+            if isinstance(source, ast.Constant) and isinstance(source.value, str):
+                literal_text = source.value
+            elif isinstance(source, ast.JoinedStr):
+                literal_text = "".join(
+                    value.value
+                    for value in source.values
+                    if isinstance(value, ast.Constant) and isinstance(value.value, str)
+                )
+            if any(character.isalpha() for character in literal_text):
+                problems.append(f"{relative}:{node.lineno}: {literal_text}")
+    assert not problems, problems
 
 
 def test_qt_catalogs_cover_literal_translation_calls() -> None:

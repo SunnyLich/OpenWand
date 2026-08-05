@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.i18n import t
 from ui.shared.window_utils import enable_standard_window_controls, fit_window_to_screen
 from ui.workspace_activity import WISP_ACTIVITY_STYLE, WorkspaceActivityItem, WorkspaceActivityList
 from ui.workspace_file_tree import WorkspaceFileTree
@@ -57,6 +58,48 @@ from ui.workspace_previews import WorkspacePreview, preview_kind_for_path
 _POLL_MS = 350
 _MAX_TASK_CHARS = 8_000
 _MAX_DRAFT_CHARS = 256 * 1024
+
+
+def _translate_operation_message(message: str) -> str:
+    """Translate structured workspace journal messages without touching arbitrary text."""
+    value = str(message or "").strip()
+    exact = {
+        "Workspace started": t("Workspace started"),
+        "Workspace stopped": t("Workspace stopped"),
+        "Wisp paused": t("Wisp paused"),
+        "Wisp resumed": t("Wisp resumed"),
+        "Agent task started in the virtual desktop": t(
+            "Agent task started in the virtual desktop"
+        ),
+        "Agent task finished": t("Agent task finished"),
+    }
+    if value in exact:
+        return exact[value]
+    patterns: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+        (r"^Created folder (.+)$", "Created folder {path}", ("path",)),
+        (r"^Created file (.+)$", "Created file {path}", ("path",)),
+        (r"^You edited file (.+)$", "You edited file {path}", ("path",)),
+        (r"^You created folder (.+)$", "You created folder {path}", ("path",)),
+        (r"^You created file (.+)$", "You created file {path}", ("path",)),
+        (r"^You renamed (.+) to (.+)$", "You renamed {old} to {new}", ("old", "new")),
+        (
+            r"^You moved (.+) to workspace trash$",
+            "You moved {path} to workspace trash",
+            ("path",),
+        ),
+        (r"^(Wisp|Workspace) created folder (.+)$", "{actor} created folder {path}", ("actor", "path")),
+        (r"^(Wisp|Workspace) created file (.+)$", "{actor} created file {path}", ("actor", "path")),
+        (r"^(Wisp|Workspace) updated file (.+)$", "{actor} updated file {path}", ("actor", "path")),
+        (r"^(Wisp|Workspace) removed (.+)$", "{actor} removed {path}", ("actor", "path")),
+    )
+    for pattern, source, fields in patterns:
+        match = re.match(pattern, value)
+        if match:
+            values = dict(zip(fields, match.groups(), strict=True))
+            if "actor" in values:
+                values["actor"] = t(values["actor"])
+            return t(source).format(**values)
+    return value
 
 
 def _validated_endpoint(raw_url: str) -> tuple[str, str]:
@@ -169,7 +212,7 @@ class VirtualPointer(QWidget):
             painter.setBrush(accent)
             painter.drawRoundedRect(label_rect, 4, 4)
             painter.setPen(QColor("#ffffff"))
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, self._label or "Wisp agent")
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, self._label or t("Wisp agent"))
             if self._caret_visible:
                 painter.setPen(QPen(accent, 2.2))
                 painter.drawLine(5, 23, 5, 48)
@@ -228,11 +271,11 @@ class VirtualDesktop(QWidget):
         bar.setObjectName("desktopBar")
         bar_layout = QHBoxLayout(bar)
         bar_layout.setContentsMargins(14, 0, 12, 0)
-        name = QLabel("SHARED WORKSPACE")
+        name = QLabel(t("SHARED WORKSPACE"))
         name.setObjectName("desktopBrand")
         bar_layout.addWidget(name)
         bar_layout.addStretch()
-        self._status = QLabel("Ready")
+        self._status = QLabel(t("Ready"))
         self._status.setObjectName("desktopStatus")
         bar_layout.addWidget(self._status)
         self._clock = QLabel()
@@ -269,21 +312,21 @@ class VirtualDesktop(QWidget):
         title_bar.setObjectName("virtualTitleBar")
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(12, 4, 7, 4)
-        self._editor_title = QLabel("Document")
+        self._editor_title = QLabel(t("Document"))
         self._editor_title.setObjectName("virtualTitle")
         title_layout.addWidget(self._editor_title)
         title_layout.addStretch()
-        self._edit_mode = QPushButton("Edit")
+        self._edit_mode = QPushButton(t("Edit"))
         self._edit_mode.setObjectName("editorMode")
         self._edit_mode.setCheckable(True)
         self._edit_mode.setChecked(True)
         self._edit_mode.clicked.connect(self._show_editor_mode)
         title_layout.addWidget(self._edit_mode)
-        self._preview_mode = QPushButton("Preview")
+        self._preview_mode = QPushButton(t("Preview"))
         self._preview_mode.setObjectName("editorMode")
         self._preview_mode.clicked.connect(self._show_preview_mode)
         title_layout.addWidget(self._preview_mode)
-        self._save = QPushButton("Save")
+        self._save = QPushButton(t("Save"))
         self._save.setObjectName("editorSave")
         self._save.setEnabled(False)
         self._save.clicked.connect(self.save_user_changes)
@@ -300,7 +343,7 @@ class VirtualDesktop(QWidget):
         body_layout.addWidget(self._editor, 1)
 
         self._hint = QLabel(
-            "Start a task below. The file Wisp creates will open here.",
+            t("Start a task below. The file Wisp creates will open here."),
             self._document.viewport(),
         )
         self._hint.setObjectName("desktopHint")
@@ -373,7 +416,9 @@ class VirtualDesktop(QWidget):
             if str(entry.get("path") or "")
         }
         if self._active_path and change_map.get(self._active_path) == "deleted":
-            self._editor_title.setText(f"{self._active_path} · deleted by Wisp")
+            self._editor_title.setText(
+                t("{path} · deleted by Wisp").format(path=self._active_path)
+            )
             self._highlight_agent_changes(
                 self._document.toPlainText(),
                 self._document.toPlainText(),
@@ -381,16 +426,18 @@ class VirtualDesktop(QWidget):
             )
             self._document.setReadOnly(True)
             self._save.setEnabled(False)
-            self.set_status("This file was deleted by Wisp")
+            self.set_status(t("This file was deleted by Wisp"))
         self._hint.setVisible(not self._items_by_path)
         QTimer.singleShot(0, self._position_hint)
 
     def set_status(self, text: str) -> None:
-        self._status.setText(str(text or "Ready")[:90])
+        self._status.setText(str(text or t("Ready"))[:90])
 
     def show_waiting(self, seconds: int) -> None:
         """Report waiting without pretending that the agent is using a mouse."""
-        self.set_status(f"Waiting for model response · {seconds}s")
+        self.set_status(
+            t("Waiting for model response · {seconds}s").format(seconds=seconds)
+        )
         self._pointer.hide()
 
     def set_cursor(self, cursor: dict[str, Any] | None) -> None:
@@ -427,7 +474,9 @@ class VirtualDesktop(QWidget):
         previous = self._saved_text if path == self._active_path else ""
         if path == self._active_path and self._save.isEnabled() and text != self._document.toPlainText():
             self._incoming_text = text
-            self.set_status("Wisp changed this file while you are editing · your text is preserved")
+            self.set_status(
+                t("Wisp changed this file while you are editing · your text is preserved")
+            )
             return False
         self._active_draft_agent = ""
         self._active_path = path
@@ -475,7 +524,7 @@ class VirtualDesktop(QWidget):
         self._hint.hide()
         shown_kind = self._preview.show_content(path, data)
         self._pointer.hide()
-        self.set_status(f"Previewing {shown_kind}")
+        self.set_status(t("Previewing {kind}").format(kind=shown_kind))
 
     def show_live_draft(self, agent: str, path: str, content: str) -> bool:
         """Render one worker's actual streamed draft without flickering between workers."""
@@ -484,21 +533,30 @@ class VirtualDesktop(QWidget):
             return False
         if path == self._active_path and self._save.isEnabled():
             self._incoming_text = content
-            self.set_status(f"{clean_agent} has a live draft · your unsaved text is preserved")
+            self.set_status(
+                t("{agent} has a live draft · your unsaved text is preserved").format(
+                    agent=clean_agent
+                )
+            )
             return False
         self._active_draft_agent = clean_agent
         self._typing_timer.stop()
         previous = self._saved_text if path == self._active_path else ""
         self._active_path = path
         self._preview_source_text = content
-        self._editor_title.setText(f"{path} · live draft")
+        self._editor_title.setText(t("{path} · live draft").format(path=path))
         self._hint.hide()
         self._loading_document = True
         try:
             shown_kind = self._preview.show_editor_content(path, content)
         finally:
             self._loading_document = False
-        self.set_status(f"Drafting {path} · {len(content):,} chars")
+        self.set_status(
+            t("Drafting {path} · {count} characters").format(
+                path=path,
+                count=f"{len(content):,}",
+            )
+        )
         self._highlight_agent_changes(previous, content, self._change_by_path.get(path, "created"))
         if shown_kind == "text":
             cursor = self._document.textCursor()
@@ -525,12 +583,12 @@ class VirtualDesktop(QWidget):
         self._saved_text = self._document.toPlainText()
         self._incoming_text = ""
         self._save.setEnabled(False)
-        self.set_status("Your changes were saved")
+        self.set_status(t("Your changes were saved"))
 
     def mark_user_save_failed(self, message: str) -> None:
         """Keep unsaved text visible when optimistic concurrency rejects a save."""
         self._save.setEnabled(True)
-        self.set_status(str(message or "Could not save your changes"))
+        self.set_status(str(message or t("Could not save your changes")))
 
     def _document_changed(self) -> None:
         if self._loading_document or not self._active_path:
@@ -538,7 +596,7 @@ class VirtualDesktop(QWidget):
         self._save.setEnabled(self._document.toPlainText() != self._saved_text)
         if self._save.isEnabled():
             self._pointer.hide()
-            self.set_status("You are editing · Ctrl+S to save")
+            self.set_status(t("You are editing · Ctrl+S to save"))
 
     def _show_editor_mode(self) -> None:
         if not self._active_path:
@@ -562,7 +620,7 @@ class VirtualDesktop(QWidget):
         self._preview_source_text = text
         shown = self._preview.show_content(self._active_path, text)
         self._edit_mode.setChecked(shown == "text")
-        self.set_status(f"Previewing {shown}")
+        self.set_status(t("Previewing {kind}").format(kind=shown))
         self._pointer.hide()
 
     def _highlight_agent_changes(self, before: str, after: str, change: str) -> None:
@@ -606,7 +664,7 @@ class VirtualDesktop(QWidget):
         self._document.setTextCursor(cursor)
         if self._typing_index >= len(self._typing_text):
             self._typing_timer.stop()
-            self.set_status("File updated")
+            self.set_status(t("File updated"))
         self._position_pointer_in_editor()
 
     def _position_pointer_in_editor(self) -> None:
@@ -615,7 +673,7 @@ class VirtualDesktop(QWidget):
             return
         caret = self._document.cursorRect()
         target = self._document.mapTo(self._body, caret.topLeft())
-        self._pointer.show_caret(target, "Wisp agent")
+        self._pointer.show_caret(target, t("Wisp agent"))
 
     def resizeEvent(self, event) -> None:  # noqa: N802, ANN001
         super().resizeEvent(event)
@@ -674,7 +732,7 @@ class VirtualWorkspaceWindow(QDialog):
         self._select_after_refresh = ""
 
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        self.setWindowTitle("Wisp Shared Workspace")
+        self.setWindowTitle(t("Wisp Shared Workspace"))
         self.setModal(False)
         enable_standard_window_controls(self)
         self._build_ui()
@@ -783,11 +841,11 @@ class VirtualWorkspaceWindow(QDialog):
         composer_layout.setContentsMargins(13, 10, 13, 11)
         composer_layout.setSpacing(7)
         prompt_row = QHBoxLayout()
-        prompt_label = QLabel("ASK WISP TO WORK IN THESE FILES")
+        prompt_label = QLabel(t("ASK WISP TO WORK IN THESE FILES"))
         prompt_label.setObjectName("eyebrow")
         prompt_row.addWidget(prompt_label)
         prompt_row.addStretch()
-        self._notice = QLabel("Connecting to the isolated session…")
+        self._notice = QLabel(t("Connecting to the isolated session…"))
         self._notice.setObjectName("notice")
         prompt_row.addWidget(self._notice)
         composer_layout.addLayout(prompt_row)
@@ -795,19 +853,19 @@ class VirtualWorkspaceWindow(QDialog):
         self._task = QTextEdit()
         self._task.setAcceptRichText(False)
         self._task.setPlaceholderText(
-            "Example: Create a project folder, write a short README, and add a notes file."
+            t("Example: Create a project folder, write a short README, and add a notes file.")
         )
         self._task.setFixedHeight(68)
         task_row.addWidget(self._task, 1)
         buttons = QVBoxLayout()
-        self._start = QPushButton("Start task")
+        self._start = QPushButton(t("Start task"))
         self._start.setObjectName("primary")
         self._start.setEnabled(False)
         self._start.clicked.connect(self._start_task)
-        self._pause = QPushButton("Pause")
+        self._pause = QPushButton(t("Pause"))
         self._pause.hide()
         self._pause.clicked.connect(lambda: self._control("pause"))
-        self._cancel = QPushButton("Stop")
+        self._cancel = QPushButton(t("Stop"))
         self._cancel.setObjectName("danger")
         self._cancel.hide()
         self._cancel.clicked.connect(self._stop_task)
@@ -823,7 +881,7 @@ class VirtualWorkspaceWindow(QDialog):
         panel.setObjectName("activityPanel")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(12, 12, 12, 12)
-        label = QLabel("ACTIVITY")
+        label = QLabel(t("ACTIVITY"))
         label.setObjectName("eyebrow")
         layout.addWidget(label)
         self._activity = WorkspaceActivityList(newest_first=True)
@@ -864,7 +922,7 @@ class VirtualWorkspaceWindow(QDialog):
 
     def _render(self, state: dict[str, Any]) -> None:
         self._last_state = dict(state)
-        self._connection.setText("● Live")
+        self._connection.setText(t("● Live"))
         entries = [item for item in (state.get("entries") or []) if isinstance(item, dict)]
         changes = state.get("changes") if isinstance(state.get("changes"), dict) else {}
         self._desktop.replace_entries(entries, changes)
@@ -874,7 +932,7 @@ class VirtualWorkspaceWindow(QDialog):
         self._render_operations(list(state.get("operations") or []))
         self._sync_task_controls()
         if not self._task_running and not self._task_stopping:
-            self._notice.setText("Ready for a task")
+            self._notice.setText(t("Ready for a task"))
         cursor_signature = (
             str(cursor.get("path") or ""),
             str(cursor.get("label") or ""),
@@ -901,7 +959,7 @@ class VirtualWorkspaceWindow(QDialog):
             stamp = datetime.fromtimestamp(timestamp).strftime("%H:%M:%S") if timestamp else "--:--:--"
             self._add_activity_item(
                 event_id,
-                f"{stamp}  {operation.get('message') or 'Activity'}",
+                f"{stamp}  {_translate_operation_message(operation.get('message') or t('Activity'))}",
                 detail=json.dumps(operation, indent=2, ensure_ascii=False),
                 kind=str(operation.get("kind") or "activity"),
             )
@@ -953,7 +1011,7 @@ class VirtualWorkspaceWindow(QDialog):
             self._pending_file_animate = False
         try:
             if reply.error() != QNetworkReply.NetworkError.NoError:
-                self._notice.setText(f"Could not open {path}")
+                self._notice.setText(t("Could not open {path}").format(path=path))
                 return
             payload = json.loads(bytes(reply.readAll()).decode("utf-8"))
             if not isinstance(payload, dict) or payload.get("error"):
@@ -969,7 +1027,9 @@ class VirtualWorkspaceWindow(QDialog):
             )
             self._request_check(path)
         except Exception as exc:
-            self._notice.setText(f"Could not open {path}: {exc}")
+            self._notice.setText(
+                t("Could not open {path}: {error}").format(path=path, error=exc)
+            )
         finally:
             reply.deleteLater()
             queued, self._queued_file_request = self._queued_file_request, None
@@ -986,7 +1046,7 @@ class VirtualWorkspaceWindow(QDialog):
     def _save_file(self, path: str, text: str, expected_modified_ns: int) -> None:
         """Save one user edit through the authenticated optimistic bridge."""
         if self._pending_save is not None:
-            self._desktop.mark_user_save_failed("A save is already in progress")
+            self._desktop.mark_user_save_failed(t("A save is already in progress"))
             return
         request = self._request("/api/save")
         request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/json")
@@ -998,7 +1058,7 @@ class VirtualWorkspaceWindow(QDialog):
         reply = self._network.post(request, payload)
         self._pending_save = reply
         reply.finished.connect(lambda current=reply: self._save_finished(current))
-        self._desktop.set_status("Saving your changes…")
+        self._desktop.set_status(t("Saving your changes…"))
 
     def _save_finished(self, reply: QNetworkReply) -> None:
         if reply is self._pending_save:
@@ -1010,19 +1070,22 @@ class VirtualWorkspaceWindow(QDialog):
             if payload.get("error"):
                 raise ValueError(str(payload["error"]))
             self._desktop.mark_user_save_complete(int(payload.get("modified_ns") or 0))
-            self._notice.setText("Your changes are saved and visible to Wisp")
+            self._notice.setText(t("Your changes are saved and visible to Wisp"))
             self.refresh()
         except Exception as exc:
             self._desktop.mark_user_save_failed(str(exc))
             self._notice.setText(str(exc)[:180])
-            self._add_activity_event("conflict", f"Your save was not applied: {exc}")
+            self._add_activity_event(
+                "conflict",
+                t("Your save was not applied: {error}").format(error=exc),
+            )
         finally:
             reply.deleteLater()
 
     def _file_operation(self, action: str, path: str, name: str, kind: str) -> None:
         """Apply a user-requested Explorer operation through the safe bridge."""
         if self._pending_file_operation is not None:
-            self._notice.setText("Another file operation is still finishing")
+            self._notice.setText(t("Another file operation is still finishing"))
             return
         request = self._request("/api/files")
         request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/json")
@@ -1035,7 +1098,12 @@ class VirtualWorkspaceWindow(QDialog):
         reply = self._network.post(request, payload)
         self._pending_file_operation = reply
         reply.finished.connect(lambda current=reply: self._file_operation_finished(current))
-        self._desktop.set_status(f"{str(action or 'Updating').capitalize()}…")
+        operation_label = {
+            "create": t("Creating…"),
+            "rename": t("Renaming…"),
+            "delete": t("Deleting…"),
+        }.get(str(action or ""), t("Updating…"))
+        self._desktop.set_status(operation_label)
 
     def _file_operation_finished(self, reply: QNetworkReply) -> None:
         if reply is self._pending_file_operation:
@@ -1055,19 +1123,21 @@ class VirtualWorkspaceWindow(QDialog):
             elif action == "delete" and path == self._desktop._active_path:
                 self._desktop._document.setReadOnly(True)
                 self._desktop._save.setEnabled(False)
-                self._desktop._editor_title.setText(f"{path} · moved to workspace trash")
+                self._desktop._editor_title.setText(
+                    t("{path} · moved to workspace trash").format(path=path)
+                )
             if action != "delete":
                 self._select_after_refresh = path
             message = {
-                "create": f"Created {path}",
-                "rename": f"Renamed to {path}",
-                "delete": f"Moved {path} to workspace trash",
-            }.get(action, f"Updated {path}")
+                "create": t("Created {path}").format(path=path),
+                "rename": t("Renamed to {path}").format(path=path),
+                "delete": t("Moved {path} to workspace trash").format(path=path),
+            }.get(action, t("Updated {path}").format(path=path))
             self._desktop.set_status(message)
             self._notice.setText(message)
             self.refresh()
         except Exception as exc:
-            self._desktop.set_status("File operation failed")
+            self._desktop.set_status(t("File operation failed"))
             self._notice.setText(str(exc)[:180])
         finally:
             reply.deleteLater()
@@ -1092,7 +1162,7 @@ class VirtualWorkspaceWindow(QDialog):
         """Open Explorer only after an explicit user menu action."""
         target = self._workspace_system_path(relative_path)
         if target is None:
-            self._notice.setText("The workspace folder is not ready yet")
+            self._notice.setText(t("The workspace folder is not ready yet"))
             return
         if sys.platform == "win32":
             if target.is_file():
@@ -1107,10 +1177,12 @@ class VirtualWorkspaceWindow(QDialog):
         """Open a real app only when the user explicitly requests it."""
         target = self._workspace_system_path(relative_path)
         if target is None or not target.is_file():
-            self._notice.setText("That file is no longer available")
+            self._notice.setText(t("That file is no longer available"))
             return
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(target))):
-            self._notice.setText(f"Windows could not open {target.name}")
+            self._notice.setText(
+                t("Windows could not open {name}").format(name=target.name)
+            )
 
     def _request_check(self, path: str) -> None:
         """Automatically validate supported code/data without running it."""
@@ -1134,12 +1206,18 @@ class VirtualWorkspaceWindow(QDialog):
             self._pending_check_path = ""
         try:
             if reply.error() != QNetworkReply.NetworkError.NoError:
-                self._add_activity_event("check", f"Could not check {path}: {reply.errorString()}")
+                self._add_activity_event(
+                    "check",
+                    t("Could not check {path}: {error}").format(
+                        path=path,
+                        error=reply.errorString(),
+                    ),
+                )
                 return
             payload = json.loads(bytes(reply.readAll()).decode("utf-8"))
             if not isinstance(payload, dict) or payload.get("error"):
                 raise ValueError(str((payload or {}).get("error") or "invalid check response"))
-            summary = str(payload.get("summary") or "Check finished")
+            summary = str(payload.get("summary") or t("Check finished"))
             detail = str(payload.get("stderr") or payload.get("stdout") or "").strip()
             message = f"{path}: {summary}"
             if detail:
@@ -1147,7 +1225,10 @@ class VirtualWorkspaceWindow(QDialog):
             self._desktop.set_status(summary)
             self._add_activity_event("check", message)
         except Exception as exc:
-            self._add_activity_event("check", f"Could not check {path}: {exc}")
+            self._add_activity_event(
+                "check",
+                t("Could not check {path}: {error}").format(path=path, error=exc),
+            )
         finally:
             reply.deleteLater()
             queued, self._queued_check_path = self._queued_check_path, ""
@@ -1157,15 +1238,19 @@ class VirtualWorkspaceWindow(QDialog):
     def _start_task(self) -> None:
         objective = self._task.toPlainText().strip()
         if not objective:
-            self._notice.setText("Describe what Wisp should do first.")
+            self._notice.setText(t("Describe what Wisp should do first."))
             self._task.setFocus()
             return
         if len(objective) > _MAX_TASK_CHARS:
-            self._notice.setText(f"Keep the task under {_MAX_TASK_CHARS:,} characters.")
+            self._notice.setText(
+                t("Keep the task under {count} characters.").format(
+                    count=f"{_MAX_TASK_CHARS:,}"
+                )
+            )
             return
         scope = self._scope_folder
         if not scope or self._on_start_task is None:
-            self._notice.setText("The task runner is not connected yet.")
+            self._notice.setText(t("The task runner is not connected yet."))
             return
         if bool(self._last_state.get("paused")):
             self._send_control("resume")
@@ -1179,9 +1264,9 @@ class VirtualWorkspaceWindow(QDialog):
         self._agent_connected = False
         self._wait_notices.clear()
         self._send_control("task_started")
-        self._desktop.set_status("Wisp is starting the task…")
-        self._notice.setText("Task started — changes will appear above")
-        self._add_activity_event("task", "Task submitted to the workspace agent")
+        self._desktop.set_status(t("Wisp is starting the task…"))
+        self._notice.setText(t("Task started — changes will appear above"))
+        self._add_activity_event("task", t("Task submitted to the workspace agent"))
         self._on_start_task(objective, scope)
 
     def set_task_running(self, running: bool) -> None:
@@ -1197,11 +1282,11 @@ class VirtualWorkspaceWindow(QDialog):
         self._pause.setVisible(show_run_controls)
         self._pause.setEnabled(show_run_controls and not self._pause_requested)
         if self._task_paused:
-            self._pause.setText("Resume")
+            self._pause.setText(t("Resume"))
         elif self._pause_requested:
-            self._pause.setText("Pausing…")
+            self._pause.setText(t("Pausing…"))
         else:
-            self._pause.setText("Pause")
+            self._pause.setText(t("Pause"))
         self._cancel.setVisible(show_run_controls)
         self._cancel.setEnabled(show_run_controls)
 
@@ -1230,16 +1315,18 @@ class VirtualWorkspaceWindow(QDialog):
             self._notice.setText(clean[:150])
             return
         if lower.startswith("requesting llm tool response"):
-            self._desktop.set_status("Contacting model")
-            self._notice.setText("Contacting the model…")
+            self._desktop.set_status(t("Contacting model"))
+            self._notice.setText(t("Contacting the model…"))
             self._add_activity_item(
                 self._task_phase_id(f"model-{phase_agent}"),
-                f"{datetime.now().strftime('%H:%M:%S')}  {activity_prefix}Contacting model",
+                f"{datetime.now().strftime('%H:%M:%S')}  {activity_prefix}{t('Contacting model')}",
             )
             return
         if lower.startswith("model call still waiting after "):
             elapsed = clean.split(" after ", 1)[1].split(" via ", 1)[0]
-            message = f"Waiting for first model response · {elapsed}"
+            message = t("Waiting for first model response · {elapsed}").format(
+                elapsed=elapsed
+            )
             self._desktop.set_status(message)
             self._notice.setText(message)
             self._add_activity_item(
@@ -1249,7 +1336,9 @@ class VirtualWorkspaceWindow(QDialog):
             return
         if lower.startswith("model first token after "):
             elapsed = clean.split(" after ", 1)[1].split(" via ", 1)[0]
-            message = f"Model responded · receiving result ({elapsed})"
+            message = t("Model responded · receiving result ({elapsed})").format(
+                elapsed=elapsed
+            )
             self._desktop.set_status(message)
             self._notice.setText(message)
             self._add_activity_item(
@@ -1258,8 +1347,12 @@ class VirtualWorkspaceWindow(QDialog):
             )
             return
         if lower.startswith(("model streaming response:", "model response still streaming after ")):
-            detail = clean.split("(", 1)[-1].rstrip(")") if "(" in clean else "Receiving response"
-            message = f"Receiving model result · {detail}"
+            detail = (
+                clean.split("(", 1)[-1].rstrip(")")
+                if "(" in clean
+                else t("Receiving response")
+            )
+            message = t("Receiving model result · {detail}").format(detail=detail)
             self._desktop.set_status(message)
             self._notice.setText(message)
             self._add_activity_item(
@@ -1271,21 +1364,28 @@ class VirtualWorkspaceWindow(QDialog):
             self._pause_requested = False
             self._task_paused = True
             self._send_control("pause")
-            self._desktop.set_status("Paused — current step finished")
-            self._notice.setText("Paused before the next step")
-            self._add_activity_event("control", "Current step finished; task is now paused")
+            self._desktop.set_status(t("Paused — current step finished"))
+            self._notice.setText(t("Paused before the next step"))
+            self._add_activity_event(
+                "control",
+                t("Current step finished; task is now paused"),
+            )
             self._sync_task_controls()
             return
         if self._task_stopping:
             self._add_activity_event("agent", clean)
             return
         if self._task_paused:
-            self._desktop.set_status("Paused — current step finished")
-            self._notice.setText("Paused before the next step")
+            self._desktop.set_status(t("Paused — current step finished"))
+            self._notice.setText(t("Paused before the next step"))
             self._add_activity_event("agent", clean)
             return
         self._desktop.set_status(clean)
-        self._notice.setText("Finishing the current step before pausing…" if self._pause_requested else clean[:150])
+        self._notice.setText(
+            t("Finishing the current step before pausing…")
+            if self._pause_requested
+            else clean[:150]
+        )
         self._add_activity_event("agent", clean)
 
     def append_agent_trace(self, params: dict[str, Any]) -> bool:
@@ -1326,25 +1426,42 @@ class VirtualWorkspaceWindow(QDialog):
                         or ""
                     ).strip()
             if summary_text:
-                summary = f"{agent} replied: {summary_text}"
+                summary = t("{agent} replied: {summary}").format(
+                    agent=agent,
+                    summary=summary_text,
+                )
             elif complete:
-                summary = f"{agent} reply complete Â· {response_chars:,} characters"
+                summary = t("{agent} reply complete · {count} characters").format(
+                    agent=agent,
+                    count=f"{response_chars:,}",
+                )
             else:
-                summary = f"{agent} reply streaming Â· {response_chars:,} characters"
+                summary = t("{agent} reply streaming · {count} characters").format(
+                    agent=agent,
+                    count=f"{response_chars:,}",
+                )
             self._agent_connected = True
             self._last_agent_event_monotonic = time.monotonic()
             self._desktop.set_status(
-                f"{agent} replied" if complete else f"Receiving {agent}'s reply Â· {response_chars:,} characters"
+                t("{agent} replied").format(agent=agent)
+                if complete
+                else t("Receiving {agent}'s reply · {count} characters").format(
+                    agent=agent,
+                    count=f"{response_chars:,}",
+                )
             )
             self._notice.setText(
-                f"{agent}'s full reply is available in Activity"
+                t("{agent}'s full reply is available in Activity").format(agent=agent)
                 if complete
-                else f"Receiving {agent}'s real replyâ€¦ {response_chars:,} characters"
+                else t("Receiving {agent}'s real reply… {count} characters").format(
+                    agent=agent,
+                    count=f"{response_chars:,}",
+                )
             )
             self._add_activity_item(
                 self._task_phase_id(f"response-{response_id}"),
                 f"{datetime.now().strftime('%H:%M:%S')}  {summary}",
-                detail=content or "(The model returned an empty response.)",
+                detail=content or t("(The model returned an empty response.)"),
                 kind="model reply",
                 status="complete" if complete else "streaming",
             )
@@ -1353,17 +1470,25 @@ class VirtualWorkspaceWindow(QDialog):
             summary = progress.get("summary") if isinstance(progress.get("summary"), dict) else {}
             count = max(0, int(summary.get("count") or 0))
             agent = str(progress.get("agent") or "Wisp").strip()[:80] or "Wisp"
-            headline = str(summary.get("summary") or f"Privacy filter hid {count} item(s)")[:240]
+            headline = str(
+                summary.get("summary")
+                or t("Privacy filter hid {count} item(s)").format(count=count)
+            )[:240]
             details = [
-                f"Agent: {agent}",
-                f"Detector: {str(summary.get('detector') or 'built_in').replace('_', ' ')}",
-                f"Private items hidden: {count}",
+                t("Agent: {agent}").format(agent=agent),
+                t("Detector: {detector}").format(
+                    detector=str(summary.get("detector") or "built_in").replace("_", " ")
+                ),
+                t("Private items hidden: {count}").format(count=count),
             ]
             for category in list(summary.get("categories") or [])[:30]:
                 if not isinstance(category, dict):
                     continue
                 details.append(
-                    f"• {category.get('label') or 'Sensitive data'} × {int(category.get('count') or 0)}"
+                    t("• {label} × {count}").format(
+                        label=category.get("label") or t("Sensitive data"),
+                        count=int(category.get("count") or 0),
+                    )
                 )
                 reason = str(category.get("reason") or "").strip()
                 if reason:
@@ -1374,7 +1499,7 @@ class VirtualWorkspaceWindow(QDialog):
                 if isinstance(field, dict) and field.get("label")
             ]
             if fields:
-                details.append("Hidden from: " + ", ".join(fields))
+                details.append(t("Hidden from: {fields}").format(fields=", ".join(fields)))
             phase_agent = re.sub(r"[^a-z0-9_-]+", "-", agent.casefold()).strip("-") or "wisp"
             self._add_activity_item(
                 self._task_phase_id(f"privacy-{phase_agent}"),
@@ -1395,11 +1520,22 @@ class VirtualWorkspaceWindow(QDialog):
         self._last_agent_event_monotonic = time.monotonic()
         shown = self._desktop.show_live_draft(agent, path, content)
         if shown:
-            self._notice.setText(f"{agent} is drafting {path} · {len(content):,} characters received")
+            self._notice.setText(
+                t("{agent} is drafting {path} · {count} characters received").format(
+                    agent=agent,
+                    path=path,
+                    count=f"{len(content):,}",
+                )
+            )
         phase_agent = re.sub(r"[^a-z0-9_-]+", "-", agent.casefold()).strip("-") or "wisp"
         self._add_activity_item(
             self._task_phase_id(f"draft-{phase_agent}"),
-            f"{datetime.now().strftime('%H:%M:%S')}  {agent}: Drafting {path} · {len(content):,} characters",
+            f"{datetime.now().strftime('%H:%M:%S')}  "
+            + t("{agent}: Drafting {path} · {count} characters").format(
+                agent=agent,
+                path=path,
+                count=f"{len(content):,}",
+            ),
         )
         return True
 
@@ -1426,13 +1562,17 @@ class VirtualWorkspaceWindow(QDialog):
         no_file_output = file_tool_successes is not None and int(file_tool_successes or 0) == 0
         failure = error or (final if incomplete else "")
         if not failure and no_file_output:
-            failure = "No workspace files were created or updated."
-        message = "Task stopped" if stopped else ("Task failed" if failure else "Task complete")
+            failure = t("No workspace files were created or updated.")
+        message = (
+            t("Task stopped")
+            if stopped
+            else (t("Task failed") if failure else t("Task complete"))
+        )
         self._desktop.set_status(message)
         if stopped:
-            self._notice.setText("Stopped. Ready for another task.")
+            self._notice.setText(t("Stopped. Ready for another task."))
         else:
-            self._notice.setText(failure[:150] if failure else "Task complete")
+            self._notice.setText(failure[:150] if failure else t("Task complete"))
         file_tool_failures = int(payload.get("file_tool_failures") or 0)
         run_dir = str(payload.get("run_dir") or "").strip()
         run_log_path = str(payload.get("run_log_path") or "").strip()
@@ -1455,19 +1595,23 @@ class VirtualWorkspaceWindow(QDialog):
                 f"{result.get('tool') or 'file'}: {result.get('message') or '(no detail)'}"
             )
         failure_detail = "\n".join(filter(None, [
-            f"Reason: {diagnostic_reason}" if diagnostic_reason else "",
-            f"Task result: {failure}" if failure and diagnostic_reason != failure else "",
-            f"Successful file operations: {int(file_tool_successes or 0)}",
-            f"Failed file operations: {file_tool_failures}",
+            t("Reason: {reason}").format(reason=diagnostic_reason) if diagnostic_reason else "",
+            t("Task result: {result}").format(result=failure)
+            if failure and diagnostic_reason != failure
+            else "",
+            t("Successful file operations: {count}").format(
+                count=int(file_tool_successes or 0)
+            ),
+            t("Failed file operations: {count}").format(count=file_tool_failures),
             "\n".join(result_lines),
-            f"Full run log: {run_log_path}" if run_log_path else "",
+            t("Full run log: {path}").format(path=run_log_path) if run_log_path else "",
         ]))
         failure_summary = (
-            "Task failed — model connection"
+            t("Task failed — model connection")
             if failure and model_errors and "connection" in diagnostic_reason.casefold()
-            else "Task incomplete — turn limit reached"
+            else t("Task incomplete — turn limit reached")
             if failure and "turn limit" in failure.casefold()
-            else ("Task failed" if failure else message)
+            else (t("Task failed") if failure else message)
         )
         self._add_activity_event(
             "error" if failure and not stopped else "task",
@@ -1488,15 +1632,33 @@ class VirtualWorkspaceWindow(QDialog):
         if self._agent_connected:
             self._desktop.show_waiting(quiet)
             if self._pause_requested:
-                self._notice.setText(f"Finishing the current response before pausing… {quiet}s elapsed")
+                self._notice.setText(
+                    t("Finishing the current response before pausing… {seconds}s elapsed").format(
+                        seconds=quiet
+                    )
+                )
             else:
-                self._notice.setText(f"Waiting for the model response… {quiet}s elapsed")
-            wait_message = f"Model response still pending ({quiet}s; task elapsed {total}s)"
+                self._notice.setText(
+                    t("Waiting for the model response… {seconds}s elapsed").format(
+                        seconds=quiet
+                    )
+                )
+            wait_message = t(
+                "Model response still pending ({quiet}s; task elapsed {total}s)"
+            ).format(quiet=quiet, total=total)
         else:
-            self._desktop.set_status(f"Waiting for task runner · {total}s")
+            self._desktop.set_status(
+                t("Waiting for task runner · {seconds}s").format(seconds=total)
+            )
             self._desktop.pointer.hide()
-            self._notice.setText(f"Waiting for the task runner to connect… {total}s elapsed")
-            wait_message = f"Task runner has not connected yet ({total}s)"
+            self._notice.setText(
+                t("Waiting for the task runner to connect… {seconds}s elapsed").format(
+                    seconds=total
+                )
+            )
+            wait_message = t("Task runner has not connected yet ({seconds}s)").format(
+                seconds=total
+            )
         for threshold in (5, 15, 30, 60, 120, 300):
             if quiet >= threshold and threshold not in self._wait_notices:
                 self._wait_notices.add(threshold)
@@ -1545,7 +1707,7 @@ class VirtualWorkspaceWindow(QDialog):
             return
         match = re.match(r"^(\d{2}:\d{2}:\d{2}|--:--:--)\s{2}(.*)$", str(text or ""), flags=re.DOTALL)
         timestamp = match.group(1) if match else datetime.now().strftime("%H:%M:%S")
-        summary = match.group(2).strip() if match else str(text or "Activity").strip()
+        summary = match.group(2).strip() if match else str(text or t("Activity")).strip()
         item = self._activity.upsert(
             event_id,
             timestamp=timestamp,
@@ -1564,10 +1726,14 @@ class VirtualWorkspaceWindow(QDialog):
 
     def request_agent_approval(self, params: dict[str, Any]) -> bool:
         """Ask for a scoped task approval directly over the virtual desktop."""
-        description = str(params.get("description") or params.get("message") or "Allow this task step?")
+        description = str(
+            params.get("description")
+            or params.get("message")
+            or t("Allow this task step?")
+        )
         answer = QMessageBox.question(
             self,
-            "Wisp task approval",
+            t("Wisp task approval"),
             description[:2_000],
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -1581,17 +1747,20 @@ class VirtualWorkspaceWindow(QDialog):
             self._send_control("resume")
             self._agent_control("resume")
             self._last_agent_event_monotonic = time.monotonic()
-            self._desktop.set_status("Resuming task")
-            self._notice.setText("Resuming…")
-            self._add_activity_event("control", "Task resumed")
+            self._desktop.set_status(t("Resuming task"))
+            self._notice.setText(t("Resuming…"))
+            self._add_activity_event("control", t("Task resumed"))
             self._sync_task_controls()
             return
         if action == "pause" and self._task_running and not self._pause_requested:
             self._pause_requested = True
             self._agent_control("pause")
-            self._desktop.set_status("Pausing after the current step")
-            self._notice.setText("The current step will finish; no new step will begin")
-            self._add_activity_event("control", "Pause requested after the current step")
+            self._desktop.set_status(t("Pausing after the current step"))
+            self._notice.setText(t("The current step will finish; no new step will begin"))
+            self._add_activity_event(
+                "control",
+                t("Pause requested after the current step"),
+            )
             self._sync_task_controls()
 
     def _stop_task(self) -> None:
@@ -1605,9 +1774,12 @@ class VirtualWorkspaceWindow(QDialog):
         self._send_control("pause")
         self._agent_control("cancel")
         self._desktop.pointer.hide()
-        self._desktop.set_status("Task stopped")
-        self._notice.setText("Stopped — Wisp cannot make further changes to this screen")
-        self._add_activity_event("control", "Stop requested; workspace file actions locked")
+        self._desktop.set_status(t("Task stopped"))
+        self._notice.setText(t("Stopped — Wisp cannot make further changes to this screen"))
+        self._add_activity_event(
+            "control",
+            t("Stop requested; workspace file actions locked"),
+        )
         self._sync_task_controls()
 
     def _agent_control(self, action: str) -> None:
@@ -1630,8 +1802,10 @@ class VirtualWorkspaceWindow(QDialog):
             QTimer.singleShot(0, self.refresh)
 
     def _set_offline(self, detail: str) -> None:
-        self._connection.setText("● Offline")
-        self._notice.setText(f"Workspace connection unavailable: {detail}")
+        self._connection.setText(t("● Offline"))
+        self._notice.setText(
+            t("Workspace connection unavailable: {detail}").format(detail=detail)
+        )
         self._desktop.pointer.hide()
         self._start.setEnabled(False)
 

@@ -1,0 +1,3 @@
+# Which letter runs which action.
+c = "add_chart"
+t = "create_table"

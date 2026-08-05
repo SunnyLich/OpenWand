@@ -46,6 +46,63 @@ def test_harness_permission_and_alternate_option_translations(
         app.removeTranslator(translator)
 
 
+@pytest.mark.parametrize(
+    ("language", "title", "start", "waiting"),
+    [
+        (
+            "es",
+            "Espacio de trabajo compartido de Wisp",
+            "Iniciar tarea",
+            "Esperando la respuesta del modelo… 5s transcurridos",
+        ),
+        (
+            "fr",
+            "Espace de travail partagé de Wisp",
+            "Démarrer la tâche",
+            "Attente de la réponse du modèle… 5s écoulées",
+        ),
+        (
+            "zh",
+            "Wisp 共享工作区",
+            "开始任务",
+            "正在等待模型响应… 已用 5 秒",
+        ),
+        (
+            "zh-Hant",
+            "Wisp 共享工作區",
+            "開始工作",
+            "正在等待模型回應… 已經過 5 秒",
+        ),
+    ],
+)
+def test_shared_workspace_runtime_catalogs_are_compiled(
+    language: str,
+    title: str,
+    start: str,
+    waiting: str,
+) -> None:
+    """The new window's static and formatted text is available in shipped QM files."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QCoreApplication, QTranslator
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    translator = QTranslator()
+    catalog = Path(__file__).parents[1] / "ui" / "locales" / "qt" / f"wisp_{language}.qm"
+    assert translator.load(str(catalog))
+    app.installTranslator(translator)
+    try:
+        assert QCoreApplication.translate("Wisp", "Wisp Shared Workspace") == title
+        assert QCoreApplication.translate("Wisp", "Start task") == start
+        template = QCoreApplication.translate(
+            "Wisp",
+            "Waiting for the model response… {seconds}s elapsed",
+        )
+        assert template.format(seconds=5) == waiting
+    finally:
+        app.removeTranslator(translator)
+
+
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_codex_controls_save_provider_specific_values(monkeypatch) -> None:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

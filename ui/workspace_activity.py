@@ -16,10 +16,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.i18n import t
+
 MAX_ACTIVITY_ID = 160
 MAX_SUMMARY_CHARS = 2_000
 MAX_DETAIL_CHARS = 200_000
 MAX_META_CHARS = 80
+
+_ACTIVITY_KIND_SOURCES = {
+    "user_file": "user file",
+}
 
 
 def _bounded(value: object, limit: int) -> str:
@@ -169,11 +175,13 @@ class WorkspaceActivityItem(QFrame):
         status: str = "",
     ) -> None:
         """Replace display data without changing the stable id or open state."""
-        summary_text = _bounded(summary, MAX_SUMMARY_CHARS) or "Activity"
+        summary_text = _bounded(summary, MAX_SUMMARY_CHARS) or t("Activity")
         detail_text = _bounded(detail, MAX_DETAIL_CHARS)
         timestamp_text = _bounded(timestamp, MAX_META_CHARS)
-        kind_text = _bounded(kind, MAX_META_CHARS) or "info"
-        status_text = _bounded(status, MAX_META_CHARS)
+        raw_kind = _bounded(kind, MAX_META_CHARS) or "info"
+        raw_status = _bounded(status, MAX_META_CHARS)
+        kind_text = t(_ACTIVITY_KIND_SOURCES.get(raw_kind, raw_kind))
+        status_text = t(raw_status)
 
         self.header.summary_label.setText(summary_text)
         self.header.timestamp_label.setText(timestamp_text)
@@ -182,8 +190,8 @@ class WorkspaceActivityItem(QFrame):
         self.header.status_label.setText(status_text)
         self.header.status_label.setVisible(bool(status_text))
         self.detail_label.setText(detail_text or summary_text)
-        self.setProperty("activityKind", kind_text.casefold())
-        self.setProperty("activityStatus", status_text.casefold())
+        self.setProperty("activityKind", raw_kind.casefold())
+        self.setProperty("activityStatus", raw_status.casefold())
         self.header.setAccessibleName(" ".join(filter(None, (timestamp_text, kind_text, status_text, summary_text))))
         self._refresh_style()
 

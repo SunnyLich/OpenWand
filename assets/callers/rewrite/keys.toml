@@ -1,0 +1,4 @@
+# Which letter runs which action.
+w = "fix_grammar"
+a = "simplify"
+d = "improve_tone"

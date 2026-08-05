@@ -1,0 +1,4 @@
+# Built-in: polish the selected text for clarity, then paste it back.
+
+template = "rewrite.improve_tone"
+access = ["text"]

@@ -1,0 +1,4 @@
+# Built-in: explain the selection with no jargon at all.
+
+template = "general.explain_simply"
+access = ["text"]

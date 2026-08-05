@@ -1,0 +1,4 @@
+# Built-in: make the selected text easier to read, then paste it back.
+
+template = "rewrite.simplify"
+access = ["text"]

@@ -1,0 +1,8 @@
+# Turn one range in the active worksheet into a named Excel table.
+
+label = "Clean up this table"
+hint = "Turn the selected cells into a named Excel table"
+prompt = "Format the selected cells as a clean Excel table."
+capability = "excel.create_table@1"
+planner = "excel_plan_create_table"
+access = ["files"]

@@ -1,0 +1,4 @@
+# Built-in: correct spelling and grammar, then paste the result back.
+
+template = "rewrite.fix_grammar"
+access = ["text"]

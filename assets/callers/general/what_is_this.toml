@@ -1,0 +1,8 @@
+# Built-in: a short plain-language explanation of whatever is selected.
+#
+# Label, hint and prompt all come from the shared intent template, so this
+# action stays translated in every assistant language. Set your own label,
+# hint or prompt below and yours wins over the template.
+
+template = "general.what_is_this"
+access = ["text"]

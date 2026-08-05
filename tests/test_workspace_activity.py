@@ -7,7 +7,13 @@ pytest.importorskip("PySide6", reason="PySide6 not installed")
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 
-from ui.workspace_activity import WISP_ACTIVITY_STYLE, WorkspaceActivityItem, WorkspaceActivityList
+from ui import virtual_workspace_window as workspace_window_mod
+from ui import workspace_activity as activity_mod
+from ui.workspace_activity import (
+    WISP_ACTIVITY_STYLE,
+    WorkspaceActivityItem,
+    WorkspaceActivityList,
+)
 
 
 def test_activity_is_compact_and_detail_is_hidden_initially(qapp) -> None:
@@ -63,6 +69,40 @@ def test_upsert_updates_same_item_and_preserves_expansion(qapp) -> None:
     assert updated.detail == "response"
     assert updated.property("activityStatus") == "complete"
     feed.deleteLater()
+
+
+def test_activity_translates_metadata_but_preserves_style_properties(qapp, monkeypatch) -> None:
+    translations = {"model reply": "réponse du modèle", "complete": "terminé"}
+    monkeypatch.setattr(activity_mod, "t", lambda text: translations.get(text, text))
+    item = WorkspaceActivityItem(
+        "translated",
+        summary="Runtime summary",
+        kind="model reply",
+        status="complete",
+    )
+    assert item.header.kind_label.text() == "réponse du modèle"
+    assert item.header.status_label.text() == "terminé"
+    assert item.property("activityKind") == "model reply"
+    assert item.property("activityStatus") == "complete"
+    item.deleteLater()
+
+
+def test_workspace_journal_messages_translate_known_templates(monkeypatch) -> None:
+    translations = {
+        "You renamed {old} to {new}": "RENAMED {old} TO {new}",
+        "Workspace started": "STARTED",
+    }
+    monkeypatch.setattr(
+        workspace_window_mod,
+        "t",
+        lambda text: translations.get(text, text),
+    )
+    assert workspace_window_mod._translate_operation_message("Workspace started") == "STARTED"
+    assert (
+        workspace_window_mod._translate_operation_message("You renamed old.txt to new.txt")
+        == "RENAMED old.txt TO new.txt"
+    )
+    assert workspace_window_mod._translate_operation_message("Custom runtime detail") == "Custom runtime detail"
 
 
 def test_newest_entries_are_visually_first(qapp) -> None:

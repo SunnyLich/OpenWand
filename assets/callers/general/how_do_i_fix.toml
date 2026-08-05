@@ -1,0 +1,4 @@
+# Built-in: name the error, then give steps that can be followed right now.
+
+template = "general.how_do_i_fix"
+access = ["text"]

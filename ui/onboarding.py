@@ -631,7 +631,7 @@ class OnboardingWizard(QDialog):
             t("Local speech recognition — Whisper (installer opens after setup)"),
             "local",
         )
-        self._stt.addItem("Cloudflare Whisper — configure in Settings", "cloud")
+        self._stt.addItem(t("Cloudflare Whisper — configure in Settings"), "cloud")
         layout.addWidget(tts_label)
         layout.addWidget(self._tts)
         layout.addWidget(stt_label)
