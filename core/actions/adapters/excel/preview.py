@@ -5,7 +5,8 @@ from __future__ import annotations
 from html import escape
 from typing import Any
 
-from core.actions.adapters.excel.capabilities import ADD_CHART, CREATE_TABLE
+from core.actions.adapters.excel.capabilities import ADD_CHART, CLEAN_RANGE, CREATE_TABLE, SORT_RANGE
+from core.actions.adapters.excel.plans import sorted_excel_values
 from core.actions.adapters.excel.snapshot import PREVIEW_COLUMNS, PREVIEW_ROWS, ExcelSnapshot
 from core.actions.contracts import ActionPlan, ActionPreview
 from core.actions.preview_templates import canvas_preview, chips, focus_field, focus_preview
@@ -19,12 +20,29 @@ def render_excel_preview(plan: ActionPlan, snapshot: ExcelSnapshot) -> ActionPre
             label = f"Create table {operation.args['name']} from {operation.args['range']}"
         elif operation.type == ADD_CHART:
             label = f"Add {operation.args['kind']} chart {operation.args['name']}"
+        elif operation.type == SORT_RANGE:
+            label = (
+                f"Sort complete rows by {operation.args['column_header']} "
+                f"({operation.args['direction']})"
+            )
+        elif operation.type == CLEAN_RANGE:
+            label = f"Apply {len(operation.args['changes'])} exact cell replacements"
         else:
             label = operation.type
         detail_rows.append({"operation_id": operation.id, "type": operation.type, "label": label})
 
+    sort_operation = next((operation for operation in plan.operations if operation.type == SORT_RANGE), None)
+    displayed_values = (
+        sorted_excel_values(
+            snapshot,
+            column_header=str(sort_operation.args["column_header"]),
+            direction=str(sort_operation.args["direction"]),
+        )
+        if sort_operation is not None
+        else snapshot.values
+    )
     table_rows = []
-    for row in snapshot.preview_values:
+    for row in displayed_values[:PREVIEW_ROWS]:
         cells = "".join(f"<td>{escape(_display_cell(value))}</td>" for value in row)
         table_rows.append(f"<tr>{cells}</tr>")
     truncation = ""
@@ -36,7 +54,32 @@ def render_excel_preview(plan: ActionPlan, snapshot: ExcelSnapshot) -> ActionPre
 
     table_html = f'<div class="table-wrap"><table><tbody>{"".join(table_rows)}</tbody></table></div>{truncation}'
     chart_operation = next((operation for operation in plan.operations if operation.type == ADD_CHART), None)
-    if chart_operation is not None:
+    cleanup_operation = next((operation for operation in plan.operations if operation.type == CLEAN_RANGE), None)
+    if sort_operation is not None:
+        html = canvas_preview(
+            app="Microsoft Excel",
+            target=f"{plan.target.display_name} - {snapshot.selection_address}",
+            title=plan.summary,
+            hero_html=f'<h3>Proposed order</h3>{table_html}',
+            chips_html=chips(
+                (
+                    f"{snapshot.row_count - 1} complete rows",
+                    f"Sort by {str(sort_operation.args['column_header'])}",
+                    str(sort_operation.args["direction"]).title(),
+                )
+            ),
+            body_html=(
+                '<div class="action-change-list">'
+                '<div class="action-change-item"><span class="action-change-mark">&#10003;</span>'
+                '<div class="action-change-copy"><div class="action-change-title">'
+                'Every selected row stays intact; only the reviewed row order changes.'
+                "</div></div></div></div>"
+            ),
+            badge="XL",
+        )
+    elif cleanup_operation is not None:
+        html = _cleanup_preview(plan, snapshot, cleanup_operation.args["changes"])
+    elif chart_operation is not None:
         html = focus_preview(
             app="Microsoft Excel",
             target=f"{plan.target.display_name} · {snapshot.selection_address}",
@@ -74,8 +117,64 @@ def render_excel_preview(plan: ActionPlan, snapshot: ExcelSnapshot) -> ActionPre
         summary=plan.summary,
         html=html,
         details=tuple(detail_rows),
-        warnings=("Creating the table cannot yet be completely undone by Wisp.",),
+        warnings=(
+            (
+                "Wisp restores the captured range if verification fails. Excel does not add "
+                "automation writes to its normal Undo history after a successful Apply."
+            )
+            if cleanup_operation is not None
+            else (
+                "Wisp restores the captured range if sort verification fails. Excel may not retain an Undo item."
+                if sort_operation is not None
+                else "Creating the table cannot yet be completely undone by Wisp."
+            ),
+        ),
     )
+
+
+def _cleanup_preview(plan: ActionPlan, snapshot: ExcelSnapshot, changes: Any) -> str:
+    rows = "".join(
+        "<tr>"
+        f"<td>{escape(_cell_label(snapshot.selection_address, item['row_offset'], item['column_offset']))}</td>"
+        f"<td>{escape(_display_cell(item['before_value']))}</td>"
+        f"<td>{escape(_display_cell(item['after_value']))}</td>"
+        f"<td>{escape(str(item['after_kind']).title())}</td>"
+        "</tr>"
+        for item in changes
+    )
+    table = (
+        '<div class="table-wrap"><table><thead><tr><th>Cell</th><th>Before</th>'
+        f"<th>After</th><th>Content</th></tr></thead><tbody>{rows}</tbody></table></div>"
+    )
+    return canvas_preview(
+        app="Microsoft Excel",
+        target=f"{plan.target.display_name} - {snapshot.selection_address}",
+        title=plan.summary,
+        hero_html=table,
+        chips_html=chips((f"{len(changes)} exact cells", "Reviewed values", "Verified rollback")),
+        body_html=(
+            '<div class="action-change-list"><div class="action-change-item">'
+            '<span class="action-change-mark">&#10003;</span><div class="action-change-copy">'
+            '<div class="action-change-title">Every other selected value and formula stays unchanged.'
+            "</div></div></div></div>"
+        ),
+        badge="XL",
+    )
+
+
+def _cell_label(address: str, row_offset: int, column_offset: int) -> str:
+    match = __import__("re").match(r"\$?([A-Za-z]+)\$?(\d+)", address)
+    if match is None:
+        return f"row {row_offset + 1}, column {column_offset + 1}"
+    column = 0
+    for character in match.group(1).upper():
+        column = column * 26 + ord(character) - 64
+    column += column_offset
+    label = ""
+    while column:
+        column, remainder = divmod(column - 1, 26)
+        label = chr(65 + remainder) + label
+    return f"{label}{int(match.group(2)) + row_offset}"
 
 
 def _display_cell(value: Any) -> str:

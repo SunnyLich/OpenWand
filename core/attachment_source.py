@@ -4,15 +4,24 @@ from __future__ import annotations
 from pathlib import Path
 
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".tif"})
+DOCUMENT_SUFFIXES = frozenset(
+    {
+        ".doc", ".docx", ".docm",
+        ".ppt", ".pps", ".pot", ".pptx", ".pptm", ".ppsx", ".ppsm",
+        ".xls", ".xlsx", ".xlsm", ".xlsb",
+        ".odt", ".ods", ".odp",
+        ".rtf", ".epub", ".csv", ".pdf",
+    }
+)
 CONTEXT_SUFFIXES = frozenset(
     IMAGE_SUFFIXES
+    | DOCUMENT_SUFFIXES
     | {
         ".txt", ".md", ".py", ".js", ".ts", ".jsx", ".tsx", ".json",
-        ".yaml", ".yml", ".csv", ".html", ".htm", ".css", ".xml",
+        ".yaml", ".yml", ".html", ".htm", ".css", ".xml",
         ".sh", ".bat", ".ps1", ".c", ".cpp", ".h", ".java", ".rs",
         ".go", ".rb", ".php", ".sql", ".toml", ".ini", ".cfg",
-        ".conf", ".log", ".docx", ".pdf", ".xlsx", ".xls", ".pptx",
-        ".odt", ".ods", ".odp",
+        ".conf", ".log",
     }
 )
 

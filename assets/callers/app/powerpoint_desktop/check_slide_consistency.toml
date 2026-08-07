@@ -1,0 +1,4 @@
+label = "Check consistency across slides"
+hint = "Find conflicting terminology, numbers, claims, and conventions"
+prompt = "Check this presentation for consistency across slides. Find conflicting terminology, repeated concepts with different names, mismatched numbers or dates, inconsistent claims, unexplained acronym changes, and structural conventions that drift. Cite the affected slides when possible and recommend corrections without changing the presentation."
+access = ["text"]

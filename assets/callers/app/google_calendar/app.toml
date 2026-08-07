@@ -1,0 +1,7 @@
+display_name = "Google Calendar"
+app = "calendar"
+priority = 70
+
+[match]
+url = ["calendar.google.com"]
+title = ["google calendar"]

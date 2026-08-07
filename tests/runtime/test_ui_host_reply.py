@@ -1410,6 +1410,41 @@ def test_chat_stream_preserves_progress_without_flattening_into_answer() -> None
     ]
 
 
+def test_chat_stream_preserves_local_work_monitor_events() -> None:
+    """Live file activity stays structured until the chat UI creates its link."""
+    from runtime.workers.ui_host import QtProtocolHost
+
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host._active_conversation_idx = None
+    host._all_conversations = []
+    host._chat_request_ids = iter([1])
+    host._chat_streams = {}
+    import threading
+
+    host._chat_streams_lock = threading.Lock()
+    local_work = {
+        "tool": "read_file",
+        "path": "C:/repo/notes.txt",
+        "relative_path": "notes.txt",
+        "phase": "started",
+    }
+
+    def emit(_event, payload):
+        request_id = payload["request_id"]
+        host._chat_chunk(request_id=request_id, local_work=local_work)
+        host._chat_chunk(request_id=request_id, text="Answer.")
+        host._chat_done(request_id=request_id, text="Answer.")
+
+    host.emit = emit  # type: ignore[method-assign]
+
+    result = list(host._make_chat_send_fn()([{"role": "user", "content": "hi"}]))
+
+    assert result == [
+        {"type": "chunk", "text": "", "local_work": local_work},
+        "Answer.",
+    ]
+
+
 def test_live_file_approval_shows_chat_and_bubble() -> None:
     """Verify live file approvals render in chat and bubble together."""
     from runtime.workers.ui_host import QtProtocolHost

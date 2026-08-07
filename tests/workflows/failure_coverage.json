@@ -4403,7 +4403,7 @@
         "tests/runtime/test_hotkey_tap_matching.py::test_parse_combo_rejects_bare_key"
       ],
       "function_workflow_node_ids": [
-        "tests/runtime/test_flows.py::test_long_action_stage_gets_an_exact_heads_up"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ]
     },
     {
@@ -4419,7 +4419,7 @@
         "tests/test_settings_dialog_controls.py::test_settings_reports_secondary_shortcut_conflicts_only_when_saving"
       ],
       "function_workflow_node_ids": [
-        "tests/runtime/test_flows.py::test_long_action_stage_gets_an_exact_heads_up"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ]
     },
     {
@@ -4435,7 +4435,7 @@
         "tests/runtime/test_hotkey_helper_lifecycle.py::test_direct_hotkey_start_reports_os_hook_rejection"
       ],
       "function_workflow_node_ids": [
-        "tests/runtime/test_flows.py::test_long_action_stage_gets_an_exact_heads_up"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ]
     },
     {
@@ -4451,7 +4451,7 @@
         "tests/runtime/test_hotkey_tap_swallow.py::test_hotkey_tap_reports_input_monitoring_permission_failure"
       ],
       "function_workflow_node_ids": [
-        "tests/runtime/test_flows.py::test_long_action_stage_gets_an_exact_heads_up"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ]
     },
     {
@@ -4467,7 +4467,7 @@
         "tests/runtime/test_hotkey_tap_swallow.py::test_falls_back_to_listen_only_when_active_tap_unavailable"
       ],
       "function_workflow_node_ids": [
-        "tests/runtime/test_flows.py::test_long_action_stage_gets_an_exact_heads_up"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ]
     },
     {
@@ -4483,7 +4483,7 @@
         "tests/runtime/test_hotkey_tap_swallow.py::test_active_tap_swallows_matched_keydown"
       ],
       "function_workflow_node_ids": [
-        "tests/runtime/test_flows.py::test_long_action_stage_gets_an_exact_heads_up"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ]
     },
     {
@@ -4499,7 +4499,7 @@
         "tests/test_overlay_bubble_visibility.py::test_bubble_chunk_restores_hidden_icon"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_message_position_action_matrix"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ]
     },
     {
@@ -4516,7 +4516,7 @@
         "tests/test_settings_dialog_controls.py::test_hidden_settings_dialog_is_replaced_without_clearing_new_one"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_message_position_action_matrix"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ]
     },
     {
@@ -4532,7 +4532,7 @@
         "tests/test_overlay_bubble_visibility.py::test_wayland_icon_uses_compositor_move_and_press_menu"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_message_position_action_matrix"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ]
     },
     {
@@ -4548,7 +4548,7 @@
         "tests/test_window_chrome.py::test_shared_qt_surface_geometry_destruction_and_wm_rejection_contract"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_message_position_action_matrix"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ]
     },
     {
@@ -4564,7 +4564,7 @@
         "tests/test_window_chrome.py::test_shared_qt_surface_geometry_destruction_and_wm_rejection_contract"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_message_position_action_matrix"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ]
     },
     {
@@ -4580,7 +4580,7 @@
         "tests/runtime/test_supervisor_ipc.py::test_ui_worker_freeze_watchdog_writes_log"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_message_position_action_matrix"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ]
     },
     {
@@ -4596,7 +4596,7 @@
         "tests/test_window_chrome.py::test_shared_qt_surface_geometry_destruction_and_wm_rejection_contract"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_message_position_action_matrix"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ]
     },
     {
@@ -9294,7 +9294,7 @@
         "tests/integration/brain/test_handler_context.py::test_active_document_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_document_context_contract.py::test_text_and_csv_document_readers"
+        "tests/test_context_input_safety.py::test_anydoc_supported_extensions_route_as_document_paths"
       ]
     },
     {
@@ -9310,7 +9310,7 @@
         "tests/integration/brain/test_handler_context.py::test_active_document_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_document_context_contract.py::test_text_and_csv_document_readers"
+        "tests/test_context_input_safety.py::test_anydoc_supported_extensions_route_as_document_paths"
       ]
     },
     {
@@ -9326,7 +9326,7 @@
         "tests/integration/brain/test_handler_context.py::test_active_document_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_document_context_contract.py::test_text_and_csv_document_readers"
+        "tests/test_context_input_safety.py::test_anydoc_supported_extensions_route_as_document_paths"
       ]
     },
     {
@@ -9342,7 +9342,7 @@
         "tests/integration/brain/test_handler_context.py::test_active_document_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_document_context_contract.py::test_text_and_csv_document_readers"
+        "tests/test_context_input_safety.py::test_anydoc_supported_extensions_route_as_document_paths"
       ]
     },
     {
@@ -9358,7 +9358,7 @@
         "tests/integration/brain/test_handler_context.py::test_active_document_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_document_context_contract.py::test_text_and_csv_document_readers"
+        "tests/test_context_input_safety.py::test_anydoc_supported_extensions_route_as_document_paths"
       ]
     },
     {
@@ -9374,7 +9374,7 @@
         "tests/integration/brain/test_handler_context.py::test_active_document_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_document_context_contract.py::test_text_and_csv_document_readers"
+        "tests/test_context_input_safety.py::test_anydoc_supported_extensions_route_as_document_paths"
       ]
     },
     {
@@ -37100,7 +37100,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
+        "tests/runtime/test_flows.py::test_web_document_answer_action_attaches_browser_content"
       ]
     },
     {
@@ -37116,7 +37116,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
+        "tests/runtime/test_flows.py::test_web_document_answer_action_attaches_browser_content"
       ]
     },
     {
@@ -37132,7 +37132,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
+        "tests/runtime/test_flows.py::test_web_document_answer_action_attaches_browser_content"
       ]
     },
     {
@@ -37148,7 +37148,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
+        "tests/runtime/test_flows.py::test_web_document_answer_action_attaches_browser_content"
       ]
     },
     {
@@ -37164,7 +37164,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
+        "tests/runtime/test_flows.py::test_web_document_answer_action_attaches_browser_content"
       ]
     },
     {
@@ -37180,7 +37180,7 @@
         "tests/test_builtin_model_tools.py::BuiltinModelToolsTests::test_web_context_failure_matrix_is_controlled"
       ],
       "function_workflow_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
+        "tests/runtime/test_flows.py::test_web_document_answer_action_attaches_browser_content"
       ]
     },
     {

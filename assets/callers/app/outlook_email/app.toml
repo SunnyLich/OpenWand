@@ -1,0 +1,9 @@
+display_name = "Outlook"
+app = "email"
+priority = 60
+
+[match]
+process = ["outlook.exe", "outlook", "olk.exe", "olk", "newoutlook.exe", "ms-outlook"]
+bundle = ["com.microsoft.outlook"]
+url = ["outlook.cloud.microsoft", "outlook.office.com", "outlook.office365.com", "outlook.live.com"]
+title = ["microsoft 365 mail"]

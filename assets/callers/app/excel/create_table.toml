@@ -5,4 +5,5 @@ hint = "Turn the selected cells into a named Excel table"
 prompt = "Format the selected cells as a clean Excel table."
 capability = "excel.create_table@1"
 planner = "excel_plan_create_table"
+show_in_picker = false
 access = ["files"]

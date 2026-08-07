@@ -136,25 +136,44 @@ def _runtime_output_dir() -> Path:
     return out
 
 
-def _record_file_context(events: list[dict[str, Any]]) -> Callable[[dict], None]:
-    """Return a callback that stores compact local-file tool metadata."""
+def _record_file_context(
+    events: list[dict[str, Any]],
+    activity_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> Callable[[dict], None]:
+    """Store completed file metadata while forwarding live activity."""
     def record(event: dict) -> None:
         """Record one local-file tool event."""
         if not isinstance(event, dict):
             return
+        phase = str(event.get("phase") or "completed").strip().lower()
         item = {
             "tool": str(event.get("tool") or ""),
             "path": str(event.get("path") or ""),
             "relative_path": str(event.get("relative_path") or ""),
             "root": str(event.get("root") or ""),
-            "ok": bool(event.get("ok")),
-            "message": str(event.get("message") or ""),
+            "phase": phase,
         }
         if not item["tool"] or not item["path"]:
             return
-        if item not in events:
-            events.append(item)
+        if phase != "started":
+            stored = {
+                **item,
+                "ok": bool(event.get("ok")),
+                "message": str(event.get("message") or ""),
+            }
+            stored.pop("phase", None)
+            if stored not in events:
+                events.append(stored)
         del events[:-20]
+        if activity_callback is not None:
+            activity = dict(item)
+            if phase != "started":
+                activity["ok"] = bool(event.get("ok"))
+                activity["message"] = str(event.get("message") or "")
+            try:
+                activity_callback(activity)
+            except Exception:
+                pass
 
     return record
 
@@ -821,6 +840,27 @@ def brain_addons_run_action(addon_id: str = "", label: str = "") -> dict[str, An
     return result
 
 
+@handler("brain.addons.run_intent")
+def brain_addons_run_intent(
+    addon_id: str = "",
+    action_id: str = "",
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run one declared addon intent inside its existing isolated host."""
+    addon_id = str(addon_id or "").strip()
+    action_id = str(action_id or "").strip()
+    if not addon_id:
+        raise ValueError("addon_id is required")
+    if not action_id:
+        raise ValueError("action_id is required")
+    run_addon_startup()
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    result = manager.run_intent(addon_id, action_id, payload or {})
+    return result if isinstance(result, dict) else {}
+
+
 @handler("brain.addons.set_enabled")
 def brain_addons_set_enabled(addon_id: str = "", enabled: bool = True) -> dict[str, Any]:
     """Enable or disable a loaded addon; persists to addons.json and applies live."""
@@ -833,6 +873,27 @@ def brain_addons_set_enabled(addon_id: str = "", enabled: bool = True) -> dict[s
     state = manager.set_enabled(addon_id, bool(enabled))
     _publish_addon_change("enabled" if state else "disabled", addon_id)
     return {"ok": True, "id": addon_id, "enabled": bool(state)}
+
+
+@handler("brain.addons.set_action_enabled")
+def brain_addons_set_action_enabled(
+    addon_id: str = "",
+    action_id: str = "",
+    enabled: bool = True,
+) -> dict[str, Any]:
+    """Persist and live-apply one declarative addon action toggle."""
+    addon_id = str(addon_id or "").strip()
+    action_id = str(action_id or "").strip()
+    if not addon_id:
+        raise ValueError("addon_id is required")
+    if not action_id:
+        raise ValueError("action_id is required")
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    state = manager.set_action_enabled(addon_id, action_id, bool(enabled))
+    _publish_addon_change("action_changed", addon_id)
+    return {"ok": True, "id": addon_id, "action_id": action_id, "enabled": bool(state)}
 
 
 @handler("brain.addons.set_setting")
@@ -2295,12 +2356,18 @@ def _addon_text_annotations(text: str, *, surface: str) -> list[dict[str, Any]]:
 
 
 @handler("brain.context.active_document")
-def brain_context_active_document(active_window: dict[str, Any] | None = None) -> dict[str, Any]:
+def brain_context_active_document(
+    active_window: dict[str, Any] | None = None,
+    active_only: bool = False,
+) -> dict[str, Any]:
     """Return active/open document text through the shared context reader."""
     try:
         from core.llm_clients.client import read_active_document_for_context_with_debug
 
-        text, debug = read_active_document_for_context_with_debug(active_window=active_window)
+        text, debug = read_active_document_for_context_with_debug(
+            active_window=active_window,
+            active_only=bool(active_only),
+        )
         if text.startswith(("Could not", "File type", "Failed to")):
             text = ""
         return {"text": text, "debug": debug}
@@ -2355,7 +2422,14 @@ def _stream_query_reply(
         """Run the existing single-response query stream."""
         llm_client.set_live_file_access_mode(file_access_mode or None)
         llm_client.set_live_file_approval_callback(_live_file_approval_callback(ctx) if ctx is not None else None)
-        llm_client.set_live_file_event_callback(_record_file_context(file_context) if file_context is not None else None)
+        llm_client.set_live_file_event_callback(
+            _record_file_context(
+                file_context,
+                (lambda event: ctx.emit("live_file.activity", event)) if ctx is not None else None,
+            )
+            if file_context is not None
+            else None
+        )
         if privacy_session is not None:
             from core.privacy_gateway import ai_detection_enabled, review_enabled
 
@@ -2953,7 +3027,14 @@ def _stream_chat_reply(
 
     llm_client.set_live_file_access_mode(file_access_mode or None)
     llm_client.set_live_file_approval_callback(_live_file_approval_callback(ctx) if ctx is not None else None)
-    llm_client.set_live_file_event_callback(_record_file_context(file_context) if file_context is not None else None)
+    llm_client.set_live_file_event_callback(
+        _record_file_context(
+            file_context,
+            (lambda event: ctx.emit("live_file.activity", event)) if ctx is not None else None,
+        )
+        if file_context is not None
+        else None
+    )
     llm_client.set_live_background_task_event_callback(
         (lambda payload: ctx.emit("background_task.started", payload)) if ctx is not None else None
     )

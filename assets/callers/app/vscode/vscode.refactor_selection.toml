@@ -1,0 +1,6 @@
+label = "Refactor selection"
+hint = "Improve the selected code without changing its intent"
+prompt = "Refactor and improve the selected code without changing its intended behavior."
+capability = "vscode.replace_selection@1"
+planner = "vscode_plan_replace_selection"
+access = ["files"]

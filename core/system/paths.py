@@ -108,6 +108,7 @@ USER_DATA_DIR = _user_data_dir()   # stable across repo/dev and packaged launche
 
 ASSETS_DIR       = _BUNDLE / "assets"
 DOLL_ASSETS_DIR  = ASSETS_DIR / "doll"
+SHIPPED_CALLERS_DIR = ASSETS_DIR / "callers"
 BUNDLED_ADDONS_DIR = _BUNDLE / "addons"
 UPDATE_DOWNLOAD_DIR = _user_data_dir() / "updates"
 
@@ -120,6 +121,7 @@ MEMORY_DIR        = REPO_ROOT / "memory"
 AGENT_RUNS_DIR    = MEMORY_DIR / "agent_runs"
 # Persisted chat history + project definitions (user-writable, gitignored).
 CHATS_DIR         = REPO_ROOT / "chats"
+CALLERS_DIR       = REPO_ROOT / "callers"
 PROJECTS_FILE     = CHATS_DIR / "projects.json"
 CONVERSATIONS_FILE = CHATS_DIR / "conversations.json"
 CHAT_ATTACHMENTS_DIR = CHATS_DIR / "attachments"

@@ -27,11 +27,48 @@ def test_post_submit_surfaces_show_without_taking_focus(monkeypatch):
         show_without_activating = Qt.WidgetAttribute.WA_ShowWithoutActivating
         assert overlay.testAttribute(show_without_activating)
         assert overlay._icon_label.testAttribute(show_without_activating)
+        assert overlay._rewrite_batch_button.testAttribute(show_without_activating)
         assert overlay._provider_badge.testAttribute(show_without_activating)
         assert overlay._bubble.testAttribute(show_without_activating)
     finally:
         overlay._bubble.clear()
         overlay._provider_badge.close()
+        overlay._icon_label.close()
+        overlay.close()
+        app.processEvents()
+
+
+def test_held_rewrite_button_appears_above_icon_and_sends_all(monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    import config
+    from ui.overlay import IconOverlay, OverlaySignals
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    monkeypatch.setattr(IconOverlay, "_pin_overlay_windows", lambda self: None)
+    monkeypatch.setattr(config, "ICON_AUTO_HIDE", True)
+    signals = OverlaySignals()
+    sent: list[bool] = []
+    signals.rewrite_send_all.connect(lambda: sent.append(True))
+    overlay = IconOverlay(signals)
+
+    try:
+        overlay.set_held_rewrite_count(2)
+        app.processEvents()
+
+        assert overlay._icon_label.isVisible()
+        assert overlay._rewrite_batch_button.isVisible()
+        assert overlay._rewrite_batch_button.text() == "Send all comments (2)"
+        assert overlay._rewrite_batch_button.y() < overlay._icon_label.y()
+        overlay._rewrite_batch_button.click()
+        assert sent == [True]
+
+        overlay.set_held_rewrite_count(0)
+        app.processEvents()
+        assert not overlay._rewrite_batch_button.isVisible()
+    finally:
+        overlay._bubble.clear()
         overlay._icon_label.close()
         overlay.close()
         app.processEvents()

@@ -110,8 +110,10 @@ def run_setup_check() -> list[dict[str, str]]:
         str(getattr(config, "HOTKEY_ADD_CONTEXT", "") or ""),
         str(getattr(config, "HOTKEY_ADD_CONTEXT_2", "") or ""),
     ]
-    caller_rows = getattr(config, "CALLER_ROWS", []) or []
-    for row in caller_rows:
+    from core.action_files.store import configured_caller_rows
+
+    action_callers = configured_caller_rows(config)
+    for row in action_callers:
         if not isinstance(row, dict) or not bool(row.get("enabled", True)):
             continue
         hotkeys.extend((str(row.get("hotkey") or ""), str(row.get("hotkey_2") or "")))

@@ -1,0 +1,4 @@
+label = "Improve the selected slide's message"
+hint = "Draft a clearer takeaway while preserving the slide's facts"
+prompt = "Review the selected slide and draft a clearer, more focused version of its message. Preserve its factual claims, distinguish the headline takeaway from supporting detail, and explain the most important wording or structure changes. Clearly label the result as a draft for review and do not edit the slide."
+access = ["text"]

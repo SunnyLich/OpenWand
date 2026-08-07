@@ -58,6 +58,7 @@ memory/*
 
 # Persisted chat history + project definitions (personal user data)
 /chats/
+/callers/
 
 # Python
 __pycache__/

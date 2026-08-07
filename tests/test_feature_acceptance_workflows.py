@@ -499,7 +499,17 @@ def test_intent_shortcut_editor_mutations_policies_tools_and_reopen_are_one_real
 
         apply_button = dialog.findChild(QPushButton, "settingsApplyButton")
         driver.click(apply_button)
-        assert "CALLER_3_LABEL=Research" in env_path.read_text(encoding="utf-8")
+        saved_env = env_path.read_text(encoding="utf-8")
+        assert "CALLER_3_LABEL" not in saved_env
+        callers_root = env_path.parent / "callers"
+        registry = (callers_root / "callers.toml").read_text(encoding="utf-8")
+        caller_file = (callers_root / "research" / "caller.toml").read_text(encoding="utf-8")
+        action_file = (callers_root / "research" / "gather_sources.toml").read_text(
+            encoding="utf-8"
+        )
+        assert 'folder = "research"' in registry
+        assert 'label = "Research"' in caller_file
+        assert 'label = "Gather sources"' in action_file
 
         dialog.close()
         dialog.deleteLater()

@@ -25,6 +25,7 @@ class VSCodeSnapshot:
     selection_fingerprint: str
     has_utf8_bom: bool = False
     is_whole_file: bool = False
+    editor_name: str = "Code editor"
 
     @property
     def target(self) -> ActionTarget:
@@ -40,6 +41,7 @@ class VSCodeSnapshot:
                 "selection_sha256": self.selection_fingerprint,
                 "utf8_bom": "1" if self.has_utf8_bom else "0",
                 "kind": "saved_empty_file" if self.is_whole_file else "saved_file",
+                "editor_name": self.editor_name,
             },
             version=self.fingerprint,
         )
@@ -60,6 +62,7 @@ class VSCodeSnapshot:
             "selection_fingerprint": self.selection_fingerprint,
             "has_utf8_bom": self.has_utf8_bom,
             "is_whole_file": self.is_whole_file,
+            "editor_name": self.editor_name,
         }
 
     @classmethod
@@ -99,4 +102,5 @@ class VSCodeSnapshot:
             selection_fingerprint=selection_fingerprint,
             has_utf8_bom=bool(value.get("has_utf8_bom")),
             is_whole_file=is_whole_file,
+            editor_name=str(value.get("editor_name") or "Code editor"),
         )

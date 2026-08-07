@@ -29,6 +29,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QWidget
 
+from core.attachment_source import DOCUMENT_SUFFIXES
 from ui.i18n import t
 
 if TYPE_CHECKING:
@@ -40,12 +41,12 @@ if TYPE_CHECKING:
 
 _TEXT_EXTS = {
     ".txt", ".md", ".py", ".js", ".ts", ".jsx", ".tsx", ".json", ".yaml",
-    ".yml", ".csv", ".html", ".htm", ".css", ".xml", ".sh", ".bat", ".ps1",
+    ".yml", ".html", ".htm", ".css", ".xml", ".sh", ".bat", ".ps1",
     ".c", ".cpp", ".h", ".java", ".rs", ".go", ".rb", ".php", ".sql",
     ".toml", ".ini", ".cfg", ".conf", ".log",
 }
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".tif"}
-_DOCUMENT_EXTS = {".docx", ".pdf", ".xlsx", ".xls", ".pptx", ".odt", ".ods", ".odp"}
+_DOCUMENT_EXTS = DOCUMENT_SUFFIXES
 
 _MAX_TEXT_BYTES = 51_200  # 50 KB cap when reading text files
 _MAX_IMAGE_BYTES = 10 * 1024 * 1024  # avoid base64-expanding huge image files

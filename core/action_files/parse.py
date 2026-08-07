@@ -19,10 +19,26 @@ from core.action_files.contracts import Access, ActionFile, LoadIssue
 ACTION_SUFFIX = ".toml"
 SCRIPT_SUFFIX = ".py"
 
-_STRING_FIELDS = ("label", "hint", "prompt", "capability", "planner", "template")
+_STRING_FIELDS = (
+    "label",
+    "hint",
+    "prompt",
+    "capability",
+    "planner",
+    "template",
+    "unavailable_reason",
+)
 _LIST_FIELDS = ("context", "access")
 _KNOWN_FIELDS = frozenset(
-    (*_STRING_FIELDS, *_LIST_FIELDS, "paste_back", "run_script_first")
+    (
+        *_STRING_FIELDS,
+        *_LIST_FIELDS,
+        "paste_back",
+        "run_script_first",
+        "enabled",
+        "show_in_picker",
+        "available",
+    )
 )
 
 
@@ -64,7 +80,7 @@ def parse_action_file(path: Path | str) -> tuple[ActionFile | None, tuple[LoadIs
     for key in _STRING_FIELDS:
         if key in values and not isinstance(values[key], str):
             issues.append(LoadIssue(display, "wrong_type", f"{key} must be text."))
-    for key in ("paste_back", "run_script_first"):
+    for key in ("paste_back", "run_script_first", "enabled", "show_in_picker", "available"):
         if key in values and not isinstance(values[key], bool):
             issues.append(LoadIssue(display, "wrong_type", f"{key} must be true or false."))
     for key in _LIST_FIELDS:
@@ -105,6 +121,16 @@ def parse_action_file(path: Path | str) -> tuple[ActionFile | None, tuple[LoadIs
         issues.append(LoadIssue(display, "planner_without_capability", "planner needs a capability to plan for."))
     if capability and not planner:
         issues.append(LoadIssue(display, "capability_without_planner", "capability needs a planner to fill it in."))
+    available = _optional_bool(values, "available")
+    unavailable_reason = _string(values, "unavailable_reason")
+    if available is False and not unavailable_reason:
+        issues.append(
+            LoadIssue(display, "no_unavailable_reason", "An unavailable action needs an unavailable_reason.")
+        )
+    if available is not False and unavailable_reason:
+        issues.append(
+            LoadIssue(display, "unused_unavailable_reason", "unavailable_reason only applies when available is false.")
+        )
     if _optional_bool(values, "run_script_first") is not None and not has_code:
         issues.append(
             LoadIssue(display, "no_script", f"run_script_first is set, but there is no {script.name}.")
@@ -132,5 +158,9 @@ def parse_action_file(path: Path | str) -> tuple[ActionFile | None, tuple[LoadIs
         has_code=has_code,
         script_path=str(script) if has_code else "",
         template=template,
+        enabled=bool(values.get("enabled", True)),
+        show_in_picker=bool(values.get("show_in_picker", True)),
+        available=True if available is None else available,
+        unavailable_reason=unavailable_reason,
     )
     return action, tuple(issues)

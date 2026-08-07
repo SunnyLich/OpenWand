@@ -1,0 +1,6 @@
+kind = "tool"
+handler = "virtual_workspace_start"
+label = "Start virtual workspace"
+hint = "Start the isolated workspace and its local activity viewer."
+access = ["files", "programs"]
+

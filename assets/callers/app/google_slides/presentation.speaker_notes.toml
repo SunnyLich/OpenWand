@@ -1,0 +1,8 @@
+label = "Write speaker notes"
+hint = "Preview the exact notes"
+prompt = "Write speaker notes for the selected slide."
+capability = "presentation.upsert_speaker_notes@1"
+planner = "presentation_plan_speaker_notes"
+access = ["internet"]
+available = false
+unavailable_reason = "This app's authenticated Wisp API bridge is not connected yet"

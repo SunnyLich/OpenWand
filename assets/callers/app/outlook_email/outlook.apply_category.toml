@@ -1,0 +1,8 @@
+label = "Categorize this email"
+hint = "Preview the exact Outlook category"
+prompt = "Apply the most appropriate category to this email."
+capability = "email.apply_category@1"
+planner = "email_plan_apply_category"
+access = ["internet"]
+available = false
+unavailable_reason = "Connect this account to Wisp before using account API actions"

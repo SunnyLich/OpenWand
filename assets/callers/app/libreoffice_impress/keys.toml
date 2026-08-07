@@ -1,0 +1,5 @@
+s = "summarize_deck"
+g = "find_story_gaps"
+a = "draft_agenda"
+m = "improve_slide_message"
+k = "check_slide_consistency"

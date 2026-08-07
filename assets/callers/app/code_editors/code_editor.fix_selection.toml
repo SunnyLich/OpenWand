@@ -1,0 +1,6 @@
+label = "Fix selected code"
+hint = "Preview and apply a focused saved-file code change"
+prompt = "Fix the selected code."
+capability = "vscode.replace_selection@1"
+planner = "vscode_plan_replace_selection"
+access = ["files"]

@@ -377,13 +377,158 @@ def apply_sort_range(
     }
 
 
+def _content_at(values, formulas, row: int, column: int):
+    formula = formulas[row][column]
+    if isinstance(formula, str) and formula.startswith("="):
+        return "formula", formula
+    return "value", values[row][column]
+
+
+def _set_cell_content(cell, kind: str, value) -> None:
+    if kind == "formula":
+        cell.setFormula(value)
+    elif value is None or value == "":
+        cell.setString("")
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        cell.setValue(float(value))
+    elif isinstance(value, str):
+        cell.setString(value)
+    else:
+        raise RuntimeError("A reviewed Calc cleanup value has an unsupported type.")
+
+
+def _cleanup_readback_matches(before, before_formulas, after, after_formulas, changes) -> bool:
+    changed = {
+        (int(item["row_offset"]), int(item["column_offset"])): item
+        for item in changes
+    }
+    for row in range(len(before)):
+        for column in range(len(before[row])):
+            change = changed.get((row, column))
+            before_kind, _before_content = _content_at(before, before_formulas, row, column)
+            after_kind, after_content = _content_at(after, after_formulas, row, column)
+            if change is None:
+                if before_formulas[row][column] != after_formulas[row][column]:
+                    return False
+                if before_kind == "value" and before[row][column] != after[row][column]:
+                    return False
+            elif after_kind != change["after_kind"]:
+                return False
+            elif change["after_kind"] == "value" and change["after_value"] is None:
+                if after_content not in (None, ""):
+                    return False
+            elif after_content != change["after_value"]:
+                return False
+    return True
+
+
+def apply_clean_range(
+    *,
+    port: int,
+    pipe_name: str,
+    title: str,
+    address: str,
+    fingerprint: str,
+    changes,
+) -> dict:
+    """Apply one exact cell cleanup set inside a single native Calc undo context."""
+    user32 = ctypes.windll.user32
+    foreground_before = int(user32.GetForegroundWindow())
+    document = _find_document(_desktop(port=port, pipe_name=pipe_name), title)
+    sheet = document.CurrentController.ActiveSheet
+    source = sheet.getCellRangeByName(address)
+    before = tuple(tuple(row) for row in source.getDataArray())
+    before_formulas = tuple(tuple(row) for row in source.getFormulaArray())
+    if _fingerprint(before, before_formulas) != fingerprint:
+        raise RuntimeError("Calc data changed after the preview; refusing to apply.")
+    if not isinstance(changes, list) or not 1 <= len(changes) <= 32:
+        raise RuntimeError("Calc cleanup requires between 1 and 32 reviewed cell changes.")
+
+    seen = set()
+    for change in changes:
+        if not isinstance(change, dict):
+            raise RuntimeError("Each Calc cleanup change must be structured.")
+        row = change.get("row_offset")
+        column = change.get("column_offset")
+        if (
+            not isinstance(row, int)
+            or isinstance(row, bool)
+            or not isinstance(column, int)
+            or isinstance(column, bool)
+            or not 0 <= row < len(before)
+            or not 0 <= column < len(before[0])
+            or (row, column) in seen
+        ):
+            raise RuntimeError("A reviewed Calc cleanup target is invalid or duplicated.")
+        seen.add((row, column))
+        before_kind, before_value = _content_at(before, before_formulas, row, column)
+        if change.get("before_kind") != before_kind or change.get("before_value") != before_value:
+            raise RuntimeError("A Calc cleanup cell no longer matches its reviewed before-content.")
+        after_kind = change.get("after_kind")
+        after_value = change.get("after_value")
+        if after_kind not in {"value", "formula"}:
+            raise RuntimeError("A reviewed Calc cleanup content type is invalid.")
+        if after_kind == "formula" and (
+            not isinstance(after_value, str)
+            or not after_value.startswith("=")
+            or len(after_value) > 512
+        ):
+            raise RuntimeError("A reviewed Calc cleanup formula is invalid.")
+        if before_kind == "formula" and after_kind == "value" and change.get("replace_formula") is not True:
+            raise RuntimeError("Replacing a Calc formula with a value was not explicitly reviewed.")
+
+    manager = _undo_manager(document)
+    context_open = False
+    mutated = False
+    try:
+        manager.enterUndoContext("Wisp: apply reviewed cell cleanup")
+        context_open = True
+        for change in changes:
+            cell = source.getCellByPosition(change["column_offset"], change["row_offset"])
+            mutated = True
+            _set_cell_content(cell, change["after_kind"], change.get("after_value"))
+        manager.leaveUndoContext()
+        context_open = False
+
+        after = tuple(tuple(row) for row in source.getDataArray())
+        after_formulas = tuple(tuple(row) for row in source.getFormulaArray())
+        if not _cleanup_readback_matches(before, before_formulas, after, after_formulas, changes):
+            raise RuntimeError("Calc did not retain the exact reviewed cleanup contents.")
+        if int(user32.GetForegroundWindow()) != foreground_before:
+            raise RuntimeError("Calc took focus while applying the reviewed cleanup.")
+    except Exception as original_error:
+        if context_open:
+            manager.leaveUndoContext()
+        if mutated:
+            _rollback_latest(manager, source, before)
+            if tuple(tuple(row) for row in source.getFormulaArray()) != before_formulas:
+                raise RuntimeError("Calc cleanup rollback did not restore formulas.") from original_error
+        raise
+
+    return {
+        "ok": True,
+        "message": f"Applied {len(changes)} reviewed cell cleanup changes in {address}.",
+        "journal": [{"kind": "cell_cleanup", "range": address, "rollback": "calc_undo"}],
+        "verification": [
+            "Every reviewed cell matches its exact proposed content.",
+            "Every unreviewed value and formula in the selected range is unchanged.",
+            "The cleanup is one native Calc Undo item and foreground focus did not change.",
+        ],
+        "focus_unchanged": True,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     endpoint = parser.add_mutually_exclusive_group(required=True)
     endpoint.add_argument("--port", type=int, default=0)
     endpoint.add_argument("--pipe", dest="pipe_name", default="")
     parser.add_argument("--mode", choices=("apply", "probe", "snapshot"), default="apply")
-    parser.add_argument("--action", choices=("chart", "format_table", "sort_range"), default="chart")
+    parser.add_argument(
+        "--action",
+        choices=("chart", "format_table", "sort_range", "clean_range"),
+        default="chart",
+    )
     parser.add_argument("--title", default="")
     parser.add_argument("--range", dest="address", default="")
     parser.add_argument("--fingerprint", default="")
@@ -391,6 +536,7 @@ def main() -> int:
     parser.add_argument("--has-header", choices=("true", "false"), default="true")
     parser.add_argument("--sort-column", type=int, default=0)
     parser.add_argument("--sort-direction", choices=("ascending", "descending"), default="ascending")
+    parser.add_argument("--changes-json", default="[]")
     args = parser.parse_args()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -426,7 +572,7 @@ def main() -> int:
                 fingerprint=args.fingerprint,
                 has_header=args.has_header == "true",
             )
-        else:
+        elif args.action == "sort_range":
             result = apply_sort_range(
                 port=args.port,
                 pipe_name=args.pipe_name,
@@ -436,6 +582,15 @@ def main() -> int:
                 sort_column=args.sort_column,
                 descending=args.sort_direction == "descending",
                 has_header=args.has_header == "true",
+            )
+        else:
+            result = apply_clean_range(
+                port=args.port,
+                pipe_name=args.pipe_name,
+                title=args.title,
+                address=args.address,
+                fingerprint=args.fingerprint,
+                changes=json.loads(args.changes_json),
             )
     except Exception as exc:  # noqa: BLE001 - executable JSON boundary
         result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}

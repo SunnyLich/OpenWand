@@ -1,0 +1,4 @@
+label = "Build an outline from this document"
+hint = "Reveal the document's structure and suggest clearer organization"
+prompt = "Build a concise hierarchical outline of the selected passage when a meaningful selection is available; otherwise use the available document. Preserve the source's actual ideas, expose gaps or misplaced sections, and suggest a clearer ordering separately from the current structure. Do not edit the document."
+access = ["text"]

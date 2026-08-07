@@ -1,0 +1,8 @@
+label = "Create a disabled rule"
+hint = "Preview a rule that starts turned off"
+prompt = "Create a disabled Outlook mail rule from my request."
+capability = "email.create_disabled_rule@1"
+planner = "email_plan_disabled_rule"
+access = ["internet"]
+available = false
+unavailable_reason = "Connect this account to Wisp before using account API actions"

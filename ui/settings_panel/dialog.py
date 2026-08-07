@@ -22,9 +22,10 @@ import traceback
 import warnings
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
-from PySide6.QtCore import QMimeData, QObject, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QDrag, QFont, QPainter, QPalette
+from PySide6.QtCore import QMimeData, QObject, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QDrag, QFont, QPainter, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -6705,6 +6706,8 @@ class SettingsDialog(QDialog):
         global_rows.addWidget(timeout_row)
         outer_layout.addWidget(global_card)
 
+        self._add_app_action_file_summary(outer_layout)
+
         # Voice shortcuts.
         voice_card, voice_rows = self._create_shortcut_section(
             "Voice shortcuts",
@@ -6830,6 +6833,65 @@ class SettingsDialog(QDialog):
         scroll.setWidget(container)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         return scroll
+
+    def _add_app_action_file_summary(self, outer_layout: QVBoxLayout) -> None:
+        """Show app-folder actions and their declared access without running code."""
+        from core.action_files.store import live_catalog
+
+        card, layout = self._card("Application actions")
+        note = QLabel(
+            t(
+                "These actions come from app folders. Their access badges are self-declared; "
+                "open a file to change its key, text, or enabled setting."
+            )
+        )
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        for app in live_catalog().apps:
+            app_label = QLabel(f"<b>{app.display_name}</b>")
+            layout.addWidget(app_label)
+            for bound in app.actions:
+                action = bound.action
+                row = QWidget()
+                row_layout = QHBoxLayout(row)
+                row_layout.setContentsMargins(8, 1, 0, 1)
+                key = bound.key.upper() if bound.key else "·"
+                status = "" if action.enabled else f" — {t('disabled')}"
+                summary = QLabel(f"{key}   {action.label}{status}")
+                summary.setToolTip(action.hint or action.prompt)
+                summary.setMinimumWidth(0)
+                summary.setSizePolicy(
+                    QSizePolicy.Policy.Ignored,
+                    QSizePolicy.Policy.Preferred,
+                )
+                row_layout.addWidget(summary, 1)
+                access = ", ".join(item.value.title() for item in action.access)
+                if access:
+                    colour = {
+                        "green": "#42b883",
+                        "amber": "#d9a441",
+                        "red": "#e06464",
+                    }.get(action.colour, "#42b883")
+                    badge = QLabel(access)
+                    badge.setMaximumWidth(110)
+                    badge.setWordWrap(True)
+                    badge.setToolTip(
+                        t("Access declared by this action file; this is a label, not a sandbox")
+                    )
+                    badge.setStyleSheet(
+                        f"QLabel {{ color: {colour}; border: 1px solid {colour}; "
+                        "border-radius: 6px; padding: 2px 6px; }}"
+                    )
+                    row_layout.addWidget(badge)
+                open_button = QPushButton(t("Open file"))
+                open_button.clicked.connect(
+                    lambda _checked=False, path=action.path: QDesktopServices.openUrl(
+                        QUrl.fromLocalFile(path)
+                    )
+                )
+                row_layout.addWidget(open_button)
+                layout.addWidget(row)
+        outer_layout.addWidget(card)
 
     @staticmethod
     def _configure_shortcut_grid(grid: QGridLayout) -> None:
@@ -7176,6 +7238,7 @@ class SettingsDialog(QDialog):
 
     def _add_caller_block(
         self,
+        folder: str = "",
         hotkey: str = "",
         hotkey_2: str = "",
         enabled: bool = True,
@@ -7183,6 +7246,8 @@ class SettingsDialog(QDialog):
         paste_back: bool = False,
         custom_key: str = "s",
         custom_label: str = "",
+        space_starts_new_chat: bool = True,
+        context_selection_enabled: bool = True,
         context_ambient: bool = False,
         context_clipboard: bool = False,
         context_documents: bool = False,
@@ -7266,7 +7331,7 @@ class SettingsDialog(QDialog):
         int_hdr_h = QHBoxLayout(int_hdr)
         int_hdr_h.setContentsMargins(0, 2, 0, 0)
         int_hdr_h.setSpacing(6)
-        for txt, w in [("Key", 40), ("Label", 130), ("Prompt", 0)]:
+        for txt, w in [("On", 24), ("Key", 40), ("Label", 130), ("Prompt", 0)]:
             lbl = QLabel(f"<small><b>{t(txt)}</b></small>")
             if txt == "Prompt":
                 lbl.setToolTip(
@@ -7288,6 +7353,9 @@ class SettingsDialog(QDialog):
         outer.addWidget(intents_container)
 
         blk: dict = {
+            "folder": folder,
+            "space_starts_new_chat": space_starts_new_chat,
+            "context_selection_enabled": context_selection_enabled,
             "hotkey":         hotkey_edit,
             "hotkey_2":       hotkey_edit_2,
             "enabled":        enabled_check,
@@ -7306,6 +7374,13 @@ class SettingsDialog(QDialog):
             "tool_overrides": dict(tools or {}),
             "intents_layout": intents_vlayout,
             "intent_rows":    [],
+            "original_action_names": {
+                str(item.get("action_file", {}).get("name") or "")
+                for item in (intents or [])
+                if isinstance(item, dict)
+                and isinstance(item.get("action_file"), dict)
+                and str(item["action_file"].get("name") or "")
+            },
         }
         tools_btn.clicked.connect(
             lambda: self._open_tool_access_dialog(
@@ -7329,6 +7404,11 @@ class SettingsDialog(QDialog):
                 display_intent.get("key", ""),
                 display_intent.get("label", ""),
                 display_intent.get("prompt", ""),
+                action_file=(
+                    display_intent.get("action_file")
+                    if isinstance(display_intent.get("action_file"), dict)
+                    else None
+                ),
             )
         self._add_caller_custom_prompt_row(blk, custom_key=custom_key, custom_label=custom_label)
 
@@ -7379,6 +7459,7 @@ class SettingsDialog(QDialog):
         key: str = "",
         label: str = "",
         prompt: str = "",
+        action_file: dict | None = None,
     ) -> None:
         """Append one intent row to a caller block."""
         from PySide6.QtWidgets import QSizePolicy
@@ -7386,6 +7467,12 @@ class SettingsDialog(QDialog):
         h = QHBoxLayout(row_w)
         h.setContentsMargins(0, 1, 0, 1)
         h.setSpacing(6)
+
+        metadata = dict(action_file or {})
+        enabled_check = QCheckBox()
+        enabled_check.setChecked(bool(metadata.get("enabled", True)))
+        enabled_check.setToolTip(t("Show this action in the intent picker"))
+        h.addWidget(enabled_check, 0, Qt.AlignmentFlag.AlignTop)
 
         key_edit = QLineEdit(key)
         key_edit.setFixedWidth(40)
@@ -7404,10 +7491,58 @@ class SettingsDialog(QDialog):
         prompt_edit.setPlaceholderText(t("Prompt sent to LLM..."))
         prompt_edit.setMinimumHeight(56)
         prompt_edit.setMaximumHeight(88)
+        prompt_edit.setMinimumWidth(80)
         prompt_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         h.addWidget(prompt_edit)
 
-        row_info: dict = {"widget": row_w, "key": key_edit, "label": label_edit, "prompt": prompt_edit}
+        row_info: dict = {
+            "widget": row_w,
+            "key": key_edit,
+            "label": label_edit,
+            "prompt": prompt_edit,
+            "enabled": enabled_check,
+            "action_file": metadata,
+            "original_label": label,
+            "original_prompt": prompt,
+        }
+
+        if bool(metadata.get("has_code")):
+            label_edit.setReadOnly(True)
+            prompt_edit.setReadOnly(True)
+            open_btn = QPushButton(t("Open file"))
+            open_btn.setToolTip(t("Open this code-backed action in your default editor"))
+            action_path = str(metadata.get("path") or metadata.get("script_path") or "")
+            open_btn.clicked.connect(
+                lambda _checked=False, path=action_path: (
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(path)) if path else None
+                )
+            )
+            h.addWidget(open_btn, 0, Qt.AlignmentFlag.AlignTop)
+            row_info["open_file"] = open_btn
+
+        access = [
+            str(item).strip().title()
+            for item in metadata.get("access") or []
+            if str(item).strip()
+        ]
+        if access:
+            colour = {
+                "green": "#42b883",
+                "amber": "#d9a441",
+                "red": "#e06464",
+            }.get(str(metadata.get("colour") or "green"), "#42b883")
+            access_label = QLabel(", ".join(access))
+            access_label.setMaximumWidth(85)
+            access_label.setWordWrap(True)
+            access_label.setToolTip(
+                t("Access declared by this action file; this is a label, not a sandbox")
+            )
+            access_label.setStyleSheet(
+                f"QLabel {{ color: {colour}; border: 1px solid {colour}; "
+                "border-radius: 6px; padding: 2px 6px; }}"
+            )
+            h.addWidget(access_label, 0, Qt.AlignmentFlag.AlignTop)
+            row_info["access_label"] = access_label
 
         del_btn = QPushButton("X")
         del_btn.setFixedWidth(40)
@@ -7434,6 +7569,7 @@ class SettingsDialog(QDialog):
         h.setContentsMargins(0, 1, 0, 1)
         h.setSpacing(6)
 
+        h.addSpacing(24)
         key_edit = QLineEdit(custom_key)
         key_edit.setFixedWidth(40)
         key_edit.setPlaceholderText("s")
@@ -9679,7 +9815,8 @@ class SettingsDialog(QDialog):
         _set(self._fields["MEMORY_TOP_K"],           self._env.get("MEMORY_TOP_K",           str(cfg.MEMORY_TOP_K)))
         _set(self._fields["MEMORY_STM_TOKEN_BUDGET"], self._env.get("MEMORY_STM_TOKEN_BUDGET", str(cfg.MEMORY_STM_TOKEN_BUDGET)))
 
-        # Build caller blocks from CALLER_ROWS + any env overrides
+        # Build caller blocks from the live action-file tree. Legacy CALLER_*
+        # environment values remain readable by old releases but are ignored here.
         caller_widgets = [
             blk.get("widget")
             for blk in self._caller_blocks
@@ -9700,80 +9837,46 @@ class SettingsDialog(QDialog):
             widget.deleteLater()
         self._caller_blocks.clear()
 
-        caller_count = int(self._env.get("CALLER_COUNT", str(len(cfg.CALLER_ROWS))))
+        caller_count = len(cfg.CALLER_ROWS)
         for i in range(caller_count):
             cr = cfg.CALLER_ROWS[i] if i < len(cfg.CALLER_ROWS) else {}
-            n = i + 1
-            intent_count = int(self._env.get(f"CALLER_{n}_INTENT_COUNT", str(len(cr.get("intents", [])))))
+            intent_count = len(cr.get("intents", []))
             intents = []
             for j in range(intent_count):
-                m = j + 1
                 di = cr["intents"][j] if j < len(cr.get("intents", [])) else {}
-                intent = {
-                    "key":    self._env.get(f"CALLER_{n}_INTENT_{m}_KEY",    di.get("key", "")),
-                    "label":  self._env.get(f"CALLER_{n}_INTENT_{m}_LABEL",  di.get("label", "")),
-                    "prompt": self._env.get(f"CALLER_{n}_INTENT_{m}_PROMPT", di.get("prompt", "")),
-                }
+                intent = dict(di)
                 intents.append(cfg.localize_intent_if_default(
                     i,
                     j,
                     intent,
                     self._env.get("ASSISTANT_LANGUAGE", getattr(cfg, "ASSISTANT_LANGUAGE", "")),
                 ))
-            legacy_documents = self._env.get(
-                f"CALLER_{n}_CONTEXT_DOCUMENTS",
-                str(cr.get("context_documents", False)),
-            ).lower() == "true"
-            legacy_tools = self._env.get(
-                f"CALLER_{n}_CONTEXT_TOOLS",
-                str(cr.get("context_tools", False)),
-            ).lower() == "true"
-            documents_mode = self._env.get(
-                f"CALLER_{n}_CONTEXT_DOCUMENTS_MODE",
-                cr.get("context_documents_mode")
-                or ("auto" if legacy_documents else ("model" if legacy_tools else "off")),
-            )
-            browser_mode = self._env.get(
-                f"CALLER_{n}_CONTEXT_BROWSER_MODE",
-                "model" if legacy_tools else (cr.get("context_browser_mode") or "off"),
-            )
-            github_mode = self._env.get(
-                f"CALLER_{n}_CONTEXT_GITHUB_MODE",
-                "model" if legacy_tools else (cr.get("context_github_mode") or "off"),
-            )
-            memory_mode = self._env.get(
-                f"CALLER_{n}_CONTEXT_MEMORY_MODE",
-                cr.get("context_memory_mode") or "on",
-            )
-            file_access = self._env.get(
-                f"CALLER_{n}_FILE_ACCESS",
-                cr.get("file_access") or "off",
-            )
-            tools_env = self._env.get(f"CALLER_{n}_TOOLS")
-            caller_tools = (
-                parse_tool_modes(tools_env)
-                if tools_env is not None
-                else dict(cr.get("tools") or {})
-            )
+            documents_mode = cr.get("context_documents_mode") or "off"
+            browser_mode = cr.get("context_browser_mode") or "off"
+            github_mode = cr.get("context_github_mode") or "off"
+            memory_mode = cr.get("context_memory_mode") or "off"
+            file_access = cr.get("file_access") or "off"
+            caller_tools = dict(cr.get("tools") or {})
             self._add_caller_block(
-                hotkey     = self._env.get(f"CALLER_{n}_HOTKEY",     cr.get("hotkey", "")),
-                hotkey_2   = self._env.get(f"CALLER_{n}_HOTKEY_2",   cr.get("hotkey_2", "")),
-                enabled    = self._env.get(
-                    f"CALLER_{n}_ENABLED", str(cr.get("enabled", True))
-                ).lower() == "true",
-                label      = self._env.get(f"CALLER_{n}_LABEL",      cr.get("label", "")),
-                paste_back = self._env.get(f"CALLER_{n}_PASTE_BACK", str(cr.get("paste_back", False))).lower() == "true",
-                custom_key = self._env.get(f"CALLER_{n}_CUSTOM_KEY", cr.get("custom_key", "s")),
-                custom_label = self._env.get(f"CALLER_{n}_CUSTOM_LABEL", cr.get("custom_label", "")),
-                context_ambient = self._env.get(f"CALLER_{n}_CONTEXT_AMBIENT", str(cr.get("context_ambient", False))).lower() == "true",
-                context_clipboard = self._env.get(f"CALLER_{n}_CONTEXT_CLIPBOARD", str(cr.get("context_clipboard", False))).lower() == "true",
+                folder = str(cr.get("folder") or ""),
+                hotkey = str(cr.get("hotkey") or ""),
+                hotkey_2 = str(cr.get("hotkey_2") or ""),
+                enabled = bool(cr.get("enabled", True)),
+                label = str(cr.get("label") or ""),
+                paste_back = bool(cr.get("paste_back", False)),
+                custom_key = str(cr.get("custom_key") or "s"),
+                custom_label = str(cr.get("custom_label") or ""),
+                space_starts_new_chat = bool(cr.get("space_starts_new_chat", True)),
+                context_selection_enabled = bool(cr.get("_context_selection_enabled", True)),
+                context_ambient = bool(cr.get("context_ambient", False)),
+                context_clipboard = bool(cr.get("context_clipboard", False)),
                 context_documents = documents_mode == "auto",
                 context_tools = any(mode == "model" for mode in (documents_mode, browser_mode, github_mode, memory_mode)),
                 context_documents_mode = documents_mode,
                 context_browser_mode = browser_mode,
                 context_github_mode = github_mode,
                 context_memory_mode = memory_mode,
-                context_screenshot = normalize_screenshot_mode(self._env.get(f"CALLER_{n}_CONTEXT_SCREENSHOT", cr.get("context_screenshot", "off"))),
+                context_screenshot = normalize_screenshot_mode(cr.get("context_screenshot", "off")),
                 file_access = normalize_file_access_mode(file_access),
                 tools      = caller_tools,
                 display_language = self._env.get(
@@ -11332,6 +11435,87 @@ class SettingsDialog(QDialog):
                   "out of all OAuth logins, and every setting was reset to defaults."),
             )
 
+    def _save_action_file_callers(self) -> None:
+        """Persist the caller editor into the live comment-preserving TOML tree."""
+        from core.action_files.edit import save_callers
+        from core.action_files.store import invalidate_live_catalog
+        from core.system.paths import SHIPPED_CALLERS_DIR
+
+        def source_mode(value: str) -> str:
+            mode = str(value or "off").strip().casefold()
+            if mode == "auto":
+                return "on"
+            return mode if mode in {"off", "on", "model"} else "off"
+
+        callers: list[dict[str, Any]] = []
+        for blk in self._caller_blocks:
+            documents_mode = str(blk["context_documents_mode"].currentData() or "off")
+            ambient = (
+                "model" if documents_mode == "model"
+                else "on" if documents_mode == "auto" or blk["context_ambient"].isChecked()
+                else "off"
+            )
+            file_access = str(blk["file_access"].currentData() or "off")
+            actions: list[dict[str, Any]] = []
+            for row in blk["intent_rows"]:
+                metadata = dict(row.get("action_file") or {})
+                label = _get(row["label"])
+                prompt = _get(row["prompt"])
+                actions.append(
+                    {
+                        "name": str(metadata.get("name") or ""),
+                        "key": _get(row["key"]),
+                        "label": label,
+                        "prompt": prompt,
+                        "enabled": row["enabled"].isChecked(),
+                        "hint": str(metadata.get("hint") or ""),
+                        "access": list(metadata.get("access") or ["text"]),
+                        "template": str(metadata.get("template") or ""),
+                        "preserve_template": bool(metadata.get("template"))
+                        and label == str(row.get("original_label") or "")
+                        and prompt == str(row.get("original_prompt") or ""),
+                    }
+                )
+            current_action_names = {
+                str(item.get("name") or "") for item in actions if str(item.get("name") or "")
+            }
+            callers.append(
+                {
+                    "folder": str(blk.get("folder") or ""),
+                    "hotkey": _get(blk["hotkey"]),
+                    "hotkey_2": _get(blk["hotkey_2"]),
+                    "enabled": blk["enabled"].isChecked(),
+                    "label": self._caller_label_value(blk),
+                    "paste_back": blk["paste_back"].isChecked(),
+                    "custom_key": _get(blk["custom_key"]),
+                    "custom_label": _get(blk["custom_label"]),
+                    "space_starts_new_chat": bool(blk.get("space_starts_new_chat", True)),
+                    "file_access": file_access,
+                    "tools": dict(blk.get("tool_overrides") or {}),
+                    "context": {
+                        "ambient": ambient,
+                        "browser": source_mode(str(blk["context_browser_mode"].currentData() or "off")),
+                        "selection": (
+                            "on" if bool(blk.get("context_selection_enabled", True)) else "off"
+                        ),
+                        "clipboard": "on" if blk["context_clipboard"].isChecked() else "off",
+                        "screenshot": source_mode(str(blk["context_screenshot"].currentData() or "off")),
+                        "github": source_mode(str(blk["context_github_mode"].currentData() or "off")),
+                        "memory": source_mode(str(blk["context_memory_mode"].currentData() or "off")),
+                        "files": "off" if file_access == "off" else "model" if file_access == "auto" else "on",
+                    },
+                    "actions": actions,
+                    "removed_actions": sorted(
+                        set(blk.get("original_action_names") or ()) - current_action_names
+                    ),
+                }
+            )
+        callers_root = Path(ENV_PATH).parent / "callers"
+        if not callers_root.exists():
+            shutil.copytree(SHIPPED_CALLERS_DIR, callers_root)
+        save_callers(callers_root, callers)
+        invalidate_live_catalog()
+
     def _do_save(self) -> bool:
         """Write .env. Returns True on success, False if validation failed.
 
@@ -11485,7 +11669,6 @@ class SettingsDialog(QDialog):
             "MEMORY_CONSOLIDATION_INTERVAL": _get(self._fields["MEMORY_CONSOLIDATION_INTERVAL"]),
             "MEMORY_TOP_K":             _get(self._fields["MEMORY_TOP_K"]),
             "MEMORY_STM_TOKEN_BUDGET":  _get(self._fields["MEMORY_STM_TOKEN_BUDGET"]),
-            "CALLER_COUNT":  str(len(self._caller_blocks)),
             "THEME_MODE":       self._fields["THEME_MODE"].currentData(),  # type: ignore[attr-defined]
             "PRIVACY_MODE": privacy_mode,
             "TRUST_PRIVACY_MODE": str(privacy_mode != "off"),
@@ -11582,59 +11765,16 @@ class SettingsDialog(QDialog):
             QMessageBox.warning(self, t("Duplicate keys"),
                                 t("Two or more bindings share the same key.\nPlease resolve conflicts before saving."))
             return False
-        for i, blk in enumerate(self._caller_blocks):
-            n = i + 1
-            vals[f"CALLER_{n}_HOTKEY"]        = _get(blk["hotkey"])
-            vals[f"CALLER_{n}_HOTKEY_2"]      = _get(blk["hotkey_2"])
-            vals[f"CALLER_{n}_ENABLED"]       = str(blk["enabled"].isChecked())
-            vals[f"CALLER_{n}_LABEL"]         = self._caller_label_value(blk)
-            vals[f"CALLER_{n}_PASTE_BACK"]    = str(blk["paste_back"].isChecked())  # type: ignore
-            vals[f"CALLER_{n}_CUSTOM_KEY"]    = _get(blk["custom_key"])
-            vals[f"CALLER_{n}_CUSTOM_LABEL"]  = _get(blk["custom_label"])
-            vals[f"CALLER_{n}_CONTEXT_AMBIENT"] = str(blk["context_ambient"].isChecked())  # type: ignore
-            vals[f"CALLER_{n}_CONTEXT_CLIPBOARD"] = str(blk["context_clipboard"].isChecked())  # type: ignore
-            documents_mode = str(blk["context_documents_mode"].currentData())  # type: ignore[attr-defined]
-            browser_mode = str(blk["context_browser_mode"].currentData())  # type: ignore[attr-defined]
-            github_mode = str(blk["context_github_mode"].currentData())  # type: ignore[attr-defined]
-            memory_mode = str(blk["context_memory_mode"].currentData())  # type: ignore[attr-defined]
-            vals[f"CALLER_{n}_CONTEXT_DOCUMENTS_MODE"] = documents_mode
-            vals[f"CALLER_{n}_CONTEXT_BROWSER_MODE"] = browser_mode
-            vals[f"CALLER_{n}_CONTEXT_GITHUB_MODE"] = github_mode
-            vals[f"CALLER_{n}_CONTEXT_MEMORY_MODE"] = memory_mode
-            vals[f"CALLER_{n}_FILE_ACCESS"] = str(blk["file_access"].currentData())  # type: ignore[attr-defined]
-            # Compatibility values for older branches/scripts.
-            vals[f"CALLER_{n}_CONTEXT_DOCUMENTS"] = str(documents_mode == "auto")
-            vals[f"CALLER_{n}_CONTEXT_TOOLS"] = str(
-                any(mode == "model" for mode in (documents_mode, browser_mode, github_mode, memory_mode))
+        try:
+            self._save_action_file_callers()
+        except Exception as exc:  # noqa: BLE001 - Settings must not claim a partial save succeeded
+            _settings_log.exception("could not save action files")
+            QMessageBox.warning(
+                self,
+                t("Could not save action files"),
+                str(exc) or type(exc).__name__,
             )
-            vals[f"CALLER_{n}_CONTEXT_SCREENSHOT"] = str(blk["context_screenshot"].currentData())  # type: ignore
-            vals[f"CALLER_{n}_TOOLS"] = format_tool_modes(blk.get("tool_overrides") or {})
-            vals[f"CALLER_{n}_INTENT_COUNT"]  = str(len(blk["intent_rows"]))
-            for j, row in enumerate(blk["intent_rows"]):
-                m = j + 1
-                raw_intent = {
-                    "key": _get(row["key"]),
-                    "label": _get(row["label"]),
-                    "prompt": _get(row["prompt"]),
-                }
-                intent = cfg.localize_intent_if_default(
-                    i,
-                    j,
-                    raw_intent,
-                    vals.get("ASSISTANT_LANGUAGE", ""),
-                )
-                display_intent = cfg.localize_intent_if_default(
-                    i,
-                    j,
-                    raw_intent,
-                    vals.get("APP_LANGUAGE", "") or current_app_language(),
-                )
-                row["key"].setText(str(display_intent.get("key", "")))
-                row["label"].setText(str(display_intent.get("label", "")))
-                _set(row["prompt"], str(display_intent.get("prompt", "")))
-                vals[f"CALLER_{n}_INTENT_{m}_KEY"]    = str(intent.get("key", ""))
-                vals[f"CALLER_{n}_INTENT_{m}_LABEL"]  = str(intent.get("label", ""))
-                vals[f"CALLER_{n}_INTENT_{m}_PROMPT"] = str(intent.get("prompt", ""))
+            return False
         # The Chat model is combined with the Main LLM, so purge any stale
         # CHAT_LLM_* keys a previous version may have written.
         selected_profile = self._selected_custom_profile_entry()
@@ -11687,6 +11827,7 @@ class SettingsDialog(QDialog):
             remove_keys=set(secret_store.API_KEY_NAMES)
             | connection_alias_keys
             | {"CHAT_LLM_PROVIDER", "CHAT_LLM_MODEL", "CHAT_LLM_FALLBACKS", "TOOL_FILE_MODE"}
+            | {key for key in self._env if key == "CALLER_COUNT" or key.startswith("CALLER_")}
             | remove_keys,
         )
         if startup_error:

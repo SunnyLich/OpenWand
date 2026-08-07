@@ -10,6 +10,7 @@ import queue
 import re
 import threading
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,6 +18,7 @@ from typing import Any, Protocol
 
 from core.actions.progress import ActionProgress, ActionProgressStage, ActionProgressUpdate
 from core.actions.telemetry import ActionTrace
+from core.attachment_source import DOCUMENT_SUFFIXES
 from core.system.env_utils import mcp_server_id_from_tool, mcp_server_override_key
 from runtime.supervisor import flow_context, flow_estimates, flow_utils, tool_modes
 from runtime.supervisor.runtime_log import RuntimeEventLog, normalize_severity
@@ -53,12 +55,12 @@ _BROWSER_APP_NAMES = {
 }
 _SELECTED_PATH_TEXT_EXTS = {
     ".txt", ".md", ".py", ".js", ".ts", ".jsx", ".tsx", ".json", ".yaml",
-    ".yml", ".csv", ".html", ".htm", ".css", ".xml", ".sh", ".bat", ".ps1",
+    ".yml", ".html", ".htm", ".css", ".xml", ".sh", ".bat", ".ps1",
     ".c", ".cpp", ".h", ".java", ".rs", ".go", ".rb", ".php", ".sql",
     ".toml", ".ini", ".cfg", ".conf", ".log",
 }
 _SELECTED_PATH_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".tif"}
-_SELECTED_PATH_DOCUMENT_EXTS = {".docx", ".pdf", ".xlsx", ".xls", ".pptx", ".odt", ".ods", ".odp"}
+_SELECTED_PATH_DOCUMENT_EXTS = DOCUMENT_SUFFIXES
 _SELECTED_PATH_TEXT_BYTES = 51_200
 _AUDIO_CONFIG_KEYS = {
     "TTS_PROVIDER",
@@ -222,6 +224,24 @@ class PendingInvocation:
 
 
 @dataclass
+class RewriteAnnotationRequest:
+    """One app-attached Rewrite proposal from capture through acceptance."""
+
+    annotation_id: str
+    pending: PendingInvocation
+    session_key: str
+    display_number: int = 1
+    comment: str = ""
+    include_document: bool = False
+    replacement_text: str = ""
+    stream_id: Any = None
+    state: str = "composing"
+    copy_only: bool = False
+    structured_target: dict[str, Any] = field(default_factory=dict)
+    structured_plan: Any = None
+
+
+@dataclass
 class UndoableEdit:
     """The most recent successful paste-back that Wisp can safely undo."""
 
@@ -313,6 +333,9 @@ class FlowController:
         self.runtime_log.set_publisher(self._publish_runtime_events)
         self._lock = threading.RLock()
         self._pending: PendingInvocation | None = None
+        self._rewrite_annotations: dict[str, RewriteAnnotationRequest] = {}
+        self._rewrite_app_sessions: dict[str, dict[str, Any]] = {}
+        self._rewrite_anchor_refreshing: set[str] = set()
         self._voice_context: dict[str, Any] = {}
         self._voice_screenshot_b64: str | None = None
         self._voice_active = False
@@ -373,6 +396,14 @@ class FlowController:
         self.ui.on_event("ui.intent.selection.requested", self._on_intent_selection_requested)
         self.ui.on_event("ui.intent.context.remove", self._on_intent_context_remove)
         self.ui.on_event("ui.intent.context.reenabled", self._on_intent_context_reenabled)
+        self.ui.on_event("ui.rewrite.annotation.submitted", self._on_rewrite_annotation_submitted)
+        self.ui.on_event("ui.rewrite.annotation.held", self._on_rewrite_annotation_held)
+        self.ui.on_event("ui.rewrite.send_all", self._on_rewrite_send_all)
+        self.ui.on_event("ui.rewrite.annotation.cancelled", self._on_rewrite_annotation_cancelled)
+        self.ui.on_event("ui.rewrite.annotation.accepted", self._on_rewrite_annotation_accepted)
+        self.ui.on_event("ui.rewrite.annotation.declined", self._on_rewrite_annotation_declined)
+        self.ui.on_event("ui.rewrite.annotation.revision_requested", self._on_rewrite_annotation_revision_requested)
+        self.ui.on_event("ui.rewrite.annotation.anchor_refresh_requested", self._on_rewrite_anchor_refresh_requested)
         self.ui.on_event("ui.chat.snip.region", self._on_chat_snip_region)
         self.ui.on_event("ui.chat.snip.cancelled", self._on_chat_snip_cancelled)
         self.ui.on_event("ui.chat.selection.requested", self._on_chat_selection_requested)
@@ -396,6 +427,7 @@ class FlowController:
         self.ui.on_event("ui.log.event", self._on_ui_log_event)
         self.ui.on_event("ui.addons.run_action", self._on_addons_run_action)
         self.ui.on_event("ui.addons.set_enabled", self._on_addons_set_enabled)
+        self.ui.on_event("ui.addons.set_action_enabled", self._on_addons_set_action_enabled)
         self.ui.on_event("ui.addons.set_setting", self._on_addons_set_setting)
         self.ui.on_event("ui.addons.repair_environment", self._on_addons_repair_environment)
         self.ui.on_event("ui.addons.install_archive", self._on_addons_install_archive)
@@ -591,6 +623,70 @@ class FlowController:
         """Restore the text replaced by the most recent Wisp rewrite."""
         self._schedule(self.undo_last_wisp_edit)
 
+    def _on_rewrite_annotation_submitted(self, data: dict[str, Any], _req_id: Any = None) -> None:
+        """Generate a delayed-edit proposal from one Rewrite comment popup."""
+        payload = data or {}
+        self._schedule(
+            self.submit_rewrite_annotation,
+            str(payload.get("annotation_id") or ""),
+            str(payload.get("comment") or ""),
+            bool(payload.get("include_document")),
+        )
+
+    def _on_rewrite_annotation_held(self, data: dict[str, Any], _req_id: Any = None) -> None:
+        """Save one comment without starting a model request."""
+        payload = data or {}
+        self._schedule(
+            self.hold_rewrite_annotation,
+            str(payload.get("annotation_id") or ""),
+            str(payload.get("comment") or ""),
+            bool(payload.get("include_document")),
+        )
+
+    def _on_rewrite_send_all(self, _data: dict[str, Any], _req_id: Any = None) -> None:
+        """Dispatch all held comments while preserving per-app conversations."""
+        self._schedule(self.send_all_rewrite_annotations)
+
+    def _on_rewrite_annotation_cancelled(self, data: dict[str, Any], _req_id: Any = None) -> None:
+        """Cancel an in-flight proposal and discard its popup state."""
+        self._schedule(self.cancel_rewrite_annotation, str((data or {}).get("annotation_id") or ""))
+
+    def _on_rewrite_annotation_accepted(self, data: dict[str, Any], _req_id: Any = None) -> None:
+        """Immediately apply or copy an accepted delayed-edit proposal."""
+        self._schedule(self.accept_rewrite_annotation, str((data or {}).get("annotation_id") or ""))
+
+    def _on_rewrite_annotation_declined(self, data: dict[str, Any], _req_id: Any = None) -> None:
+        """Forget a proposal the user declined."""
+        self._schedule(self.decline_rewrite_annotation, str((data or {}).get("annotation_id") or ""))
+
+    def _on_rewrite_annotation_revision_requested(
+        self,
+        data: dict[str, Any],
+        _req_id: Any = None,
+    ) -> None:
+        """Regenerate one proposal using follow-up feedback from its popup."""
+        payload = data or {}
+        self._schedule(
+            self.revise_rewrite_annotation,
+            str(payload.get("annotation_id") or ""),
+            str(payload.get("prompt") or ""),
+        )
+
+    def _on_rewrite_anchor_refresh_requested(
+        self,
+        data: dict[str, Any],
+        _req_id: Any = None,
+    ) -> None:
+        """Refresh a cached exact range after its source document scrolls."""
+        key = str((data or {}).get("annotation_id") or "")
+        if not key:
+            return
+        with self._lock:
+            if key not in self._rewrite_annotations or key in self._rewrite_anchor_refreshing:
+                return
+            self._rewrite_anchor_refreshing.add(key)
+        self._schedule(self.refresh_rewrite_annotation_anchor, key)
+
     def _on_intent_snip_requested(self, data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle screenshot-chip snip requests from an open intent picker."""
         choices = list((data or {}).get("context_choices") or [])
@@ -734,6 +830,10 @@ class FlowController:
     def _on_addons_set_enabled(self, data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle addons set enabled events."""
         self._schedule(self.addon_set_enabled, data or {})
+
+    def _on_addons_set_action_enabled(self, data: dict[str, Any], _req_id: Any = None) -> None:
+        """Handle addon action toggle events."""
+        self._schedule(self.addon_set_action_enabled, data or {})
 
     def _on_addons_set_setting(self, data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle addons set setting events."""
@@ -1334,6 +1434,9 @@ class FlowController:
         self._reload_supervisor_config_if_changed()
         caller = self._caller(caller_idx)
         self._log_caller_runtime(caller_idx, caller)
+        if caller.get("paste_back"):
+            self.begin_rewrite_annotation(caller_idx, caller)
+            return
         generation = self._new_generation()
         # Silence any in-progress speech, but don't block the picker waiting for
         # it - audio.stop just flips a flag in the audio worker.
@@ -1388,6 +1491,920 @@ class FlowController:
             "caller %d picker shell shown screenshot=%.2fs total=%.2fs",
             caller_idx, t_shot - t_shot0, t_show - t0,
         )
+
+    def begin_rewrite_annotation(self, caller_idx: int, caller: dict[str, Any]) -> None:
+        """Capture a real selection and open the replacement Rewrite composer."""
+        self._fire(self.audio, "audio.stop")
+        try:
+            context = self._context_snapshot(
+                caller,
+                include_browser=False,
+                include_selected_paths=False,
+                preview_context_sources=False,
+            )
+        except Exception as exc:  # noqa: BLE001 - selection capture is best-effort
+            log.exception("rewrite annotation selection capture failed")
+            self._notice(f"Could not read selected text: {self._friendly_error(exc)}", severity="error")
+            return
+        active_app = context.get("active_app") if isinstance(context.get("active_app"), dict) else {}
+        log.info(
+            "rewrite selection captured: process=%r hwnd=%s chars=%d focus_token=%s",
+            active_app.get("process_name"),
+            active_app.get("window_id") or 0,
+            len(str(context.get("selected_text") or "")),
+            context.get("focus_token") or 0,
+        )
+        try:
+            structured_target: dict[str, Any] = {}
+            probes = (
+                ("code-editor", self._capture_vscode_rewrite_target),
+                ("spreadsheet", self._capture_spreadsheet_rewrite_target),
+                ("word", self._capture_word_rewrite_target),
+                ("powerpoint", self._capture_powerpoint_rewrite_target),
+                ("libreoffice", self._capture_libreoffice_rewrite_target),
+                ("browser", self._capture_browser_rewrite_target),
+            )
+            for probe_name, probe in probes:
+                probe_started = time.monotonic()
+                log.info("rewrite target probe started: %s", probe_name)
+                structured_target = probe(context, active_app) or {}
+                log.info(
+                    "rewrite target probe finished: %s matched=%s elapsed=%.3fs",
+                    probe_name,
+                    bool(structured_target),
+                    time.monotonic() - probe_started,
+                )
+                if structured_target:
+                    break
+        except Exception as exc:  # noqa: BLE001 - app adapters fail at a user-visible boundary
+            log.warning("structured Rewrite target capture failed: %s", exc)
+            self._notice(f"Wisp couldn't safely read that app selection: {exc}", severity="warning")
+            return
+        if structured_target:
+            context["selected_text"] = str(structured_target["grid_text"])
+            if isinstance(structured_target.get("selection_rect"), dict):
+                context["selection_rect"] = dict(structured_target["selection_rect"])
+        if str(context.get("platform") or "").startswith("win"):
+            app_native_rect = (
+                dict(structured_target.get("selection_rect") or {})
+                if isinstance(structured_target.get("selection_rect"), dict)
+                else {}
+            )
+            anchor = self._safe_call(
+                self.native,
+                "native.selection.anchor.resolve",
+                {
+                    "focus_token": int(context.get("focus_token") or 0),
+                    "source_window_id": int(active_app.get("window_id") or 0),
+                    "app_native_rect": app_native_rect,
+                    "allow_mouse": True,
+                    "refresh": False,
+                },
+                timeout=2.0,
+            )
+            if isinstance(anchor, dict) and anchor.get("ok") and anchor.get("visible"):
+                context["selection_rect"] = dict(anchor.get("selection_rect") or {})
+                context["selection_anchor_source"] = str(anchor.get("source") or "")
+                log.info(
+                    "rewrite anchor resolved: source=%s rect=%r",
+                    context["selection_anchor_source"],
+                    context["selection_rect"],
+                )
+        selected = str(context.get("selected_text") or "")
+        if not selected.strip():
+            self._notice("No selected text to rewrite.", severity="warning")
+            return
+
+        target_id = self._intent_target_id(context)
+        annotation_id = uuid.uuid4().hex
+        pending = PendingInvocation(
+            caller_idx=int(caller_idx),
+            caller=dict(caller),
+            context=context,
+            paste_target_pid=target_id,
+            intent_target_pid=target_id,
+        )
+        session_key = self._rewrite_annotation_session_key(context)
+        with self._lock:
+            used_numbers = {
+                max(1, int(item.display_number or 1))
+                for item in self._rewrite_annotations.values()
+            }
+            display_number = next(
+                number for number in itertools.count(1) if number not in used_numbers
+            )
+        request = RewriteAnnotationRequest(
+            annotation_id=annotation_id,
+            pending=pending,
+            session_key=session_key,
+            display_number=display_number,
+            copy_only=not bool(structured_target or target_id or context.get("focus_token")),
+            structured_target=structured_target,
+        )
+        with self._lock:
+            self._rewrite_annotations[annotation_id] = request
+            self._rewrite_app_sessions.setdefault(session_key, {"document_text": "", "turns": []})
+        log.info(
+            "rewrite composer handoff: annotation=%s display=%d source_hwnd=%s chars=%d",
+            annotation_id,
+            display_number,
+            active_app.get("window_id") or 0,
+            len(selected),
+        )
+        result = self._safe_call(
+            self.ui,
+            "ui.rewrite.annotation.show",
+            {
+                "annotation_id": annotation_id,
+                "display_number": display_number,
+                "selected_text": selected,
+                "source_window_id": int(active_app.get("window_id") or 0),
+                "source_pid": int(active_app.get("pid") or 0),
+                "source_label": str(active_app.get("name") or active_app.get("process_name") or ""),
+                "selection_rect": (
+                    dict(context.get("selection_rect") or {})
+                    if isinstance(context.get("selection_rect"), dict)
+                    else {}
+                ),
+            },
+            timeout=30.0,
+        )
+        log.info("rewrite composer result: annotation=%s result=%r", annotation_id, result)
+        if (
+            isinstance(result, dict)
+            and result.get("shown") is False
+            and result.get("created") is not True
+        ):
+            with self._lock:
+                self._rewrite_annotations.pop(annotation_id, None)
+
+    @staticmethod
+    def _rewrite_annotation_session_key(context: dict[str, Any]) -> str:
+        """Return the per-app conversation key used by concurrent Rewrite popups."""
+        active = context.get("active_app") if isinstance(context.get("active_app"), dict) else {}
+        platform = str(context.get("platform") or "")
+        pid = int(active.get("pid") or 0)
+        process = str(active.get("process_name") or active.get("name") or "app").strip().casefold()
+        return f"{platform}:{pid}:{process}"
+
+    def _capture_vscode_rewrite_target(
+        self,
+        context: dict[str, Any],
+        active_app: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Bind a supported saved editor selection to exact file offsets and hash."""
+        from core.actions.adapters.vscode import VSCodeSnapshot, code_editor_name, is_code_editor_app
+
+        if not is_code_editor_app(active_app):
+            return {}
+        selected_text = str(context.get("selected_text") or "")
+        if not selected_text.strip():
+            return {}
+        response = self._safe_call(
+            self.native,
+            "native.action.vscode.snapshot",
+            {"active_app": active_app, "selected_text": selected_text},
+            timeout=12.0,
+        ) or {}
+        payload = response.get("snapshot") if isinstance(response, dict) else None
+        if not bool(response.get("ok")) or not isinstance(payload, dict):
+            # Unsaved/unidentifiable editors still get the ordinary proposal
+            # path; Accept will safely degrade to Copy if Monaco rejects it.
+            log.info("code editor exact Rewrite target unavailable: %s", response.get("error"))
+            return {}
+        payload = dict(payload)
+        payload.setdefault("editor_name", code_editor_name(active_app))
+        snapshot = VSCodeSnapshot.from_selection(payload)
+        return {
+            "kind": "vscode_saved_selection",
+            "snapshot": snapshot,
+            "grid_text": snapshot.selected_text,
+            "prompt_context": (
+                f"[Exact saved {snapshot.editor_name} target: {snapshot.display_name}; "
+                f"characters {snapshot.selection_start}:{snapshot.selection_end}]"
+            ),
+        }
+
+    def _capture_spreadsheet_rewrite_target(
+        self,
+        context: dict[str, Any],
+        active_app: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Capture a typed cell range when Rewrite starts in Excel or Calc."""
+        from core.actions.adapters.excel import ExcelRuntimeProvider
+        from core.rewrite_spreadsheets import spreadsheet_grid_text
+
+        if ExcelRuntimeProvider.detects(context):
+            provider = ExcelRuntimeProvider()
+            snapshot = provider.snapshot(context)
+            if not bool(snapshot.formula_capture_complete):
+                raise RuntimeError("Excel did not expose complete formula identity for the selected range.")
+            grid_text = spreadsheet_grid_text(snapshot.values, snapshot.formulas)
+            return {
+                "kind": "excel_cells",
+                "snapshot": snapshot,
+                "grid_text": grid_text,
+                "rows": snapshot.row_count,
+                "columns": snapshot.column_count,
+                "prompt_context": (
+                    f"[Exact Excel target: {snapshot.workbook_name} / "
+                    f"{snapshot.worksheet_name}!{snapshot.selection_address}]\n{grid_text}"
+                ),
+            }
+
+        from core.actions.adapters.calc import CalcSnapshot, is_calc_app
+
+        if not is_calc_app(active_app):
+            return {}
+        response = self._safe_call(
+            self.native,
+            "native.action.calc.snapshot",
+            {"active_app": active_app},
+            timeout=15.0,
+        ) or {}
+        selection = response.get("selection") if isinstance(response, dict) else None
+        if not bool(response.get("ok")) or not isinstance(selection, dict):
+            raise RuntimeError(str(response.get("error") or "Calc returned no selected range."))
+        snapshot = CalcSnapshot.from_selection(selection)
+        grid_text = spreadsheet_grid_text(snapshot.typed_values, snapshot.formulas)
+        return {
+            "kind": "calc_cells",
+            "snapshot": snapshot,
+            "grid_text": grid_text,
+            "rows": snapshot.row_count,
+            "columns": snapshot.column_count,
+            "prompt_context": (
+                f"[Exact LibreOffice Calc target: {snapshot.document_title} / "
+                f"{snapshot.selection_address}]\n{grid_text}"
+            ),
+        }
+
+    @staticmethod
+    def _capture_word_rewrite_target(
+        context: dict[str, Any],
+        active_app: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Bind a desktop Word selection to an exact native COM Range."""
+        from core.rewrite_office import WordRewriteClient, is_word_desktop_app
+
+        if not is_word_desktop_app(active_app):
+            return {}
+        try:
+            snapshot = WordRewriteClient().inspect_selection(active_app)
+        except ValueError:
+            # A Word table/object boundary is not a safe generic paste target.
+            # Keep it blocked until object-aware Rewrite can bind that object.
+            raise
+        except Exception as exc:  # noqa: BLE001 - generic Rewrite remains useful
+            log.info("Word exact Rewrite target unavailable; using focus-safe fallback: %s", exc)
+            return {}
+        return {
+            "kind": "word_text_range",
+            "snapshot": snapshot,
+            "grid_text": snapshot.selected_text,
+            "prompt_context": (
+                f"[Exact Microsoft Word target: {snapshot.document_name}; "
+                f"characters {snapshot.start}:{snapshot.end}]"
+            ),
+        }
+
+    @staticmethod
+    def _capture_powerpoint_rewrite_target(
+        context: dict[str, Any],
+        active_app: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Bind a desktop PowerPoint selection to one slide shape text range."""
+        from core.actions.adapters.presentation import is_powerpoint_desktop_app
+        from core.rewrite_office import PowerPointRewriteClient
+
+        if not is_powerpoint_desktop_app(active_app):
+            return {}
+        try:
+            snapshot = PowerPointRewriteClient().inspect_selection(active_app)
+        except ValueError:
+            # Images, grouped objects, and ambiguous multi-shape selections
+            # must never silently degrade into a focus-based text paste.
+            raise
+        except Exception as exc:  # noqa: BLE001 - generic Rewrite remains useful
+            log.info("PowerPoint exact Rewrite target unavailable; using focus-safe fallback: %s", exc)
+            return {}
+        return {
+            "kind": "powerpoint_text_range",
+            "snapshot": snapshot,
+            "grid_text": snapshot.selected_text,
+            "prompt_context": (
+                f"[Exact Microsoft PowerPoint target: {snapshot.presentation_name}; "
+                f"slide {snapshot.slide_id}, shape {snapshot.shape_id}, "
+                f"characters {snapshot.start}:{snapshot.start + snapshot.length}]"
+            ),
+        }
+
+    def _capture_libreoffice_rewrite_target(
+        self,
+        context: dict[str, Any],
+        active_app: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Bind Writer or Impress selected text to a serializable UNO container."""
+        from core.rewrite_libreoffice import (
+            LibreOfficeRewriteSnapshot,
+            libreoffice_rewrite_surface,
+        )
+
+        surface = libreoffice_rewrite_surface(active_app)
+        if not surface:
+            return {}
+        response = self._safe_call(
+            self.native,
+            "native.action.libreoffice.rewrite_snapshot",
+            {
+                "active_app": active_app,
+                "selected_text": str(context.get("selected_text") or ""),
+            },
+            timeout=15.0,
+        ) or {}
+        payload = response.get("snapshot") if isinstance(response, dict) else None
+        if not bool(response.get("ok")) or not isinstance(payload, dict):
+            raise RuntimeError(
+                str(response.get("error") or f"LibreOffice {surface.title()} returned no exact selection.")
+            )
+        snapshot = LibreOfficeRewriteSnapshot.from_dict(payload)
+        target_label = "Writer text container" if surface == "writer" else "Impress slide shape"
+        return {
+            "kind": "libreoffice_text_range",
+            "snapshot": snapshot,
+            "grid_text": snapshot.selected_text,
+            "prompt_context": (
+                f"[Exact LibreOffice {surface.title()} target: {snapshot.document_title}; "
+                f"{target_label}, characters {snapshot.start}:{snapshot.start + snapshot.length}]"
+            ),
+        }
+
+    def _capture_browser_rewrite_target(
+        self,
+        context: dict[str, Any],
+        active_app: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Bind editable DOM text when the tab belongs to Wisp's managed browser."""
+        from core.actions.adapters.browser import is_browser_app
+        from core.rewrite_browser import BrowserRewriteSnapshot
+
+        if not is_browser_app(active_app):
+            return {}
+        response = self._safe_call(
+            self.native,
+            "native.action.browser.rewrite_snapshot",
+            {"active_app": active_app},
+            timeout=8.0,
+        ) or {}
+        payload = response.get("snapshot") if isinstance(response, dict) else None
+        if not bool(response.get("ok")) or not isinstance(payload, dict):
+            log.info("managed-browser exact Rewrite unavailable: %s", response.get("error"))
+            return {}
+        snapshot = BrowserRewriteSnapshot.from_dict(payload)
+        return {
+            "kind": "browser_text_range",
+            "snapshot": snapshot,
+            "grid_text": snapshot.selected_text,
+            "prompt_context": (
+                f"[Exact managed browser target: {snapshot.title}; "
+                f"editable characters {snapshot.start}:{snapshot.end}]"
+            ),
+        }
+
+    @staticmethod
+    def _build_structured_rewrite_plan(target: dict[str, Any], replacement: str) -> Any:
+        """Bind a model proposal to an exact app-owned target."""
+        snapshot = target.get("snapshot")
+        kind = str(target.get("kind") or "")
+        if kind == "vscode_saved_selection":
+            from core.actions.adapters.vscode import build_replace_selection_plan
+
+            return build_replace_selection_plan(
+                snapshot,
+                replacement,
+                summary="Rewrite the selected code",
+            )
+        if kind == "word_text_range":
+            from core.rewrite_office import build_word_rewrite_plan
+
+            return build_word_rewrite_plan(snapshot, replacement)
+        if kind == "powerpoint_text_range":
+            from core.rewrite_office import build_powerpoint_rewrite_plan
+
+            return build_powerpoint_rewrite_plan(snapshot, replacement)
+        if kind == "libreoffice_text_range":
+            from core.rewrite_libreoffice import build_libreoffice_rewrite_plan
+
+            return build_libreoffice_rewrite_plan(snapshot, replacement)
+        if kind == "browser_text_range":
+            from core.rewrite_browser import build_browser_rewrite_plan
+
+            return build_browser_rewrite_plan(snapshot, replacement)
+        from core.rewrite_spreadsheets import spreadsheet_rewrite_changes
+
+        if kind == "excel_cells":
+            from core.actions.adapters.excel.plans import build_cleanup_plan
+
+            changes = spreadsheet_rewrite_changes(
+                snapshot.values,
+                snapshot.formulas,
+                replacement,
+                allow_boolean_values=True,
+            )
+            return build_cleanup_plan(snapshot, changes)
+        if kind == "calc_cells":
+            from core.actions.adapters.calc.plans import build_cleanup_plan
+
+            changes = spreadsheet_rewrite_changes(
+                snapshot.typed_values,
+                snapshot.formulas,
+                replacement,
+                allow_boolean_values=False,
+            )
+            return build_cleanup_plan(snapshot, changes)
+        raise ValueError("The app-owned Rewrite target is unavailable.")
+
+    def _apply_structured_rewrite(self, request: RewriteAnnotationRequest) -> bool:
+        """Apply and verify one accepted app-owned target plan."""
+        plan = request.structured_plan
+        kind = str(request.structured_target.get("kind") or "")
+        if plan is None:
+            return False
+        try:
+            if kind == "vscode_saved_selection":
+                response = self._safe_call(
+                    self.native,
+                    "native.action.vscode.apply",
+                    {
+                        "plan": plan.to_dict(),
+                        "confirmed": True,
+                        "idempotency_key": f"rewrite:{request.annotation_id}",
+                    },
+                    timeout=15.0,
+                ) or {}
+                result = response.get("result") if isinstance(response, dict) else {}
+                return bool(response.get("ok") and isinstance(result, dict) and result.get("status") == "applied")
+            if kind == "excel_cells":
+                from core.actions.adapters.excel import ExcelActionAdapter
+
+                result = ExcelActionAdapter().execute(
+                    plan,
+                    confirmed=True,
+                    idempotency_key=f"rewrite:{request.annotation_id}",
+                )
+                return bool(result.status == "applied" and result.verification)
+            if kind == "calc_cells":
+                response = self._safe_call(
+                    self.native,
+                    "native.action.calc.apply",
+                    {
+                        "plan": plan.to_dict(),
+                        "confirmed": True,
+                        "idempotency_key": f"rewrite:{request.annotation_id}",
+                    },
+                    timeout=15.0,
+                ) or {}
+                result = response.get("result") if isinstance(response, dict) else {}
+                return bool(response.get("ok") and isinstance(result, dict) and result.get("status") == "applied")
+            if kind == "word_text_range":
+                from core.rewrite_office import WordRewriteClient
+
+                return WordRewriteClient().apply(plan)
+            if kind == "powerpoint_text_range":
+                from core.rewrite_office import PowerPointRewriteClient
+
+                return PowerPointRewriteClient().apply(plan)
+            if kind == "libreoffice_text_range":
+                response = self._safe_call(
+                    self.native,
+                    "native.action.libreoffice.rewrite_apply",
+                    {"plan": plan.to_dict()},
+                    timeout=15.0,
+                ) or {}
+                result = response.get("result") if isinstance(response, dict) else {}
+                return bool(
+                    response.get("ok")
+                    and isinstance(result, dict)
+                    and result.get("status") == "applied"
+                    and result.get("verification")
+                )
+            if kind == "browser_text_range":
+                response = self._safe_call(
+                    self.native,
+                    "native.action.browser.rewrite_apply",
+                    {"plan": plan.to_dict()},
+                    timeout=12.0,
+                ) or {}
+                result = response.get("result") if isinstance(response, dict) else {}
+                return bool(
+                    response.get("ok")
+                    and isinstance(result, dict)
+                    and result.get("status") == "applied"
+                    and result.get("verification")
+                )
+        except Exception:
+            log.exception("structured app Rewrite apply failed")
+        return False
+
+    def submit_rewrite_annotation(
+        self,
+        annotation_id: str,
+        comment: str,
+        include_document: bool,
+    ) -> None:
+        """Generate one proposal without editing the captured application."""
+        key = str(annotation_id or "")
+        clean_comment = str(comment or "").strip()
+        with self._lock:
+            request = self._rewrite_annotations.get(key)
+        if request is None or not clean_comment:
+            return
+        request.comment = clean_comment
+        request.include_document = bool(include_document)
+        request.state = "processing"
+        request.stream_id = None
+        self._publish_rewrite_held_count()
+        self._fire(self.ui, "ui.rewrite.annotation.processing", {"annotation_id": key})
+
+        session = self._rewrite_app_sessions.setdefault(
+            request.session_key,
+            {"document_text": "", "turns": []},
+        )
+        if include_document and not str(session.get("document_text") or "").strip():
+            try:
+                session["document_text"] = self._fetch_active_document_text(request.pending.context)
+            except Exception:
+                log.exception("rewrite annotation document context capture failed")
+        document_text = str(session.get("document_text") or "").strip()
+        prior_turns = list(session.get("turns") or [])[-6:]
+        context_parts: list[str] = []
+        if document_text:
+            context_parts.append(f"[Active document]\n{document_text}")
+        if prior_turns:
+            rendered_turns = []
+            for turn in prior_turns:
+                if not isinstance(turn, dict):
+                    continue
+                rendered_turns.append(
+                    "Instruction: {instruction}\nProposal: {proposal}".format(
+                        instruction=str(turn.get("instruction") or ""),
+                        proposal=str(turn.get("proposal") or ""),
+                    )
+                )
+            if rendered_turns:
+                context_parts.append("[Earlier Rewrite proposals in this app conversation]\n" + "\n\n".join(rendered_turns))
+        if request.structured_target:
+            context_parts.append(str(request.structured_target.get("prompt_context") or ""))
+        rewrite_context = "\n\n".join(context_parts)
+        structured_requirement = ""
+        structured_kind = str(request.structured_target.get("kind") or "")
+        if structured_kind in {"excel_cells", "calc_cells"}:
+            rows = int(request.structured_target.get("rows") or 0)
+            columns = int(request.structured_target.get("columns") or 0)
+            structured_requirement = (
+                f" The target is a {rows}-row by {columns}-column spreadsheet range. "
+                "Return only the complete replacement range as plain tab-separated values, with exactly "
+                "the same row and column counts. Preserve formulas with a leading '=' and do not use a "
+                "Markdown code fence."
+            )
+        elif structured_kind == "vscode_saved_selection":
+            editor_label = str(
+                getattr(request.structured_target.get("snapshot"), "editor_name", "Code editor")
+                or "Code editor"
+            )
+            structured_requirement = (
+                f" The target is an exact saved {editor_label} selection. Return only the replacement code, "
+                "preserving indentation and line endings where appropriate, without a Markdown code fence."
+            )
+        elif structured_kind == "word_text_range":
+            structured_requirement = (
+                " The target is an exact Microsoft Word text range. Return only the replacement text, "
+                "without commentary or a Markdown code fence."
+            )
+        elif structured_kind == "powerpoint_text_range":
+            structured_requirement = (
+                " The target is an exact Microsoft PowerPoint shape text range. Return only the "
+                "replacement text, without commentary or a Markdown code fence."
+            )
+        elif structured_kind == "libreoffice_text_range":
+            surface = str(getattr(request.structured_target.get("snapshot"), "surface", "document"))
+            structured_requirement = (
+                f" The target is an exact LibreOffice {surface.title()} text range. Return only the "
+                "replacement text, without commentary or a Markdown code fence."
+            )
+        elif structured_kind == "browser_text_range":
+            structured_requirement = (
+                " The target is an exact editable text range in a Wisp-managed browser tab. "
+                "Return only the replacement text, without commentary or a Markdown code fence."
+            )
+        delegated_prompt = (
+            f"{clean_comment}\n\n"
+            "Execution requirement: delegate this edit to a sub-agent when the active model/runtime "
+            "supports sub-agents. Wisp is issuing this edit as a separate managed call when native "
+            "sub-agents are unavailable. Return only the proposed replacement through the rewrite tool."
+            f"{structured_requirement}"
+        )
+
+        def on_event(event: str, payload: Any, _req_id: Any = None) -> None:
+            if event == "privacy.review.request":
+                self._handle_privacy_review_request(payload)
+
+        def on_started(req_id: Any) -> None:
+            with self._lock:
+                current = self._rewrite_annotations.get(key)
+                if current is request:
+                    request.stream_id = req_id
+                    return
+            self._safe_call(self.brain, "brain.cancel", {"target": req_id}, timeout=5.0)
+
+        try:
+            result = self._brain_call_with_events(
+                "brain.rewrite",
+                {
+                    "selected_text": str(request.pending.context.get("selected_text") or ""),
+                    "intent_prompt": delegated_prompt,
+                    "rewrite_context": rewrite_context,
+                    "privacy_session_id": f"rewrite-annotation:{key}",
+                },
+                timeout=_INTERACTIVE_LLM_TIMEOUT_SECONDS,
+                on_event=on_event,
+                on_started=on_started,
+            )
+        except Exception as exc:  # noqa: BLE001 - retain the user's popup for retry
+            log.exception("rewrite annotation generation failed")
+            with self._lock:
+                current = self._rewrite_annotations.get(key)
+            if current is request:
+                request.state = "failed"
+                request.stream_id = None
+                self._safe_call(
+                    self.ui,
+                    "ui.rewrite.annotation.failure",
+                    {"annotation_id": key, "message": f"Rewrite failed: {self._friendly_error(exc)}"},
+                    timeout=30.0,
+                )
+            return
+
+        with self._lock:
+            current = self._rewrite_annotations.get(key)
+        if current is not request:
+            return
+        request.stream_id = None
+        raw_replacement = str((result or {}).get("text") or "")
+        replacement = (
+            raw_replacement.strip("\r\n")
+            if request.structured_target
+            else raw_replacement.strip()
+        )
+        if not replacement:
+            request.state = "failed"
+            self._safe_call(
+                self.ui,
+                "ui.rewrite.annotation.failure",
+                {"annotation_id": key, "message": "The model returned no replacement. You can retry."},
+                timeout=30.0,
+            )
+            return
+        if request.structured_target:
+            try:
+                request.structured_plan = self._build_structured_rewrite_plan(
+                    request.structured_target,
+                    replacement,
+                )
+            except Exception as exc:  # noqa: BLE001 - malformed proposals remain retryable
+                request.state = "failed"
+                self._safe_call(
+                    self.ui,
+                    "ui.rewrite.annotation.failure",
+                    {"annotation_id": key, "message": f"Rewrite proposal was not safe to apply: {exc}"},
+                    timeout=30.0,
+                )
+                return
+        request.replacement_text = replacement
+        request.state = "proposal"
+        session.setdefault("turns", []).append(
+            {"instruction": clean_comment, "proposal": replacement}
+        )
+        session["turns"] = list(session.get("turns") or [])[-12:]
+        self._safe_call(
+            self.ui,
+            "ui.rewrite.annotation.proposal",
+            {
+                "annotation_id": key,
+                "replacement_text": replacement,
+                "copy_only": request.copy_only,
+            },
+            timeout=30.0,
+        )
+
+    def hold_rewrite_annotation(
+        self,
+        annotation_id: str,
+        comment: str,
+        include_document: bool,
+    ) -> None:
+        """Stash one complete comment without spending a model call."""
+        key = str(annotation_id or "")
+        clean_comment = str(comment or "").strip()
+        with self._lock:
+            request = self._rewrite_annotations.get(key)
+            if request is None or not clean_comment or request.state == "processing":
+                return
+            request.comment = clean_comment
+            request.include_document = bool(include_document)
+            request.state = "held"
+            request.stream_id = None
+        self._publish_rewrite_held_count()
+
+    def send_all_rewrite_annotations(self) -> None:
+        """Send every held comment, reusing only the conversation for its own app."""
+        with self._lock:
+            held = [
+                request
+                for request in self._rewrite_annotations.values()
+                if request.state == "held" and request.comment.strip()
+            ]
+            for request in held:
+                request.state = "queued"
+        self._publish_rewrite_held_count()
+        for request in held:
+            self.submit_rewrite_annotation(
+                request.annotation_id,
+                request.comment,
+                request.include_document,
+            )
+
+    def _publish_rewrite_held_count(self) -> None:
+        with self._lock:
+            count = sum(
+                request.state == "held"
+                for request in self._rewrite_annotations.values()
+            )
+        self._fire(self.ui, "ui.rewrite.held_count", {"count": int(count)})
+
+    def refresh_rewrite_annotation_anchor(self, annotation_id: str) -> None:
+        """Re-query one cached range so its popup follows document scrolling."""
+        key = str(annotation_id or "")
+        try:
+            with self._lock:
+                request = self._rewrite_annotations.get(key)
+            if request is None:
+                return
+            context = request.pending.context
+            active_app = (
+                context.get("active_app")
+                if isinstance(context.get("active_app"), dict)
+                else {}
+            )
+            anchor = self._safe_call(
+                self.native,
+                "native.selection.anchor.resolve",
+                {
+                    "focus_token": int(context.get("focus_token") or 0),
+                    "source_window_id": int(active_app.get("window_id") or 0),
+                    "allow_mouse": False,
+                    "refresh": True,
+                },
+                timeout=2.0,
+            )
+            if not isinstance(anchor, dict) or not anchor.get("ok"):
+                return
+            visible = bool(anchor.get("visible"))
+            rect = dict(anchor.get("selection_rect") or {}) if visible else {}
+            log.info(
+                "rewrite anchor refresh: annotation=%s source=%s visible=%s rect=%r",
+                key,
+                anchor.get("source"),
+                visible,
+                rect,
+            )
+            if visible:
+                context["selection_rect"] = rect
+                context["selection_anchor_source"] = str(anchor.get("source") or "")
+            self._fire(
+                self.ui,
+                "ui.rewrite.annotation.anchor",
+                {
+                    "annotation_id": key,
+                    "selection_rect": rect,
+                    "visible": visible,
+                    "source": str(anchor.get("source") or ""),
+                },
+            )
+        finally:
+            with self._lock:
+                self._rewrite_anchor_refreshing.discard(key)
+
+    def cancel_rewrite_annotation(self, annotation_id: str) -> None:
+        """Cancel the correct managed model call and clear its state."""
+        key = str(annotation_id or "")
+        with self._lock:
+            request = self._rewrite_annotations.pop(key, None)
+        if request is not None and request.stream_id is not None:
+            self._safe_call(self.brain, "brain.cancel", {"target": request.stream_id}, timeout=5.0)
+        self._publish_rewrite_held_count()
+
+    def decline_rewrite_annotation(self, annotation_id: str) -> None:
+        """Discard a composed or completed proposal."""
+        key = str(annotation_id or "")
+        with self._lock:
+            self._rewrite_annotations.pop(key, None)
+        self._publish_rewrite_held_count()
+
+    def revise_rewrite_annotation(self, annotation_id: str, feedback: str) -> None:
+        """Regenerate a proposal from its original target and follow-up feedback."""
+        key = str(annotation_id or "")
+        with self._lock:
+            request = self._rewrite_annotations.get(key)
+        clean_feedback = str(feedback or "").strip()
+        if request is None or not clean_feedback:
+            return
+        revision_prompt = (
+            f"Original instruction: {request.comment}\n"
+            f"Previous proposal: {request.replacement_text}\n"
+            f"Follow-up instruction: {clean_feedback}"
+        )
+        self.submit_rewrite_annotation(key, revision_prompt, request.include_document)
+
+    def accept_rewrite_annotation(self, annotation_id: str) -> None:
+        """Immediately apply the captured proposal, falling back to Copy safely."""
+        key = str(annotation_id or "")
+        with self._lock:
+            request = self._rewrite_annotations.get(key)
+        if request is None or request.state != "proposal" or not request.replacement_text:
+            return
+        if request.structured_target:
+            applied = self._apply_structured_rewrite(request)
+            if applied:
+                with self._lock:
+                    self._rewrite_annotations.pop(key, None)
+                self._fire(self.ui, "ui.rewrite.annotation.remove", {"annotation_id": key})
+                return
+            request.copy_only = True
+            self._safe_call(
+                self.ui,
+                "ui.rewrite.annotation.proposal",
+                {
+                    "annotation_id": key,
+                    "replacement_text": request.replacement_text,
+                    "copy_only": True,
+                },
+                timeout=30.0,
+            )
+            self._notice(
+                "Wisp could not safely update that app selection. The proposal is still available to copy.",
+                severity="warning",
+            )
+            return
+        if request.copy_only:
+            copied = self.native.call(
+                "native.clipboard.set",
+                {"text": request.replacement_text},
+                timeout=30.0,
+            ) or {}
+            if isinstance(copied, dict) and copied.get("ok"):
+                with self._lock:
+                    self._rewrite_annotations.pop(key, None)
+                self._fire(self.ui, "ui.rewrite.annotation.remove", {"annotation_id": key})
+            return
+
+        context = request.pending.context
+        paste = self.native.call(
+            "native.paste_text",
+            {
+                "text": request.replacement_text,
+                "target_pid": int(request.pending.paste_target_pid or 0),
+                "focus_token": int(context.get("focus_token") or 0),
+                "restore_clipboard": True,
+            },
+            timeout=30.0,
+        ) or {}
+        if isinstance(paste, dict) and paste.get("ok"):
+            with self._lock:
+                self._rewrite_annotations.pop(key, None)
+                self._last_undoable_edit = UndoableEdit(
+                    original_text=str(context.get("selected_text") or ""),
+                    replacement_text=request.replacement_text,
+                    target_pid=int(request.pending.paste_target_pid or 0),
+                    focus_token=int(context.get("focus_token") or 0),
+                )
+            self._fire(self.ui, "ui.rewrite.annotation.remove", {"annotation_id": key})
+            return
+
+        # Preserve the proposal and offer a safe manual path instead of applying
+        # to whichever control happens to be focused now.
+        request.copy_only = True
+        self._safe_call(
+            self.ui,
+            "ui.rewrite.annotation.proposal",
+            {
+                "annotation_id": key,
+                "replacement_text": request.replacement_text,
+                "copy_only": True,
+            },
+            timeout=30.0,
+        )
+        self._notice("Wisp could not safely edit this selection in place. Use Copy instead.", severity="warning")
 
     def begin_snip(self) -> None:
         """Handle begin snip for flow controller."""
@@ -1787,6 +2804,10 @@ class FlowController:
         if routing.get("mode") == "invalid":
             self._notice("Wisp could not verify the selected app action. Nothing was changed.", severity="warning")
             self._set_idle()
+        elif routing.get("mode") == "file":
+            self._run_action_file(pending, prompt, routing)
+        elif routing.get("mode") == "addon":
+            self._run_addon_intent(pending, prompt, routing)
         elif routing.get("mode") == "action":
             self._dispatch_provider_action(
                 pending,
@@ -1798,6 +2819,13 @@ class FlowController:
                 selected_text=selected_text,
             )
         elif routing.get("mode") == "answer":
+            if not self._attach_provider_answer_context(
+                pending,
+                routing,
+                active_app=active_app,
+            ):
+                self._set_idle()
+                return
             caller = dict(pending.caller)
             caller["paste_back"] = False
             pending.caller = caller
@@ -1840,7 +2868,7 @@ class FlowController:
     def _validated_intent_routing(
         pending: PendingInvocation,
         value: dict[str, Any] | None,
-    ) -> dict[str, str]:
+    ) -> dict[str, Any]:
         """Resolve UI routing against the provider detected before the picker opened."""
         raw = value if isinstance(value, dict) else {}
         mode = str(raw.get("mode") or "legacy").strip().lower()
@@ -1850,6 +2878,37 @@ class FlowController:
             return {"mode": "auto", "source": str(raw.get("source") or "custom")}
         if mode == "answer" and str(raw.get("source") or "") == "configured":
             return {"mode": "answer", "source": "configured"}
+        if mode == "file" and str(raw.get("source") or "") == "configured":
+            action_name = str(raw.get("action_name") or "")
+            caller_folder = str(raw.get("caller_folder") or "")
+            if caller_folder != str(pending.caller.get("folder") or ""):
+                return {"mode": "invalid"}
+            intents = pending.caller.get("intents")
+            trusted = next(
+                (
+                    item.get("action_file")
+                    for item in intents
+                    if isinstance(item, dict)
+                    and isinstance(item.get("action_file"), dict)
+                    and str(item["action_file"].get("name") or "") == action_name
+                ),
+                None,
+            ) if isinstance(intents, list) else None
+            if not isinstance(trusted, dict) or not bool(trusted.get("has_code")):
+                return {"mode": "invalid"}
+            return {"mode": "file", "source": "configured", "action_file": dict(trusted)}
+        if mode == "addon" and str(raw.get("source") or "") == "addon":
+            addon_id = str(raw.get("addon_id") or "").strip()
+            action_id = str(raw.get("action_id") or "").strip()
+            if not addon_id or not action_id:
+                return {"mode": "invalid"}
+            return {
+                "mode": "addon",
+                "source": "addon",
+                "addon_id": addon_id,
+                "action_id": action_id,
+                "callback": bool(raw.get("callback")),
+            }
 
         provider = pending.action_provider_context
         if not isinstance(provider, dict) or not provider:
@@ -1873,12 +2932,12 @@ class FlowController:
         if not bool(trusted.get("available", True)):
             return {"mode": "invalid"}
         trusted_mode = str(trusted.get("mode") or "").strip().lower()
-        if mode != trusted_mode or mode not in {"action", "answer"}:
+        if mode != trusted_mode or mode not in {"action", "answer", "file"}:
             return {"mode": "invalid"}
         for routing_field in ("capability_type", "planning_tool"):
             if str(raw.get(routing_field) or "") != str(trusted.get(routing_field) or ""):
                 return {"mode": "invalid"}
-        return {
+        result: dict[str, Any] = {
             "mode": trusted_mode,
             "source": "provider",
             "provider_id": str(provider.get("id") or ""),
@@ -1887,6 +2946,203 @@ class FlowController:
             "capability_type": str(trusted.get("capability_type") or ""),
             "planning_tool": str(trusted.get("planning_tool") or ""),
         }
+        if trusted_mode == "file":
+            action_file = trusted.get("action_file")
+            if not isinstance(action_file, dict) or not bool(action_file.get("has_code")):
+                return {"mode": "invalid"}
+            result["action_file"] = dict(action_file)
+        return result
+
+    def _attach_provider_answer_context(
+        self,
+        pending: PendingInvocation,
+        routing: dict[str, Any],
+        *,
+        active_app: dict[str, Any],
+    ) -> bool:
+        """Attach the exact selected cells required by spreadsheet answer actions."""
+        if str(routing.get("source") or "") != "provider":
+            return True
+        provider_id = str(routing.get("provider_id") or "")
+        document_providers = {
+            "word_desktop": "Word",
+            "libreoffice_writer": "Writer",
+            "powerpoint_desktop": "PowerPoint",
+            "libreoffice_impress": "Impress",
+        }
+        if provider_id in document_providers:
+            context = pending.context if isinstance(pending.context, dict) else {}
+            # Provider rows describe the document that was active at hotkey
+            # time. Never reuse ambient context that may contain several open
+            # documents: re-read only that exact captured window.
+            document_text = self._fetch_active_document_text(context, active_only=True)
+            if document_text:
+                context["active_document_text"] = document_text
+                context["_active_document_text_full"] = document_text
+            else:
+                context.pop("active_document_text", None)
+                context.pop("_active_document_text_full", None)
+            selected_text = str(context.get("selected_text") or "").strip()
+            if not document_text and not selected_text:
+                app_name = document_providers[provider_id]
+                self._notice(
+                    f"Wisp couldn't read the active {app_name} document. "
+                    f"Return to {app_name}, select some text, and try again.",
+                    severity="warning",
+                )
+                return False
+            pending.context = context
+            caller = dict(pending.caller)
+            caller["context_ambient"] = True
+            caller["context_documents_mode"] = "auto"
+            caller["paste_back"] = False
+            pending.caller = caller
+            return True
+        browser_document_providers = {
+            "powerpoint_web": "PowerPoint for the web",
+            "google_slides": "Google Slides",
+            "google_docs": "Google Docs",
+        }
+        if provider_id in browser_document_providers:
+            context = pending.context if isinstance(pending.context, dict) else {}
+            browser_content = str(context.get("browser_content") or "").strip()
+            if not browser_content:
+                browser = self._fetch_browser_content_for_context(context)
+                if browser.get("browser_url"):
+                    context["browser_url"] = browser["browser_url"]
+                browser_content = str(browser.get("browser_content") or "").strip()
+                if browser_content:
+                    context["browser_content"] = browser_content
+            selected_text = str(context.get("selected_text") or "").strip()
+            if not browser_content and not selected_text:
+                product = browser_document_providers[provider_id]
+                self._notice(
+                    f"Wisp couldn't read the active {product} slide text. "
+                    "Select the relevant slide text and try again.",
+                    severity="warning",
+                )
+                return False
+            pending.context = context
+            caller = dict(pending.caller)
+            caller["context_browser_mode"] = "auto"
+            caller["paste_back"] = False
+            pending.caller = caller
+            return True
+        if provider_id not in {"excel", "libreoffice_calc"}:
+            return True
+
+        try:
+            if provider_id == "excel":
+                from core.actions.adapters.excel import ExcelRuntimeProvider
+
+                provider = ExcelRuntimeProvider()
+                selection = provider.answer_context(provider.snapshot({"active_app": active_app}))
+            else:
+                response = self.native.call(
+                    "native.action.calc.snapshot",
+                    {"active_app": active_app},
+                    timeout=12.0,
+                ) or {}
+                selection = response.get("selection") if isinstance(response, dict) else None
+                if not bool(response.get("ok")) or not isinstance(selection, dict) or not selection:
+                    raise RuntimeError(str(response.get("error") or "Calc returned no selected cells."))
+                selection = dict(selection)
+                selection["selected_text"] = self._calc_answer_selection_text(selection)
+        except Exception as exc:  # noqa: BLE001 - optional app readers fail at a user-visible boundary
+            app_name = "Excel" if provider_id == "excel" else "Calc"
+            log.warning("could not attach %s answer context: %s", app_name, exc)
+            self._notice(
+                f"Wisp couldn't read the selected {app_name} cells. "
+                f"Return to {app_name}, select the range, and try again.",
+                severity="warning",
+            )
+            return False
+
+        selected_text = str(selection.get("selected_text") or "").strip()
+        if not selected_text:
+            self._notice(
+                "Wisp couldn't read any selected spreadsheet cells. Select a non-empty range and try again.",
+                severity="warning",
+            )
+            return False
+        context = pending.context if isinstance(pending.context, dict) else {}
+        context["app_selection"] = selection
+        context["selected_text"] = selected_text
+        context["app_selection_deferred"] = False
+        pending.context = context
+        caller = dict(pending.caller)
+        # Choosing a provider action carrying Text access is the user's explicit
+        # request to attach that app-owned selection, even when the generic
+        # Selection chip was unavailable while the overlay held focus.
+        caller["_context_selection_enabled"] = True
+        caller["paste_back"] = False
+        pending.caller = caller
+        return True
+
+    @staticmethod
+    def _calc_answer_selection_text(selection: dict[str, Any]) -> str:
+        """Render bounded Calc values and formulas without treating formulas as display text."""
+        values = selection.get("values") if isinstance(selection.get("values"), list | tuple) else ()
+        formulas = selection.get("formulas") if isinstance(selection.get("formulas"), list | tuple) else ()
+        displayed = str(selection.get("selected_text") or "").strip()
+        if not displayed:
+            displayed = "\n".join(
+                "\t".join(str(cell) for cell in row)
+                for row in values
+                if isinstance(row, list | tuple)
+            )
+        formula_lines = [
+            "\t".join(
+                str(cell) if str(cell).startswith("=") else ""
+                for cell in row
+            )
+            for row in formulas
+            if isinstance(row, list | tuple)
+        ]
+        text = (
+            "[LibreOffice Calc selected cells]\n"
+            f"Range: {selection.get('range') or 'unknown'}\n"
+            f"Rows: {selection.get('rows') or len(values)}; "
+            f"Columns: {selection.get('columns') or (len(values[0]) if values else 0)}\n"
+            "Displayed values (tab-separated):\n"
+            f"{displayed}\n"
+            "Formulas at the same positions (blank means the cell is not a formula):\n"
+            + "\n".join(formula_lines)
+        ).strip()
+        limit = 20_000
+        if len(text) <= limit:
+            return text
+        return text[:limit].rstrip() + "\n[Selection context truncated to 20,000 characters.]"
+
+    def _run_addon_intent(
+        self,
+        pending: PendingInvocation,
+        prompt: str,
+        routing: dict[str, Any],
+    ) -> None:
+        """Run a declared addon callback or submit its prompt normally."""
+        if not bool(routing.get("callback")):
+            self._query(prompt, pending)
+            return
+        result = self._safe_call(
+            self.brain,
+            "brain.addons.run_intent",
+            {
+                "addon_id": str(routing.get("addon_id") or ""),
+                "action_id": str(routing.get("action_id") or ""),
+                "payload": {
+                    "caller_idx": pending.caller_idx,
+                    "context": pending.context if isinstance(pending.context, dict) else {},
+                },
+            },
+            timeout=60.0,
+        )
+        if isinstance(result, dict) and str(result.get("prompt") or "").strip():
+            self._query(str(result["prompt"]).strip(), pending)
+            return
+        message = str(result.get("message") or "Addon action finished.") if isinstance(result, dict) else "Addon action finished."
+        self._notice(message)
+        self._set_idle()
 
     def _dispatch_provider_action(
         self,
@@ -1919,13 +3175,32 @@ class FlowController:
                 planning_tool=planning_tool,
             )
             return
-        if capability_type in {"calc.add_chart@1", "calc.format_table@1", "calc.sort_range@1"}:
+        if capability_type in {
+            "calc.add_chart@1",
+            "calc.clean_range@1",
+            "calc.format_table@1",
+            "calc.sort_range@1",
+        }:
             self._run_calc_chart_action(
                 pending,
                 app_selection,
                 prompt=prompt,
                 planning_tool=planning_tool,
                 capability_type=capability_type,
+            )
+            return
+        if capability_type in {
+            "excel.add_chart@1",
+            "excel.clean_range@1",
+            "excel.create_table@1",
+            "excel.sort_range@1",
+        }:
+            self._run_excel_action(
+                pending,
+                prompt,
+                planning_tool=planning_tool,
+                capability_type=capability_type,
+                provider_id=str(routing.get("provider_id") or ""),
             )
             return
         if capability_type.startswith("presentation."):
@@ -1951,11 +3226,59 @@ class FlowController:
     ) -> None:
         """Run PowerPoint through the shared preview-first ActionRunner."""
         from core.actions.adapters.presentation import PowerPointDesktopRuntimeProvider
+
+        self._run_typed_desktop_action(
+            pending,
+            prompt,
+            planning_tool=planning_tool,
+            capability_type=capability_type,
+            provider_id=provider_id,
+            runtime_provider=PowerPointDesktopRuntimeProvider(),
+            product_name="PowerPoint",
+            trace_app="presentation",
+        )
+
+    def _run_excel_action(
+        self,
+        pending: PendingInvocation,
+        prompt: str,
+        *,
+        planning_tool: str,
+        capability_type: str,
+        provider_id: str,
+    ) -> None:
+        """Run Excel through the shared preview-first ActionRunner."""
+        from core.actions.adapters.excel import ExcelRuntimeProvider
+
+        self._run_typed_desktop_action(
+            pending,
+            prompt,
+            planning_tool=planning_tool,
+            capability_type=capability_type,
+            provider_id=provider_id,
+            runtime_provider=ExcelRuntimeProvider(),
+            product_name="Excel",
+            trace_app="excel",
+        )
+
+    def _run_typed_desktop_action(
+        self,
+        pending: PendingInvocation,
+        prompt: str,
+        *,
+        planning_tool: str,
+        capability_type: str,
+        provider_id: str,
+        runtime_provider: Any,
+        product_name: str,
+        trace_app: str,
+    ) -> None:
+        """Run one desktop provider through the common preview-first boundary."""
         from core.actions.runner import ActionRunner, ActionRuntimeProviderRegistry, PlannedToolCall
 
         trace = ActionTrace(
             capability_type,
-            app="presentation",
+            app=trace_app,
             started_unix_ns=pending.invoked_at_unix_ns,
         )
         gen = self._new_generation()
@@ -2023,7 +3346,7 @@ class FlowController:
             return approved
 
         runner = ActionRunner(
-            ActionRuntimeProviderRegistry((PowerPointDesktopRuntimeProvider(),)),
+            ActionRuntimeProviderRegistry((runtime_provider,)),
             planner=plan_with_model,
             approver=approve,
             progress_sink=publish,
@@ -2043,7 +3366,7 @@ class FlowController:
             trace.finish("failed", error_type=type(exc).__name__)
             if self._is_current(gen):
                 self._notice(
-                    f"Wisp couldn't apply the PowerPoint action: {self._friendly_error(exc)}",
+                    f"Wisp couldn't apply the {product_name} action: {self._friendly_error(exc)}",
                     severity="warning",
                 )
                 self._set_idle()
@@ -2053,13 +3376,139 @@ class FlowController:
             return
         if outcome.status == "cancelled":
             trace.finish("cancelled", failure_stage="preview_decision")
-            self._notice("PowerPoint action cancelled. Nothing was changed.")
+            self._notice(f"{product_name} action cancelled. Nothing was changed.")
         else:
             result = outcome.result
             trace.finish("applied", result_status=result.status if result is not None else "applied")
             self._status_notice(
-                result.message if result is not None else "PowerPoint action applied and verified."
+                result.message if result is not None else f"{product_name} action applied and verified."
             )
+        self._set_idle()
+
+    def _run_action_file(
+        self,
+        pending: PendingInvocation,
+        prompt: str,
+        routing: dict[str, Any],
+    ) -> None:
+        """Confirm, isolate, and run one trusted code-backed action file."""
+        from html import escape
+
+        from core.action_files.execution import action_from_dict, run_action_script
+
+        raw_action = routing.get("action_file")
+        if not isinstance(raw_action, dict):
+            self._notice("Wisp could not verify the selected action file. Nothing ran.", severity="warning")
+            self._set_idle()
+            return
+        action = action_from_dict(raw_action)
+        access = ", ".join(item.value.title() for item in action.access) or "No access declared"
+        self._set_idle()
+        decision = self._safe_call(
+            self.ui,
+            "ui.action.preview.request",
+            {
+                "plan_id": f"action-file:{action.name}:{pending.invoked_at_unix_ns}",
+                "title": f"Run {action.label}?",
+                "summary": action.hint or "This action can run code on your computer.",
+                "html": (
+                    '<div class="action-focus-preview">'
+                    f"<h2>{escape(action.label)}</h2>"
+                    f"<p>{escape(action.hint or 'This action can run code on your computer.')}</p>"
+                    f"<p><strong>Declared access:</strong> {escape(access)}</p>"
+                    "<p>Review the action file before approving code you do not trust.</p>"
+                    "</div>"
+                ),
+                "details": [{"type": "action_file", "label": action.label, "path": action.path}],
+                "warnings": ["Action-file access is self-declared and is not sandboxed."],
+            },
+            timeout=300.0,
+        )
+        if not (isinstance(decision, dict) and bool(decision.get("approved"))):
+            self._notice(f"{action.label} cancelled. Nothing ran.")
+            self._set_idle()
+            return
+
+        gen = self._new_generation()
+        self._safe_call(self.audio, "audio.stop", timeout=5.0)
+        self._safe_call(self.ui, "ui.overlay.state", {"state": "thinking"}, timeout=30.0)
+        self._safe_call(self.ui, "ui.reply.reset", timeout=30.0)
+        self._safe_call(self.ui, "ui.reply.thinking", timeout=30.0)
+
+        def model_response(model_prompt: str) -> str:
+            def on_event(event: str, payload: Any, _req_id: Any = None) -> None:
+                if event == "privacy.review.request":
+                    self._handle_privacy_review_request(payload)
+
+            result = self._brain_reply_call_with_events(
+                "brain.query",
+                self._brain_query_params(model_prompt, pending),
+                timeout=_INTERACTIVE_LLM_TIMEOUT_SECONDS,
+                on_event=on_event,
+                generation=gen,
+            )
+            return str((result or {}).get("text") or "") if isinstance(result, dict) else ""
+
+        try:
+            if action.run_script_first:
+                first = run_action_script(action, context=pending.context, prompt=prompt)
+                if first.prompt:
+                    reply = model_response(first.prompt)
+                    result = run_action_script(
+                        action,
+                        context=pending.context,
+                        prompt=first.prompt,
+                        model_response=reply,
+                    )
+                    output = result.output or reply
+                else:
+                    result = first
+                    output = first.output
+            else:
+                reply = model_response(prompt or action.prompt)
+                result = run_action_script(
+                    action,
+                    context=pending.context,
+                    prompt=prompt or action.prompt,
+                    model_response=reply,
+                )
+                output = result.output or reply
+        except Exception as exc:  # noqa: BLE001 - isolated failure is user-facing
+            log.exception("action file failed: %s", action.path)
+            if self._is_current(gen):
+                self._notice(
+                    f"Wisp couldn't run {action.label}: {self._friendly_error(exc)}",
+                    severity="warning",
+                )
+                self._set_idle()
+            return
+
+        if not self._is_current(gen):
+            return
+        paste_back = result.paste_back
+        if paste_back is None:
+            paste_back = action.paste_back
+        if paste_back is None:
+            paste_back = bool(pending.caller.get("paste_back"))
+        if paste_back and output:
+            paste = self.native.call(
+                "native.paste_text",
+                {
+                    "text": output,
+                    "target_pid": pending.paste_target_pid,
+                    "focus_token": int(pending.context.get("focus_token") or 0),
+                    "restore_clipboard": True,
+                },
+                timeout=30.0,
+            )
+            if not (isinstance(paste, dict) and paste.get("ok")):
+                self._notice("The action finished, but Wisp could not paste its output.", severity="warning")
+        elif output:
+            self._safe_call(self.ui, "ui.reply.reset", timeout=30.0)
+            self._safe_call(self.ui, "ui.reply.chunk", {"text": output}, timeout=30.0)
+            self._safe_call(self.ui, "ui.reply.done", timeout=30.0)
+        else:
+            self._status_notice(f"{action.label} completed.")
         self._set_idle()
 
     def _run_app_prompt_disposition(
@@ -2612,6 +4061,7 @@ class FlowController:
                 CalcActionAdapter,
                 CalcSnapshot,
                 build_chart_plan,
+                build_cleanup_plan,
                 build_format_table_plan,
                 build_sort_range_plan,
             )
@@ -2678,6 +4128,38 @@ class FlowController:
                     "additionalProperties": False,
                 }
                 planning_progress = "Selection checked. Choosing the exact sort column and direction..."
+            elif capability_type == "calc.clean_range@1":
+                planning_description = (
+                    "Propose only concrete, unambiguous cleanup replacements inside the captured Calc range. "
+                    "Use zero-based row and column offsets. Preserve formulas unless a formula replacement is "
+                    "explicitly necessary; replacing a formula with a value requires replace_formula=true. "
+                    "Return between 1 and 32 changes and leave ambiguous cells unchanged."
+                )
+                planning_schema = {
+                    "type": "object",
+                    "properties": {
+                        "changes": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 32,
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "row_offset": {"type": "integer", "minimum": 0},
+                                    "column_offset": {"type": "integer", "minimum": 0},
+                                    "after_kind": {"type": "string", "enum": ["value", "formula"]},
+                                    "after_value": {},
+                                    "replace_formula": {"type": "boolean"},
+                                },
+                                "required": ["row_offset", "column_offset", "after_kind", "after_value"],
+                                "additionalProperties": False,
+                            },
+                        },
+                    },
+                    "required": ["changes"],
+                    "additionalProperties": False,
+                }
+                planning_progress = "Selection checked. Drafting exact cell-by-cell cleanup replacements..."
             else:
                 raise ValueError("This Calc operation is not registered.")
             progress.advance(
@@ -2711,6 +4193,8 @@ class FlowController:
                             "row_count": snapshot.row_count,
                             "column_count": snapshot.column_count,
                             "values": [list(row) for row in snapshot.values],
+                            "typed_values": [list(row) for row in snapshot.typed_values],
+                            "formulas": [list(row) for row in snapshot.formulas],
                         },
                     },
                     timeout=_INTERACTIVE_LLM_TIMEOUT_SECONDS,
@@ -2735,12 +4219,17 @@ class FlowController:
                 if not isinstance(planned_arguments.get("has_header"), bool):
                     raise ValueError("The model did not identify whether the selection has a header row.")
                 plan = build_format_table_plan(snapshot, has_header=bool(planned_arguments["has_header"]))
-            else:
+            elif capability_type == "calc.sort_range@1":
                 plan = build_sort_range_plan(
                     snapshot,
                     column_label=str(planned_arguments.get("column_header") or ""),
                     direction=str(planned_arguments.get("direction") or ""),
                 )
+            else:
+                changes = planned_arguments.get("changes")
+                if not isinstance(changes, list):
+                    raise ValueError("The model did not return structured Calc cleanup changes.")
+                plan = build_cleanup_plan(snapshot, changes)
             progress.advance(
                 ActionProgressStage.VALIDATING,
                 "Selection checked. Validating the exact Calc operation...",
@@ -2817,9 +4306,9 @@ class FlowController:
     ) -> bool:
         """Recognize an explicit selected-code mutation in a VS Code-like editor."""
         try:
-            from core.actions.adapters.vscode import is_vscode_app
+            from core.actions.adapters.vscode import is_code_editor_app
 
-            if not is_vscode_app(active_app):
+            if not is_code_editor_app(active_app):
                 return False
         except Exception:
             return False
@@ -2845,6 +4334,9 @@ class FlowController:
         planning_tool: str = "vscode_plan_replace_selection",
     ) -> None:
         """Plan, preview, and apply one fingerprint-checked selected-code fix."""
+        from core.actions.adapters.vscode import code_editor_name
+
+        editor_label = code_editor_name(active_app)
         trace = ActionTrace(
             "vscode.code_change",
             app="vscode",
@@ -2870,7 +4362,7 @@ class FlowController:
         self._safe_call(self.ui, "ui.reply.thinking", timeout=30.0)
         progress.advance(
             ActionProgressStage.READING,
-            "Reading the active saved VS Code file and exact selected range...",
+            f"Reading the active saved {editor_label} file and exact selected range...",
         )
 
         if self._is_vscode_untitled_tab(active_app):
@@ -2910,7 +4402,7 @@ class FlowController:
             if self._is_vscode_save_required_error(error):
                 progress.advance(
                     ActionProgressStage.FAILED,
-                    "This VS Code tab must be saved before Wisp can change it safely.",
+                    f"This {editor_label} tab must be saved before Wisp can change it safely.",
                 )
                 trace.finish("failed", failure_stage="save_required", error_type="unsaved_editor")
                 self._notice(
@@ -2923,7 +4415,7 @@ class FlowController:
                 return
             progress.advance(ActionProgressStage.FAILED, "The active saved file could not be read safely.")
             trace.finish("failed", failure_stage="snapshot", error_type=error.split(":", 1)[0][:80])
-            self._notice(f"Wisp couldn't prepare the VS Code action: {error}", severity="warning")
+            self._notice(f"Wisp couldn't prepare the {editor_label} action: {error}", severity="warning")
             self._set_idle()
             return
 
@@ -2939,7 +4431,7 @@ class FlowController:
         except Exception as exc:  # noqa: BLE001 - malformed native state must not reach the model
             progress.advance(ActionProgressStage.FAILED, "The saved-file target did not pass safety checks.")
             trace.finish("failed", failure_stage="snapshot_validation", error_type=type(exc).__name__)
-            self._notice(f"Wisp couldn't prepare the VS Code action: {exc}", severity="warning")
+            self._notice(f"Wisp couldn't prepare the {editor_label} action: {exc}", severity="warning")
             self._set_idle()
             return
 
@@ -2990,11 +4482,11 @@ class FlowController:
         context_start = max(0, snapshot.selection_start - context_radius)
         context_end = min(len(snapshot.text), snapshot.selection_end + context_radius)
         if snapshot.is_whole_file:
-            model_selected_text = "[The active saved VS Code file is currently empty.]"
-            rewrite_context = f"Active saved VS Code file: {snapshot.file_path}\nCurrent content: empty"
+            model_selected_text = f"[The active saved {editor_label} file is currently empty.]"
+            rewrite_context = f"Active saved {editor_label} file: {snapshot.file_path}\nCurrent content: empty"
             model_instruction = (
                 f"{prompt}\n\n"
-                "You are filling an empty saved VS Code file. Return the complete new file content, "
+                f"You are filling an empty saved {editor_label} file. Return the complete new file content, "
                 "not the bracketed placeholder. In assistant_response, briefly state what you created."
             )
         else:
@@ -3007,7 +4499,7 @@ class FlowController:
             )
             model_instruction = (
                 f"{prompt}\n\n"
-                "You are proposing a change to selected code in VS Code. Return the complete replacement "
+                f"You are proposing a change to selected code in {editor_label}. Return the complete replacement "
                 "for the selected block only, preserving valid indentation. In assistant_response, briefly "
                 "state the issue you found and how this replacement fixes it. Do not modify code outside "
                 "the selected block."
@@ -3025,7 +4517,7 @@ class FlowController:
                 {
                     "planning_tool_name": planning_tool,
                     "planning_tool_description": (
-                        "Plan the exact replacement text for the captured VS Code target. The tool cannot edit "
+                        f"Plan the exact replacement text for the captured {editor_label} target. The tool cannot edit "
                         "outside that target or execute commands."
                     ),
                     "input_schema": {
@@ -3050,11 +4542,11 @@ class FlowController:
                 generation=gen,
             )
         except Exception as exc:  # noqa: BLE001 - surface route failures without touching the file
-            log.exception("VS Code action planning failed")
+            log.exception("code editor action planning failed")
             progress.advance(ActionProgressStage.FAILED, "The code change could not be drafted.")
             trace.finish("failed", failure_stage="model", error_type=type(exc).__name__)
             if self._is_current(gen):
-                self._notice(f"VS Code fix failed: {self._friendly_error(exc)}", severity="error")
+                self._notice(f"{editor_label} fix failed: {self._friendly_error(exc)}", severity="error")
                 self._set_idle()
             return
         finally:
@@ -3155,7 +4647,7 @@ class FlowController:
         if not isinstance(decision, dict) or not decision.get("approved"):
             progress.advance(ActionProgressStage.CANCELLED, "Code change cancelled. Nothing was changed.")
             trace.finish("cancelled", failure_stage="preview_decision")
-            self._notice("VS Code change cancelled. Nothing was changed.")
+            self._notice(f"{editor_label} change cancelled. Nothing was changed.")
             self._set_idle()
             return
 
@@ -3189,10 +4681,10 @@ class FlowController:
                 created_count=len(applied.get("created") or []),
                 verification_count=len(applied.get("verification") or []),
             )
-            self._status_notice(str(applied.get("message") or "Applied the code change in VS Code."))
+            self._status_notice(str(applied.get("message") or f"Applied the code change in {editor_label}."))
             self._set_idle()
             return
-        error = str((response or {}).get("error") or "VS Code did not confirm the file change.")
+        error = str((response or {}).get("error") or f"{editor_label} did not confirm the file change.")
         progress.advance(ActionProgressStage.FAILED, "The reviewed code change could not be verified.")
         trace.finish("failed", failure_stage="apply", error_type=error.split(":", 1)[0][:80])
         self._notice(f"Wisp couldn't apply the code change: {error}", severity="warning")
@@ -4061,6 +5553,16 @@ class FlowController:
                     chat_request_id=request_id,
                     include_bubble=False,
                 )
+            elif event == "live_file.activity":
+                self._safe_call(
+                    self.ui,
+                    "ui.chat.chunk",
+                    {
+                        "request_id": request_id,
+                        "local_work": dict(payload or {}),
+                    },
+                    timeout=30.0,
+                )
             elif event == "live_file.approval.request":
                 self._handle_live_file_approval_request(payload)
             elif event == "privacy.review.request":
@@ -4528,6 +6030,25 @@ class FlowController:
         self.chat_message_actions()
         self.refresh_addon_tray_actions()
         self.open_addons()  # refresh the dialog so it reflects the new state
+
+    def addon_set_action_enabled(self, data: dict[str, Any]) -> None:
+        """Persist one addon action-file toggle and refresh exposed surfaces."""
+        addon_id = str(data.get("addon_id") or "")
+        action_id = str(data.get("action_id") or "")
+        if not addon_id or not action_id:
+            return
+        self._safe_call(
+            self.brain,
+            "brain.addons.set_action_enabled",
+            {
+                "addon_id": addon_id,
+                "action_id": action_id,
+                "enabled": bool(data.get("enabled")),
+            },
+            timeout=30.0,
+        )
+        self.chat_message_actions()
+        self.open_addons()
 
     def addon_set_setting(self, data: dict[str, Any]) -> None:
         """Handle addon set setting for flow controller."""
@@ -5069,6 +6590,17 @@ class FlowController:
                 if not (self._tts_replies_enabled() and text_done):
                     self._on_reply_done(payload, thought_parser=reply_thought_parser)
                     reply_parser_finished = True
+            elif event == "live_file.activity":
+                if early_chat_index is not None:
+                    self._safe_call(
+                        self.ui,
+                        "ui.chat.chunk",
+                        {
+                            "conversation_index": early_chat_index,
+                            "local_work": dict(payload or {}),
+                        },
+                        timeout=30.0,
+                    )
             elif event == "live_file.approval.request":
                 self._handle_live_file_approval_request(payload)
             elif event == "privacy.review.request":
@@ -6049,8 +7581,9 @@ class FlowController:
     def _caller(self, caller_idx: int) -> dict[str, Any]:
         """Handle caller for flow controller."""
         import config
+        from core.action_files.store import configured_caller_rows
 
-        rows = getattr(config, "CALLER_ROWS", [])
+        rows = configured_caller_rows(config)
         if 0 <= caller_idx < len(rows):
             return config.effective_caller(dict(rows[caller_idx]))
         return {}
@@ -6338,7 +7871,7 @@ class FlowController:
             )
             pending.context_ready.set()
             if self._is_current(generation):
-                self._fire(self.ui, "ui.intent.activate")
+                self._safe_call(self.ui, "ui.intent.activate", timeout=30.0)
             self._prefetch_intent_context(pending, generation)
         finally:
             pending.context_ready.set()
@@ -6369,7 +7902,12 @@ class FlowController:
             "window_id": active_app.get("window_id") or window_debug.get("chosen_hwnd") or window_debug.get("raw_hwnd") or 0,
         }
 
-    def _fetch_active_document_text(self, context: dict[str, Any]) -> str:
+    def _fetch_active_document_text(
+        self,
+        context: dict[str, Any],
+        *,
+        active_only: bool = False,
+    ) -> str:
         """Fetch active document text for preview and query reuse."""
         accessibility_text = str(context.get("active_window_text") or "").strip()
         if accessibility_text and not self._is_browser_active_context(context):
@@ -6383,7 +7921,10 @@ class FlowController:
         result = self._safe_call(
             self.brain,
             "brain.context.active_document",
-            {"active_window": self._active_document_window(context)},
+            {
+                "active_window": self._active_document_window(context),
+                "active_only": bool(active_only),
+            },
             timeout=15.0,
         ) or {}
         text = str(result.get("text") or "") if isinstance(result, dict) else ""

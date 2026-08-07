@@ -115,3 +115,26 @@ def test_live_file_missing_blocked_locked_and_os_denied_faults_are_in_band(tmp_p
     )
     assert "failed" in locked.lower()
     assert "OS access denied" in locked and "locked" in locked
+
+
+def test_live_file_tools_publish_started_and_completed_activity(tmp_path, monkeypatch):
+    """The UI can offer monitoring as soon as local file work begins."""
+    root = tmp_path / "allowed"
+    root.mkdir()
+    note = root / "note.txt"
+    note.write_text("hello", encoding="utf-8")
+    monkeypatch.setattr(config, "TOOL_FILE_ROOTS", [str(root)])
+    monkeypatch.setattr(config, "TOOL_FILE_BLOCKED_GLOBS", [])
+    events = []
+
+    result = execute_live_file_tool(
+        "read_file",
+        {"path": str(note)},
+        access_mode="read",
+        event_callback=events.append,
+    )
+
+    assert result == "hello"
+    assert [event["phase"] for event in events] == ["started", "completed"]
+    assert events[0]["relative_path"] == "note.txt"
+    assert events[1]["ok"] is True

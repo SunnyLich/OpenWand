@@ -6250,5 +6250,48 @@ This cannot be undone. Imported ChatGPT and Claude source files will not be dele
     <message><source>Show formatted</source><translation>顯示格式化版本</translation></message>
     <message><source>This is taking a little longer. I'm still working on it.</source><translation>這需要更長一點時間。我仍在處理中。</translation></message>
     <message><source>This is taking a little longer. I'm still preparing the rewrite.</source><translation>這需要更長一點時間。我仍在準備重寫內容。</translation></message>
+    <message><source>These actions come from app folders. Their access badges are self-declared; open a file to change its key, text, or enabled setting.</source><translation>這些動作來自應用程式資料夾。其存取徽章由動作自行宣告；開啟檔案即可變更按鍵、文字或啟用設定。</translation></message>
+    <message><source>Show this action in the intent picker</source><translation>在意圖選擇器中顯示此動作</translation></message>
+    <message><source>Open file</source><translation>開啟檔案</translation></message>
+    <message><source>Open this code-backed action in your default editor</source><translation>在預設編輯器中開啟此程式碼動作</translation></message>
+    <message><source>Access declared by this action file; this is a label, not a sandbox</source><translation>存取權限由此動作檔案宣告；這只是標籤，並非沙箱</translation></message>
+    <message><source>Could not save action files</source><translation>無法儲存動作檔案</translation></message>
+    <message><source>disabled</source><translation>已停用</translation></message>
+    <message><source>Actions</source><translation>動作</translation></message>
+    <message><source>Local file progress</source><translation>本機檔案進度</translation></message>
+    <message><source>Model work</source><translation>模型工作</translation></message>
+    <message><source>Working with local files…</source><translation>正在處理本機檔案…</translation></message>
+    <message><source>File activity will appear here.</source><translation>檔案活動將顯示在此處。</translation></message>
+    <message><source>Inspecting folder</source><translation>正在檢查資料夾</translation></message>
+    <message><source>Inspected folder</source><translation>已檢查資料夾</translation></message>
+    <message><source>Read</source><translation>已讀取</translation></message>
+    <message><source>Creating</source><translation>正在建立</translation></message>
+    <message><source>Created</source><translation>已建立</translation></message>
+    <message><source>Editing</source><translation>正在編輯</translation></message>
+    <message><source>Edited</source><translation>已編輯</translation></message>
+    <message><source>Writing</source><translation>正在寫入</translation></message>
+    <message><source>Wrote</source><translation>已寫入</translation></message>
+    <message><source>Working on</source><translation>正在處理</translation></message>
+    <message><source>Failed: {path}</source><translation>失敗：{path}</translation></message>
+    <message><source>Local-file work finished.</source><translation>本機檔案處理已完成。</translation></message>
+    <message><source>here</source><translation>此處</translation></message>
+    <message><source>The model is working with local files — follow progress {here}.</source><translation>模型正在處理本機檔案 — 在{here}查看進度。</translation></message>
+    <message><source>Accept</source><translation>接受</translation></message>
+    <message><source>Ask for a different revision…</source><translation>要求其他修改方案…</translation></message>
+    <message><source>Cancel and remove</source><translation>取消並移除</translation></message>
+    <message><source>Comment</source><translation>評論</translation></message>
+    <message><source>Describe how this selection should change…</source><translation>說明應如何修改所選內容…</translation></message>
+    <message><source>Enter: Send   ·   Ctrl+Enter: Include document   ·   Shift+Enter: New line</source><translation>Enter：傳送   ·   Ctrl+Enter：包含文件   ·   Shift+Enter：換行</translation></message>
+    <message><source>Hold</source><translation>暫存</translation></message>
+    <message><source>Include whole document</source><translation>包含整份文件</translation></message>
+    <message><source>Keep this comment and send it later with Send all comments</source><translation>暫存此評論，稍後使用「傳送所有評論」傳送</translation></message>
+    <message><source>Preparing edit…</source><translation>正在準備修改…</translation></message>
+    <message><source>Proposed edit</source><translation>建議的修改</translation></message>
+    <message><source>Revise</source><translation>重新修改</translation></message>
+    <message><source>Rewrite failed. You can retry.</source><translation>重寫失敗。你可以重試。</translation></message>
+    <message><source>Rewrite is processing</source><translation>正在處理重寫</translation></message>
+    <message><source>Send all comments</source><translation>傳送所有評論</translation></message>
+    <message><source>Send every held comment, using a separate conversation for each app</source><translation>傳送所有暫存評論，並為每個應用程式使用獨立對話</translation></message>
+    <message><source>Wisp is preparing the proposed rewrite.</source><translation>Wisp 正在準備建議的重寫。</translation></message>
   </context>
 </TS>

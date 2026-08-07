@@ -1,0 +1,6 @@
+kind = "tool"
+handler = "virtual_workspace_list"
+label = "List virtual workspace"
+hint = "List file and folder metadata in the isolated workspace."
+access = ["files"]
+

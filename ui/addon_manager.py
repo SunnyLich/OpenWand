@@ -224,6 +224,26 @@ class AddonManagerDialog(QDialog):
             tools_lbl.setStyleSheet("font-size: 8pt; opacity: 0.55;")
             layout.addWidget(tools_lbl)
 
+        actions = [item for item in (addon.get("actions") or []) if isinstance(item, dict)]
+        for action in actions:
+            action_row = QHBoxLayout()
+            action_label = str(action.get("label") or action.get("id") or t("Action"))
+            access = ", ".join(str(item).title() for item in (action.get("access") or []))
+            descriptor = QLabel(f"{action_label} · {str(action.get('kind') or 'action').replace('_', ' ')}" + (f" · {access}" if access else ""))
+            descriptor.setStyleSheet("font-size: 8pt; opacity: 0.65;")
+            descriptor.setToolTip(str(action.get("path") or action.get("hint") or ""))
+            action_row.addWidget(descriptor, 1)
+            toggle = QCheckBox(t("Enabled"))
+            toggle.setChecked(bool(action.get("enabled", True)))
+            action_id = str(action.get("id") or "")
+            toggle.toggled.connect(
+                lambda checked, aid=addon_id, action_id=action_id: self._manager.set_action_enabled(
+                    aid, action_id, bool(checked)
+                ) if self._manager is not None else None
+            )
+            action_row.addWidget(toggle)
+            layout.addLayout(action_row)
+
         permissions = addon.get("permissions") or {}
         if permissions:
             perms_lbl = QLabel(t("Permissions: ") + ", ".join(sorted(str(k) for k in permissions.keys())))

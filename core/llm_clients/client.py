@@ -1753,11 +1753,16 @@ def read_document_file(path: str, max_chars: int | None = None) -> str:
     return _read_document_file(path, max_chars=max_chars)
 
 
-def read_active_document_for_context_with_debug(active_window: dict | None = None) -> tuple[str, dict]:
+def read_active_document_for_context_with_debug(
+    active_window: dict | None = None,
+    *,
+    active_only: bool = False,
+) -> tuple[str, dict]:
     """
     Read all open doc-app windows (foreground and background) and return their
     redacted plain text for proactive injection into the system prompt.
     Multiple documents are separated by per-file headers.
+    ``active_only=True`` restricts provider actions to the captured hotkey window.
     Returns ("", debug) if no readable documents are found.
     """
     from core.context_fetcher import (
@@ -1784,8 +1789,12 @@ def read_active_document_for_context_with_debug(active_window: dict | None = Non
         "window_labels": [],
         "window_chars": 0,
         "window_candidates": [],
+        "active_only": bool(active_only),
     }
-    paths = get_all_open_document_paths(active_window=active_win)
+    paths = get_all_open_document_paths(
+        active_window=active_win,
+        active_only=active_only,
+    )
     debug["paths"] = list(paths)
     parts: list[str] = []
     seen_texts: set[str] = set()
@@ -1824,6 +1833,7 @@ def read_active_document_for_context_with_debug(active_window: dict | None = Non
     window_texts, window_debug = get_all_open_document_window_texts_with_debug(
         max_chars_per_doc=_ambient_document_max_chars(),
         active_window=active_win,
+        active_only=active_only,
     )
     debug["window_labels"] = [label for label, _text in window_texts]
     debug["window_chars"] = sum(len(text) for _label, text in window_texts)
@@ -5879,7 +5889,11 @@ def stream_rewrite(
     """
     import time
     ts = time.strftime("%H:%M:%S")
-    print(f"[llm {ts}] Rewrite request ({len(selected_text)} chars) - {intent_prompt[:60]!r}")
+    print(
+        f"[llm {ts}] Rewrite request "
+        f"(selection={len(selected_text)} chars instruction={len(intent_prompt)} chars "
+        f"context={len(rewrite_context)} chars)"
+    )
     context = str(rewrite_context or "").strip()
     user_message = (
         "Instruction:\n"

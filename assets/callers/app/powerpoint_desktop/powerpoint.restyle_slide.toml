@@ -1,0 +1,6 @@
+label = "Restyle this slide"
+hint = "Apply a reviewed preset without changing its content"
+prompt = "Restyle the selected slide while preserving all of its content."
+capability = "presentation.restyle_slide@1"
+planner = "presentation_plan_restyle_slide"
+access = ["files"]

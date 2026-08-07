@@ -1,0 +1,7 @@
+display_name = "VS Code"
+app = "vscode"
+priority = 10
+
+[match]
+process = ["code.exe", "code", "code - insiders.exe", "code-insiders", "cursor.exe", "cursor", "windsurf.exe", "windsurf"]
+title = ["visual studio code", " - cursor", " - windsurf"]

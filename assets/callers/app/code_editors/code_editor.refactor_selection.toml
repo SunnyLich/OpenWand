@@ -1,0 +1,6 @@
+label = "Refactor selected code"
+hint = "Preview and apply a focused saved-file refactor"
+prompt = "Refactor the selected code without changing its intended behavior."
+capability = "vscode.replace_selection@1"
+planner = "vscode_plan_replace_selection"
+access = ["files"]

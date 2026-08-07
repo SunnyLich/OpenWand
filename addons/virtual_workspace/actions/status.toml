@@ -1,0 +1,6 @@
+kind = "tool"
+handler = "virtual_workspace_status"
+label = "Check virtual workspace"
+hint = "Check workspace status, control owner, and entry count."
+access = ["files"]
+

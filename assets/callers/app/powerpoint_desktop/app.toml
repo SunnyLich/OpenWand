@@ -1,0 +1,8 @@
+display_name = "Microsoft PowerPoint"
+app = "presentation"
+priority = 100
+
+[match]
+process = ["powerpnt.exe", "microsoft powerpoint", "powerpoint"]
+title = ["powerpoint"]
+bundle = ["com.microsoft.powerpoint"]

@@ -520,6 +520,38 @@ def test_format_and_original_toggle_stay_in_the_same_chat_window(qapp) -> None:
         window.close()
 
 
+def test_rich_presentation_uses_text_fallback_when_webengine_load_fails(qapp) -> None:
+    from ui.addon_presentations import QWebEngineView, RichPresentationView
+
+    if QWebEngineView is None:
+        pytest.skip("QtWebEngine is not installed")
+    view = RichPresentationView(
+        '<article class="formatted-reply"><h1>Visible preview</h1><p>Expected body text.</p></article>',
+        {
+            "bg": "#212121",
+            "text": "#eeeeee",
+            "muted": "#aaaaaa",
+            "line": "#3c3c3c",
+            "accent": "#9b8cff",
+        },
+        15,
+    )
+    try:
+        view.resize(760, 400)
+        view.show()
+        view._fit_web_height(False)
+        qapp.processEvents()
+
+        fallback = view._web_fallback_view
+        assert fallback.isVisible()
+        assert "Visible preview\nExpected body text." in fallback.toPlainText()
+        assert view.height() > 48
+    finally:
+        view.close()
+        view.deleteLater()
+        qapp.processEvents()
+
+
 def test_just_finished_last_reply_format_works_without_reopening_chat(qapp) -> None:
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest

@@ -1,0 +1,7 @@
+display_name = "Outlook Calendar"
+app = "calendar"
+priority = 80
+
+[match]
+title = ["outlook calendar", "calendar - outlook", "microsoft 365 calendar"]
+url = ["outlook.cloud.microsoft/calendar", "outlook.office.com/calendar", "outlook.live.com/calendar"]

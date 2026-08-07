@@ -1,0 +1,7 @@
+display_name = "LibreOffice Calc"
+app = "libreoffice_calc"
+priority = 0
+
+[match]
+process = ["scalc", "scalc.exe"]
+title = ["libreoffice calc", "libreoffice spreadsheet"]

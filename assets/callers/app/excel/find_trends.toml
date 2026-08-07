@@ -1,0 +1,4 @@
+label = "Find trends and relationships"
+hint = "Explain meaningful changes, correlations, groups, and contrasts"
+prompt = "Analyze the selected spreadsheet data for meaningful trends, relationships, segments, and contrasts. Quantify important findings where possible, distinguish correlation from causation, and do not change any cells."
+access = ["text"]

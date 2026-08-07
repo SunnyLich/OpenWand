@@ -8,6 +8,30 @@ from core import context_fetcher
 from core.llm_clients import client as llm
 
 
+def test_active_document_handler_forwards_exact_window_scope(monkeypatch):
+    """Provider actions can request one captured document instead of every open file."""
+    calls: list[dict] = []
+
+    def read(**kwargs):
+        calls.append(kwargs)
+        return "active body", {"active_only": kwargs.get("active_only")}
+
+    monkeypatch.setattr(llm, "read_active_document_for_context_with_debug", read)
+    active_window = {
+        "title": "Active.odt - LibreOffice Writer",
+        "process_name": "soffice.bin",
+        "window_id": 222,
+    }
+
+    result = handlers.brain_context_active_document(
+        active_window=active_window,
+        active_only=True,
+    )
+
+    assert result["text"] == "active body"
+    assert calls == [{"active_window": active_window, "active_only": True}]
+
+
 def test_active_document_failure_matrix_is_controlled(tmp_path, monkeypatch):
     """Exercise every shared open-document failure at the brain/runtime boundary."""
     for _failure in ("unsupported application", "source application closed", "no extracted text"):

@@ -14,6 +14,8 @@ def test_addons_list_handler_registered():
     assert "brain.addons.list" in handlers.HANDLERS
     assert "brain.addons.ready" in handlers.HANDLERS
     assert "brain.addons.run_action" in handlers.HANDLERS
+    assert "brain.addons.run_intent" in handlers.HANDLERS
+    assert "brain.addons.set_action_enabled" in handlers.HANDLERS
     assert "brain.addons.repair_environment" in handlers.HANDLERS
     assert "brain.addons.install_archive" in handlers.HANDLERS
     assert "brain.addons.install_folder" in handlers.HANDLERS

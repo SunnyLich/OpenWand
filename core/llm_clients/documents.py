@@ -8,14 +8,16 @@ from __future__ import annotations
 
 import os
 import zipfile
+from typing import Any
 
 import config
+from core.attachment_source import DOCUMENT_SUFFIXES
 from core.llm_clients.logging_utils import log_context as _log_context
 
 _MAX_DOCUMENT_INPUT_BYTES = 25 * 1024 * 1024
 _MAX_ARCHIVE_EXPANDED_BYTES = 100 * 1024 * 1024
 _MAX_ARCHIVE_ENTRIES = 10_000
-_ARCHIVE_DOCUMENT_EXTS = {".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp"}
+_ARCHIVE_DOCUMENT_EXTS = DOCUMENT_SUFFIXES
 
 
 def _document_safety_error(path: str, ext: str) -> str:
@@ -69,6 +71,40 @@ def _normalize_pdf_text(s: str) -> str:
             lines.append(line)
     return "\n".join(lines)
 
+
+def _load_anydoc() -> Any | None:
+    """Load the native document parser without breaking mature fallbacks."""
+    try:
+        import anydoc  # type: ignore
+    except ImportError:
+        return None
+    return anydoc
+
+
+def _read_anydoc_text(path: str) -> str | None:
+    """Convert a supported document to Markdown, or request a legacy fallback.
+
+    Unsupported, malformed, and unexpectedly failing conversions fall back to
+    the established format-specific readers where one exists. Encryption and
+    resource-limit failures remain fail-closed so a fallback cannot bypass a
+    document safety decision made by AnyDoc.
+    """
+    anydoc = _load_anydoc()
+    if anydoc is None:
+        return None
+    try:
+        return str(anydoc.to_markdown(path) or "")
+    except anydoc.ResourceLimitError as exc:
+        raise ValueError(f"AnyDoc parser safety limit exceeded: {exc}") from exc
+    except anydoc.EncryptedError as exc:
+        raise ValueError(f"document is encrypted or password-protected: {exc}") from exc
+    except anydoc.ConvertError:
+        return None
+    except Exception:
+        # A newly introduced native parser must not make formats that Wisp
+        # already supported less reliable during the staged rollout.
+        return None
+
 def _read_pdf_text(path: str, max_chars: int) -> str:
     """Extract PDF text, preferring LiteParse (fast, native) over pypdf."""
     parts: list[str] = []
@@ -117,7 +153,10 @@ def _read_document_file(path: str, max_chars: int | None = None) -> str:
         safety_error = _document_safety_error(path, ext)
         if safety_error:
             return safety_error
-        if ext == ".docx":
+        anydoc_text = _read_anydoc_text(path) if ext in DOCUMENT_SUFFIXES else None
+        if anydoc_text is not None:
+            text = anydoc_text
+        elif ext == ".docx":
             from docx import Document  # type: ignore
             doc = Document(path)
             text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
@@ -163,6 +202,8 @@ def _read_document_file(path: str, max_chars: int | None = None) -> str:
                 # Never materialize a giant text file just to discard its tail.
                 text = f.read(max(1, max_chars) + 1)
         else:
+            if ext in DOCUMENT_SUFFIXES:
+                return f"Failed to read {path!r}: AnyDoc could not extract meaningful content."
             return f"File type {ext!r} is not supported for reading."
         if len(text) > max_chars:
             text = text[:max_chars] + "\n[-¦truncated]"

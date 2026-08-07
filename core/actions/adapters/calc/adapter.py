@@ -12,7 +12,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from core.actions.adapters.calc.capabilities import ADD_CHART, FORMAT_TABLE, SORT_RANGE, calc_capabilities
+from core.actions.adapters.calc.capabilities import ADD_CHART, CLEAN_RANGE, FORMAT_TABLE, SORT_RANGE, calc_capabilities
+from core.actions.adapters.calc.plans import _reviewed_cleanup_changes
 from core.actions.adapters.calc.preview import render_calc_preview
 from core.actions.adapters.calc.reader import CalcSelectionReader
 from core.actions.adapters.calc.snapshot import CalcSnapshot
@@ -95,6 +96,24 @@ class CalcActionAdapter:
                     "sort_formulas_unsupported",
                     "Sorting selected rows containing formulas is not yet supported safely.",
                 ))
+        elif operation.type == CLEAN_RANGE:
+            if str(operation.args.get("range") or "") != snapshot.selection_address:
+                issues.append(ValidationIssue("cleanup_range_changed", "The reviewed cleanup range no longer matches."))
+            changes = operation.args.get("changes")
+            if not isinstance(changes, (list, tuple)):
+                issues.append(ValidationIssue("invalid_cleanup", "Cleanup changes must be a structured list."))
+            else:
+                try:
+                    expected = _reviewed_cleanup_changes(snapshot, changes)
+                except ValueError as exc:
+                    issues.append(ValidationIssue("invalid_cleanup", str(exc), operation.id))
+                else:
+                    if tuple(changes) != expected:
+                        issues.append(ValidationIssue(
+                            "cleanup_snapshot_mismatch",
+                            "A cleanup cell no longer matches the exact reviewed before-content.",
+                            operation.id,
+                        ))
         else:
             issues.append(ValidationIssue("unsupported_plan", "This Calc operation is not registered."))
         return tuple(issues)
@@ -144,6 +163,7 @@ class CalcActionAdapter:
             ADD_CHART: "chart",
             FORMAT_TABLE: "formatting",
             SORT_RANGE: "row_sort",
+            CLEAN_RANGE: "cell_cleanup",
         }.get(plan.operations[0].type, "calc_action")
         result = ActionExecutionResult(
             plan_id=plan.plan_id,
@@ -220,6 +240,7 @@ class CalcActionAdapter:
                     ADD_CHART: "chart",
                     FORMAT_TABLE: "format_table",
                     SORT_RANGE: "sort_range",
+                    CLEAN_RANGE: "clean_range",
                 }.get(operation.type, ""),
             ]
         if operation.type == ADD_CHART:
@@ -231,6 +252,11 @@ class CalcActionAdapter:
                 "--sort-column", str(operation.args.get("column_index")),
                 "--sort-direction", str(operation.args.get("direction") or "ascending"),
                 "--has-header", "true",
+            ])
+        elif operation.type == CLEAN_RANGE:
+            command.extend([
+                "--changes-json",
+                json.dumps(operation.args.get("changes") or (), ensure_ascii=False, separators=(",", ":")),
             ])
         else:
             raise RuntimeError("The requested Calc operation is not implemented.")

@@ -6,8 +6,20 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
-from core.actions.adapters.excel.capabilities import ADD_CHART, CREATE_TABLE, excel_capabilities, excel_registry
-from core.actions.adapters.excel.plans import valid_excel_object_name
+from core.actions.adapters.excel.capabilities import (
+    ADD_CHART,
+    CLEAN_RANGE,
+    CREATE_TABLE,
+    SORT_RANGE,
+    excel_capabilities,
+    excel_registry,
+)
+from core.actions.adapters.excel.plans import (
+    _reviewed_cleanup_changes,
+    sort_column_index,
+    sorted_excel_values,
+    valid_excel_object_name,
+)
 from core.actions.adapters.excel.preview import render_excel_preview
 from core.actions.adapters.excel.snapshot import ExcelSnapshot, capture_excel_snapshot
 from core.actions.contracts import (
@@ -82,6 +94,41 @@ class ExcelActionAdapter:
                     issues.append(
                         ValidationIssue("chart_exists", f"An Excel chart named {name!r} already exists.", operation.id)
                     )
+            if operation.type == SORT_RANGE:
+                try:
+                    sort_column_index(snapshot, str(operation.args.get("column_header") or ""))
+                    sorted_excel_values(
+                        snapshot,
+                        column_header=str(operation.args.get("column_header") or ""),
+                        direction=str(operation.args.get("direction") or ""),
+                    )
+                except ValueError as exc:
+                    issues.append(ValidationIssue("invalid_sort", str(exc), operation.id))
+            if operation.type == CLEAN_RANGE:
+                if str(operation.args.get("range") or "") != snapshot.selection_address:
+                    issues.append(
+                        ValidationIssue("cleanup_range_changed", "The reviewed cleanup range no longer matches.", operation.id)
+                    )
+                    continue
+                changes = operation.args.get("changes")
+                if not isinstance(changes, (list, tuple)):
+                    issues.append(
+                        ValidationIssue("invalid_cleanup", "Cleanup changes must be a structured list.", operation.id)
+                    )
+                    continue
+                try:
+                    expected = _reviewed_cleanup_changes(snapshot, changes)
+                except ValueError as exc:
+                    issues.append(ValidationIssue("invalid_cleanup", str(exc), operation.id))
+                else:
+                    if tuple(changes) != expected:
+                        issues.append(
+                            ValidationIssue(
+                                "cleanup_snapshot_mismatch",
+                                "A cleanup cell no longer matches the exact reviewed before-content.",
+                                operation.id,
+                            )
+                        )
         issues.extend(_dependency_issues(plan.operations))
         return tuple(issues)
 
@@ -121,6 +168,7 @@ class ExcelActionAdapter:
         worksheet = application.ActiveSheet
         created: list[dict[str, str]] = []
         journal: list[dict[str, Any]] = []
+        verified: list[str] = []
         for operation in _ordered_operations(plan.operations):
             if operation.type == CREATE_TABLE:
                 table = self._create_table(worksheet, operation)
@@ -146,19 +194,73 @@ class ExcelActionAdapter:
                         "rollback": "delete_created_object",
                     }
                 )
+            elif operation.type == SORT_RANGE:
+                expected = sorted_excel_values(
+                    current,
+                    column_header=str(operation.args["column_header"]),
+                    direction=str(operation.args["direction"]),
+                )
+                self._sort_range(worksheet, current, operation)
+                after = capture_excel_snapshot(application)
+                if after.values != expected:
+                    _restore_excel_snapshot(application, worksheet, current)
+                    raise RuntimeError("Excel did not retain the exact reviewed row order.")
+                header = str(operation.args["column_header"])
+                created.append({"kind": "sorted_range", "name": current.selection_address})
+                journal.append(
+                    {
+                        "kind": "sorted_range",
+                        "name": current.selection_address,
+                        "worksheet": current.worksheet_name,
+                        "rollback": "verified_snapshot_restore_on_failure",
+                    }
+                )
+                verified.append(f"Verified complete-row sort by {header}.")
+            elif operation.type == CLEAN_RANGE:
+                changes = tuple(operation.args["changes"])
+                applied = 0
+                try:
+                    source = worksheet.Range(current.selection_address)
+                    for change in changes:
+                        cell = _range_cell(source, int(change["row_offset"]) + 1, int(change["column_offset"]) + 1)
+                        _write_excel_cell(cell, str(change["after_kind"]), change.get("after_value"))
+                        applied += 1
+                    after = capture_excel_snapshot(application)
+                    if not _cleanup_readback_matches(current, after, changes):
+                        raise RuntimeError("Excel did not retain the exact reviewed cleanup contents.")
+                except Exception:
+                    try:
+                        _restore_excel_snapshot(application, worksheet, current)
+                    except Exception as restore_error:
+                        raise RuntimeError(
+                            "Excel cleanup verification failed and Wisp could not restore the captured range."
+                        ) from restore_error
+                    raise
+                created.append({"kind": "cleaned_range", "name": current.selection_address})
+                journal.append(
+                    {
+                        "kind": "cell_cleanup",
+                        "name": current.selection_address,
+                        "worksheet": current.worksheet_name,
+                        "writes": applied,
+                        "rollback": "verified_snapshot_restore_on_failure",
+                    }
+                )
+                verified.append(f"Verified {applied} exact cell replacement{'s' if applied != 1 else ''}.")
             else:
                 raise ActionValidationError(
                     (ValidationIssue("unsupported_action", f"Unsupported action type: {operation.type}."),)
                 )
 
-        verification = self._verify_created(worksheet, created)
+        object_changes = [item for item in created if item["kind"] in {"table", "chart"}]
+        verified.extend(self._verify_created(worksheet, object_changes))
         result = ActionExecutionResult(
             plan_id=plan.plan_id,
             status="applied",
             message=f"Applied {len(created)} Excel change{'s' if len(created) != 1 else ''}.",
             created=tuple(created),
             journal=tuple(journal),
-            verification=verification,
+            verification=tuple(verified),
         )
         self._idempotent_results[idempotency_key] = result
         return result
@@ -202,6 +304,17 @@ class ExcelActionAdapter:
             chart.HasTitle = True
             chart.ChartTitle.Text = title
         return chart_object
+
+    @staticmethod
+    def _sort_range(worksheet: Any, snapshot: ExcelSnapshot, operation: ActionOperation) -> None:
+        source = worksheet.Range(snapshot.selection_address)
+        column_index = sort_column_index(snapshot, str(operation.args["column_header"])) + 1
+        columns = getattr(source, "Columns", None)
+        if columns is None:
+            raise RuntimeError("Excel did not expose the selected range columns.")
+        key_range = columns(column_index) if callable(columns) else columns.Item(column_index)
+        order = 1 if str(operation.args["direction"]).casefold() == "ascending" else 2
+        source.Sort(Key1=key_range, Order1=order, Header=1, Orientation=1)
 
     @staticmethod
     def _verify_created(worksheet: Any, created: list[dict[str, str]]) -> tuple[str, ...]:
@@ -285,6 +398,76 @@ def _collection_names(collection: Any) -> tuple[str, ...]:
         str(collection.Item(index).Name)
         for index in range(1, int(getattr(collection, "Count", 0) or 0) + 1)
     )
+
+
+def _range_cell(source: Any, row: int, column: int) -> Any:
+    cells = getattr(source, "Cells", None)
+    if cells is None:
+        raise RuntimeError("Excel did not expose cells inside the reviewed range.")
+    return cells(row, column) if callable(cells) else cells.Item(row, column)
+
+
+def _write_excel_cell(cell: Any, kind: str, value: Any) -> None:
+    if kind == "formula":
+        try:
+            cell.Formula2 = value
+        except Exception:
+            cell.Formula = value
+    else:
+        cell.Value2 = value
+
+
+def _cleanup_readback_matches(
+    before: ExcelSnapshot,
+    after: ExcelSnapshot,
+    changes: tuple[dict[str, Any], ...],
+) -> bool:
+    if before.target.locator != after.target.locator:
+        return False
+    changed = {(int(item["row_offset"]), int(item["column_offset"])): item for item in changes}
+    for row in range(before.row_count):
+        for column in range(before.column_count):
+            change = changed.get((row, column))
+            if change is None:
+                if before.formulas[row][column] != after.formulas[row][column]:
+                    return False
+                if not before.formulas[row][column] and before.values[row][column] != after.values[row][column]:
+                    return False
+            elif change["after_kind"] == "formula":
+                if after.formulas[row][column] != change["after_value"]:
+                    return False
+            elif after.formulas[row][column] or after.values[row][column] != change["after_value"]:
+                return False
+    return True
+
+
+def _restore_excel_snapshot(application: Any, worksheet: Any, snapshot: ExcelSnapshot) -> None:
+    """Restore the exact captured range after a failed automation write."""
+    source = worksheet.Range(snapshot.selection_address)
+    has_formulas = any(formula for row in snapshot.formulas for formula in row)
+    if has_formulas:
+        matrix = tuple(
+            tuple(
+                snapshot.formulas[row][column] or snapshot.values[row][column]
+                for column in range(snapshot.column_count)
+            )
+            for row in range(snapshot.row_count)
+        )
+        payload: Any = matrix[0][0] if snapshot.row_count == snapshot.column_count == 1 else matrix
+        try:
+            source.Formula2 = payload
+        except Exception:
+            source.Formula = payload
+    else:
+        payload = (
+            snapshot.values[0][0]
+            if snapshot.row_count == snapshot.column_count == 1
+            else snapshot.values
+        )
+        source.Value2 = payload
+    restored = capture_excel_snapshot(application)
+    if restored.values != snapshot.values or restored.formulas != snapshot.formulas:
+        raise RuntimeError("Excel did not restore the exact captured values and formulas.")
 
 
 def _dependency_issues(operations: tuple[ActionOperation, ...]) -> tuple[ValidationIssue, ...]:

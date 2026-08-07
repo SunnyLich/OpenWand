@@ -1,0 +1,7 @@
+# Which letter runs which action.
+m = "summarize_document"
+e = "explain_selection"
+r = "rewrite_selection"
+i = "find_inconsistencies"
+t = "extract_action_items"
+o = "build_outline"

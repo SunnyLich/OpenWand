@@ -1,0 +1,4 @@
+label = "Summarize this deck"
+hint = "Capture the main message, evidence, decisions, and open questions"
+prompt = "Summarize this presentation for a reader who has not seen it. Identify the main message, the strongest supporting evidence, key decisions or recommendations, important caveats, and unresolved questions. Refer to slide numbers when the available context supports them, and do not change the presentation."
+access = ["text"]

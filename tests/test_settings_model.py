@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 import config
+from core.action_files import save_callers
+from core.action_files.edit import update_toml_values
 from core.settings_model import AppSettings
 
 
@@ -39,11 +42,41 @@ def _restore_config_globals(snapshot: dict[str, object]) -> None:
             setattr(config, name, value)
 
 
+def _write_file_backed_caller(
+    root: Path,
+    *,
+    label: str = "General",
+    profile: str = "default",
+    context: dict[str, str] | None = None,
+    file_access: str = "off",
+) -> None:
+    """Create the caller source used by config beside an isolated settings file."""
+    save_callers(
+        root,
+        [
+            {
+                "folder": "general",
+                "hotkey": "ctrl+q",
+                "enabled": True,
+                "label": label,
+                "file_access": file_access,
+                "context": context or {},
+                "actions": [],
+            }
+        ],
+    )
+    update_toml_values(root / "general" / "caller.toml", {"profile": profile})
+
+
 @pytest.mark.usefixtures("isolated_default_profile")
-def test_get_settings_returns_typed_snapshot():
+def test_get_settings_returns_typed_snapshot(tmp_path: Path):
     previous_config = _snapshot_config_globals()
+    env_path = tmp_path / ".env"
+    _write_file_backed_caller(tmp_path / "callers", label="Typed")
     try:
-        with patch("config.load_dotenv"), patch.dict(
+        with patch.object(config, "_ENV_FILE", env_path), patch.object(
+            config, "_reload_dotenv", lambda: None
+        ), patch.dict(
             os.environ,
             {
                 "LLM_PROVIDER": "anthropic",
@@ -144,16 +177,22 @@ def test_active_profile_overrides_model_and_budgets():
         assert settings.active_profile == "deep-work"
         assert settings.llm.provider == "anthropic"
         assert settings.tool_turn.max_total_chars == 99999
-        assert config.CALLER_ROWS[0]["context_browser_mode"] == "model"
     finally:
         _restore_config_globals(previous_config)
 
 
-def test_caller_can_select_profile_without_changing_active_profile():
-    """Verify per-caller profile selection applies context defaults."""
+def test_file_backed_caller_can_select_profile_without_changing_active_profile(tmp_path: Path):
+    """Caller profile and context now come from caller.toml, not legacy env keys."""
     previous_config = _snapshot_config_globals()
+    env_path = tmp_path / ".env"
+    _write_file_backed_caller(
+        tmp_path / "callers",
+        profile="coding-lite",
+        file_access="read",
+        context={"ambient": "model", "browser": "model", "memory": "off", "files": "on"},
+    )
     try:
-        with patch("config.load_dotenv"), patch.dict(
+        with patch.object(config, "_ENV_FILE", env_path), patch("config.load_dotenv"), patch.dict(
             os.environ,
             {
                 "PROFILE_COUNT": "1",

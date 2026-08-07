@@ -1,0 +1,4 @@
+label = "Summarize this data"
+hint = "Report useful totals, ranges, distributions, KPIs, and caveats"
+prompt = "Summarize the selected spreadsheet data. Report the most useful totals, ranges, distributions, KPIs, segments, notable findings, and data-quality caveats without changing any cells."
+access = ["text"]

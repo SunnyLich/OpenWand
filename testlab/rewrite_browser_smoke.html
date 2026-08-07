@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Wisp Ordinary Browser Rewrite Smoke</title>
+  <style>
+    body { background: #111827; color: #f9fafb; font: 24px system-ui; padding: 64px; }
+    h1 { color: #7dd3fc; }
+    [contenteditable] { background: #1f2937; border: 2px solid #38bdf8; border-radius: 12px; padding: 28px; width: 720px; }
+  </style>
+</head>
+<body>
+  <h1>Ordinary browser exact Rewrite</h1>
+  <div id="editor" contenteditable="true">A rough sentence.</div>
+  <script>
+    addEventListener("load", () => {
+      const editor = document.querySelector("#editor");
+      const range = document.createRange();
+      range.setStart(editor.firstChild, 2);
+      range.setEnd(editor.firstChild, 7);
+      const selection = getSelection();
+      editor.focus();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+  </script>
+</body>
+</html>

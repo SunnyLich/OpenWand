@@ -1,0 +1,8 @@
+label = "Clean up this table"
+hint = "Preview formatting without changing values"
+prompt = "Format the selected cells as a clean table."
+capability = "google_sheets.format_table@1"
+planner = "spreadsheet_plan_format_table"
+access = ["internet"]
+available = false
+unavailable_reason = "This app's authenticated Wisp API bridge is not connected yet"

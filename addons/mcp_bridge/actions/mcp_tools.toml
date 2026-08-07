@@ -1,0 +1,5 @@
+kind = "tool_provider"
+label = "MCP tools"
+hint = "Expose tools discovered from enabled Model Context Protocol servers."
+access = ["text", "internet", "files", "programs"]
+

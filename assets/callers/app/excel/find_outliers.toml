@@ -1,0 +1,4 @@
+label = "Find outliers in this data"
+hint = "Flag unusual values or rows and explain why they stand out"
+prompt = "Inspect the selected spreadsheet data for statistically or structurally unusual values and rows. Explain why each finding stands out, distinguish likely errors from legitimate extremes, and do not change any cells."
+access = ["text"]

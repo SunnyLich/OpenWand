@@ -10,6 +10,7 @@ pytestmark = pytest.mark.workflow
 def _close_overlay(overlay, qapp) -> None:
     overlay._bubble.clear()
     overlay._context_panel.close()
+    overlay._rewrite_batch_button.close()
     overlay._provider_badge.close()
     overlay._icon_label.close()
     overlay.close()

@@ -72,7 +72,7 @@ class LoadIssue:
 
 @dataclass(frozen=True)
 class ActionFile:
-    """One action, read from a single Python file without executing it."""
+    """One action, read from TOML without executing its optional script."""
 
     path: str
     name: str
@@ -90,6 +90,10 @@ class ActionFile:
     has_code: bool = False
     script_path: str = ""
     template: str = ""
+    enabled: bool = True
+    show_in_picker: bool = True
+    available: bool = True
+    unavailable_reason: str = ""
 
     @property
     def severity(self) -> int:
@@ -167,6 +171,7 @@ class AppMatch:
     process: tuple[str, ...] = ()
     title: tuple[str, ...] = ()
     url: tuple[str, ...] = ()
+    bundle: tuple[str, ...] = ()
 
     def matches(self, surface: dict[str, Any]) -> bool:
         """Return whether this matcher owns the captured surface.
@@ -176,6 +181,9 @@ class AppMatch:
         """
         process = str(surface.get("process_name") or "").strip().casefold()
         if process and process in self.process:
+            return True
+        bundle = str(surface.get("bundle_id") or "").strip().casefold()
+        if bundle and bundle in self.bundle:
             return True
         title = str(surface.get("title") or surface.get("name") or "").casefold()
         if title and any(needle in title for needle in self.title):
@@ -194,6 +202,7 @@ class AppDef:
 
     folder: str
     display_name: str
+    app: str
     match: AppMatch
     actions: tuple[BoundAction, ...] = ()
 
@@ -202,6 +211,7 @@ class AppDef:
         return {
             "folder": self.folder,
             "display_name": self.display_name,
+            "app": self.app,
             "match": self.match.to_dict(),
             "actions": [item.to_dict() for item in self.actions],
         }
@@ -238,12 +248,18 @@ class ActionCatalog:
         caller = self.caller(folder)
         if caller is None:
             return ()
-        rows = list(caller.actions)
+        rows = [
+            item
+            for item in caller.actions
+            if item.action.enabled and item.action.show_in_picker
+        ]
         app = self.detect_app(surface)
         if app is None:
             return tuple(rows)
         taken = {item.key for item in rows if item.key}
         for item in app.actions:
+            if not item.action.enabled or not item.action.show_in_picker:
+                continue
             key = "" if item.key in taken else item.key
             if key:
                 taken.add(key)

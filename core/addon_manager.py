@@ -23,6 +23,9 @@ from pathlib import Path
 from typing import Any
 
 from core import addon_runtime, addon_store
+from core.action_files.addons import AddonActionFile, load_addon_actions
+from core.action_files.contracts import LoadIssue
+from core.action_files.edit import update_toml_values
 from core.system.paths import ADDONS_DIR, BUNDLED_ADDONS_DIR, REPO_ROOT
 
 log = logging.getLogger("wisp.addons")
@@ -62,6 +65,8 @@ class AddonManifest:
     hotkeys: list[dict[str, Any]] = field(default_factory=list)
     settings: list[dict[str, Any]] = field(default_factory=list)
     tools: list[dict[str, Any]] = field(default_factory=list)
+    actions: tuple[AddonActionFile, ...] = ()
+    action_issues: tuple[LoadIssue, ...] = ()
 
 
 @dataclass
@@ -367,7 +372,9 @@ class AddonManager:
             return text
         for addon in self._enabled_addons():
             response_perm = str(addon.manifest.permissions.get("response") or "none").lower()
-            if addon.host is None or response_perm != "modify":
+            if addon.host is None or response_perm != "modify" or not _action_surface_enabled(
+                addon, "response_transform"
+            ):
                 continue
             result = _call_host(addon, "transform_response_text", request, timeout=3.0)
             replacement: str | None = None
@@ -447,7 +454,11 @@ class AddonManager:
             raise ValueError(f"Addon not loaded: {name}")
         if not _has_ui_permission(addon, "intents"):
             raise PermissionError(f"Addon is missing ui intents permission: {name}")
-        result = _call_host(addon, "run_intent", {"id": intent_id, "payload": payload or {}}, timeout=8.0)
+        action = _find_action(addon, "intent", intent_id)
+        if action is not None and not action.enabled:
+            raise PermissionError(f"Addon intent is disabled: {name} / {intent_id}")
+        handler = action.handler if action is not None else intent_id
+        result = _call_host(addon, "run_intent", {"id": handler, "payload": payload or {}}, timeout=8.0)
         return result if isinstance(result, dict) else {}
 
     def get_hotkeys(self) -> list[dict[str, Any]]:
@@ -545,6 +556,16 @@ class AddonManager:
             for item in _safe_list(result):
                 normalized = _safe_message_action(addon.id, item)
                 if normalized is not None:
+                    declaration = _matching_action(addon, "message_action", normalized["id"])
+                    declarations = _actions_of_kind(addon, "message_action")
+                    if declarations and (declaration is None or not declaration.enabled):
+                        continue
+                    if declaration is not None:
+                        normalized["id"] = declaration.id
+                        normalized["label"] = declaration.label
+                        normalized["access"] = [entry.value for entry in declaration.access]
+                        normalized["access_colour"] = declaration.colour
+                        normalized["action_file"] = declaration.to_dict()
                     actions.append(normalized)
                 if len(actions) >= 12:
                     break
@@ -562,11 +583,15 @@ class AddonManager:
             raise ValueError(f"Addon not loaded: {addon_id}")
         if not _has_ui_permission(addon, "message_actions"):
             raise PermissionError(f"Addon is missing ui message_actions permission: {addon_id}")
+        action = _find_action(addon, "message_action", action_id)
+        if action is not None and not action.enabled:
+            raise PermissionError(f"Addon message action is disabled: {addon_id} / {action_id}")
+        handler = action.handler if action is not None else action_id
         request = _safe_message_action_payload(payload or {}, include_text=True)
         result = _call_host(
             addon,
             "run_message_action",
-            {"action_id": str(action_id or "")[:80], "payload": request},
+            {"action_id": str(handler or "")[:80], "payload": request},
             timeout=5.0,
         )
         return _safe_message_action_result(result)
@@ -583,11 +608,15 @@ class AddonManager:
             raise ValueError(f"Addon not loaded: {addon_id}")
         if not _has_ui_permission(addon, "message_actions"):
             raise PermissionError(f"Addon is missing ui message_actions permission: {addon_id}")
+        action = _find_action(addon, "message_action", action_id)
+        if action is not None and not action.enabled:
+            raise PermissionError(f"Addon message action is disabled: {addon_id} / {action_id}")
+        handler = action.handler if action is not None else action_id
         result = _call_host(
             addon,
             "resume_message_action",
             {
-                "action_id": str(action_id or "")[:80],
+                "action_id": str(handler or "")[:80],
                 "payload": _safe_message_action_resume_payload(payload or {}),
             },
             timeout=5.0,
@@ -722,6 +751,26 @@ class AddonManager:
             return
         addon_store.set_setting(addon.id, str(key).strip(), value)
 
+    def set_action_enabled(self, name: str, action_id: str, enabled: bool) -> bool:
+        """Persist one addon action's enabled flag and apply it live."""
+        addon = self._find(name)
+        if addon is None:
+            return False
+        action = next((item for item in addon.manifest.actions if item.id == action_id), None)
+        if action is None:
+            return False
+        update_toml_values(Path(action.path), {"enabled": bool(enabled)})
+        addon.manifest = load_manifest(addon.path)
+        if self._tool_registry is not None:
+            self._tool_registry.unregister_source(f"addon:{addon.id}")
+        if addon.enabled:
+            self._activate_addon(addon)
+            if addon.host is not None:
+                _call_host(addon, "on_startup", {"data_dir": str(_data_dir(addon.id))}, timeout=3.0)
+            if self._tool_registry is not None:
+                self._register_tools(addon)
+        return bool(enabled)
+
     def summaries(
         self,
         *,
@@ -742,10 +791,10 @@ class AddonManager:
         """Return enabled addon model-tool names without building UI payloads."""
         return [item["name"] for item in self.model_tool_payloads()]
 
-    def model_tool_payloads(self) -> list[dict[str, str]]:
+    def model_tool_payloads(self) -> list[dict[str, Any]]:
         """Return enabled addon model-tool payloads without building UI payloads."""
         names: list[str] = []
-        payloads: list[dict[str, str]] = []
+        payloads: list[dict[str, Any]] = []
         for addon in self._enabled_addons():
             for item in addon.tools:
                 if not isinstance(item, dict):
@@ -753,10 +802,14 @@ class AddonManager:
                 name = str(item.get("name") or "").strip()
                 if name and name not in names:
                     names.append(name)
-                    payloads.append({
+                    payload = {
                         "name": name,
                         "description": str(item.get("description") or name),
-                    })
+                    }
+                    for key in ("label", "access", "access_colour", "action_file"):
+                        if key in item:
+                            payload[key] = item[key]
+                    payloads.append(payload)
         return payloads
 
     def payload(
@@ -780,6 +833,8 @@ class AddonManager:
             "hooks": list(addon.hooks),
             "tray_actions": tray_actions,
             "tools": [str(t.get("name") or "") for t in addon.tools if isinstance(t, dict)],
+            "actions": [action.to_dict() for action in addon.manifest.actions],
+            "action_issues": [issue.to_dict() for issue in addon.manifest.action_issues],
             "intents": list(addon.intents),
             "notifications": list(addon.notifications),
             "hotkeys": list(addon.hotkeys),
@@ -875,7 +930,7 @@ class AddonManager:
             else []
         )
         addon.tools = (
-            _safe_tool_specs(_call_host(addon, "get_tools"))
+            _apply_tool_catalog(addon, _safe_tool_specs(_call_host(addon, "get_tools")))
             if _has_permission(addon, "tools")
             else []
         )
@@ -943,6 +998,7 @@ def load_manifest(folder: Path) -> AddonManifest:
         ]
     permissions = data.get("permissions") if isinstance(data.get("permissions"), dict) else {}
     raw_events = data.get("events") or permissions.get("events")
+    actions, action_issues = load_addon_actions(folder)
     manifest = AddonManifest(
         id=addon_id,
         name=str(plugin.get("name") or folder.name),
@@ -959,6 +1015,8 @@ def load_manifest(folder: Path) -> AddonManifest:
         hotkeys=_safe_tool_specs(data.get("hotkeys")),
         settings=raw_settings if isinstance(raw_settings, list) else [],
         tools=data.get("tools") if isinstance(data.get("tools"), list) else [],
+        actions=actions,
+        action_issues=action_issues,
     )
     if manifest.api_version != "1":
         raise ValueError(f"unsupported addon API version: {manifest.api_version}")
@@ -1278,7 +1336,7 @@ def _normalize_intent(addon_id: str, item: dict[str, Any]) -> dict[str, Any] | N
     if not label or (not prompt and not callback):
         return None
     intent_id = str(item.get("id") or _valid_id(label))
-    return {
+    result: dict[str, Any] = {
         "id": intent_id,
         "addon_id": addon_id,
         "key": str(item.get("key") or "").strip(),
@@ -1288,6 +1346,10 @@ def _normalize_intent(addon_id: str, item: dict[str, Any]) -> dict[str, Any] | N
         "caller": str(item.get("caller") or "all").strip() or "all",
         "callback": callback and not prompt,
     }
+    for key in ("access", "access_colour", "action_file"):
+        if key in item:
+            result[key] = item[key]
+    return result
 
 
 def _safe_intents(addon: LoadedAddon, dynamic: Any) -> list[dict[str, Any]]:
@@ -1298,6 +1360,88 @@ def _safe_intents(addon: LoadedAddon, dynamic: Any) -> list[dict[str, Any]]:
         normalized = _normalize_intent(addon.id, item)
         if normalized is not None:
             out.append(normalized)
+    for action in _actions_of_kind(addon, "intent"):
+        matches = [item for item in out if str(item.get("id") or "") == action.handler]
+        if not action.enabled:
+            out = [item for item in out if item not in matches]
+            continue
+        source = matches[0] if matches else {}
+        declared = {
+            "id": action.id,
+            "label": action.label,
+            "hint": action.hint or str(source.get("hint") or ""),
+            "prompt": action.prompt or str(source.get("prompt") or ""),
+            "caller": action.caller,
+            "key": action.key or str(source.get("key") or ""),
+            "callback": not bool(action.prompt) and bool(source.get("callback")),
+            "access": [entry.value for entry in action.access],
+            "access_colour": action.colour,
+            "action_file": action.to_dict(),
+        }
+        out = [item for item in out if item not in matches]
+        normalized = _normalize_intent(addon.id, declared)
+        if normalized is not None:
+            out.append(normalized)
+    return out
+
+
+def _actions_of_kind(addon: LoadedAddon, kind: str) -> tuple[AddonActionFile, ...]:
+    """Return declarations of one kind in file order."""
+    return tuple(action for action in addon.manifest.actions if action.kind == kind)
+
+
+def _find_action(addon: LoadedAddon, kind: str, action_id: str) -> AddonActionFile | None:
+    """Find a declaration by its public id."""
+    return next(
+        (action for action in _actions_of_kind(addon, kind) if action.id == action_id),
+        None,
+    )
+
+
+def _matching_action(addon: LoadedAddon, kind: str, handler: str) -> AddonActionFile | None:
+    """Find a declaration that owns one runtime handler."""
+    return next(
+        (
+            action
+            for action in _actions_of_kind(addon, kind)
+            if action.handler == handler or action.id == handler
+        ),
+        None,
+    )
+
+
+def _action_surface_enabled(addon: LoadedAddon, kind: str) -> bool:
+    """Return a declared surface state, falling back to legacy availability."""
+    actions = _actions_of_kind(addon, kind)
+    return not actions or any(action.enabled for action in actions)
+
+
+def _apply_tool_catalog(addon: LoadedAddon, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Decorate/filter runtime tool schemas using the data-only catalogue."""
+    declarations = _actions_of_kind(addon, "tool")
+    providers = _actions_of_kind(addon, "tool_provider")
+    if not declarations and not providers:
+        return tools
+    out: list[dict[str, Any]] = []
+    for raw in tools:
+        name = str(raw.get("name") or "").strip()
+        declaration = _matching_action(addon, "tool", name)
+        owner = declaration or next((item for item in providers if item.enabled), None)
+        if declaration is not None and not declaration.enabled:
+            continue
+        if declaration is None and providers and owner is None:
+            continue
+        if declaration is None and declarations and not providers:
+            # Explicit tool declarations make the catalogue authoritative.
+            continue
+        item = dict(raw)
+        if owner is not None:
+            item["label"] = owner.label if declaration is not None else name
+            item["description"] = owner.hint or str(item.get("description") or name)
+            item["access"] = [entry.value for entry in owner.access]
+            item["access_colour"] = owner.colour
+            item["action_file"] = owner.to_dict()
+        out.append(item)
     return out
 
 

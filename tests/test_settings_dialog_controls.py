@@ -1693,6 +1693,20 @@ def test_localize_widget_tree_uses_app_language(monkeypatch):
         app.processEvents()
 
 
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_action_localization_ignores_deleted_qt_wrappers():
+    """A stale QAction wrapper must not be dereferenced during retranslation."""
+    import shiboken6
+    from PySide6.QtGui import QAction
+
+    from ui.i18n import _translate_action
+
+    action = QAction("Settings")
+    shiboken6.delete(action)
+
+    _translate_action(action)
+
+
 def test_i18n_uses_qt_catalog_without_dynamic_matching(monkeypatch):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
@@ -4616,7 +4630,9 @@ def test_warning_markers_refresh_from_loaded_settings(monkeypatch, tmp_path):
         assert dialog._selected_profile_id() == "warning-profile"
         assert dialog._warning_headers["Provider credentials"].text().startswith("\u26a0 ")
         assert dialog._warning_headers["LLM"].text().startswith("\u26a0 ")
-        assert dialog._warning_headers["Global shortcuts"].text().startswith("\u26a0 ")
+        # Legacy CALLER_* profile values are intentionally ignored now that
+        # caller context lives in the action-file tree.
+        assert not dialog._warning_headers["Global shortcuts"].text().startswith("\u26a0 ")
     finally:
         dialog.deleteLater()
         app.processEvents()
@@ -4976,9 +4992,8 @@ def test_settings_do_save_localizes_qtextedit_prompt_fields(tmp_path, monkeypatc
         _set(row["prompt"], "What is this? Give me a clear, plain-English explanation in 2-3 sentences.")
 
         assert dialog._do_save() is True
-        assert captured["CALLER_1_INTENT_1_LABEL"] == "\u9019\u662f\u4ec0\u9ebc\uff1f"
-        assert "\u7e41\u9ad4\u4e2d\u6587" in captured["CALLER_1_INTENT_1_PROMPT"]
-        assert _get(row["prompt"]) == captured["CALLER_1_INTENT_1_PROMPT"]
+        assert not any(key == "CALLER_COUNT" or key.startswith("CALLER_") for key in captured)
+        assert (tmp_path / "callers" / "general" / "what_is_this.toml").is_file()
         assert captured["CHAT_ELABORATE_PROMPT"] == "\u8acb\u8a73\u7d30\u8aaa\u660e\u4e00\u4e0b\u3002"
         assert _get(dialog._fields["CHAT_ELABORATE_PROMPT"]) == captured["CHAT_ELABORATE_PROMPT"]
         assert captured["WISP_CODEX_SYSTEM_PROMPT"] == "ChatGPT-only rules."
@@ -4988,8 +5003,7 @@ def test_settings_do_save_localizes_qtextedit_prompt_fields(tmp_path, monkeypatc
         assert captured["WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS"] == "120"
         assert captured["TTS_PROVIDER"] == "kokoro"
         assert captured["WISP_CONNECTION_ALIAS_OPENAI"] == "Work"
-        assert captured["CALLER_1_HOTKEY_2"] == "ctrl+win+1"
-        assert captured["CALLER_1_ENABLED"] == "True"
+        assert 'hotkey_2 = "ctrl+win+1"' in (tmp_path / "callers" / "callers.toml").read_text(encoding="utf-8")
         assert captured["HOTKEY_ADD_CONTEXT_2"] == "ctrl+shift+win+1"
         assert captured["HOTKEY_ADD_CONTEXT_ENABLED"] == "False"
         assert captured["HOTKEY_VOICE_2"] == "ctrl+shift+win+4"
@@ -5155,7 +5169,8 @@ def test_settings_apply_real_save_clears_dirty_after_language_change(tmp_path, m
         assert dialog._apply_settings() is True
         app.processEvents()
 
-        assert "\u7e41\u9ad4\u4e2d\u6587" in captured["CALLER_1_INTENT_1_PROMPT"]
+        assert not any(key == "CALLER_COUNT" or key.startswith("CALLER_") for key in captured)
+        assert (tmp_path / "callers" / "general" / "what_is_this.toml").is_file()
         assert dialog._dirty_keys == set()
         assert apply_btn.isEnabled() is False
         assert not dialog._status_lbl.text().startswith("Unsaved changes")

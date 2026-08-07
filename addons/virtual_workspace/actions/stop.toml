@@ -1,0 +1,6 @@
+kind = "tool"
+handler = "virtual_workspace_stop"
+label = "Stop virtual workspace"
+hint = "Stop the viewer and freeze the session while preserving its audit files."
+access = ["files", "programs"]
+

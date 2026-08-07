@@ -337,26 +337,42 @@ def test_native_paste_method_by_clipboard_restore_matrix(
             },
         )
 
-        def post_to_captured_window(token, text):
+        def paste_to_captured_window(
+            token,
+            text,
+            *,
+            paste_combo="",
+            restore_clipboard=False,
+        ):
             assert token == focus_token
+            assert paste_combo == ""
             assert native_host._focus_cache["input_hwnd"] == 901
             assert native_host._focus_cache["root_hwnd"] == 900
             assert native_host._focus_cache["target_pid"] == 733
             native_host._focus_cache["range"].Select()
             background_posts.append((token, text))
+            clipboard_set(text)
+            if restore_clipboard:
+                clipboard_get()
+                clipboard_set(original)
             return {
                 "ok": True,
-                "method": "win-post-message",
+                "method": "win-uia-foreground-paste",
                 "keystroke_sent": True,
-                "clipboard_restored": True,
+                "clipboard_restored": restore_clipboard,
                 "foreground_unchanged": True,
                 "text_verified": True,
             }
 
         monkeypatch.setattr(
             native_host,
+            "_win_foreground_paste_to_cached_target",
+            paste_to_captured_window,
+        )
+        monkeypatch.setattr(
+            native_host,
             "_win_post_text_to_cached_target",
-            post_to_captured_window,
+            lambda *_args, **_kwargs: pytest.fail("partial WM_CHAR replacement must never run"),
         )
     elif method == "macos_ax":
         focus_token = 92
@@ -406,13 +422,17 @@ def test_native_paste_method_by_clipboard_restore_matrix(
         return
 
     if method == "windows_uia":
-        assert result["method"] == "win-post-message"
+        assert result["method"] == "win-uia-foreground-paste"
         assert result["foreground_unchanged"] is True
         assert result["text_verified"] is True
         assert background_posts == [(91, "generated reply")]
         assert focus_events == ["uia-select"]
-        assert clipboard_reads == []
-        assert clipboard_writes == []
+        assert clipboard_writes[0] == "generated reply"
+        if restore_clipboard:
+            assert clipboard_reads == [original]
+            assert clipboard_writes[-1] == original
+        else:
+            assert clipboard_reads == []
         return
 
     assert result["keystroke_sent"] is True

@@ -1,0 +1,7 @@
+display_name = "Browser"
+app = "browser"
+priority = 20
+
+[match]
+process = ["chrome.exe", "msedge.exe", "brave.exe", "chromium.exe"]
+title = ["google chrome", "microsoft edge", "brave", "chromium"]

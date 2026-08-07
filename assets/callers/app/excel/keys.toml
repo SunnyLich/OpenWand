@@ -1,3 +1,10 @@
 # Which letter runs which action.
 c = "add_chart"
 t = "create_table"
+o = "sort_range"
+a = "analyze_selection"
+u = "find_outliers"
+r = "find_trends"
+m = "summarize_data"
+e = "clean_export"
+f = "explain_formula"

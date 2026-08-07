@@ -147,6 +147,7 @@ ui_deps_ok() {
   local py="$1"
   "$py" - <<'PY' >/dev/null 2>&1
 import PySide6
+import anydoc
 import dotenv
 import PIL
 import numpy

@@ -341,4 +341,25 @@ def test_presentation_picker_exposes_live_desktop_and_gates_web_bridges() -> Non
     assert desktop["display_name"] == "Microsoft PowerPoint"
     assert all(item["available"] is True for item in desktop["suggested_intents"])
     assert slides["display_name"] == "Google Slides"
-    assert all(item["available"] is False for item in slides["suggested_intents"])
+    available = {
+        item["id"] for item in slides["suggested_intents"] if item["available"] is True
+    }
+    assert available == {
+        "summarize_deck",
+        "find_story_gaps",
+        "draft_agenda",
+        "improve_slide_message",
+        "check_slide_consistency",
+    }
+
+    unavailable = {
+        item["id"]: item["unavailable_reason"]
+        for item in slides["suggested_intents"]
+        if item["available"] is False
+    }
+    assert set(unavailable) == {
+        "presentation.create_slide",
+        "presentation.restyle_slide",
+        "presentation.speaker_notes",
+    }
+    assert all("authenticated Wisp API bridge" in reason for reason in unavailable.values())

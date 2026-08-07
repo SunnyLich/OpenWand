@@ -286,6 +286,25 @@ class BuildScriptTests(unittest.TestCase):
                 spec = (ROOT / "packaging" / spec_name).read_text(encoding="utf-8")
                 self.assertIn('pyproject.toml', spec)
 
+    def test_specs_bundle_anydoc_native_module_and_mit_notice(self) -> None:
+        license_text = (ROOT / "licenses" / "AnyDoc-LICENSE.txt").read_text(encoding="utf-8")
+        self.assertIn("MIT License", license_text)
+        self.assertIn("Copyright (c) 2026 Sideguide Technologies Inc.", license_text)
+
+        for spec_name in ("Wisp.spec", "WispLinux.spec", "WispMac.spec"):
+            with self.subTest(spec=spec_name):
+                spec = (ROOT / "packaging" / spec_name).read_text(encoding="utf-8")
+                self.assertIn('collect_all("anydoc")', spec)
+                self.assertIn('ROOT / "licenses" / "AnyDoc-LICENSE.txt"', spec)
+                self.assertIn("ANYDOC_HIDDENIMPORTS", spec)
+
+    def test_source_launchers_require_anydoc_runtime(self) -> None:
+        windows = (ROOT / "Start Wisp.bat").read_text(encoding="utf-8")
+        shared_unix = (ROOT / "Start Wisp.command").read_text(encoding="utf-8")
+
+        self.assertIn("import anydoc", windows)
+        self.assertIn("import anydoc", shared_unix)
+
     def test_specs_configure_platform_app_icons(self) -> None:
         windows = (ROOT / "packaging" / "Wisp.spec").read_text(encoding="utf-8")
         linux = (ROOT / "packaging" / "WispLinux.spec").read_text(encoding="utf-8")

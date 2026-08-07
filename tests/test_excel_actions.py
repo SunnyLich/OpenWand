@@ -6,8 +6,8 @@ from dataclasses import replace
 
 import pytest
 
-from core.actions.adapters.excel import ExcelActionAdapter, build_table_chart_plan
-from core.actions.adapters.excel.capabilities import excel_registry
+from core.actions.adapters.excel import ExcelActionAdapter, ExcelRuntimeProvider, build_table_chart_plan
+from core.actions.adapters.excel.capabilities import ADD_CHART, SORT_RANGE, excel_registry
 from core.actions.contracts import ActionOperation
 from core.actions.errors import ActionValidationError
 from ui.addon_presentations import sanitize_presentation_html
@@ -21,6 +21,7 @@ class _Count:
 class FakeRange:
     def __init__(self, address: str, values: tuple[tuple[object, ...], ...]) -> None:
         self._address = address
+        self._values = values
         self.Value2 = values[0][0] if len(values) == 1 and len(values[0]) == 1 else values
         self.Rows = _Count(len(values))
         self.Columns = _Count(len(values[0]))
@@ -29,9 +30,49 @@ class FakeRange:
         self.Width = 320.0
         self.Row = 1
         self.Column = 1
+        self.Columns = _FakeRangeColumns(self)
 
     def Address(self, _row_absolute: bool, _column_absolute: bool) -> str:
         return self._address
+
+    def Sort(self, **kwargs: object) -> None:
+        key_range = kwargs["Key1"]
+        assert isinstance(key_range, _FakeColumnRange)
+        column_index = key_range.column_index - 1
+        reverse = int(kwargs["Order1"]) == 2
+        header, *rows = self._values
+        numeric = all(
+            isinstance(row[column_index], int | float) and not isinstance(row[column_index], bool)
+            for row in rows
+            if row[column_index] not in (None, "")
+        )
+
+        def key(row: tuple[object, ...]) -> float | str:
+            value = row[column_index]
+            return float(value) if numeric else str(value).casefold()
+
+        populated = [row for row in rows if row[column_index] not in (None, "")]
+        empty = [row for row in rows if row[column_index] in (None, "")]
+        self._values = (header, *sorted(populated, key=key, reverse=reverse), *empty)
+        self.Value2 = self._values
+
+
+class _FakeColumnRange:
+    def __init__(self, column_index: int) -> None:
+        self.column_index = column_index
+
+
+class _FakeRangeColumns:
+    def __init__(self, source: FakeRange) -> None:
+        self._source = source
+
+    def __call__(self, column_index: int) -> _FakeColumnRange:
+        assert 1 <= column_index <= self._source.Columns.Count
+        return _FakeColumnRange(column_index)
+
+    @property
+    def Count(self) -> int:
+        return self._source.Columns.Count if self._source.Columns is not self else len(self._source._values[0])
 
 
 class FakeListObject:
@@ -142,6 +183,13 @@ class FakeExcel:
         )
         self.ActiveSheet = FakeWorksheet(self.Selection)
         self.ActiveWorkbook = FakeWorkbook(self.ActiveSheet)
+        self._undo_values = self.Selection._values
+        self.undo_count = 0
+
+    def Undo(self) -> None:
+        self.undo_count += 1
+        self.Selection._values = self._undo_values
+        self.Selection.Value2 = self._undo_values
 
 
 def test_excel_preview_uses_real_snapshot_without_mutating_excel() -> None:
@@ -254,3 +302,116 @@ def test_excel_snapshot_accepts_late_bound_address_property() -> None:
     snapshot = ExcelActionAdapter(lambda: excel).snapshot()
 
     assert snapshot.selection_address == "A1:C3"
+
+
+def test_excel_runtime_provider_builds_previews_and_verifies_execution() -> None:
+    excel = FakeExcel()
+    provider = ExcelRuntimeProvider(ExcelActionAdapter(lambda: excel))
+    context = {"active_app": {"process_name": "EXCEL.EXE", "name": "Q2 Sales.xlsx - Excel"}}
+
+    assert provider.detects(context)
+    snapshot = provider.snapshot(context)
+    capability = next(item for item in provider.capabilities(snapshot) if item.type == ADD_CHART)
+    plan = provider.build_plan(
+        capability,
+        {"source": "A1:C3", "name": "WispChart", "kind": "column", "title": "Revenue"},
+        snapshot,
+        "",
+    )
+    preview = provider.render_preview(plan, snapshot)
+
+    assert preview.plan_id == plan.plan_id
+    assert excel.ActiveSheet.ChartObjects().Count == 0
+    result = provider.execute(plan, confirmed=True, idempotency_key="runtime-chart")
+    assert provider.verify(plan, result) == ()
+    assert excel.ActiveSheet.ChartObjects().Count == 1
+
+
+def test_excel_sort_previews_complete_rows_then_applies_and_verifies_exact_order() -> None:
+    excel = FakeExcel()
+    provider = ExcelRuntimeProvider(ExcelActionAdapter(lambda: excel))
+    context = {"active_app": {"process_name": "excel.exe"}}
+    snapshot = provider.snapshot(context)
+    capability = next(item for item in provider.capabilities(snapshot) if item.type == SORT_RANGE)
+    plan = provider.build_plan(
+        capability,
+        {"column_header": "Revenue", "direction": "descending"},
+        snapshot,
+        "",
+    )
+
+    preview = provider.render_preview(plan, snapshot)
+
+    assert "Proposed order" in preview.html
+    assert preview.html.index("Feb") < preview.html.index("Jan")
+    assert excel.Selection.Value2[1][0] == "Jan"
+
+    result = provider.execute(plan, confirmed=True, idempotency_key="runtime-sort")
+
+    assert result.created == ({"kind": "sorted_range", "name": "A1:C3"},)
+    assert result.verification == ("Verified complete-row sort by Revenue.",)
+    assert excel.Selection.Value2 == (
+        ("Month", "Revenue", "Region"),
+        ("Feb", 1700, "East"),
+        ("Jan", 1200, "West"),
+    )
+    assert provider.verify(plan, result) == ()
+
+
+def test_excel_sort_rejects_a_missing_or_duplicate_header() -> None:
+    excel = FakeExcel()
+    provider = ExcelRuntimeProvider(ExcelActionAdapter(lambda: excel))
+    snapshot = provider.snapshot({})
+    capability = next(item for item in provider.capabilities(snapshot) if item.type == SORT_RANGE)
+
+    with pytest.raises(ValueError, match="unique"):
+        provider.build_plan(
+            capability,
+            {"column_header": "Missing", "direction": "ascending"},
+            snapshot,
+            "",
+        )
+
+    excel.Selection._values = (
+        ("Month", "Revenue", "Region"),
+        ("Jan", 1200, "West"),
+        ("Feb", "unknown", "East"),
+    )
+    excel.Selection.Value2 = excel.Selection._values
+    mixed_snapshot = provider.snapshot({})
+    with pytest.raises(ValueError, match="consistent value type"):
+        provider.build_plan(
+            capability,
+            {"column_header": "Revenue", "direction": "ascending"},
+            mixed_snapshot,
+            "",
+        )
+
+
+def test_excel_sort_restores_snapshot_before_rejecting_a_verification_mismatch() -> None:
+    excel = FakeExcel()
+    provider = ExcelRuntimeProvider(ExcelActionAdapter(lambda: excel))
+    snapshot = provider.snapshot({})
+    capability = next(item for item in provider.capabilities(snapshot) if item.type == SORT_RANGE)
+    plan = provider.build_plan(
+        capability,
+        {"column_header": "Revenue", "direction": "descending"},
+        snapshot,
+        "",
+    )
+
+    excel.Selection.Sort = lambda **_kwargs: setattr(
+        excel.Selection,
+        "Value2",
+        (
+            ("Month", "Revenue", "Region"),
+            ("Jan", 9999, "West"),
+            ("Feb", 1700, "East"),
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="reviewed row order"):
+        provider.execute(plan, confirmed=True, idempotency_key="bad-sort")
+
+    assert excel.undo_count == 0
+    assert excel.Selection.Value2 == excel._undo_values

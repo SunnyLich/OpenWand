@@ -48,6 +48,7 @@ class FakeAddonManager:
         self.addons = addons or []
         self.settings = settings or {}
         self.enabled_calls: list[tuple[str, bool]] = []
+        self.action_enabled_calls: list[tuple[str, str, bool]] = []
         self.setting_calls: list[tuple[str, str, object]] = []
         self.repair_calls: list[str] = []
         self.repair_result: dict = {"ready": True}
@@ -60,6 +61,10 @@ class FakeAddonManager:
     def set_enabled(self, addon_id: str, enabled: bool) -> bool:
         self.enabled_calls.append((addon_id, enabled))
         return True
+
+    def set_action_enabled(self, addon_id: str, action_id: str, enabled: bool) -> bool:
+        self.action_enabled_calls.append((addon_id, action_id, enabled))
+        return enabled
 
     def get_settings(self, addon_id: str) -> list[dict]:
         return [dict(row) for row in self.settings.get(addon_id, [])]
@@ -212,6 +217,60 @@ def test_enable_toggle_reaches_manager(qapp, fake_manager):
         assert fake_manager.enabled_calls == [("demo.tools", False), ("demo.tools", True)]
     finally:
         dialog.close()
+
+
+def test_action_catalogue_is_visible_and_toggleable(qapp, fake_manager):
+    fake_manager.addons = [_addon(actions=[{
+        "id": "lookup",
+        "kind": "tool",
+        "label": "Lookup",
+        "access": ["internet"],
+        "colour": "amber",
+        "enabled": True,
+        "path": "C:/addons/demo/actions/lookup.toml",
+    }])]
+    dialog = _dialog(fake_manager)
+    try:
+        assert "Lookup · tool · Internet" in _all_text(dialog)
+        action_box = dialog.findChildren(QCheckBox)[1]
+        action_box.setChecked(False)
+        assert fake_manager.action_enabled_calls == [("demo.tools", "lookup", False)]
+    finally:
+        dialog.close()
+
+
+def test_protocol_addon_manager_action_toggle_emits_supervisor_event(qapp):
+    """The production UI-worker card exposes catalogue metadata over IPC."""
+    from runtime.workers.ui_host import QtProtocolHost
+
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host._addons_dialog = None
+    host._addon_settings_dialogs = {}
+    host._addon_log_dialogs = {}
+    emitted = []
+    host.emit = lambda event, data=None, req_id=None: emitted.append((event, data or {}))  # type: ignore[method-assign]
+
+    result = host._show_addons(addons=[_addon(status="loaded", actions=[{
+        "id": "lookup",
+        "kind": "tool",
+        "label": "Lookup",
+        "access": ["internet"],
+        "colour": "amber",
+        "enabled": True,
+        "path": "C:/addons/demo/actions/lookup.toml",
+    }])])
+    dialog = host._addons_dialog
+    try:
+        assert result["shown"] is True
+        assert "Lookup · tool · Internet" in _all_text(dialog)
+        dialog.findChildren(QCheckBox)[1].setChecked(False)
+        assert emitted[-1] == (
+            "ui.addons.set_action_enabled",
+            {"addon_id": "demo.tools", "action_id": "lookup", "enabled": False},
+        )
+    finally:
+        dialog.close()
+        qapp.processEvents()
 
 
 @pytest.mark.parametrize(

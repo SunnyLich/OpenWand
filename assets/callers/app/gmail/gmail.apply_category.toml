@@ -1,0 +1,8 @@
+label = "Label this email"
+hint = "Preview the exact Gmail label"
+prompt = "Apply the most appropriate label to this email."
+capability = "email.apply_category@1"
+planner = "email_plan_apply_category"
+access = ["internet"]
+available = false
+unavailable_reason = "Connect this account to Wisp before using account API actions"

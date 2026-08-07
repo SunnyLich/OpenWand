@@ -1990,6 +1990,8 @@ _DOC_APP_TITLE_SUFFIXES: list[str] = [
     " - Mark Text",
     " - GNU Emacs",
     " - GVIM",
+    " - Vim",
+    " - Neovim",
     " - KWrite",
     " - Kate",
     " \u2013 KWrite",
@@ -2033,6 +2035,11 @@ _DOC_APP_TITLE_SUFFIXES: list[str] = [
     " \u2013 PhpStorm",
     " \u2013 DataGrip",
     " \u2013 Android Studio",
+    # Other code editors and IDEs.
+    " - Microsoft Visual Studio",
+    " - Eclipse IDE",
+    " - Eclipse",
+    " - Zed",
 ]
 
 _DOC_APP_PROCESS_NAMES: set[str] = {
@@ -2070,7 +2077,12 @@ _DOC_APP_PROCESS_NAMES: set[str] = {
     "zettlr.exe", "zettlr",
     "marktext.exe", "marktext",
     "gvim.exe", "gvim",
+    "vim.exe", "vim",
+    "nvim.exe", "nvim",
     "emacs.exe", "emacs",
+    "devenv.exe", "devenv",
+    "eclipse.exe", "eclipse",
+    "zed.exe", "zed",
     "kwrite",
     "kate",
     # macOS document apps whose titles are commonly just the document name
@@ -2904,11 +2916,13 @@ def _linux_match_open_file(pid: int, doc_name: str) -> str:
 def get_all_open_document_paths(
     max_docs: int = 5,
     active_window: WindowInfo | None = None,
+    active_only: bool = False,
 ) -> list[str]:
     """
     Resolve filesystem paths for ALL open doc-app windows, focused or not.
     Returns a deduplicated list of up to *max_docs* paths, with the window
     that had focus at hotkey time listed first (if resolvable).
+    When *active_only* is true, do not scan any other document windows.
     """
     # Put the hotkey-time window first so it has priority.
     primary = get_active_document_path(active_window=active_window)
@@ -2917,6 +2931,8 @@ def get_all_open_document_paths(
     if primary:
         seen.add(primary)
         paths.append(primary)
+    if active_only:
+        return paths
 
     for win in _enumerate_open_doc_windows():
         if len(paths) >= max_docs:
@@ -2933,17 +2949,20 @@ def get_all_open_document_window_texts(
     max_docs: int = 5,
     max_chars_per_doc: int | None = None,
     active_window: WindowInfo | None = None,
+    active_only: bool = False,
 ) -> list[tuple[str, str]]:
     """Read visible text directly from open document/editor windows.
 
     This is a Windows fallback for cases where a document app exposes text via
     UI Automation but does not expose a reliable filesystem path. Returns
     ``(label, text)`` pairs. Empty/unreadable windows are skipped.
+    When *active_only* is true, inspect only the captured hotkey window.
     """
     results, _debug = get_all_open_document_window_texts_with_debug(
         max_docs=max_docs,
         max_chars_per_doc=max_chars_per_doc,
         active_window=active_window,
+        active_only=active_only,
     )
     return results
 
@@ -2972,6 +2991,7 @@ def get_all_open_document_window_texts_with_debug(
     max_docs: int = 5,
     max_chars_per_doc: int | None = None,
     active_window: WindowInfo | None = None,
+    active_only: bool = False,
 ) -> tuple[list[tuple[str, str]], list[dict[str, Any]]]:
     """Read visible document/editor text and return candidate diagnostics."""
     if not _IS_WIN:
@@ -2990,13 +3010,14 @@ def get_all_open_document_window_texts_with_debug(
     # Keep scanning beyond max_docs candidates: some supported app windows expose
     # no usable UIA text, and stopping before reading them can hide later sources.
     max_candidate_windows = max(max_docs * 4, max_docs + 8)
-    for win in _enumerate_open_doc_windows():
-        if len(windows) >= max_candidate_windows:
-            break
-        if not win.hwnd or int(win.hwnd) in seen_windows:
-            continue
-        windows.append(win)
-        seen_windows.add(int(win.hwnd))
+    if not active_only:
+        for win in _enumerate_open_doc_windows():
+            if len(windows) >= max_candidate_windows:
+                break
+            if not win.hwnd or int(win.hwnd) in seen_windows:
+                continue
+            windows.append(win)
+            seen_windows.add(int(win.hwnd))
 
     results: list[tuple[str, str]] = []
     debug: list[dict[str, Any]] = []

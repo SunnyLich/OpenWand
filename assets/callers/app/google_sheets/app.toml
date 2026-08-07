@@ -1,0 +1,7 @@
+display_name = "Google Sheets"
+app = "spreadsheet"
+priority = 30
+
+[match]
+url = ["docs.google.com/spreadsheets/"]
+title = ["google sheets"]

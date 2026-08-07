@@ -83,6 +83,7 @@ def resolve_catalog(catalog: ActionCatalog, language: str | None = None) -> Acti
             AppDef(
                 folder=app.folder,
                 display_name=app.display_name,
+                app=app.app,
                 match=app.match,
                 actions=_rows(app.actions, language),
             )

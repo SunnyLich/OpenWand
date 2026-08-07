@@ -21,6 +21,8 @@ def render_calc_preview(plan: ActionPlan, snapshot: CalcSnapshot) -> ActionPrevi
         return _render_format_table_preview(plan, snapshot)
     if operation_type == "calc.sort_range@1":
         return _render_sort_range_preview(plan, snapshot)
+    if operation_type == "calc.clean_range@1":
+        return _render_cleanup_preview(plan, snapshot)
     raise ValueError("This Calc operation has no preview renderer.")
 
 
@@ -144,6 +146,52 @@ def _render_sort_range_preview(plan: ActionPlan, snapshot: CalcSnapshot) -> Acti
             },
         ),
         warnings=(),
+    )
+
+
+def _render_cleanup_preview(plan: ActionPlan, snapshot: CalcSnapshot) -> ActionPreview:
+    operation = plan.operations[0]
+    changes = operation.args["changes"]
+    rows = "".join(
+        "<tr>"
+        f"<td>row {item['row_offset'] + 1}, column {item['column_offset'] + 1}</td>"
+        f"<td>{escape(_display(item['before_value']))}</td>"
+        f"<td>{escape(_display(item['after_value']))}</td>"
+        f"<td>{escape(str(item['after_kind']).title())}</td>"
+        "</tr>"
+        for item in changes
+    )
+    table = (
+        '<div class="table-wrap"><table><thead><tr><th>Cell in selection</th><th>Before</th>'
+        f"<th>After</th><th>Content</th></tr></thead><tbody>{rows}</tbody></table></div>"
+    )
+    fragment = canvas_preview(
+        app="LibreOffice Calc",
+        target=f"{plan.target.display_name} - {snapshot.selection_address}",
+        title=plan.summary,
+        hero_html=table,
+        chips_html=chips((f"{len(changes)} exact cells", "Reviewed values", "Native Undo")),
+        body_html=(
+            '<div class="action-change-list"><div class="action-change-item">'
+            '<span class="action-change-mark">&#10003;</span><div class="action-change-copy">'
+            '<div class="action-change-title">Every other selected value and formula stays unchanged.'
+            "</div></div></div></div>"
+        ),
+        badge="LC",
+    )
+    return ActionPreview(
+        plan_id=plan.plan_id,
+        title="Reviewed Calc cleanup",
+        summary=plan.summary,
+        html=fragment,
+        details=(
+            {
+                "operation_id": operation.id,
+                "type": operation.type,
+                "label": f"Replace {len(changes)} exact cells in {snapshot.selection_address}",
+            },
+        ),
+        warnings=("The reviewed replacements remain on Calc's native Undo stack after Apply.",),
     )
 
 

@@ -169,7 +169,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 1
+      "node_count": 2
     },
     {
       "path": "tests/integration/brain/test_handler_echo.py",
@@ -364,7 +364,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 204
+      "node_count": 227
     },
     {
       "path": "tests/runtime/test_flows_live_voice.py",
@@ -454,7 +454,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 33
+      "node_count": 39
     },
     {
       "path": "tests/runtime/test_runtime_log.py",
@@ -514,7 +514,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 55
+      "node_count": 56
     },
     {
       "path": "tests/runtime/test_ui_host_runtime_status.py",
@@ -559,7 +559,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 25
+      "node_count": 27
     },
     {
       "path": "tests/support/test_ci_pytest_chunk.py",
@@ -784,7 +784,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 26
+      "node_count": 33
     },
     {
       "path": "tests/test_action_files_shipped.py",
@@ -799,7 +799,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 13
+      "node_count": 22
     },
     {
       "path": "tests/test_action_i18n.py",
@@ -889,7 +889,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 21
+      "node_count": 23
     },
     {
       "path": "tests/test_addon_manager_ui.py",
@@ -904,7 +904,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 22
+      "node_count": 24
     },
     {
       "path": "tests/test_addon_runtime.py",
@@ -1219,7 +1219,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 44
+      "node_count": 45
     },
     {
       "path": "tests/test_chatgpt_auth.py",
@@ -1318,7 +1318,7 @@
         "windows"
       ],
       "schedule": "github-actions",
-      "node_count": 26
+      "node_count": 28
     },
     {
       "path": "tests/test_context_hotkey_snapshot.py",
@@ -1348,7 +1348,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 9
+      "node_count": 31
     },
     {
       "path": "tests/test_conversation_store.py",
@@ -1453,7 +1453,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 16
+      "node_count": 22
     },
     {
       "path": "tests/test_drop_zone_scaling.py",
@@ -1513,7 +1513,22 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 8
+      "node_count": 12
+    },
+    {
+      "path": "tests/test_excel_formula_context.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 7
     },
     {
       "path": "tests/test_external_conversation_sync.py",
@@ -1573,7 +1588,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 22
+      "node_count": 23
     },
     {
       "path": "tests/test_ghost_cursor.py",
@@ -1749,7 +1764,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 53
+      "node_count": 55
     },
     {
       "path": "tests/test_intent_overlay_keyboard_hook.py",
@@ -1867,7 +1882,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 11
+      "node_count": 12
     },
     {
       "path": "tests/test_macos_helper_ipc.py",
@@ -2099,7 +2114,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 11
+      "node_count": 12
     },
     {
       "path": "tests/test_overlay_shell_acceptance.py",
@@ -2385,6 +2400,81 @@
       "node_count": 8
     },
     {
+      "path": "tests/test_rewrite_annotation.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 12
+    },
+    {
+      "path": "tests/test_rewrite_browser.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 3
+    },
+    {
+      "path": "tests/test_rewrite_libreoffice.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 4
+    },
+    {
+      "path": "tests/test_rewrite_office.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 10
+    },
+    {
+      "path": "tests/test_rewrite_spreadsheets.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 4
+    },
+    {
       "path": "tests/test_rewrite_tool_call.py",
       "kind": "pytest",
       "scope": "unit",
@@ -2457,7 +2547,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 170
+      "node_count": 171
     },
     {
       "path": "tests/test_settings_env.py",
@@ -2596,6 +2686,21 @@
     },
     {
       "path": "tests/test_spreadsheet_advanced_actions.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 5
+    },
+    {
+      "path": "tests/test_spreadsheet_cleanup_actions.py",
       "kind": "pytest",
       "scope": "component",
       "behaviour": "internal",
@@ -2873,7 +2978,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 10
+      "node_count": 18
     },
     {
       "path": "tests/test_vscode_advanced_actions.py",

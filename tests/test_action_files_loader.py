@@ -7,7 +7,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from core.action_files import Access, load_catalog, lookup_report, parse_action_file
+from core.action_files import (
+    Access,
+    load_catalog,
+    lookup_report,
+    parse_action_file,
+    run_action_script,
+    save_callers,
+)
+from core.action_files.store import ActionCatalogStore, action_runtime_route, caller_row
 
 PROMPT_ACTION = """
 label = "Fix grammar"
@@ -52,6 +60,70 @@ def _written(path: Path, contents: str) -> Path:
     return path
 
 
+def test_existing_live_tree_merges_new_shipped_actions_without_overwriting_user_files(
+    tmp_path: Path,
+) -> None:
+    shipped = tmp_path / "shipped"
+    live = tmp_path / "live"
+    for root in (shipped, live):
+        (root / "app" / "excel").mkdir(parents=True)
+    (shipped / "app" / "excel" / "keys.toml").write_text(
+        'c = "add_chart"\no = "sort_range"\na = "analyze_selection"\n',
+        encoding="utf-8",
+    )
+    (shipped / "app" / "excel" / "add_chart.toml").write_text(
+        'label = "Create a chart"\nprompt = "Chart it"\n', encoding="utf-8"
+    )
+    (shipped / "app" / "excel" / "sort_range.toml").write_text(
+        'label = "Sort this table"\nprompt = "Sort it"\n', encoding="utf-8"
+    )
+    (shipped / "app" / "excel" / "analyze_selection.toml").write_text(
+        'label = "Analyze this data"\nprompt = "Analyze it"\n', encoding="utf-8"
+    )
+    user_chart = '# user edit\nlabel = "My chart"\nprompt = "Keep this"\n'
+    (live / "app" / "excel" / "keys.toml").write_text(
+        'c = "add_chart"\n', encoding="utf-8"
+    )
+    (live / "app" / "excel" / "add_chart.toml").write_text(user_chart, encoding="utf-8")
+
+    ActionCatalogStore(live, shipped).ensure_seeded()
+
+    assert (live / "app" / "excel" / "add_chart.toml").read_text(encoding="utf-8") == user_chart
+    assert (live / "app" / "excel" / "sort_range.toml").is_file()
+    assert (live / "app" / "excel" / "analyze_selection.toml").is_file()
+    keys = (live / "app" / "excel" / "keys.toml").read_text(encoding="utf-8")
+    assert 'c = "add_chart"' in keys
+    assert 'o = "sort_range"' in keys
+    assert 'a = "analyze_selection"' in keys
+
+
+def test_legacy_cleanup_route_upgrades_without_converting_custom_actions() -> None:
+    route = action_runtime_route(
+        "excel",
+        "clean_export",
+        "",
+        "",
+        label="Clean up this export",
+        hint="Find cleanup problems and propose exact, reviewable fixes",
+        prompt=(
+            "Produce a precise cleanup plan, and do not change cells until a reviewed "
+            "cleanup capability is available."
+        ),
+    )
+    custom = action_runtime_route(
+        "excel",
+        "clean_export",
+        "",
+        "",
+        label="My cleanup report",
+        hint="Only report",
+        prompt="Never edit cells.",
+    )
+
+    assert route == ("excel.clean_range@1", "excel_plan_clean_range")
+    assert custom == ("", "")
+
+
 def test_prompt_only_action_needs_no_script_and_runs_inline(tmp_path: Path) -> None:
     _quick(tmp_path, {"keys.toml": _keys_toml({"g": "grammar"}), "grammar.toml": PROMPT_ACTION})
 
@@ -65,6 +137,39 @@ def test_prompt_only_action_needs_no_script_and_runs_inline(tmp_path: Path) -> N
     assert row.action.paste_back is True
     assert row.action.has_code is False
     assert row.action.runs_in_process is True
+
+
+def test_disabled_action_loads_for_settings_but_stays_out_of_the_menu(tmp_path: Path) -> None:
+    _quick(
+        tmp_path,
+        {
+            "keys.toml": _keys_toml({"g": "grammar"}),
+            "grammar.toml": PROMPT_ACTION + "\nenabled = false\n",
+        },
+    )
+
+    catalog = load_catalog(tmp_path)
+
+    assert not catalog.callers[0].actions[0].action.enabled
+    assert catalog.menu_for("quick") == ()
+
+
+def test_action_can_stay_available_to_the_planner_without_showing_in_the_picker(
+    tmp_path: Path,
+) -> None:
+    _quick(
+        tmp_path,
+        {
+            "keys.toml": _keys_toml({"g": "grammar"}),
+            "grammar.toml": PROMPT_ACTION + "\nshow_in_picker = false\n",
+        },
+    )
+
+    catalog = load_catalog(tmp_path)
+
+    assert catalog.issues == ()
+    assert catalog.callers[0].actions[0].action.show_in_picker is False
+    assert catalog.menu_for("quick") == ()
 
 
 def test_a_script_beside_the_action_makes_it_a_code_action(tmp_path: Path) -> None:
@@ -94,6 +199,98 @@ def test_drawing_a_menu_never_imports_the_script(tmp_path: Path) -> None:
 
     assert not sentinel.exists()
     assert catalog.callers[0].actions[0].action.has_code is True
+
+
+def test_selected_script_runs_out_of_process_and_receives_model_response(tmp_path: Path) -> None:
+    action_path = _written(
+        tmp_path / "postprocess.toml",
+        'label = "Post-process"\nprompt = "Improve this"\naccess = ["text"]\n',
+    )
+    _written(
+        action_path.with_suffix(".py"),
+        "def run(payload):\n"
+        "    return {'output': payload['model_response'].upper()}\n",
+    )
+    action, issues = parse_action_file(action_path)
+
+    assert issues == ()
+    assert action is not None
+    result = run_action_script(
+        action,
+        context={"selected_text": "hello"},
+        prompt="Improve this",
+        model_response="better text",
+    )
+
+    assert result.output == "BETTER TEXT"
+
+
+def test_settings_edits_preserve_toml_comments(tmp_path: Path) -> None:
+    _quick(
+        tmp_path,
+        {
+            "caller.toml": '# caller note\nlabel = "Quick" # keep inline\n[context]\nselection = "on" # source note\n',
+            "keys.toml": '# key note\ng = "grammar" # binding note\n',
+            "grammar.toml": '# action note\nlabel = "Fix grammar"\nprompt = "Fix it"\naccess = ["text"]\n',
+        },
+    )
+    callers_path = tmp_path / "callers.toml"
+    callers_path.write_text(
+        '# registry note\n[[callers]]\nfolder = "quick"\nhotkey = "ctrl+q" # hotkey note\n',
+        encoding="utf-8",
+    )
+
+    save_callers(
+        tmp_path,
+        [
+            {
+                "folder": "quick",
+                "hotkey": "ctrl+shift+q",
+                "enabled": True,
+                "label": "Quick edits",
+                "paste_back": False,
+                "context": {"selection": "on"},
+                "actions": [
+                    {
+                        "name": "grammar",
+                        "key": "f",
+                        "label": "Fix it",
+                        "prompt": "Fix this text",
+                        "enabled": False,
+                    }
+                ],
+            }
+        ],
+    )
+
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in tmp_path.rglob("*.toml"))
+    assert "# registry note" in combined
+    assert "# hotkey note" in combined
+    assert "# caller note" in combined
+    assert "# keep inline" in combined
+    assert "# source note" in combined
+    assert "# key note" in combined
+    assert "# binding note" in combined
+    assert "# action note" in combined
+    catalog = load_catalog(tmp_path)
+    assert catalog.issues == ()
+    assert not catalog.callers[0].actions[0].action.enabled
+    assert catalog.menu_for("quick") == ()
+
+
+def test_runtime_caller_preserves_exact_file_access_mode(tmp_path: Path) -> None:
+    """The compatibility row must not collapse read access into ask access."""
+    _quick(
+        tmp_path,
+        {
+            "caller.toml": 'label = "Quick"\nfile_access = "read"\n[context]\nfiles = "on"\n',
+        },
+    )
+
+    catalog = load_catalog(tmp_path)
+
+    assert catalog.issues == ()
+    assert caller_row(catalog.callers[0])["file_access"] == "read"
 
 
 def test_a_script_with_no_description_file_is_reported(tmp_path: Path) -> None:
@@ -421,4 +618,3 @@ def _caller_toml(value: dict) -> str:
 def _app_toml(value: dict) -> str:
     """Render an app.toml, putting the match table last."""
     return _table(value, "match")
-
