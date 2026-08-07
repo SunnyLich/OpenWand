@@ -79,7 +79,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 3
+      "node_count": 9
     },
     {
       "path": "tests/integration/brain/test_brain_host.py",
@@ -364,7 +364,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 227
+      "node_count": 228
     },
     {
       "path": "tests/runtime/test_flows_live_voice.py",
@@ -454,7 +454,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 39
+      "node_count": 44
     },
     {
       "path": "tests/runtime/test_runtime_log.py",
@@ -1578,10 +1578,10 @@
     {
       "path": "tests/test_formatted_replies_addon.py",
       "kind": "pytest",
-      "scope": "ui",
-      "behaviour": "user_path",
+      "scope": "component",
+      "behaviour": "internal",
       "execution": "github_safe",
-      "category": "GU",
+      "category": "GI",
       "platforms": [
         "windows",
         "linux",
@@ -2412,7 +2412,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 12
+      "node_count": 17
     },
     {
       "path": "tests/test_rewrite_browser.py",

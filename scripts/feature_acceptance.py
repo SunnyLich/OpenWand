@@ -1,9 +1,4 @@
-"""Build and validate honest real-entry feature acceptance coverage.
-
-The older workflow manifest is a traceability/candidate index.  It deliberately
-does not prove that a user-visible function works.  This module adds the
-separate acceptance gate used for that claim.
-"""
+"""Build and validate honest real-entry feature acceptance coverage."""
 
 from __future__ import annotations
 
@@ -48,8 +43,6 @@ def _node_exists(root: Path, node_id: str) -> bool:
 
 def build_acceptance_manifest(root: Path) -> dict[str, Any]:
     inventory = load_inventory(root / "docs" / "APP_FUNCTION_INVENTORY.md")
-    trace = load_manifest(root / "tests" / "workflows" / "manifest.json")
-    trace_by_id = {str(row["function_id"]): row for row in trace["workflows"]}
     interactions = load_manifest(root / "tests" / "workflows" / "feature_interactions.json")
     endpoint_interactions: dict[str, list[str]] = {}
     for row in interactions.get("interactions", []):
@@ -69,7 +62,6 @@ def build_acceptance_manifest(root: Path) -> dict[str, Any]:
 
     records: list[dict[str, Any]] = []
     for item in inventory:
-        source = trace_by_id[item.function_id]
         override = override_by_id.get(item.function_id)
         if override is not None:
             status = str(override["acceptance_status"])
@@ -80,14 +72,11 @@ def build_acceptance_manifest(root: Path) -> dict[str, Any]:
             dependency_status = str(override.get("dependency_status", "pending"))
             interaction_ids = list(override.get("interaction_ids", []))
         else:
-            # A direct name match is only a candidate.  A section-level match is
-            # not retained as evidence because it often points at another feature.
-            direct = source.get("mapping_status") in {"direct", "verified"}
-            status = CANDIDATE if direct else UNTESTED
-            node_ids = list(source.get("test_node_ids", [])) if direct else []
+            status = UNTESTED
+            node_ids = []
             entry = ""
             assertions = []
-            note = "Candidate generated from the trace manifest; requires a human code-path audit."
+            note = "No acceptance evidence has been explicitly reviewed."
             dependency_status = "pending"
             interaction_ids = []
         interaction_ids.extend(

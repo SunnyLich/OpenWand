@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "review_policy": "Only explicitly reviewed function/test relationships belong here. Missing keys are unresolved, not covered by inference.",
+  "relations": {
+    "F005": [
+      "tests/test_profile_user_workflows.py::test_first_run_wizard_profile_is_active_in_runtime_and_visible_in_settings"
+    ],
+    "F016": [
+      "tests/runtime/test_supervisor_ipc.py::test_wisp_supervisor_starts_real_app_worker_process_set"
+    ],
+    "F030": [
+      "tests/runtime/test_supervisor_ipc.py::test_wisp_supervisor_starts_real_app_worker_process_set",
+      "tests/runtime/test_supervisor_ipc.py::test_supervisor_shutdown_continues_after_one_worker_raises"
+    ],
+    "F049": [
+      "tests/runtime/test_flows.py::test_query_flow_streams_reply_and_adds_chat_conversation_with_context",
+      "tests/runtime/test_supervisor_ipc.py::test_brain_worker_query_accepts_allowed_tools_over_ipc"
+    ],
+    "F052": [
+      "tests/test_app_user_workflows.py::test_stream_cancel_stops_query_and_returns_partial_result",
+      "tests/runtime/test_supervisor_ipc.py::test_brain_worker_cancel_stops_active_stream_over_ipc"
+    ],
+    "F420": [
+      "tests/test_profile_user_workflows.py::test_switch_save_reopen_and_edit_only_the_selected_custom_profile"
+    ],
+    "F421": [
+      "tests/test_profile_user_workflows.py::test_rename_and_delete_profiles_leave_a_truthful_selector"
+    ],
+    "F422": [
+      "tests/test_profile_user_workflows.py::test_rename_and_delete_profiles_leave_a_truthful_selector"
+    ],
+    "F424": [
+      "tests/test_profile_user_workflows.py::test_repeating_setup_with_the_same_name_keeps_both_profiles_selectable"
+    ],
+    "F425": [
+      "tests/test_app_user_workflows.py::test_settings_real_apply_click_persists_and_reopens",
+      "tests/runtime/test_supervisor_ipc.py::test_settings_persist_and_reload_across_real_workers"
+    ],
+    "F456": [
+      "tests/test_app_user_workflows.py::test_launch_duplicate_crash_log_and_worker_lifecycle_workflow",
+      "tests/runtime/test_supervisor_ipc.py::test_worker_stderr_log_file_is_created_in_run_log_dir"
+    ],
+    "F458": [
+      "tests/runtime/test_supervisor_ipc.py::test_brain_worker_death_mid_stream_fails_request_and_recovers",
+      "tests/runtime/test_flows.py::test_query_failure_reports_notice_and_returns_idle"
+    ]
+  }
+}

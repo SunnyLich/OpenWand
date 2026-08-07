@@ -65,11 +65,11 @@ def _manifest_workflow_test_files(root: Path) -> tuple[str, ...]:
 
     files: set[str] = set()
     manifest_records = (
-        ("manifest.json", "workflows"),
-        ("feature_acceptance.json", "records"),
-        ("feature_interactions.json", "interactions"),
+        ("manifest.json", "workflows", "related_test_node_ids"),
+        ("feature_acceptance.json", "records", "test_node_ids"),
+        ("feature_interactions.json", "interactions", "test_node_ids"),
     )
-    for filename, record_key in manifest_records:
+    for filename, record_key, node_key in manifest_records:
         manifest_path = root / "tests" / "workflows" / filename
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -78,7 +78,7 @@ def _manifest_workflow_test_files(root: Path) -> tuple[str, ...]:
         files.update(
             str(node_id).split("::", 1)[0].replace("\\", "/")
             for record in manifest.get(record_key, [])
-            for node_id in record.get("test_node_ids", [])
+            for node_id in record.get(node_key, [])
             if "::" in str(node_id)
         )
     return tuple(sorted(files))

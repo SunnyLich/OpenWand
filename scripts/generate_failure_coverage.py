@@ -9,10 +9,8 @@ from pathlib import Path
 
 try:
     from scripts.failure_coverage import load_evidence_nodes, load_failure_references
-    from scripts.workflow_manifest import load_manifest
 except ModuleNotFoundError:  # Direct ``python scripts/...`` execution.
     from failure_coverage import load_evidence_nodes, load_failure_references
-    from workflow_manifest import load_manifest
 
 
 def _family(cause: str) -> str:
@@ -49,11 +47,6 @@ def build_failure_manifest(root: Path) -> dict:
                     boundary_id,
                     [str(node) for node in cause_nodes],
                 )
-    function_manifest = load_manifest(root / "tests" / "workflows" / "manifest.json")
-    function_nodes = {
-        record["function_id"]: list(record["test_node_ids"])
-        for record in function_manifest.get("workflows", [])
-    }
     cases = []
     for item in references:
         nodes = [evidence_nodes[evidence_id] for evidence_id in item.evidence_ids]
@@ -75,7 +68,6 @@ def build_failure_manifest(root: Path) -> dict:
                 "shared_boundary": boundary_id,
                 "evidence_ids": list(item.evidence_ids),
                 "evidence_node_ids": nodes,
-                "function_workflow_node_ids": function_nodes[item.function_id],
             }
         )
     return {

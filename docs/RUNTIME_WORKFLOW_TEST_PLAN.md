@@ -24,7 +24,7 @@ The workflow manifest must preserve traceability back to the earlier inventory:
 
 ### Corrected feature-acceptance baseline
 
-`tests/workflows/manifest.json` is now treated only as a traceability and test-candidate index. Its 472 records do **not** mean that 472 real-use functions work. The authoritative positive-behavior report is `tests/workflows/feature_acceptance.json`, generated from explicit audited overrides by `scripts/generate_feature_acceptance.py`.
+`tests/workflows/manifest.json` is now factual traceability metadata generated from the explicit many-to-many relationships in `tests/workflows/function_test_relations.json`. Its 472 records do **not** mean that 472 real-use functions work. An empty `related_test_node_ids` list is an unresolved coverage question, not an inferred fallback. The authoritative positive-behavior report remains `tests/workflows/feature_acceptance.json`, generated from explicit audited overrides by `scripts/generate_feature_acceptance.py`.
 
 Current honest status:
 
@@ -69,17 +69,15 @@ The first foundation slice is merged into the existing workflow system:
 - Add-on acceptance now clicks the real archive/folder install, enable, Settings, Logs, and dependency-environment controls, pairing each UI route with real isolated installs, persistence, host processes, and repair state. Enabled/disabled and declared/missing permission matrices cover query/response hooks, tools, intent rows, hotkeys, tray actions, notifications, settings fields, and capped private auxiliary LLM calls. The MCP bridge now loads a real `servers.json`, handshakes with a child JSON-RPC server, discovers and executes its tools, and cleanly stops it; the external Wisp context server advertises and returns all five desktop context operations.
 - Multi-agent acceptance now triggers both real tray actions; submits and copies a complete visible task spec; edits scope/globs/context/models/fallbacks/completion/parallel settings; adds, customizes, removes, pairs, and resets agents and communications; and drives live approvals, tabs, agent health/messages, card layout, pause/resume, nudge, cancel, diff/folder actions, retry/continue, and historical artifacts. Production runner tests pair those controls with role gates, provider routing, parallel read-only briefings, overlapping disjoint writes, and same-file lease exclusion. The newly visible Copy current app context control excludes Wisp's process, reuses the shared document/browser extraction and privacy redaction paths, applies a marked 12,000-character budget, preserves manual task context, and carries both into the runner prompt.
 - Intent-action acceptance now opens both production pickers and executes What is this, Explain simply, How do I fix this, Fix grammar, Simplify, and Improve tone through both their assigned keys and their painted clickable rows, asserting the exact configured prompt in all twelve combinations.
-- `tests/workflows/manifest.json` contains all **472 / 472** machine-readable trace/candidate mappings, validated by `tests/catalog/test_workflow_manifest.py` against exact inventory text, all **3,296 / 3,296** failure references, and real pytest node IDs. This is not positive feature acceptance coverage.
-- `scripts/generate_workflow_manifest.py` reproducibly expands the inventory using curated test-family pools while preserving hand-verified records. It labels records as `verified`, `direct`, or broader `section` mappings so mapping completeness is not confused with direct workflow maturity.
-- The master runner loads every manifest-referenced file dynamically, and pytest automatically applies the `workflow` marker and runtime collector to every mapped node.
+- `tests/workflows/manifest.json` contains all **472 / 472** inventory records and all **3,296 / 3,296** failure references. It currently carries **18 explicitly reviewed relationships across 12 functions** and reports the remaining **460 functions** as unresolved.
+- `scripts/generate_workflow_manifest.py` only copies inventory facts and reviewed relations. It does not scan test names, calculate similarity, select a winner, or invent a fallback.
+- The master runner loads every explicitly related manifest file dynamically, and pytest applies the `workflow` marker and runtime collector to those nodes. Test scheduling itself remains owned by the independent test catalogue.
 - `tests/workflows/failure_coverage.json` separately records direct executable evidence for every numbered cause. It currently proves **3,296 / 3,296** references with **0** uncovered. Function mapping alone never grants coverage: shared harnesses are reused only when `tests/workflows/shared_failure_boundaries.json` declares the audited function/cause pairs and their exact executable nodes.
 - The master runner has a separate exact-node failure-evidence phase, including evidence under `tests/integration/brain`, so a documented `[T###]` cannot silently stop running.
 
-The manifest now has `enforce_complete: true`. Missing functions, changed failure references, stale test node IDs, duplicate records, or a stale generated manifest fail the test suite.
+The manifest now has `enforce_complete: true`. Missing inventory records, changed failure references, broken or duplicated explicit relations, unscheduled related tests, or a stale generated manifest fail the test suite. Missing confirmed relationships remain visible without failing merely to force invented coverage.
 
-Current trace-mapping maturity is **12 hand-verified**, **133 direct name-matched**, and **327 section-level** records. This proves every function is traceable into the automated suite; it does not replace the later plan phases that promote mappings to dedicated production-entry workflows.
-
-The older mapping-maturity counts are retained as historical traceability information only. They must never be displayed as the current feature acceptance result.
+The old similarity-based maturity counts have been retired. They were not evidence and must not be displayed as feature acceptance or traceability coverage.
 
 ## Feature dependency and interaction policy
 

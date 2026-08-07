@@ -24,7 +24,7 @@ _QT_APP = None
 
 
 def _manifest_workflow_nodes() -> frozenset[str]:
-    """Load exact tests mapped from the 472-function inventory."""
+    """Load tests explicitly related to the 472-function inventory."""
 
     manifest_path = Path(__file__).parent / "workflows" / "manifest.json"
     try:
@@ -34,7 +34,7 @@ def _manifest_workflow_nodes() -> frozenset[str]:
     nodes = {
         str(node_id).replace("\\", "/")
         for record in manifest.get("workflows", [])
-        for node_id in record.get("test_node_ids", [])
+        for node_id in record.get("related_test_node_ids", [])
     }
     failure_path = Path(__file__).parent / "workflows" / "failure_coverage.json"
     try:
