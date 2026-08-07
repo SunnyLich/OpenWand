@@ -148,6 +148,26 @@ Recommended fixtures:
 - Restore clipboard where configured.
 - Show clear failure states for missing selection or non-editable target.
 
+### 7A. App-Aware Actions And Alternative-App Parity
+
+- Detect the active app from its file-backed `app.toml` rules without running
+  action code while drawing the picker.
+- Give alternative apps the same core user goals where their real APIs support
+  them. Excel and LibreOffice Calc must both retain Analyze, Clean up, Sort,
+  and Chart actions; PowerPoint, Google Slides, and LibreOffice Impress should
+  converge on the same presentation goals as their bridges become available.
+- Keep app-native implementations truthful: Excel may use a native table while
+  Calc applies formatting, but both satisfy the visible Clean up table goal.
+- For every mutation, capture a bounded snapshot, force one typed planner,
+  preview the exact operation, require approval, revalidate target freshness,
+  apply through the app-owned API, and verify by reading the result back.
+- Test cancellation, stale targets, invalid planner output, duplicate headers,
+  unsupported apps, unavailable bridges, and verification mismatch without
+  accepting a mutation.
+- Run an opt-in release-gated live suite against disposable Excel, Calc,
+  PowerPoint, VS Code, and browser documents. Keep these separate from GitHub
+  CI and never touch an existing user document.
+
 ### 8. Screenshot And Snipping
 
 - Open snipping overlay.
@@ -921,16 +941,21 @@ Assertions:
 
 Scenario:
 
-1. Install or discover a valid add-on package.
-2. Enable it, change its settings, and use its tray action, intent, hook, hotkey,
-   notification, and model-callable tool.
-3. Update its manifest/version, reload add-ons, then disable and remove it.
-4. Repeat with bad manifest, missing entry point, host crash, and permission
+1. Install or discover a valid add-on package containing an `actions/` catalogue.
+2. Enable it, change its settings, and use its tray action, catalogued intent,
+   response/message processing, hotkey, notification, and model-callable tool.
+3. Toggle one catalogued action and verify its TOML comment and other add-on
+   contributions survive the live host reload.
+4. Update its manifest/version, reload add-ons, then disable and remove it.
+5. Repeat with bad manifest, missing entry point, host crash, and permission
    denial.
 
 Assertions:
 
-- Contributions appear, update, and disappear without stale UI rows or tools.
+- Action-file metadata and access labels appear, update, and disappear without
+  stale UI rows or tools.
+- Per-action enablement is comment-preserving and does not bypass add-on
+  permissions, dependency approval, or process isolation.
 - Add-on settings persist across reload and are removed only when requested.
 - Host crashes are reported and do not break other add-ons.
 - Permission denial is visible to the user and logged once.

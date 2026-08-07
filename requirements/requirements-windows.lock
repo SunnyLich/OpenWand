@@ -64,6 +64,8 @@ faster-whisper==1.2.1
     # via -r requirements/requirements.txt
 filelock==3.29.4
     # via huggingface-hub
+firecrawl-anydoc==0.1.6
+    # via -r requirements/requirements.txt
 flatbuffers==25.12.19
     # via onnxruntime
 fsspec==2026.6.0

@@ -1,0 +1,6 @@
+label = "Write speaker notes"
+hint = "Preview the exact notes for the selected slide"
+prompt = "Write speaker notes for the selected slide."
+capability = "presentation.upsert_speaker_notes@1"
+planner = "presentation_plan_speaker_notes"
+access = ["files"]

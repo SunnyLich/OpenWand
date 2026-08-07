@@ -1,0 +1,5 @@
+label = "Analyze this data"
+hint = "Explain patterns and useful next steps without changing cells"
+prompt = "Analyze the selected spreadsheet data and explain the most useful patterns."
+show_in_picker = false
+access = ["text"]

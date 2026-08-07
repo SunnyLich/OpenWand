@@ -164,6 +164,126 @@ def test_addon_events_intents_and_notifications(tmp_path, monkeypatch):
     manager.on_shutdown()
 
 
+def test_action_files_catalogue_addon_surfaces_and_preserve_host_isolation(tmp_path, monkeypatch):
+    """Action TOMLs label/filter host surfaces without becoming executors."""
+    addons_dir = tmp_path / "addons"
+    addon_dir = addons_dir / "catalogued"
+    actions_dir = addon_dir / "actions"
+    actions_dir.mkdir(parents=True)
+    (addon_dir / "addon.toml").write_text(
+        textwrap.dedent(
+            """
+            [addon]
+            id = "catalogued"
+            name = "Catalogued"
+            entry = "__init__.py"
+
+            [permissions]
+            response = "modify"
+            tools = true
+            ui = ["intents", "message_actions"]
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    (addon_dir / "__init__.py").write_text(
+        textwrap.dedent(
+            """
+            def get_tools():
+                return [
+                    {"name": "kept_tool", "description": "runtime", "executor": lambda inputs: "kept"},
+                    {"name": "hidden_tool", "description": "runtime", "executor": lambda inputs: "hidden"},
+                ]
+
+            def get_intents():
+                return [{"id": "host-intent", "label": "Host", "callback": lambda payload: {"message": "ran"}}]
+
+            def get_message_actions(payload):
+                return [{"id": "host-message", "label": "Host message"}]
+
+            def run_message_action(action_id, payload):
+                return {"status": action_id}
+
+            def transform_response_text(payload):
+                return {"text": "changed:" + payload["text"]}
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    (actions_dir / "tool.toml").write_text(
+        'id = "public-tool"\nkind = "tool"\nhandler = "kept_tool"\n'
+        'label = "Kept tool"\nhint = "Declared description"\naccess = ["files"]\n',
+        encoding="utf-8",
+    )
+    (actions_dir / "intent.toml").write_text(
+        'id = "public-intent"\nkind = "intent"\nhandler = "host-intent"\n'
+        'label = "Declared intent"\nkey = "z"\naccess = ["internet"]\n',
+        encoding="utf-8",
+    )
+    (actions_dir / "message.toml").write_text(
+        'id = "public-message"\nkind = "message_action"\nhandler = "host-message"\n'
+        'label = "Declared message"\naccess = ["text"]\n',
+        encoding="utf-8",
+    )
+    transform_path = actions_dir / "transform.toml"
+    transform_path.write_text(
+        '# retain me\nid = "transform"\nkind = "response_transform"\n'
+        'label = "Response transform"\naccess = ["text"]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(addon_store, "_STORE_PATH", tmp_path / "addons.json")
+    monkeypatch.setattr(am.addon_store, "_STORE_PATH", tmp_path / "addons.json")
+
+    manager = am.AddonManager(addons_dir)
+    manager.load_all()
+
+    assert [item["name"] for item in manager.model_tool_payloads()] == ["kept_tool"]
+    assert manager.model_tool_payloads()[0]["description"] == "Declared description"
+    assert manager.model_tool_payloads()[0]["access"] == ["files"]
+    assert manager.get_intents()[0] == {
+        "id": "public-intent",
+        "addon_id": "catalogued",
+        "key": "z",
+        "label": "Declared intent",
+        "hint": "",
+        "prompt": "",
+        "caller": "all",
+        "callback": True,
+        "access": ["internet"],
+        "access_colour": "amber",
+        "action_file": manager.get_intents()[0]["action_file"],
+    }
+    assert manager.run_intent("catalogued", "public-intent") == {"message": "ran"}
+    assert manager.get_message_actions({"role": "assistant"})[0]["label"] == "Declared message"
+    assert manager.run_message_action("catalogued", "public-message") == {"status": "host-message"}
+    assert manager.transform_response_text({"text": "reply"}) == "changed:reply"
+    assert {item["kind"] for item in manager.summaries()[0]["actions"]} == {
+        "intent", "message_action", "response_transform", "tool",
+    }
+
+    assert manager.set_action_enabled("catalogued", "transform", False) is False
+    assert "# retain me" in transform_path.read_text(encoding="utf-8")
+    assert "enabled = false" in transform_path.read_text(encoding="utf-8")
+    assert manager.transform_response_text({"text": "reply"}) == "reply"
+    manager.on_shutdown()
+
+
+def test_bundled_addon_action_catalogues_load_without_issues():
+    """Every shipped phase-two declaration is readable without addon imports."""
+    root = Path(__file__).parents[1] / "addons"
+    expected = {
+        "ui_lab": {"intent", "response_transform", "tool"},
+        "virtual_workspace": {"tool"},
+        "mcp_bridge": {"tool_provider"},
+        "formatted_replies": {"message_action"},
+    }
+    for folder_name, kinds in expected.items():
+        manifest = am.load_manifest(root / folder_name)
+        assert manifest.action_issues == ()
+        assert {action.kind for action in manifest.actions} == kinds
+        assert all(Path(action.path).suffix == ".toml" for action in manifest.actions)
+
+
 def test_text_annotation_hook_requires_explicit_permission_and_sanitizes(tmp_path, monkeypatch):
     """Verify text annotation addons are permission-gated and sanitized."""
     addons_dir = tmp_path / "addons"

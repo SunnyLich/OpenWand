@@ -489,6 +489,11 @@ def browser_context_handler(selected: str = "selected"):
             "vscode.fix_selection",
         ),
         (
+            {"name": "demo.py – project – PyCharm", "process_name": "pycharm64.exe", "pid": 43},
+            "code_editors",
+            "code_editor.fix_selection",
+        ),
+        (
             {"name": "Budget.ods - LibreOffice Calc", "process_name": "soffice.bin", "pid": 42},
             "libreoffice_calc",
             "calc.add_chart",
@@ -500,7 +505,7 @@ def test_caller_detects_action_provider_after_constructing_intent_overlay(
     provider_id: str,
     suggestion_id: str,
 ) -> None:
-    """Ctrl+Shift+Q derives app suggestions from the hotkey-time app snapshot."""
+    """The General caller derives app suggestions from the hotkey-time app snapshot."""
     order: list[str] = []
 
     def snapshot(_params: dict[str, Any]) -> dict[str, Any]:
@@ -715,8 +720,9 @@ def test_default_discrete_shortcuts_use_production_callbacks_and_runtime_event_p
         ui.emit("ui.intent.cancelled", {})
 
         callbacks[config._caller_default_hotkey(1)]()
-        assert ui.last_call("ui.show_intent")["params"]["caller_idx"] == 1
-        ui.emit("ui.intent.cancelled", {})
+        rewrite = ui.last_call("ui.rewrite.annotation.show")["params"]
+        assert rewrite["selected_text"] == "shortcut selection"
+        ui.emit("ui.rewrite.annotation.declined", {"annotation_id": rewrite["annotation_id"]})
 
         callbacks["ctrl+alt+q"]()
         assert ui.calls_for("ui.show_snip")
@@ -1229,7 +1235,7 @@ def test_calc_chart_request_forces_planner_then_applies_without_rewrite() -> Non
     brain = FakeWorker(
         stream_handlers={"brain.action.plan": action_plan_stream({"title": "Revenue by month"})}
     )
-    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+    with caller_config([{"paste_back": False, "context_clipboard": False}]):
         flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
         flow.begin_caller(0)
         provider = ui.last_call("ui.intent.action_provider")["params"]["action_provider"]
@@ -1293,6 +1299,20 @@ def test_calc_chart_request_forces_planner_then_applies_without_rewrite() -> Non
             "calc.sort_range@1",
             "Proposed order",
         ),
+        (
+            "calc.clean_range@1",
+            "calc_plan_clean_range",
+            {
+                "changes": [{
+                    "row_offset": 1,
+                    "column_offset": 0,
+                    "after_kind": "value",
+                    "after_value": "January",
+                }],
+            },
+            "calc.clean_range@1",
+            "Every other selected value and formula stays unchanged",
+        ),
     ],
 )
 def test_calc_non_chart_actions_use_forced_typed_planners(
@@ -1353,6 +1373,203 @@ def test_calc_non_chart_actions_use_forced_typed_planners(
     assert applied["plan"]["operations"][0]["type"] == operation_type
 
 
+def test_excel_capability_dispatches_to_the_excel_runtime(monkeypatch) -> None:
+    flow, _native, _ui, _brain, _audio = make_flow()
+    pending = PendingInvocation(caller_idx=0, caller={}, context={})
+    captured: dict[str, Any] = {}
+
+    def run_excel(*args: Any, **kwargs: Any) -> None:
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(flow, "_run_excel_action", run_excel)
+    flow._dispatch_provider_action(  # noqa: SLF001 - exercise typed dispatch boundary
+        pending,
+        "Create a chart",
+        {
+            "capability_type": "excel.add_chart@1",
+            "planning_tool": "excel_plan_add_chart",
+            "provider_id": "excel",
+        },
+        active_app={"process_name": "excel.exe"},
+        browser_app={},
+        app_selection={},
+        selected_text="",
+    )
+
+    assert captured["args"] == (pending, "Create a chart")
+    assert captured["kwargs"] == {
+        "planning_tool": "excel_plan_add_chart",
+        "capability_type": "excel.add_chart@1",
+        "provider_id": "excel",
+    }
+
+
+def test_excel_cleanup_dispatches_to_the_preview_first_runtime(monkeypatch) -> None:
+    flow, _native, _ui, _brain, _audio = make_flow()
+    pending = PendingInvocation(caller_idx=0, caller={}, context={})
+    captured: dict[str, Any] = {}
+
+    monkeypatch.setattr(
+        flow,
+        "_run_excel_action",
+        lambda *args, **kwargs: captured.update(args=args, kwargs=kwargs),
+    )
+    flow._dispatch_provider_action(  # noqa: SLF001 - typed cleanup dispatch boundary
+        pending,
+        "Clean up this export",
+        {
+            "capability_type": "excel.clean_range@1",
+            "planning_tool": "excel_plan_clean_range",
+            "provider_id": "excel",
+        },
+        active_app={"process_name": "excel.exe"},
+        browser_app={},
+        app_selection={},
+        selected_text="",
+    )
+
+    assert captured == {
+        "args": (pending, "Clean up this export"),
+        "kwargs": {
+            "planning_tool": "excel_plan_clean_range",
+            "capability_type": "excel.clean_range@1",
+            "provider_id": "excel",
+        },
+    }
+
+
+def test_excel_answer_action_attaches_structured_selected_cells(monkeypatch) -> None:
+    class FakeExcelProvider:
+        def snapshot(self, context: dict[str, Any]) -> object:
+            assert context["active_app"]["process_name"] == "excel.exe"
+            return object()
+
+        @staticmethod
+        def answer_context(_snapshot: object) -> dict[str, Any]:
+            return {
+                "app": "excel",
+                "selection_address": "B2",
+                "formula_context": {
+                    "status": "single_cell_formula",
+                    "cells": [{"address": "B2", "formula": "=A2*2", "displayed_value": 12}],
+                },
+                "selected_text": "[Excel selected cells]\nB2 formula: =A2*2; displayed value: 12",
+            }
+
+    monkeypatch.setattr("core.actions.adapters.excel.ExcelRuntimeProvider", FakeExcelProvider)
+    flow, _native, _ui, _brain, _audio = make_flow()
+    pending = PendingInvocation(caller_idx=0, caller={"paste_back": True}, context={})
+
+    assert flow._attach_provider_answer_context(  # noqa: SLF001 - answer-context boundary
+        pending,
+        {"source": "provider", "provider_id": "excel", "suggestion_id": "explain_formula"},
+        active_app={"process_name": "excel.exe"},
+    )
+    assert pending.context["app_selection"]["formula_context"]["status"] == "single_cell_formula"
+    assert "=A2*2" in pending.context["selected_text"]
+    assert pending.caller["_context_selection_enabled"] is True
+    assert pending.caller["paste_back"] is False
+
+
+def test_calc_answer_action_attaches_values_and_formula_grid() -> None:
+    active_app = {
+        "name": "Budget.ods — LibreOffice Calc",
+        "process_name": "soffice.bin",
+        "pid": 42,
+        "window_id": 777,
+    }
+    native = FakeWorker({
+        "native.action.calc.snapshot": lambda params: {
+            "ok": params["active_app"] == active_app,
+            "selection": {
+                "app": "libreoffice_calc",
+                "range": "A1:B2",
+                "rows": 2,
+                "columns": 2,
+                "values": [["Amount", "Tax"], [10, 2]],
+                "formulas": [["Amount", "Tax"], [10, "=A2*0.2"]],
+                "selected_text": "Amount\tTax\n10\t2",
+                "fingerprint": "calc-answer-fingerprint",
+            },
+            "error": "",
+        },
+    })
+    flow, native, _ui, _brain, _audio = make_flow(native=native)
+    pending = PendingInvocation(caller_idx=0, caller={"paste_back": True}, context={})
+
+    assert flow._attach_provider_answer_context(  # noqa: SLF001 - answer-context boundary
+        pending,
+        {"source": "provider", "provider_id": "libreoffice_calc", "suggestion_id": "explain_formula"},
+        active_app=active_app,
+    )
+    assert "Amount\tTax" in pending.context["selected_text"]
+    assert "=A2*0.2" in pending.context["selected_text"]
+    assert pending.context["app_selection_deferred"] is False
+    assert native.last_call("native.action.calc.snapshot")["params"]["active_app"] == active_app
+
+
+@pytest.mark.parametrize(
+    "provider_id",
+    ["word_desktop", "libreoffice_writer", "powerpoint_desktop", "libreoffice_impress"],
+)
+def test_document_answer_action_attaches_the_active_document(monkeypatch, provider_id: str) -> None:
+    flow, _native, _ui, _brain, _audio = make_flow()
+    pending = PendingInvocation(
+        caller_idx=0,
+        caller={"context_ambient": False, "context_documents_mode": "off", "paste_back": True},
+        context={
+            "active_app": {"process_name": "WINWORD.EXE"},
+            "active_document_text": "Wrong text from several open documents",
+        },
+    )
+    reads: list[bool] = []
+
+    def fetch(_context: dict[str, Any], *, active_only: bool = False) -> str:
+        reads.append(active_only)
+        return "Heading\nDocument body"
+
+    monkeypatch.setattr(flow, "_fetch_active_document_text", fetch)
+
+    assert flow._attach_provider_answer_context(  # noqa: SLF001 - document answer-context boundary
+        pending,
+        {"source": "provider", "provider_id": provider_id, "suggestion_id": "summarize_document"},
+        active_app=pending.context["active_app"],
+    )
+    assert reads == [True]
+    assert pending.context["active_document_text"] == "Heading\nDocument body"
+    assert pending.caller["context_ambient"] is True
+    assert pending.caller["context_documents_mode"] == "auto"
+    assert pending.caller["paste_back"] is False
+
+
+@pytest.mark.parametrize("provider_id", ["powerpoint_web", "google_slides", "google_docs"])
+def test_web_document_answer_action_attaches_browser_content(monkeypatch, provider_id: str) -> None:
+    flow, _native, _ui, _brain, _audio = make_flow()
+    pending = PendingInvocation(
+        caller_idx=0,
+        caller={"context_browser_mode": "off", "paste_back": True},
+        context={"browser_url": "https://slides.example/deck", "browser_hwnd": 777},
+    )
+    monkeypatch.setattr(
+        flow,
+        "_fetch_browser_content_for_context",
+        lambda _context: {
+            "browser_url": "https://slides.example/deck",
+            "browser_content": "Slide 1: Launch plan\nSlide 2: Risks",
+        },
+    )
+
+    assert flow._attach_provider_answer_context(  # noqa: SLF001 - web deck context boundary
+        pending,
+        {"source": "provider", "provider_id": provider_id, "suggestion_id": "summarize_deck"},
+        active_app={"process_name": "chrome.exe"},
+    )
+    assert "Launch plan" in pending.context["browser_content"]
+    assert pending.caller["context_browser_mode"] == "auto"
+    assert pending.caller["paste_back"] is False
+
+
 def test_calc_selection_failure_after_action_choice_does_not_mutate() -> None:
     """A failed deferred Calc read warns after choice and never plans or applies."""
     active_app = {
@@ -1378,7 +1595,7 @@ def test_calc_selection_failure_after_action_choice_does_not_mutate() -> None:
         }
     )
     ui = FakeWorker({"ui.show_intent": lambda _params: {}})
-    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+    with caller_config([{"paste_back": False, "context_clipboard": False}]):
         flow, native, ui, brain, _audio = make_flow(native=native, ui=ui)
         flow.begin_caller(0)
         assert not native.calls_for("native.action.calc.snapshot")
@@ -1429,6 +1646,109 @@ def test_unrecognized_calc_request_never_pastes_over_cells() -> None:
     assert brain.calls_for("brain.query")
     assert not brain.calls_for("brain.rewrite")
     assert not native.calls_for("native.paste_text")
+
+
+def test_addon_prompt_intent_uses_normal_query_path() -> None:
+    pending = PendingInvocation(caller_idx=0, caller={"paste_back": False}, context={})
+    pending.context_ready.set()
+    flow, _native, _ui, _brain, _audio = make_flow()
+    flow._pending = pending  # noqa: SLF001 - direct routing-boundary setup
+    captured = []
+    flow._query = lambda prompt, invocation: captured.append((prompt, invocation))  # type: ignore[method-assign]  # noqa: SLF001
+
+    flow.intent_chosen(
+        "Declared addon prompt",
+        intent_routing={
+            "mode": "addon",
+            "source": "addon",
+            "addon_id": "demo",
+            "action_id": "prompt-action",
+            "callback": False,
+        },
+    )
+
+    assert captured == [("Declared addon prompt", pending)]
+
+
+def test_addon_callback_intent_crosses_brain_host_boundary() -> None:
+    pending = PendingInvocation(caller_idx=2, caller={"paste_back": False}, context={"selected_text": "hello"})
+    pending.context_ready.set()
+    brain = FakeWorker({"brain.addons.run_intent": lambda params: {"message": f"ran {params['action_id']}"}})
+    flow, _native, ui, brain, _audio = make_flow(brain=brain)
+    flow._pending = pending  # noqa: SLF001 - direct routing-boundary setup
+
+    flow.intent_chosen(
+        "",
+        intent_routing={
+            "mode": "addon",
+            "source": "addon",
+            "addon_id": "demo",
+            "action_id": "callback-action",
+            "callback": True,
+        },
+    )
+
+    call = brain.last_call("brain.addons.run_intent")["params"]
+    assert call["addon_id"] == "demo"
+    assert call["action_id"] == "callback-action"
+    assert call["payload"]["caller_idx"] == 2
+    assert ui.last_call("ui.reply.notice")["params"]["text"].startswith("ran callback-action")
+
+
+def test_every_available_shipped_app_capability_has_a_supervisor_dispatch_branch() -> None:
+    """An available catalogue row must not load successfully and then fall through at execution."""
+    from core.action_files import load_catalog
+
+    catalog = load_catalog(Path(__file__).parents[2] / "assets" / "callers")
+    actions = [
+        bound.action
+        for app in catalog.apps
+        for bound in app.actions
+        if bound.action.available and bound.action.capability
+    ]
+    flow = FlowController.__new__(FlowController)
+    branch_calls: list[str] = []
+    flow._run_browser_form_action = lambda *_args, **_kwargs: branch_calls.append("browser")  # type: ignore[method-assign]  # noqa: SLF001
+    flow._run_vscode_fix_action = lambda *_args, **_kwargs: branch_calls.append("vscode")  # type: ignore[method-assign]  # noqa: SLF001
+    flow._run_calc_chart_action = lambda *_args, **_kwargs: branch_calls.append("calc")  # type: ignore[method-assign]  # noqa: SLF001
+    flow._run_excel_action = lambda *_args, **_kwargs: branch_calls.append("excel")  # type: ignore[method-assign]  # noqa: SLF001
+    flow._run_powerpoint_action = lambda *_args, **_kwargs: branch_calls.append("presentation")  # type: ignore[method-assign]  # noqa: SLF001
+    flow._notice = lambda *_args, **_kwargs: branch_calls.append("unsupported")  # type: ignore[method-assign]  # noqa: SLF001
+    flow._set_idle = lambda: None  # type: ignore[method-assign]  # noqa: SLF001
+    pending = PendingInvocation(caller_idx=0, caller={}, context={})
+
+    expected = {
+        "browser.fill_form": "browser",
+        "vscode.replace_selection@1": "vscode",
+            "calc.add_chart@1": "calc",
+            "calc.clean_range@1": "calc",
+            "calc.format_table@1": "calc",
+            "calc.sort_range@1": "calc",
+            "excel.add_chart@1": "excel",
+            "excel.clean_range@1": "excel",
+            "excel.create_table@1": "excel",
+        "excel.sort_range@1": "excel",
+        "presentation.create_slide@1": "presentation",
+        "presentation.restyle_slide@1": "presentation",
+        "presentation.upsert_speaker_notes@1": "presentation",
+    }
+    assert {action.capability for action in actions} == set(expected)
+    for action in actions:
+        before = len(branch_calls)
+        flow._dispatch_provider_action(  # noqa: SLF001 - production dispatch boundary
+            pending,
+            action.prompt,
+            {
+                "provider_id": "catalogue-test",
+                "capability_type": action.capability,
+                "planning_tool": action.planner,
+            },
+            active_app={},
+            browser_app={},
+            app_selection={},
+            selected_text="",
+        )
+        assert branch_calls[before:] == [expected[action.capability]], action.path
 
 
 def test_vscode_fix_request_uses_model_diff_preview_then_safe_apply() -> None:
@@ -1495,7 +1815,7 @@ def test_vscode_fix_request_uses_model_diff_preview_then_safe_apply() -> None:
         }
     )
 
-    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+    with caller_config([{"paste_back": False, "context_clipboard": False}]):
         flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
         flow.begin_caller(0)
         ui.emit("ui.intent.chosen", {"custom": "fix this bug"})
@@ -1568,7 +1888,7 @@ def test_vscode_untitled_tab_previews_then_writes_to_captured_editor_target() ->
         }
     )
 
-    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+    with caller_config([{"paste_back": False, "context_clipboard": False}]):
         flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
         flow.begin_caller(0)
         ui.emit("ui.intent.chosen", {"custom": "create a small Python example"})
@@ -1657,7 +1977,7 @@ def test_browser_form_action_uses_model_preview_and_verified_api_apply() -> None
         }
     )
 
-    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+    with caller_config([{"paste_back": False, "context_clipboard": False}]):
         flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
         flow.begin_caller(0)
         provider = ui.last_call("ui.intent.action_provider")["params"]["action_provider"]
@@ -1756,7 +2076,7 @@ def test_supported_app_custom_prompt_forces_disposition_then_exact_action_tool()
         return result
 
     brain = FakeWorker(stream_handlers={"brain.action.plan": planned})
-    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+    with caller_config([{"paste_back": False, "context_clipboard": False}]):
         flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
         flow.begin_caller(0)
         ui.emit(
@@ -1800,7 +2120,7 @@ def test_supported_app_custom_information_prompt_forces_answer_disposition_witho
             "response_text": "This page is asking for contact information.",
         }, "Prepared a direct answer."),
     })
-    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+    with caller_config([{"paste_back": False, "context_clipboard": False}]):
         flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
         flow.begin_caller(0)
         ui.emit(
@@ -5282,27 +5602,467 @@ def test_rewrite_flow_pastes_back_to_original_pid():
     with caller_config(rows):
         _flow, native, ui, brain, _audio = make_flow(native=native, brain=brain)
         native.emit("native.hotkey", {"kind": "caller", "index": 1})
-        ui.emit("ui.intent.chosen", {"custom": "Fix grammar"})
+        annotation = ui.last_call("ui.rewrite.annotation.show")["params"]
+        ui.emit(
+            "ui.rewrite.annotation.submitted",
+            {
+                "annotation_id": annotation["annotation_id"],
+                "comment": "Fix grammar",
+                "include_document": False,
+            },
+        )
 
     # The paste-back caller asked the native worker to capture the focused element.
-    snap = native.last_call("native.context.snapshot")["params"]
+    snap = native.calls_for("native.context.snapshot")[0]["params"]
     assert snap["capture_focus"] is True
     rewrite = brain.last_call("brain.rewrite")["params"]
     assert rewrite["selected_text"] == "bad grammar"
+    assert not native.calls_for("native.paste_text")
+    assert ui.last_call("ui.rewrite.annotation.proposal")["params"]["replacement_text"] == "good grammar"
+
+    ui.emit("ui.rewrite.annotation.accepted", {"annotation_id": annotation["annotation_id"]})
+
     paste = native.last_call("native.paste_text")["params"]
     assert paste["text"] == "good grammar"
     assert paste["target_pid"] == 777
     # ...and the captured token is forwarded so paste_text can do the AX write.
     assert paste["focus_token"] == 9
     assert paste["restore_clipboard"] is True
-    # Success is silent: the bubble finishes, no status banner is written into it.
-    assert ui.calls_for("ui.reply.done"), "bubble should be finished after paste"
+    assert ui.last_call("ui.rewrite.annotation.remove")["params"] == {
+        "annotation_id": annotation["annotation_id"]
+    }
+    assert annotation["annotation_id"] not in _flow._rewrite_annotations
     assert not ui.calls_for("ui.reply.notice"), "rewrite status must not go in the bubble"
     assert not native.calls_for("native.notify"), "successful paste should not notify"
-    chat_params = ui.last_call("ui.chat.add_conversation")["params"]
-    assert chat_params["user"] == "Fix grammar"
-    assert chat_params["assistant"] == "Fixed the grammar."
-    assert "[Selected text]\nbad grammar" in chat_params["context"]
+
+
+def test_rewrite_hold_defers_calls_and_send_all_keeps_app_conversations_separate():
+    snapshots = iter(
+        (
+            {
+                "platform": "win32",
+                "selected_text": "rough one",
+                "active_app": {
+                    "name": "Document - WordPad",
+                    "process_name": "wordpad.exe",
+                    "pid": 101,
+                    "window_id": 1001,
+                },
+                "focus_token": 11,
+            },
+            {
+                "platform": "win32",
+                "selected_text": "rough two",
+                "active_app": {
+                    "name": "Notes - Notepad",
+                    "process_name": "notepad.exe",
+                    "pid": 202,
+                    "window_id": 2002,
+                },
+                "focus_token": 22,
+            },
+        )
+    )
+    native = FakeWorker({"native.context.snapshot": lambda _params: next(snapshots)})
+
+    def rewrite(params: dict[str, Any], _on_event) -> dict[str, Any]:
+        return {"text": str(params["selected_text"]).replace("rough", "clear")}
+
+    brain = FakeWorker(stream_handlers={"brain.rewrite": rewrite})
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, _native, ui, brain, _audio = make_flow(native=native, brain=brain)
+        flow.begin_caller(0)
+        first = ui.last_call("ui.rewrite.annotation.show")["params"]
+        assert first["display_number"] == 1
+        ui.emit(
+            "ui.rewrite.annotation.held",
+            {
+                "annotation_id": first["annotation_id"],
+                "comment": "Fix the first selection",
+                "include_document": False,
+            },
+        )
+        assert not brain.calls_for("brain.rewrite")
+        assert ui.last_call("ui.rewrite.held_count")["params"]["count"] == 1
+
+        flow.begin_caller(0)
+        second = ui.last_call("ui.rewrite.annotation.show")["params"]
+        assert second["display_number"] == 2
+        ui.emit(
+            "ui.rewrite.annotation.held",
+            {
+                "annotation_id": second["annotation_id"],
+                "comment": "Fix the second selection",
+                "include_document": False,
+            },
+        )
+        assert not brain.calls_for("brain.rewrite")
+        assert ui.last_call("ui.rewrite.held_count")["params"]["count"] == 2
+
+        ui.emit("ui.rewrite.send_all", {})
+
+    calls = brain.calls_for("brain.rewrite")
+    assert [call["params"]["selected_text"] for call in calls] == ["rough one", "rough two"]
+    assert len(flow._rewrite_app_sessions) == 2
+    assert ui.last_call("ui.rewrite.held_count")["params"]["count"] == 0
+    processing_ids = {
+        call["params"]["annotation_id"]
+        for call in ui.calls_for("ui.rewrite.annotation.processing")
+    }
+    assert processing_ids == {first["annotation_id"], second["annotation_id"]}
+    assert len(ui.calls_for("ui.rewrite.annotation.proposal")) == 2
+
+
+def test_rewrite_popup_receives_native_selection_rectangle() -> None:
+    selection_rect = {"left": 320.0, "top": 240.0, "width": 140.0, "height": 22.0}
+    native = FakeWorker({
+        "native.context.snapshot": lambda _params: {
+            "platform": "win32",
+            "selected_text": "selected words",
+            "active_app": {
+                "name": "Notes",
+                "process_name": "notepad.exe",
+                "pid": 42,
+                "window_id": 777,
+            },
+            "focus_token": 9,
+            "selection_rect": selection_rect,
+        },
+    })
+
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, _native, ui, _brain, _audio = make_flow(native=native)
+        flow.begin_caller(0)
+
+    shown = ui.last_call("ui.rewrite.annotation.show")["params"]
+    assert shown["selection_rect"] == selection_rect
+    assert not ui.calls_for("ui.show_intent")
+
+
+def test_rewrite_popup_refreshes_exact_anchor_after_document_scroll() -> None:
+    initial = {"left": 320.0, "top": 240.0, "width": 140.0, "height": 22.0}
+    moved = {"left": 320.0, "top": 140.0, "width": 140.0, "height": 22.0}
+
+    def anchor(params):
+        rect = moved if params.get("refresh") else initial
+        return {
+            "ok": True,
+            "visible": True,
+            "source": "uia",
+            "selection_rect": rect,
+        }
+
+    native = FakeWorker({
+        "native.context.snapshot": lambda _params: {
+            "platform": "win32",
+            "selected_text": "selected words",
+            "active_app": {
+                "name": "Notes",
+                "process_name": "notepad.exe",
+                "pid": 42,
+                "window_id": 777,
+            },
+            "focus_token": 9,
+            "selection_rect": initial,
+        },
+        "native.selection.anchor.resolve": anchor,
+    })
+
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, _native, ui, _brain, _audio = make_flow(native=native)
+        flow.begin_caller(0)
+        annotation = ui.last_call("ui.rewrite.annotation.show")["params"]
+        flow.refresh_rewrite_annotation_anchor(annotation["annotation_id"])
+
+    updated = ui.last_call("ui.rewrite.annotation.anchor")["params"]
+    assert updated["selection_rect"] == moved
+    assert updated["visible"] is True
+    refresh = native.last_call("native.selection.anchor.resolve")["params"]
+    assert refresh["refresh"] is True
+    assert refresh["allow_mouse"] is False
+
+
+def test_rewrite_calc_range_uses_typed_verified_apply() -> None:
+    active_app = {
+        "name": "Budget.ods — LibreOffice Calc",
+        "process_name": "soffice.bin",
+        "pid": 42,
+        "window_id": 777,
+    }
+    selection = {
+        "app": "libreoffice_calc",
+        "document_title": active_app["name"],
+        "window_id": 777,
+        "pid": 42,
+        "range": "A1:B3",
+        "values": (("Month", "Revenue"), ("Jan", "12"), ("Feb", "20")),
+        "typed_values": (("Month", "Revenue"), ("Jan", 12.0), ("Feb", 20.0)),
+        "formulas": (("", ""), ("", ""), ("", "=SUM(B2,8)")),
+        "fingerprint": "rewrite-calc-fingerprint",
+    }
+    native = FakeWorker({
+        "native.context.snapshot": lambda _params: {
+            "platform": "win32",
+            "active_app": active_app,
+            "selected_text": "",
+            "app_selection_deferred": True,
+            "selection_rect": {"left": 400, "top": 300, "width": 2, "height": 20},
+        },
+        "native.action.calc.snapshot": lambda _params: {
+            "ok": True,
+            "selection": selection,
+            "error": "",
+        },
+        "native.action.calc.apply": lambda params: {
+            "ok": True,
+            "result": {
+                "plan_id": params["plan"]["plan_id"],
+                "status": "applied",
+                "message": "Applied and verified.",
+            },
+            "error": "",
+        },
+    })
+    brain = FakeWorker(
+        stream_handlers={
+            "brain.rewrite": rewrite_stream("Month\tRevenue\nJanuary\t12\nFeb\t=SUM(B2,8)")
+        }
+    )
+
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, native, ui, brain, _audio = make_flow(native=native, brain=brain)
+        flow.begin_caller(0)
+        annotation = ui.last_call("ui.rewrite.annotation.show")["params"]
+        ui.emit(
+            "ui.rewrite.annotation.submitted",
+            {
+                "annotation_id": annotation["annotation_id"],
+                "comment": "Spell out the month",
+                "include_document": False,
+            },
+        )
+
+    rewrite = brain.last_call("brain.rewrite")["params"]
+    assert rewrite["selected_text"] == "Month\tRevenue\nJan\t12.0\nFeb\t=SUM(B2,8)"
+    assert "3-row by 2-column spreadsheet range" in rewrite["intent_prompt"]
+    assert "[Exact LibreOffice Calc target:" in rewrite["rewrite_context"]
+    assert not native.calls_for("native.paste_text")
+
+    ui.emit("ui.rewrite.annotation.accepted", {"annotation_id": annotation["annotation_id"]})
+
+    applied = native.last_call("native.action.calc.apply")["params"]
+    assert applied["confirmed"] is True
+    assert applied["plan"]["operations"][0]["type"] == "calc.clean_range@1"
+    assert applied["plan"]["operations"][0]["args"]["changes"] == ({
+        "row_offset": 1,
+        "column_offset": 0,
+        "before_kind": "value",
+        "before_value": "Jan",
+        "after_kind": "value",
+        "after_value": "January",
+        "replace_formula": False,
+    },)
+    assert not native.calls_for("native.paste_text")
+
+
+def test_rewrite_excel_range_builds_a_typed_verified_plan(monkeypatch) -> None:
+    from core.actions.adapters.excel import ExcelRuntimeProvider, ExcelSnapshot
+
+    active_app = {
+        "name": "Budget.xlsx — Excel",
+        "process_name": "excel.exe",
+        "pid": 55,
+        "window_id": 888,
+    }
+    snapshot = ExcelSnapshot(
+        workbook_name="Budget.xlsx",
+        workbook_path=r"C:\docs\Budget.xlsx",
+        worksheet_name="Sheet1",
+        selection_address="$A$1:$B$2",
+        row_count=2,
+        column_count=2,
+        values=(("Name", "Total"), ("Old", 3.0)),
+        formulas=(("", ""), ("", "=1+2")),
+        formula_capture_complete=True,
+        selection_row=1,
+        selection_column=1,
+        table_names=(),
+        chart_names=(),
+        fingerprint="excel-rewrite-fingerprint",
+    )
+    monkeypatch.setattr(ExcelRuntimeProvider, "detects", staticmethod(lambda _context: True))
+    monkeypatch.setattr(ExcelRuntimeProvider, "snapshot", lambda _self, _context: snapshot)
+    native = FakeWorker({
+        "native.context.snapshot": lambda _params: {
+            "platform": "win32",
+            "active_app": active_app,
+            "selected_text": "",
+            "selection_rect": {"left": 500, "top": 350, "width": 2, "height": 20},
+        },
+    })
+    brain = FakeWorker(
+        stream_handlers={"brain.rewrite": rewrite_stream("Name\tTotal\nNew\t=1+2")}
+    )
+
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, native, ui, brain, _audio = make_flow(native=native, brain=brain)
+        applied: dict[str, Any] = {}
+
+        def apply(request: Any) -> bool:
+            applied["plan"] = request.structured_plan
+            return True
+
+        monkeypatch.setattr(flow, "_apply_structured_rewrite", apply)
+        flow.begin_caller(0)
+        annotation = ui.last_call("ui.rewrite.annotation.show")["params"]
+        ui.emit(
+            "ui.rewrite.annotation.submitted",
+            {
+                "annotation_id": annotation["annotation_id"],
+                "comment": "Rename Old to New",
+                "include_document": False,
+            },
+        )
+        ui.emit("ui.rewrite.annotation.accepted", {"annotation_id": annotation["annotation_id"]})
+
+    rewrite = brain.last_call("brain.rewrite")["params"]
+    assert rewrite["selected_text"] == "Name\tTotal\nOld\t=1+2"
+    plan = applied["plan"]
+    assert plan.app == "excel"
+    assert plan.operations[0].type == "excel.clean_range@1"
+    assert plan.operations[0].args["changes"][0]["after_value"] == "New"
+    assert not native.calls_for("native.paste_text")
+
+
+def test_rewrite_vscode_saved_selection_uses_exact_file_adapter() -> None:
+    selected = "def add_one(value):\n    return value"
+    replacement = "def add_one(value):\n    return value + 1"
+    active_app = {
+        "name": "demo.py - project - Visual Studio Code",
+        "process_name": "Code.exe",
+        "pid": 42,
+        "window_id": 777,
+    }
+    snapshot = {
+        "app": "vscode",
+        "file_path": r"C:\project\demo.py",
+        "display_name": "demo.py",
+        "window_id": 777,
+        "pid": 42,
+        "text": f"# demo\n{selected}\n",
+        "selected_text": selected,
+        "selection_start": 7,
+        "selection_end": 7 + len(selected),
+        "fingerprint": "file-fingerprint",
+        "selection_fingerprint": __import__("hashlib").sha256(selected.encode()).hexdigest(),
+        "has_utf8_bom": False,
+    }
+    native = FakeWorker({
+        "native.context.snapshot": lambda _params: {
+            "platform": "win32",
+            "active_app": active_app,
+            "selected_text": selected,
+            "selection_rect": {"left": 620, "top": 410, "width": 160, "height": 20},
+        },
+        "native.action.vscode.snapshot": lambda _params: {
+            "ok": True,
+            "snapshot": snapshot,
+            "error": "",
+        },
+        "native.action.vscode.apply": lambda params: {
+            "ok": True,
+            "result": {
+                "plan_id": params["plan"]["plan_id"],
+                "status": "applied",
+                "message": "Updated demo.py.",
+            },
+            "error": "",
+        },
+    })
+    brain = FakeWorker(stream_handlers={"brain.rewrite": rewrite_stream(replacement)})
+
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, native, ui, brain, _audio = make_flow(native=native, brain=brain)
+        flow.begin_caller(0)
+        annotation = ui.last_call("ui.rewrite.annotation.show")["params"]
+        ui.emit(
+            "ui.rewrite.annotation.submitted",
+            {
+                "annotation_id": annotation["annotation_id"],
+                "comment": "Fix the bug",
+                "include_document": False,
+            },
+        )
+        ui.emit("ui.rewrite.annotation.accepted", {"annotation_id": annotation["annotation_id"]})
+
+    rewrite = brain.last_call("brain.rewrite")["params"]
+    assert "exact saved VS Code selection" in rewrite["intent_prompt"]
+    assert "[Exact saved VS Code target: demo.py" in rewrite["rewrite_context"]
+    applied = native.last_call("native.action.vscode.apply")["params"]
+    assert applied["confirmed"] is True
+    assert applied["plan"]["operations"][0]["type"] == "vscode.replace_selection@1"
+    assert applied["plan"]["operations"][0]["args"]["replacement_text"] == replacement
+    assert not native.calls_for("native.paste_text")
+
+
+def test_rewrite_other_ide_uses_the_same_exact_saved_file_boundary() -> None:
+    selected = "return old_value"
+    replacement = "return new_value"
+    active_app = {
+        "name": "main.py – project – PyCharm",
+        "process_name": "pycharm64.exe",
+        "pid": 52,
+        "window_id": 902,
+    }
+    snapshot = {
+        "app": "vscode",
+        "file_path": r"C:\project\main.py",
+        "display_name": "main.py",
+        "window_id": 902,
+        "pid": 52,
+        "text": f"def read():\n    {selected}\n",
+        "selected_text": selected,
+        "selection_start": 16,
+        "selection_end": 16 + len(selected),
+        "fingerprint": "pycharm-file-fingerprint",
+        "selection_fingerprint": __import__("hashlib").sha256(selected.encode()).hexdigest(),
+        "editor_name": "PyCharm",
+    }
+    native = FakeWorker({
+        "native.context.snapshot": lambda _params: {
+            "platform": "win32",
+            "active_app": active_app,
+            "selected_text": selected,
+            "selection_rect": {"left": 600, "top": 400, "width": 140, "height": 20},
+        },
+        "native.action.vscode.snapshot": lambda _params: {
+            "ok": True,
+            "snapshot": snapshot,
+            "error": "",
+        },
+        "native.action.vscode.apply": lambda params: {
+            "ok": True,
+            "result": {"status": "applied", "plan_id": params["plan"]["plan_id"]},
+            "error": "",
+        },
+    })
+    brain = FakeWorker(stream_handlers={"brain.rewrite": rewrite_stream(replacement)})
+
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, native, ui, brain, _audio = make_flow(native=native, brain=brain)
+        flow.begin_caller(0)
+        annotation = ui.last_call("ui.rewrite.annotation.show")["params"]
+        ui.emit(
+            "ui.rewrite.annotation.submitted",
+            {"annotation_id": annotation["annotation_id"], "comment": "Update this", "include_document": False},
+        )
+        ui.emit("ui.rewrite.annotation.accepted", {"annotation_id": annotation["annotation_id"]})
+
+    rewrite = brain.last_call("brain.rewrite")["params"]
+    assert "exact saved PyCharm selection" in rewrite["intent_prompt"]
+    assert "[Exact saved PyCharm target:" in rewrite["rewrite_context"]
+    assert native.last_call("native.action.vscode.apply")["params"]["confirmed"] is True
+    assert not native.calls_for("native.paste_text")
 
 
 def test_rewrite_undo_restores_original_text_in_original_app():
@@ -5334,10 +6094,18 @@ def test_rewrite_undo_restores_original_text_in_original_app():
     with caller_config(rows):
         flow, native, ui, _brain, _audio = make_flow(native=native, brain=brain)
         native.emit("native.hotkey", {"kind": "caller", "index": 0})
-        ui.emit("ui.intent.chosen", {"custom": "Fix grammar"})
+        annotation = ui.last_call("ui.rewrite.annotation.show")["params"]
+        ui.emit(
+            "ui.rewrite.annotation.submitted",
+            {
+                "annotation_id": annotation["annotation_id"],
+                "comment": "Fix grammar",
+                "include_document": False,
+            },
+        )
+        ui.emit("ui.rewrite.annotation.accepted", {"annotation_id": annotation["annotation_id"]})
 
-        undo_ready = ui.last_call("ui.reply.undo_ready")["params"]
-        assert undo_ready == {"text": "Fixed the grammar.", "timeout_ms": 30000}
+        assert not ui.calls_for("ui.reply.undo_ready")
         assert flow._last_undoable_edit is not None
 
         ui.emit("ui.rewrite.undo", {})
@@ -5422,12 +6190,24 @@ def test_rewrite_flow_includes_app_context_as_source():
     with caller_config(rows):
         _flow, native, ui, brain, _audio = make_flow(native=native, brain=brain)
         native.emit("native.hotkey", {"kind": "caller", "index": 0})
-        ui.emit("ui.intent.chosen", {"custom": "Replace with the one from VS Code"})
+        annotation = ui.last_call("ui.rewrite.annotation.show")["params"]
+        ui.emit(
+            "ui.rewrite.annotation.submitted",
+            {
+                "annotation_id": annotation["annotation_id"],
+                "comment": "Replace with the one from VS Code",
+                "include_document": True,
+            },
+        )
 
     rewrite = brain.last_call("brain.rewrite")["params"]
     assert rewrite["selected_text"] == "notepad text"
-    assert "--- BEGIN ACTIVE DOCUMENT: Code - demo.py ---" in rewrite["rewrite_context"]
+    assert "[Active document]" in rewrite["rewrite_context"]
     assert "VS Code paragraph" in rewrite["rewrite_context"]
+    assert not native.calls_for("native.paste_text")
+
+    ui.emit("ui.rewrite.annotation.accepted", {"annotation_id": annotation["annotation_id"]})
+
     paste = native.last_call("native.paste_text")["params"]
     assert paste["target_pid"] == 777
     assert paste["text"] == "VS Code paragraph"
@@ -6766,6 +7546,37 @@ def test_chat_request_forwards_file_context_metadata():
     assert done_params["file_context"] == file_context
 
 
+def test_chat_request_forwards_live_file_activity_to_monitor_link():
+    """Local file work reaches chat while it is running, before reply completion."""
+    def chat_stream(_params: dict[str, Any], on_event) -> dict[str, Any]:
+        event = {
+            "tool": "read_file",
+            "path": r"C:\repo\notes.txt",
+            "relative_path": "notes.txt",
+            "root": r"C:\repo",
+        }
+        on_event("live_file.activity", {**event, "phase": "started"}, 1)
+        on_event("live_file.activity", {**event, "phase": "completed", "ok": True}, 1)
+        on_event("reply.done", {"text": "done"}, 1)
+        return {"text": "done"}
+
+    brain = FakeWorker(stream_handlers={"brain.chat": chat_stream})
+    _flow, _native, ui, _brain, _audio = make_flow(brain=brain)
+
+    ui.emit("ui.chat.request", {
+        "request_id": "chat-local-work",
+        "messages": [{"role": "user", "content": "inspect notes"}],
+    })
+
+    activity = [
+        call["params"]["local_work"]
+        for call in ui.calls_for("ui.chat.chunk")
+        if call["params"].get("local_work")
+    ]
+    assert [event["phase"] for event in activity] == ["started", "completed"]
+    assert activity[0]["relative_path"] == "notes.txt"
+
+
 def test_chat_request_forwards_addon_text_annotations():
     """Verify chat request forwards display-only addon annotations to the UI."""
     seen_roles = []
@@ -7288,6 +8099,7 @@ def test_addon_and_agent_tray_events_route_through_supervisor():
                 "message": "ran demo",
                 "virtual_workspace_url": "http://127.0.0.1:8765/?token=test",
             },
+            "brain.addons.set_action_enabled": lambda _params: {"ok": True},
             "brain.addons.repair_environment": lambda _params: {"ready": True},
             "brain.addons.install_archive": lambda _params: {"id": "demo2"},
             "brain.addons.install_folder": lambda _params: {"id": "demo3"},
@@ -7307,6 +8119,10 @@ def test_addon_and_agent_tray_events_route_through_supervisor():
 
     ui.emit("ui.addons.open_requested", {})
     ui.emit("ui.addons.run_action", {"addon_id": "demo", "label": "Run"})
+    ui.emit(
+        "ui.addons.set_action_enabled",
+        {"addon_id": "demo", "action_id": "lookup", "enabled": False},
+    )
     ui.emit("ui.addons.repair_environment", {"addon_id": "demo"})
     ui.emit("ui.addons.install_archive", {"path": "/tmp/demo.wisp"})
     ui.emit("ui.addons.install_folder", {"path": "/tmp/demo-folder"})
@@ -7316,6 +8132,11 @@ def test_addon_and_agent_tray_events_route_through_supervisor():
 
     assert ui.last_call("ui.show_addons")["params"]["addons"][0]["name"] == "demo"
     assert brain.last_call("brain.addons.run_action")["params"]["addon_id"] == "demo"
+    assert brain.last_call("brain.addons.set_action_enabled")["params"] == {
+        "addon_id": "demo",
+        "action_id": "lookup",
+        "enabled": False,
+    }
     assert ui.last_call("ui.show_virtual_workspace")["params"]["endpoint"].startswith(
         "http://127.0.0.1:"
     )

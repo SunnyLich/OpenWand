@@ -17,7 +17,12 @@ from core.actions.adapters.vscode.plans import (
     build_replace_selection_plan,
 )
 from core.actions.adapters.vscode.preview import render_vscode_preview, render_vscode_untitled_preview
-from core.actions.adapters.vscode.reader import VSCodeSelectionReader, is_vscode_app
+from core.actions.adapters.vscode.reader import (
+    VSCodeSelectionReader,
+    code_editor_name,
+    is_code_editor_app,
+    is_vscode_app,
+)
 from core.actions.adapters.vscode.snapshot import VSCodeSnapshot
 
 __all__ = [
@@ -28,6 +33,8 @@ __all__ = [
     "build_replace_selection_plan",
     "build_replace_file_plan",
     "is_vscode_app",
+    "is_code_editor_app",
+    "code_editor_name",
     "render_vscode_preview",
     "render_vscode_untitled_preview",
     "VSCodeDevToolsAdapter",

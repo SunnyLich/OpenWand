@@ -1,0 +1,4 @@
+label = "Extract action items"
+hint = "Turn commitments into tasks with owners, dates, and dependencies"
+prompt = "Extract concrete action items from the selected passage when a meaningful selection is available; otherwise use the available document. For each task, identify the owner, due date, dependencies, and status when stated. Mark missing details as unknown rather than guessing, separate decisions from tasks, and do not edit the document."
+access = ["text"]

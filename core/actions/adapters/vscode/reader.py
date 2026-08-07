@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from pathlib import Path
 from typing import Any
 
 from core.actions.adapters.vscode.snapshot import VSCodeSnapshot
 
-_PROCESS_NAMES = {
+_VSCODE_PROCESS_NAMES = {
     "code.exe",
     "code",
     "code - insiders.exe",
@@ -19,6 +20,48 @@ _PROCESS_NAMES = {
     "windsurf.exe",
     "windsurf",
 }
+_CODE_EDITOR_PROCESS_NAMES = {
+    # JetBrains IDEs and Android Studio.
+    "pycharm64.exe": "PyCharm", "pycharm.exe": "PyCharm", "pycharm": "PyCharm",
+    "idea64.exe": "IntelliJ IDEA", "idea.exe": "IntelliJ IDEA", "idea": "IntelliJ IDEA",
+    "webstorm64.exe": "WebStorm", "webstorm.exe": "WebStorm", "webstorm": "WebStorm",
+    "goland64.exe": "GoLand", "goland.exe": "GoLand", "goland": "GoLand",
+    "clion64.exe": "CLion", "clion.exe": "CLion", "clion": "CLion",
+    "rider64.exe": "Rider", "rider.exe": "Rider", "rider": "Rider",
+    "rubymine64.exe": "RubyMine", "rubymine.exe": "RubyMine", "rubymine": "RubyMine",
+    "phpstorm64.exe": "PhpStorm", "phpstorm.exe": "PhpStorm", "phpstorm": "PhpStorm",
+    "datagrip64.exe": "DataGrip", "datagrip.exe": "DataGrip", "datagrip": "DataGrip",
+    "studio64.exe": "Android Studio", "studio.exe": "Android Studio", "studio": "Android Studio",
+    # Other common desktop code editors and IDEs.
+    "devenv.exe": "Visual Studio", "devenv": "Visual Studio",
+    "eclipse.exe": "Eclipse", "eclipse": "Eclipse",
+    "sublime_text.exe": "Sublime Text", "sublime_text": "Sublime Text",
+    "zed.exe": "Zed", "zed": "Zed",
+    "notepad++.exe": "Notepad++", "notepad++": "Notepad++",
+    "gvim.exe": "GVim", "gvim": "GVim",
+    "nvim.exe": "Neovim", "nvim": "Neovim",
+    "vim.exe": "Vim", "vim": "Vim",
+    "emacs.exe": "Emacs", "emacs": "Emacs",
+    "kate": "Kate", "kwrite": "KWrite",
+}
+_CODE_EDITOR_TITLE_NAMES = {
+    "pycharm": "PyCharm",
+    "intellij idea": "IntelliJ IDEA",
+    "webstorm": "WebStorm",
+    "goland": "GoLand",
+    "clion": "CLion",
+    "rider": "Rider",
+    "rubymine": "RubyMine",
+    "phpstorm": "PhpStorm",
+    "datagrip": "DataGrip",
+    "android studio": "Android Studio",
+    "microsoft visual studio": "Visual Studio",
+    "eclipse ide": "Eclipse",
+    "sublime text": "Sublime Text",
+    "notepad++": "Notepad++",
+    "neovim": "Neovim",
+    "gnu emacs": "Emacs",
+}
 _MAX_FILE_BYTES = 200_000
 _MAX_SELECTION_CHARS = 8_000
 
@@ -27,41 +70,72 @@ def is_vscode_app(active_app: dict[str, Any] | None) -> bool:
     """Return whether a captured window belongs to VS Code or a compatible fork."""
     app = active_app if isinstance(active_app, dict) else {}
     process_name = str(app.get("process_name") or "").strip().casefold()
-    if process_name in _PROCESS_NAMES:
+    if process_name in _VSCODE_PROCESS_NAMES:
         return True
     title = str(app.get("name") or "").casefold()
     return any(marker in title for marker in ("visual studio code", " - cursor", " - windsurf"))
+
+
+def code_editor_name(active_app: dict[str, Any] | None) -> str:
+    """Return the product name for a supported saved-file code editor."""
+    app = active_app if isinstance(active_app, dict) else {}
+    if is_vscode_app(app):
+        process = str(app.get("process_name") or "").casefold()
+        if "cursor" in process or "cursor" in str(app.get("name") or "").casefold():
+            return "Cursor"
+        if "windsurf" in process or "windsurf" in str(app.get("name") or "").casefold():
+            return "Windsurf"
+        return "VS Code Insiders" if "insider" in process else "VS Code"
+    process = str(app.get("process_name") or "").strip().casefold()
+    if process in _CODE_EDITOR_PROCESS_NAMES:
+        return _CODE_EDITOR_PROCESS_NAMES[process]
+    title = str(app.get("name") or app.get("title") or "").casefold()
+    if "visual studio code" in title:
+        return "VS Code"
+    return next((name for marker, name in _CODE_EDITOR_TITLE_NAMES.items() if marker in title), "Code editor")
+
+
+def is_code_editor_app(active_app: dict[str, Any] | None) -> bool:
+    """Return whether Wisp can attempt an exact saved-file editor action."""
+    app = active_app if isinstance(active_app, dict) else {}
+    if is_vscode_app(app):
+        return True
+    process = str(app.get("process_name") or "").strip().casefold()
+    if process in _CODE_EDITOR_PROCESS_NAMES:
+        return True
+    title = str(app.get("name") or app.get("title") or "").casefold()
+    return any(marker in title for marker in _CODE_EDITOR_TITLE_NAMES)
 
 
 class VSCodeSelectionReader:
     """Resolve and fingerprint the exact saved file containing a selection."""
 
     def inspect_selection(self, active_app: dict[str, Any], selected_text: str) -> VSCodeSnapshot:
-        if not is_vscode_app(active_app):
-            raise ValueError("The recorded window is not VS Code.")
+        if not is_code_editor_app(active_app):
+            raise ValueError("The recorded window is not a supported code editor.")
         if _title_looks_modified(str(active_app.get("name") or "")):
-            raise ValueError("Save the active VS Code file before asking Wisp to change it.")
+            raise ValueError("Save the active code editor file before asking Wisp to change it.")
         if not str(selected_text or "").strip():
             raise ValueError("Select the code you want Wisp to change, then try again.")
         if len(selected_text) > _MAX_SELECTION_CHARS:
-            raise ValueError("The first VS Code action supports selections up to 8,000 characters.")
+            raise ValueError("The first code editor action supports selections up to 8,000 characters.")
 
         path = self._resolve_path(active_app)
         if not path:
-            raise ValueError("Wisp could not resolve the active VS Code tab to a saved file.")
+            raise ValueError("Wisp could not resolve the active editor tab to a saved file.")
         file_path = Path(path)
         if file_path.is_symlink():
-            raise ValueError("Wisp does not edit symlinked files in the first VS Code action.")
+            raise ValueError("Wisp does not edit symlinked files in the first code editor action.")
         raw = file_path.read_bytes()
         if len(raw) > _MAX_FILE_BYTES:
-            raise ValueError("The first VS Code action supports saved files up to 200 KB.")
+            raise ValueError("The first code editor action supports saved files up to 200 KB.")
         if b"\x00" in raw:
-            raise ValueError("The active VS Code tab is not a UTF-8 text file.")
+            raise ValueError("The active editor tab is not a UTF-8 text file.")
         has_bom = raw.startswith(b"\xef\xbb\xbf")
         try:
             text = raw.decode("utf-8-sig")
         except UnicodeDecodeError as exc:
-            raise ValueError("The first VS Code action supports UTF-8 files only.") from exc
+            raise ValueError("The first code editor action supports UTF-8 files only.") from exc
 
         matched = self._match_selection(text, selected_text)
         start = text.find(matched)
@@ -83,12 +157,13 @@ class VSCodeSelectionReader:
             fingerprint=hashlib.sha256(raw).hexdigest(),
             selection_fingerprint=_text_fingerprint(matched),
             has_utf8_bom=has_bom,
+            editor_name=code_editor_name(active_app),
         )
 
     def inspect_empty_file(self, active_app: dict[str, Any]) -> VSCodeSnapshot:
         """Capture an active saved empty UTF-8 file for a whole-file insertion."""
-        if not is_vscode_app(active_app):
-            raise ValueError("The recorded window is not VS Code.")
+        if not is_code_editor_app(active_app):
+            raise ValueError("The recorded window is not a supported code editor.")
         if _title_looks_modified(str(active_app.get("name") or "")):
             raise ValueError("Save the active VS Code file before asking Wisp to change it.")
         path = self._resolve_path(active_app)
@@ -123,6 +198,7 @@ class VSCodeSelectionReader:
             selection_fingerprint=empty_hash,
             has_utf8_bom=has_bom,
             is_whole_file=True,
+            editor_name=code_editor_name(active_app),
         )
 
     @staticmethod
@@ -196,5 +272,8 @@ def _filename_from_window(title: str) -> str:
 
 
 def _title_looks_modified(title: str) -> bool:
-    """Recognize the dirty-tab marker used by VS Code and compatible editors."""
-    return str(title or "").lstrip().startswith(("\u25cf", "\u2022", "*"))
+    """Recognize common dirty-tab markers without guessing from app focus."""
+    text = str(title or "").strip()
+    return text.startswith(("\u25cf", "\u2022", "*")) or bool(
+        re.search(r"\*(?:\s*(?:-|\u2013|\u2014)|$)", text)
+    )

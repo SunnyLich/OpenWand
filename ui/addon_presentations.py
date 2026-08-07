@@ -239,6 +239,22 @@ def presentation_document(fragment: str, palette: dict[str, str], font_px: int =
     )
 
 
+def _text_browser_document(document: str, palette: dict[str, str], font_px: int) -> str:
+    """Resolve host palette variables unsupported by Qt's rich-text engine."""
+    variables = {
+        "bg": palette.get("bg", "#212121"), "text": palette.get("text", "#eeeeee"),
+        "muted": palette.get("muted", "#aaaaaa"), "line": palette.get("line", "#3c3c3c"),
+        "accent": palette.get("accent", "#9b8cff"), "warm": palette.get("warm", "#f0ae72"),
+        "warm-soft": palette.get("warm_soft", "#3c2b25"),
+        "soft": palette.get("soft", "#2e2e2e"), "code": palette.get("code", "#15171c"),
+        "code-text": palette.get("code_text", "#eff6ff"), "size": f"{max(13, min(int(font_px), 22))}px",
+    }
+    resolved = document
+    for name, value in variables.items():
+        resolved = resolved.replace(f"var(--{name})", html.escape(value))
+    return resolved
+
+
 if QWebEnginePage is not None:
     class _PresentationPage(QWebEnginePage):
         def acceptNavigationRequest(self, url, nav_type, is_main_frame):  # noqa: N802
@@ -257,12 +273,13 @@ class RichPresentationView(QTextBrowser if QWebEngineView is None else QWebEngin
         self._presentation_fragment = fragment
         self._presentation_font_px = font_px
         document = presentation_document(fragment, palette, font_px)
+        text_document = _text_browser_document(document, palette, font_px)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setStyleSheet("background: transparent; border: none; padding: 0; margin: 0;")
         if QWebEngineView is None:
             self.setOpenExternalLinks(True)
-            self.setHtml(document)
+            self.setHtml(text_document)
             self.document().setDocumentMargin(0)
             QTimer.singleShot(0, self._fit_fallback_height)
             return
@@ -276,6 +293,21 @@ class RichPresentationView(QTextBrowser if QWebEngineView is None else QWebEngin
         settings.setAttribute(QWebEngineSettings.WebAttribute.FullScreenSupportEnabled, False)
         self.setFixedHeight(48)
         self._web_loaded = False
+        self._web_fallback_view = QTextBrowser(self)
+        self._web_fallback_view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        self._web_fallback_view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._web_fallback_view.setOpenExternalLinks(True)
+        self._web_fallback_view.setFrameShape(QAbstractScrollArea.Shape.NoFrame)
+        self._web_fallback_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._web_fallback_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._web_fallback_view.setStyleSheet(
+            f"background: transparent; border: none; color: {palette.get('text', '#eeeeee')}; padding: 0; margin: 0;"
+        )
+        self._web_fallback_view.setHtml(text_document)
+        self._web_fallback_view.document().setDocumentMargin(0)
+        self._web_fallback_view.installEventFilter(self)
+        self._web_fallback_view.viewport().installEventFilter(self)
+        self._web_fallback_view.hide()
         self._measure_attempt = 0
         self._last_measure_width = -1
         self._measure_timer = QTimer(self)
@@ -328,9 +360,29 @@ class RichPresentationView(QTextBrowser if QWebEngineView is None else QWebEngin
         for child in self.findChildren(QObject):
             child.installEventFilter(self)
         self._web_loaded = bool(ok)
+        fallback = getattr(self, "_web_fallback_view", None)
+        if not self._web_loaded:
+            self._activate_web_fallback()
+            return
+        if fallback is not None:
+            fallback.hide()
         self._measure_attempt = 0
         self._measure_timer.start()
         self._height_fallback_timer.start()
+
+    def _activate_web_fallback(self) -> None:
+        """Render through QTextBrowser when Chromium cannot paint the document."""
+        fallback = getattr(self, "_web_fallback_view", None)
+        if fallback is None:
+            return
+        fallback.setGeometry(self.rect())
+        fallback.document().setTextWidth(max(260, self.width()))
+        height = int(fallback.document().size().height()) + 8
+        fallback.show()
+        fallback.raise_()
+        self.setFixedHeight(max(48, min(height, 30_000)))
+        fallback.setGeometry(self.rect())
+        self._height_fallback_timer.stop()
 
     def _measure_native_height(self) -> None:
         """Measure once at a short viewport so content height cannot feed back."""
@@ -371,6 +423,9 @@ class RichPresentationView(QTextBrowser if QWebEngineView is None else QWebEngin
 
     def _ensure_estimated_height(self) -> None:
         """Guarantee that a failed WebEngine measurement never clips the reply."""
+        if QWebEngineView is not None and not getattr(self, "_web_loaded", False):
+            self._activate_web_fallback()
+            return
         if self.height() <= 48:
             self.setFixedHeight(max(48, min(self._estimated_web_height(), 30_000)))
 
@@ -386,6 +441,11 @@ class RichPresentationView(QTextBrowser if QWebEngineView is None else QWebEngin
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
+        fallback = getattr(self, "_web_fallback_view", None)
+        if fallback is not None and fallback.isVisible():
+            fallback.setGeometry(self.rect())
+            QTimer.singleShot(0, self._activate_web_fallback)
+            return
         timer = getattr(self, "_measure_timer", None)
         last_width = getattr(self, "_last_measure_width", -1)
         if (

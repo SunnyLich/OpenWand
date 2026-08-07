@@ -1,0 +1,8 @@
+label = "Create email draft"
+hint = "Preview recipients, subject, and body"
+prompt = "Create a draft email from my request."
+capability = "email.create_draft@1"
+planner = "email_plan_create_draft"
+access = ["internet"]
+available = false
+unavailable_reason = "Connect this account to Wisp before using account API actions"

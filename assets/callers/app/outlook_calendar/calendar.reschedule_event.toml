@@ -1,0 +1,8 @@
+label = "Reschedule this event"
+hint = "Preview the exact old and new time"
+prompt = "Reschedule this calendar event."
+capability = "calendar.reschedule_event@1"
+planner = "calendar_plan_reschedule_event"
+access = ["internet"]
+available = false
+unavailable_reason = "Connect this account to Wisp before using account API actions"

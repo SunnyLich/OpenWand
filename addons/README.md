@@ -11,6 +11,8 @@ addons/
   my-addon/
     addon.toml
     __init__.py
+    actions/
+      summarize-selection.toml
 ```
 
 In a portable packaged build, Wisp creates this `addons/` folder next to
@@ -80,6 +82,38 @@ dependency hash, so an addon update that changes packages must be approved
 again before it runs. Wisp uses `uv` when available, falling back to
 `python -m venv` in source checkouts.
 
+## Action catalogue
+
+Stable user- and model-facing surfaces can be declared as data under the
+optional `actions/` folder. Reading this folder never imports addon code. The
+existing isolated Python host still supplies callbacks, tool executors and JSON
+schemas; the TOML supplies discovery, display metadata, access labels, and the
+enabled switch shown in Addon Manager.
+
+```toml
+id = "summarize-selection"
+kind = "intent"
+handler = "summarize-selection"
+label = "Addon summary"
+hint = "Summarize with this addon's workflow."
+prompt = "Summarize the current selection with project context."
+key = "z"
+caller = "all"
+access = ["text", "internet"]
+enabled = true
+```
+
+Supported kinds are `intent`, `tool`, `tool_provider`,
+`response_transform`, and `message_action`. `handler` names the id returned by
+the corresponding Python hook. A `tool_provider` is a declaration for a
+dynamic family, such as tools discovered from MCP servers. Addons without an
+`actions/` folder retain the legacy manifest/hook behaviour.
+
+Access values are `text`, `files`, `internet`, and `programs`. They are
+self-declared labels, not an enforcement boundary; actual addon permissions
+remain in `addon.toml`. The Addon Manager can surgically toggle `enabled`
+without removing comments from the action file.
+
 Packaged builds should ship the `uv` binary at `bin/uv` or `bin/uv.exe` inside
 the app bundle/folder. The PyInstaller specs collect `bin/uv*` or `tools/uv*`
 from the repo when present.
@@ -99,8 +133,9 @@ Supported event names currently include:
 - `app.shutdown`
 - `response.after`
 
-Prompt intents declared with `[[intents]]` appear in the normal intent picker
-when the addon has `ui = ["intents"]`. Notifications declared with
+Prompt intents declared with action files (or legacy `[[intents]]` blocks)
+appear in the normal intent picker when the addon has `ui = ["intents"]`.
+Notifications declared with
 `[[notifications]]` are exposed through the addon manager payload for UI/native
 surfaces that want to display them, with a Wisp notice fallback where native
 toasts are unavailable.

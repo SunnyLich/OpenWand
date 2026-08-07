@@ -1,0 +1,10 @@
+# Microsoft Word on the desktop. Match the native executable rather than a
+# browser title so Word for the web remains a separate surface.
+display_name = "Microsoft Word"
+app = "word_desktop"
+priority = 105
+
+[match]
+process = ["winword.exe", "winword"]
+title = [" - microsoft word", " — microsoft word"]
+bundle = ["com.microsoft.word"]

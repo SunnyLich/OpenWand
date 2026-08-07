@@ -28,6 +28,8 @@ ASSETS_DIR = str(DOLL_ASSETS_DIR)
 _BUBBLE_SHOW_DEFER_MS = 75
 _PROVIDER_BADGE_HEIGHT = 18
 _PROVIDER_BADGE_GAP = 2
+_REWRITE_BATCH_HEIGHT = 34
+_REWRITE_BATCH_GAP = 6
 
 
 class OverlaySignals(QObject):
@@ -70,6 +72,7 @@ class OverlaySignals(QObject):
     remove_dropped_item    = Signal(int)     # user clicked X on badge at this index
     bubble_speed           = Signal(bool)     # fast-forward button state changed
     status_notification    = Signal(str, str) # (title, message) startup/status notice (addons, STT-ready)
+    rewrite_send_all       = Signal()         # dispatch every explicitly held Rewrite comment
 
 
 class IconOverlay(QMainWindow):
@@ -94,9 +97,11 @@ class IconOverlay(QMainWindow):
         super().__init__()
         self.signals = signals
         self._addon_tray_actions = self._normalize_addon_tray_actions(addon_tray_actions)
+        self._held_rewrite_count = 0
 
         self._build_window()
         self._build_icon_label()
+        self._build_rewrite_batch_button()
         self._build_provider_badge()
         self._build_tray()
 
@@ -160,6 +165,7 @@ class IconOverlay(QMainWindow):
         from core.platform_utils import keep_overlay_visible_across_apps
         for w in (
             getattr(self, "_icon_label", None),
+            getattr(self, "_rewrite_batch_button", None),
             getattr(self, "_provider_badge", None),
             getattr(self, "_context_panel", None),
             getattr(self, "_bubble", None),
@@ -228,6 +234,67 @@ class IconOverlay(QMainWindow):
         # has auto-hide off. The manual "Hide icon" action bypasses this via
         # _hide_icon_now.
         self._icon_hide_timer.timeout.connect(self._on_icon_hide_timeout)
+
+    def _build_rewrite_batch_button(self) -> None:
+        """Create the shared held-comment action directly above the Wisp icon."""
+        self._rewrite_batch_button = QPushButton(None)
+        self._rewrite_batch_button.setObjectName("rewriteBatchButton")
+        self._rewrite_batch_button.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
+        self._rewrite_batch_button.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._rewrite_batch_button.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self._rewrite_batch_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._rewrite_batch_button.setFixedHeight(_REWRITE_BATCH_HEIGHT)
+        self._rewrite_batch_button.setStyleSheet(
+            "QPushButton#rewriteBatchButton {"
+            "background:#3b82f6; color:white; border:1px solid #93c5fd;"
+            "border-radius:9px; padding:6px 12px; font-size:11px; font-weight:700;"
+            "} QPushButton#rewriteBatchButton:hover { background:#2563eb; }"
+            "QPushButton#rewriteBatchButton:pressed { background:#1d4ed8; }"
+        )
+        self._rewrite_batch_button.clicked.connect(self.signals.rewrite_send_all.emit)
+        self._rewrite_batch_button.hide()
+
+    def _position_rewrite_batch_button(self, icon_pos: QPoint | None = None) -> None:
+        if not hasattr(self, "_rewrite_batch_button") or not hasattr(self, "_icon_label"):
+            return
+        if icon_pos is None:
+            icon_pos = self._icon_label.pos()
+        size = config.ICON_SIZE
+        width = max(size + 28, self._rewrite_batch_button.sizeHint().width() + 8)
+        self._rewrite_batch_button.setFixedWidth(width)
+        self._rewrite_batch_button.move(
+            icon_pos.x() + (size - width) // 2,
+            icon_pos.y() - _REWRITE_BATCH_HEIGHT - _REWRITE_BATCH_GAP,
+        )
+
+    def _refresh_rewrite_batch_button(self) -> None:
+        if not hasattr(self, "_rewrite_batch_button"):
+            return
+        count = max(0, int(self._held_rewrite_count or 0))
+        if count <= 0 or not self._icon_label.isVisible():
+            self._rewrite_batch_button.hide()
+            return
+        label = t("Send all comments") + f" ({count})"
+        self._rewrite_batch_button.setText(label)
+        self._rewrite_batch_button.setAccessibleName(label)
+        self._rewrite_batch_button.setToolTip(
+            t("Send every held comment, using a separate conversation for each app")
+        )
+        self._position_rewrite_batch_button()
+        self._rewrite_batch_button.show()
+        self._rewrite_batch_button.raise_()
+
+    def set_held_rewrite_count(self, count: int) -> None:
+        """Show or hide the global batch action from supervisor-owned state."""
+        self._held_rewrite_count = max(0, int(count or 0))
+        if self._held_rewrite_count:
+            self._show_icon()
+        else:
+            self._refresh_rewrite_batch_button()
 
     def _build_provider_badge(self) -> None:
         """Create a clickable external-harness control below the floating icon."""
@@ -468,6 +535,8 @@ class IconOverlay(QMainWindow):
             elif getattr(self, "_current_state", "idle") == "idle":
                 self._icon_label.hide()
         self._refresh_provider_badge()
+        self._position_rewrite_batch_button()
+        self._refresh_rewrite_batch_button()
         if hasattr(self, "_bubble"):
             self._bubble.apply_config()
             if hasattr(self, "_icon_label"):
@@ -629,12 +698,15 @@ class IconOverlay(QMainWindow):
         self._icon_label.show()
         self._icon_label.raise_()
         self._refresh_provider_badge()
+        self._refresh_rewrite_batch_button()
 
     def _hide_icon(self):
         """Hide icon."""
         if not hasattr(self, '_icon_hide_timer'):
             return
         if not config.ICON_AUTO_HIDE:
+            return
+        if self._held_rewrite_count:
             return
         # Start a backstop timer - the icon will normally be hidden in sync with
         # the bubble via _on_bubble_hidden, but this covers cases where the bubble
@@ -649,8 +721,10 @@ class IconOverlay(QMainWindow):
 
     def _on_icon_hide_timeout(self):
         """Backstop timer fired — only hide if auto-hide is on (see _icon_hide_timer)."""
-        if config.ICON_AUTO_HIDE and hasattr(self, "_icon_label"):
+        if config.ICON_AUTO_HIDE and not self._held_rewrite_count and hasattr(self, "_icon_label"):
             self._icon_label.hide()
+            if hasattr(self, "_rewrite_batch_button"):
+                self._rewrite_batch_button.hide()
             if hasattr(self, "_provider_badge"):
                 self._provider_badge.hide()
 
@@ -664,6 +738,8 @@ class IconOverlay(QMainWindow):
         self._icon_label.hide()
         if hasattr(self, "_provider_badge"):
             self._provider_badge.hide()
+        if hasattr(self, "_rewrite_batch_button"):
+            self._rewrite_batch_button.hide()
 
     def _toggle_icon(self):
         """Tray/right-click 'Show/Hide icon' toggle for the floating icon."""
@@ -712,7 +788,12 @@ class IconOverlay(QMainWindow):
         self._on_bubble_speed_boost(False)
         self._icon_hide_timer.stop()
         if config.ICON_AUTO_HIDE:
+            if self._held_rewrite_count:
+                self._refresh_rewrite_batch_button()
+                return
             self._icon_label.hide()
+            if hasattr(self, "_rewrite_batch_button"):
+                self._rewrite_batch_button.hide()
             if hasattr(self, "_provider_badge"):
                 self._provider_badge.hide()
 
@@ -723,7 +804,12 @@ class IconOverlay(QMainWindow):
         self._on_bubble_speed_boost(False)
         self._icon_hide_timer.stop()
         if config.ICON_AUTO_HIDE:
+            if self._held_rewrite_count:
+                self._refresh_rewrite_batch_button()
+                return
             self._icon_label.hide()
+            if hasattr(self, "_rewrite_batch_button"):
+                self._rewrite_batch_button.hide()
             if hasattr(self, "_provider_badge"):
                 self._provider_badge.hide()
 
@@ -863,6 +949,7 @@ class IconOverlay(QMainWindow):
         sz = config.ICON_SIZE
         self._position_bubble_next_to_icon(icon_pos)
         self._position_provider_badge(icon_pos)
+        self._position_rewrite_batch_button(icon_pos)
         if hasattr(self, "_context_panel"):
             self._context_panel.reposition(icon_pos, sz)
 
@@ -950,11 +1037,14 @@ class IconOverlay(QMainWindow):
         icon_pos = self._bubble.icon_pos_for_bubble(bubble_pos, config.ICON_SIZE)
         self._icon_label.move(icon_pos)
         self._position_provider_badge(icon_pos)
+        self._position_rewrite_batch_button(icon_pos)
 
     def closeEvent(self, event):  # noqa: N802 - Qt API
         """Close the independent provider badge surface with the overlay."""
         if hasattr(self, "_provider_badge"):
             self._provider_badge.close()
+        if hasattr(self, "_rewrite_batch_button"):
+            self._rewrite_batch_button.close()
         super().closeEvent(event)
 
     def _on_bubble_speed_boost(self, enabled: bool):

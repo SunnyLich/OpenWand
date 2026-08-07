@@ -1,4 +1,4 @@
-"""Validate, apply, and verify saved-file actions for VS Code."""
+"""Validate, apply, and verify saved-file actions for supported code editors."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from core.actions.registry import ActionRegistry
 
 
 class VSCodeActionAdapter:
-    """Apply one confirmed replacement without driving VS Code's keyboard or focus."""
+    """Apply one confirmed replacement without driving an editor's keyboard or focus."""
 
     def __init__(self) -> None:
         self._idempotent_results: dict[str, ActionExecutionResult] = {}
@@ -41,17 +41,17 @@ class VSCodeActionAdapter:
     def validate(self, plan: ActionPlan, snapshot: VSCodeSnapshot) -> tuple[ValidationIssue, ...]:
         issues: list[ValidationIssue] = list(self._registry.validate_plan(plan))
         if not plan.plan_id.strip():
-            issues.append(ValidationIssue("missing_plan_id", "The VS Code action has no plan identity."))
+            issues.append(ValidationIssue("missing_plan_id", "The code editor action has no plan identity."))
         if plan.app != "vscode":
-            issues.append(ValidationIssue("wrong_adapter", "This action is not for VS Code."))
+            issues.append(ValidationIssue("wrong_adapter", "This action is not for the saved-file editor adapter."))
         if plan.risk != ActionRisk.MEDIUM or not plan.requires_confirmation:
-            issues.append(ValidationIssue("unsafe_policy", "VS Code file changes always require confirmation."))
+            issues.append(ValidationIssue("unsafe_policy", "Code editor file changes always require confirmation."))
         if plan.target.locator.get("path") != snapshot.file_path:
             issues.append(ValidationIssue("target_changed", "The active saved file changed."))
         if plan.target.version != snapshot.fingerprint:
             issues.append(ValidationIssue("target_stale", "The saved file changed after the preview."))
         if len(plan.operations) != 1 or plan.operations[0].type not in {REPLACE_SELECTION, REPLACE_FILE}:
-            issues.append(ValidationIssue("unsupported_plan", "This VS Code adapter replaces one exact target."))
+            issues.append(ValidationIssue("unsupported_plan", "This code editor adapter replaces one exact target."))
             return tuple(issues)
         operation = plan.operations[0]
         if operation.type == REPLACE_SELECTION:
@@ -90,7 +90,7 @@ class VSCodeActionAdapter:
             )
         if not idempotency_key.strip():
             raise ActionValidationError(
-                (ValidationIssue("idempotency_required", "The VS Code action is missing its execution key."),)
+                (ValidationIssue("idempotency_required", "The code editor action is missing its execution key."),)
             )
         cached = self._idempotent_results.get(idempotency_key)
         if cached is not None:
@@ -117,7 +117,7 @@ class VSCodeActionAdapter:
 
                 if _title_looks_modified(str(get_window_title(window_id) or "")):
                     raise ActionValidationError(
-                        (ValidationIssue("unsaved_editor", "Save the VS Code file before applying this change."),)
+                        (ValidationIssue("unsaved_editor", "Save the active editor file before applying this change."),)
                     )
             except ActionValidationError:
                 raise
@@ -129,7 +129,7 @@ class VSCodeActionAdapter:
         written_raw = path.read_bytes()
         written_text = written_raw.decode("utf-8-sig")
         if written_text != next_text:
-            raise RuntimeError("VS Code file verification failed after writing the replacement.")
+            raise RuntimeError("Code editor file verification failed after writing the replacement.")
         verification_finished = time.perf_counter()
         self.last_execution_timing = {
             "resnapshot_ms": round((snapshot_finished - execution_started) * 1000, 3),
@@ -139,10 +139,15 @@ class VSCodeActionAdapter:
             "total_ms": round((verification_finished - execution_started) * 1000, 3),
         }
 
+        updated_message = (
+            f"Updated {path.name}; VS Code will reload the saved file change."
+            if snapshot.editor_name.startswith("VS Code")
+            else f"Updated {path.name}; {snapshot.editor_name} can reload the verified saved-file change."
+        )
         result = ActionExecutionResult(
             plan_id=plan.plan_id,
             status="applied",
-            message=f"Updated {path.name}; VS Code will reload the saved file change.",
+            message=updated_message,
             created=({"kind": "file_edit", "name": path.name},),
             journal=(
                 {
@@ -196,6 +201,7 @@ class VSCodeActionAdapter:
             selection_fingerprint=hashlib.sha256(selected.encode("utf-8")).hexdigest(),
             has_utf8_bom=raw.startswith(b"\xef\xbb\xbf"),
             is_whole_file=whole_file,
+            editor_name=str(locator.get("editor_name") or "Code editor"),
         )
 
     @staticmethod

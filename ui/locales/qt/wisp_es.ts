@@ -6246,5 +6246,48 @@ Esta acción no se puede deshacer. Los archivos de origen importados de ChatGPT 
     <message><source>Show formatted</source><translation>Mostrar con formato</translation></message>
     <message><source>This is taking a little longer. I'm still working on it.</source><translation>Esto está tardando un poco más. Sigo trabajando en ello.</translation></message>
     <message><source>This is taking a little longer. I'm still preparing the rewrite.</source><translation>Esto está tardando un poco más. Sigo preparando la reescritura.</translation></message>
+    <message><source>These actions come from app folders. Their access badges are self-declared; open a file to change its key, text, or enabled setting.</source><translation>Estas acciones provienen de carpetas de aplicaciones. Sus insignias de acceso son autodeclaradas; abre un archivo para cambiar su tecla, texto o configuración de activación.</translation></message>
+    <message><source>Show this action in the intent picker</source><translation>Mostrar esta acción en el selector de intenciones</translation></message>
+    <message><source>Open file</source><translation>Abrir archivo</translation></message>
+    <message><source>Open this code-backed action in your default editor</source><translation>Abrir esta acción basada en código en tu editor predeterminado</translation></message>
+    <message><source>Access declared by this action file; this is a label, not a sandbox</source><translation>Acceso declarado por este archivo de acción; es una etiqueta, no un entorno aislado</translation></message>
+    <message><source>Could not save action files</source><translation>No se pudieron guardar los archivos de acciones</translation></message>
+    <message><source>disabled</source><translation>desactivado</translation></message>
+    <message><source>Actions</source><translation>Acciones</translation></message>
+    <message><source>Local file progress</source><translation>Progreso de archivos locales</translation></message>
+    <message><source>Model work</source><translation>Trabajo del modelo</translation></message>
+    <message><source>Working with local files…</source><translation>Trabajando con archivos locales…</translation></message>
+    <message><source>File activity will appear here.</source><translation>La actividad de archivos aparecerá aquí.</translation></message>
+    <message><source>Inspecting folder</source><translation>Inspeccionando carpeta</translation></message>
+    <message><source>Inspected folder</source><translation>Carpeta inspeccionada</translation></message>
+    <message><source>Read</source><translation>Leído</translation></message>
+    <message><source>Creating</source><translation>Creando</translation></message>
+    <message><source>Created</source><translation>Creado</translation></message>
+    <message><source>Editing</source><translation>Editando</translation></message>
+    <message><source>Edited</source><translation>Editado</translation></message>
+    <message><source>Writing</source><translation>Escribiendo</translation></message>
+    <message><source>Wrote</source><translation>Escrito</translation></message>
+    <message><source>Working on</source><translation>Trabajando en</translation></message>
+    <message><source>Failed: {path}</source><translation>Error: {path}</translation></message>
+    <message><source>Local-file work finished.</source><translation>El trabajo con archivos locales ha finalizado.</translation></message>
+    <message><source>here</source><translation>aquí</translation></message>
+    <message><source>The model is working with local files — follow progress {here}.</source><translation>El modelo está trabajando con archivos locales; sigue el progreso {here}.</translation></message>
+    <message><source>Accept</source><translation>Aceptar</translation></message>
+    <message><source>Ask for a different revision…</source><translation>Solicitar una revisión diferente…</translation></message>
+    <message><source>Cancel and remove</source><translation>Cancelar y eliminar</translation></message>
+    <message><source>Comment</source><translation>Comentario</translation></message>
+    <message><source>Describe how this selection should change…</source><translation>Describe cómo debería cambiar esta selección…</translation></message>
+    <message><source>Enter: Send   ·   Ctrl+Enter: Include document   ·   Shift+Enter: New line</source><translation>Intro: Enviar   ·   Ctrl+Intro: Incluir documento   ·   Mayús+Intro: Nueva línea</translation></message>
+    <message><source>Hold</source><translation>Retener</translation></message>
+    <message><source>Include whole document</source><translation>Incluir documento completo</translation></message>
+    <message><source>Keep this comment and send it later with Send all comments</source><translation>Guarda este comentario y envíalo más tarde con Enviar todos los comentarios</translation></message>
+    <message><source>Preparing edit…</source><translation>Preparando edición…</translation></message>
+    <message><source>Proposed edit</source><translation>Edición propuesta</translation></message>
+    <message><source>Revise</source><translation>Revisar</translation></message>
+    <message><source>Rewrite failed. You can retry.</source><translation>La reescritura falló. Puedes volver a intentarlo.</translation></message>
+    <message><source>Rewrite is processing</source><translation>La reescritura está en proceso</translation></message>
+    <message><source>Send all comments</source><translation>Enviar todos los comentarios</translation></message>
+    <message><source>Send every held comment, using a separate conversation for each app</source><translation>Envía cada comentario retenido usando una conversación separada para cada aplicación</translation></message>
+    <message><source>Wisp is preparing the proposed rewrite.</source><translation>Wisp está preparando la reescritura propuesta.</translation></message>
   </context>
 </TS>

@@ -615,8 +615,8 @@ class ConfigEnvTests(unittest.TestCase):
             for name, value in previous.items():
                 setattr(config, name, value)
 
-    def test_assistant_language_preserves_custom_caller_intent_prompt(self):
-        """Custom caller prompt text should not be overwritten by templates."""
+    def test_assistant_language_ignores_legacy_custom_caller_intent_prompt(self):
+        """Legacy CALLER_* values no longer override the action-file tree."""
         previous = {
             "ASSISTANT_LANGUAGE": config.ASSISTANT_LANGUAGE,
             "CALLER_ROWS": [dict(row) for row in config.CALLER_ROWS],
@@ -636,7 +636,10 @@ class ConfigEnvTests(unittest.TestCase):
                 config.reload()
 
             self.assertEqual(config.CALLER_ROWS[1]["intents"][1]["label"], "简化表达")
-            self.assertEqual(config.CALLER_ROWS[1]["intents"][1]["prompt"], "Use my exact house style.")
+            self.assertEqual(
+                config.CALLER_ROWS[1]["intents"][1]["prompt"],
+                config._CALLER_INTENT_TEMPLATES["Chinese"][1][1]["prompt"],
+            )
         finally:
             for name, value in previous.items():
                 setattr(config, name, value)
@@ -730,8 +733,8 @@ class ConfigEnvTests(unittest.TestCase):
             for name, value in previous.items():
                 setattr(config, name, value)
 
-    def test_per_caller_file_access_modes_load_from_env(self):
-        """Verify local file access is configured per keybind and voice caller."""
+    def test_legacy_caller_file_access_is_ignored_but_voice_env_remains(self):
+        """File callers use TOML while the separate voice caller still uses env."""
         previous = {
             "CALLER_ROWS": [dict(row) for row in getattr(config, "CALLER_ROWS", [])],
             "VOICE_CALLER": dict(getattr(config, "VOICE_CALLER", {})),
@@ -749,9 +752,9 @@ class ConfigEnvTests(unittest.TestCase):
             ):
                 config.reload()
 
-            self.assertEqual(config.CALLER_ROWS[0]["file_access"], "ask")
+            self.assertEqual(config.CALLER_ROWS[0]["file_access"], "off")
             self.assertEqual(config.VOICE_CALLER["file_access"], "read")
-            self.assertEqual(config.SETTINGS.callers.callers[0]["file_access"], "ask")
+            self.assertEqual(config.SETTINGS.callers.callers[0]["file_access"], "off")
         finally:
             config.CALLER_ROWS.clear()
             config.CALLER_ROWS.extend(previous["CALLER_ROWS"])
@@ -918,7 +921,7 @@ class ConfigEnvTests(unittest.TestCase):
             for name, value in previous.items():
                 setattr(config, name, value)
 
-    def test_caller_context_modes_load_from_new_env_keys(self):
+    def test_caller_context_env_keys_are_ignored(self):
         previous_rows = list(config.CALLER_ROWS)
         try:
             with patch("config.load_dotenv"), patch.dict(
@@ -936,16 +939,16 @@ class ConfigEnvTests(unittest.TestCase):
                 config.reload()
 
             row = config.CALLER_ROWS[0]
-            self.assertEqual(row["context_documents_mode"], "model")
-            self.assertEqual(row["context_browser_mode"], "model")
+            self.assertEqual(row["context_documents_mode"], "off")
+            self.assertEqual(row["context_browser_mode"], "off")
             self.assertEqual(row["context_github_mode"], "off")
-            self.assertEqual(row["context_memory_mode"], "model")
+            self.assertEqual(row["context_memory_mode"], "off")
             self.assertFalse(row["context_documents"])
-            self.assertTrue(row["context_tools"])
+            self.assertFalse(row["context_tools"])
         finally:
             config.CALLER_ROWS[:] = previous_rows
 
-    def test_caller_context_modes_migrate_legacy_tool_keys(self):
+    def test_caller_context_legacy_tool_keys_are_ignored(self):
         previous_rows = list(config.CALLER_ROWS)
         try:
             with patch("config.load_dotenv"), patch.dict(
@@ -966,10 +969,10 @@ class ConfigEnvTests(unittest.TestCase):
                 config.reload()
 
             row = config.CALLER_ROWS[0]
-            self.assertEqual(row["context_documents_mode"], "model")
-            self.assertEqual(row["context_browser_mode"], "model")
-            self.assertEqual(row["context_github_mode"], "model")
-            self.assertTrue(row["context_tools"])
+            self.assertEqual(row["context_documents_mode"], "off")
+            self.assertEqual(row["context_browser_mode"], "off")
+            self.assertEqual(row["context_github_mode"], "off")
+            self.assertFalse(row["context_tools"])
         finally:
             config.CALLER_ROWS[:] = previous_rows
 
@@ -1047,7 +1050,7 @@ class ConfigEnvTests(unittest.TestCase):
             config.CALLER_ROWS[:] = previous_rows
 
     def test_secondary_shortcuts_and_enabled_flags_load_from_env(self):
-        """Every shortcut keeps two bindings while disabled actions register none."""
+        """File callers ignore env while special shortcut settings remain env-backed."""
         previous_rows = list(config.CALLER_ROWS)
         previous_voice = dict(config.VOICE_CALLER)
         previous = {
@@ -1082,9 +1085,9 @@ class ConfigEnvTests(unittest.TestCase):
                 config.reload()
 
             caller = config.CALLER_ROWS[0]
-            self.assertEqual(caller["hotkey"], "ctrl+alt+q")
-            self.assertEqual(caller["hotkey_2"], "ctrl+alt+w")
-            self.assertFalse(caller["enabled"])
+            self.assertEqual(caller["hotkey"], "ctrl+q")
+            self.assertEqual(caller["hotkey_2"], "")
+            self.assertTrue(caller["enabled"])
             self.assertEqual(config.HOTKEY_ADD_CONTEXT, "")
             self.assertEqual(config.HOTKEY_ADD_CONTEXT_2, "")
             self.assertFalse(config.HOTKEY_ADD_CONTEXT_ENABLED)
@@ -1231,8 +1234,8 @@ class ConfigEnvTests(unittest.TestCase):
             config.SNIP_CALLER.clear()
             config.SNIP_CALLER.update(previous["SNIP_CALLER"])
 
-    def test_memory_context_mode_accepts_legacy_auto_alias(self):
-        """Verify legacy memory auto mode loads as on."""
+    def test_memory_auto_alias_only_applies_to_env_backed_voice_caller(self):
+        """Action-file callers ignore legacy env while voice still accepts auto."""
         previous_rows = list(config.CALLER_ROWS)
         previous_voice = dict(config.VOICE_CALLER)
         try:
@@ -1247,7 +1250,7 @@ class ConfigEnvTests(unittest.TestCase):
             ):
                 config.reload()
 
-            self.assertEqual(config.CALLER_ROWS[0]["context_memory_mode"], "on")
+            self.assertEqual(config.CALLER_ROWS[0]["context_memory_mode"], "off")
             self.assertEqual(config.VOICE_CALLER["context_memory_mode"], "on")
         finally:
             config.CALLER_ROWS[:] = previous_rows
@@ -1318,7 +1321,7 @@ class ConfigEnvTests(unittest.TestCase):
             config.SNIP_CALLER.clear()
             config.SNIP_CALLER.update(previous)
 
-    def test_caller_tool_overrides_load_from_env(self):
+    def test_caller_tool_overrides_ignore_legacy_env(self):
         previous_rows = list(config.CALLER_ROWS)
         try:
             with patch("config.load_dotenv"), patch.dict(
@@ -1334,10 +1337,7 @@ class ConfigEnvTests(unittest.TestCase):
             ):
                 config.reload()
 
-            self.assertEqual(
-                config.CALLER_ROWS[0]["tools"],
-                {"my_tool": "on", "other": "model", "off_tool": "off"},
-            )
+            self.assertEqual(config.CALLER_ROWS[0]["tools"], {})
         finally:
             config.CALLER_ROWS[:] = previous_rows
 

@@ -90,16 +90,19 @@ def _build_rows(
     provider_suggestions: list[dict] | None = None,
 ) -> list[dict]:
     """Build app-aware suggestions plus the caller's normal overlay rows."""
-    caller = config.CALLER_ROWS[caller_idx] if caller_idx < len(config.CALLER_ROWS) else {}
+    from core.action_files.store import configured_caller_rows
+
+    callers = configured_caller_rows(config)
+    caller = callers[caller_idx] if caller_idx < len(callers) else {}
+    if bool(caller.get("paste_back")):
+        provider_suggestions = []
     provider_active = bool(provider_suggestions)
-    configured_mode = (
-        "auto" if provider_active and bool(caller.get("paste_back"))
-        else "answer" if provider_active
-        else "legacy"
-    )
+    configured_mode = "answer" if provider_active else "legacy"
     rows = []
     used_keys: set[str] = set()
     for intent_idx, r in enumerate(caller.get("intents", [])):
+        if not bool(r.get("enabled", True)):
+            continue
         display_intent = localize_intent_if_default(
             caller_idx,
             intent_idx,
@@ -109,13 +112,26 @@ def _build_rows(
         key = str(r.get("key") or "").upper()
         if key:
             used_keys.add(key)
+        action_file = r.get("action_file") if isinstance(r.get("action_file"), dict) else {}
+        routing = (
+            {
+                "mode": "file",
+                "source": "configured",
+                "action_name": str(action_file.get("name") or ""),
+                "caller_folder": str(caller.get("folder") or ""),
+            }
+            if bool(action_file.get("has_code"))
+            else {"mode": configured_mode, "source": "configured"}
+        )
         rows.append({
             "glyph":     key if key else "?",
             "label":     display_intent.get("label", r.get("label", "")),
             "hint":      display_intent.get("hint", r.get("hint", "")),
             "prompt":    r["prompt"],
             "is_custom": False,
-            "routing": {"mode": configured_mode, "source": "configured"},
+            "routing": routing,
+            "access": list(action_file.get("access") or []),
+            "access_colour": str(action_file.get("colour") or ""),
         })
     for r in _addon_intent_rows(caller_idx, used_keys):
         rows.append(r)
@@ -139,6 +155,8 @@ def _provider_intent_rows(items: list[dict], used_keys: set[str]) -> list[dict]:
     for item in items:
         if not isinstance(item, dict):
             continue
+        if item.get("show_in_picker", True) is False:
+            continue
         suggestion_id = str(item.get("id") or "").strip()
         label = str(item.get("label") or "").strip()
         prompt = str(item.get("prompt") or "").strip()
@@ -147,7 +165,7 @@ def _provider_intent_rows(items: list[dict], used_keys: set[str]) -> list[dict]:
         planning_tool = str(item.get("planning_tool") or "").strip()
         available = bool(item.get("available", True))
         unavailable_reason = str(item.get("unavailable_reason") or "").strip()
-        if not suggestion_id or not label or not prompt or mode not in {"action", "answer"}:
+        if not suggestion_id or not label or mode not in {"action", "answer", "file"}:
             continue
         if mode == "action" and (not capability_type or not planning_tool):
             continue
@@ -158,19 +176,25 @@ def _provider_intent_rows(items: list[dict], used_keys: set[str]) -> list[dict]:
             used_keys.add(key)
         else:
             key = "·"
+        routing = {
+            "mode": mode,
+            "source": "provider",
+            "suggestion_id": suggestion_id,
+            "capability_type": capability_type,
+            "planning_tool": planning_tool,
+        }
+        if mode == "file":
+            routing["action_name"] = suggestion_id
         row = {
             "glyph": key,
             "label": t(label),
             "hint": t(unavailable_reason or str(item.get("hint") or "").strip()),
             "prompt": prompt,
             "is_custom": False,
-            "routing": {
-                "mode": mode,
-                "source": "provider",
-                "suggestion_id": suggestion_id,
-                "capability_type": capability_type,
-                "planning_tool": planning_tool,
-            },
+            "appearance": "app_action",
+            "routing": routing,
+            "access": list(item.get("access") or []),
+            "access_colour": str(item.get("access_colour") or ""),
         }
         if not available:
             row["available"] = False
@@ -189,11 +213,12 @@ def _addon_intent_rows(caller_idx: int, used_keys: set[str]) -> list[dict]:
         return []
     rows: list[dict] = []
     for item in intents:
-        if not isinstance(item, dict) or item.get("callback"):
+        if not isinstance(item, dict):
             continue
         prompt = str(item.get("prompt") or "").strip()
         label = str(item.get("label") or "").strip()
-        if not prompt or not label:
+        callback = bool(item.get("callback"))
+        if (not prompt and not callback) or not label:
             continue
         key = str(item.get("key") or "").strip().upper()
         if not key or key in used_keys:
@@ -205,7 +230,15 @@ def _addon_intent_rows(caller_idx: int, used_keys: set[str]) -> list[dict]:
             "hint": str(item.get("hint") or f"Addon: {item.get('addon_id', '')}").strip(),
             "prompt": prompt,
             "is_custom": False,
-            "routing": {"mode": "legacy", "source": "addon"},
+            "routing": {
+                "mode": "addon",
+                "source": "addon",
+                "addon_id": str(item.get("addon_id") or ""),
+                "action_id": str(item.get("id") or ""),
+                "callback": callback,
+            },
+            "access": list(item.get("access") or []),
+            "access_colour": str(item.get("access_colour") or ""),
         })
     return rows
 
@@ -285,11 +318,22 @@ def _qcolor(value: str | None, fallback: QColor | str, alpha: int | None = None)
 def _theme_palette() -> dict[str, QColor]:
     """Return intent overlay colors derived from the active settings theme."""
     try:
-        from ui.shared.theme import theme_colors
+        from ui.shared.theme import is_dark_mode, theme_colors
 
         colors = theme_colors()
+        dark = is_dark_mode()
     except Exception:
         colors = {}
+        dark = True
+    app_action = QColor("#e0b03e" if dark else "#8a5a00")
+    app_action_dim = QColor(app_action)
+    app_action_dim.setAlpha(205)
+    app_action_badge = QColor(app_action)
+    app_action_badge.setAlpha(42)
+    app_action_badge_hover = QColor(app_action)
+    app_action_badge_hover.setAlpha(82)
+    app_action_row_hover = QColor(app_action)
+    app_action_row_hover.setAlpha(28)
     return {
         "bg": _qcolor(colors.get("bg"), _BG, 248),
         "border": _qcolor(colors.get("border"), _BORDER, 54),
@@ -307,6 +351,11 @@ def _theme_palette() -> dict[str, QColor]:
         "ctx_text": _qcolor(colors.get("text"), _CTX_TEXT, 235),
         "ctx_sub": _qcolor(colors.get("text_dim"), _CTX_SUB, 190),
         "warn": _qcolor(colors.get("accent_hover") or colors.get("accent"), _WARN, 245),
+        "app_action": app_action,
+        "app_action_dim": app_action_dim,
+        "app_action_badge": app_action_badge,
+        "app_action_badge_hover": app_action_badge_hover,
+        "app_action_row_hover": app_action_row_hover,
     }
 
 
@@ -467,7 +516,17 @@ class IntentOverlay(QWidget):
         self.setMouseTracking(True)
 
         self._caller_idx = int(caller_idx)
-        self._action_provider = dict(action_provider or {})
+        from core.action_files.store import configured_caller_rows
+
+        caller_rows = configured_caller_rows(config)
+        caller_settings = (
+            caller_rows[self._caller_idx] if self._caller_idx < len(caller_rows) else {}
+        )
+        self._space_starts_new_chat = bool(caller_settings.get("space_starts_new_chat", True))
+        self._action_provider_enabled = not bool(caller_settings.get("paste_back"))
+        self._action_provider = (
+            dict(action_provider or {}) if self._action_provider_enabled else {}
+        )
         provider_suggestions = self._action_provider.get("suggested_intents")
         self._rows = _build_rows(
             caller_idx,
@@ -651,7 +710,9 @@ class IntentOverlay(QWidget):
         """Load app-specific actions after deferred hotkey context capture."""
         if self._handled:
             return
-        self._action_provider = dict(action_provider or {})
+        self._action_provider = (
+            dict(action_provider or {}) if self._action_provider_enabled else {}
+        )
         provider_suggestions = self._action_provider.get("suggested_intents")
         self._rows = _build_rows(
             self._caller_idx,
@@ -902,7 +963,7 @@ class IntentOverlay(QWidget):
         provider_name = self._provider_display_name()
         if provider_name:
             p.setFont(QFont("Segoe UI", 9, QFont.Weight.DemiBold))
-            p.setPen(QPen(palette["key"]))
+            p.setPen(QPen(palette["app_action"]))
             p.drawText(
                 _PAD_H + 4,
                 y,
@@ -918,6 +979,7 @@ class IntentOverlay(QWidget):
             self._row_rects.append(row_rect)
             available = bool(row.get("available", True))
             hovered = available and i == self._hovered
+            app_action = row.get("appearance") == "app_action"
 
             # Row highlight
             if hovered:
@@ -926,30 +988,79 @@ class IntentOverlay(QWidget):
                     _PAD_H, y, _W - _PAD_H * 2, _ROW_H,
                     _ROW_RADIUS, _ROW_RADIUS,
                 )
-                p.fillPath(rp, QBrush(palette["row_hl"]))
+                hover_color = (
+                    palette["app_action_row_hover"] if app_action else palette["row_hl"]
+                )
+                p.fillPath(rp, QBrush(hover_color))
 
             # Separator above (skip first row)
             if i > 0:
-                p.setPen(QPen(palette["sep"], 1))
+                previous_app_action = self._rows[i - 1].get("appearance") == "app_action"
+                separator = (
+                    palette["app_action_dim"]
+                    if app_action or previous_app_action
+                    else palette["sep"]
+                )
+                p.setPen(QPen(separator, 1))
                 p.drawLine(_PAD_H + _BADGE_W + 12, y, _W - _PAD_H, y)
 
             # Badge background
             badge_y = y + (_ROW_H - _BADGE_H) // 2
             bp = QPainterPath()
             bp.addRoundedRect(_BADGE_X, badge_y, _BADGE_W, _BADGE_H, _BADGE_R, _BADGE_R)
-            p.fillPath(bp, QBrush(palette["badge_hl"] if hovered else palette["badge_bg"]))
+            if app_action:
+                badge_color = (
+                    palette["app_action_badge_hover"]
+                    if hovered
+                    else palette["app_action_badge"]
+                )
+            else:
+                badge_color = palette["badge_hl"] if hovered else palette["badge_bg"]
+            p.fillPath(bp, QBrush(badge_color))
 
             # Key letter
             p.setFont(key_font)
-            p.setPen(QPen(palette["key"] if available else palette["hint"]))
+            key_color = (
+                palette["app_action"]
+                if app_action and available
+                else palette["key"] if available
+                else palette["hint"]
+            )
+            p.setPen(QPen(key_color))
             p.drawText(_BADGE_X, badge_y, _BADGE_W, _BADGE_H,
                        Qt.AlignmentFlag.AlignCenter, row["glyph"])
 
             # Label
-            p.setFont(label_font)
-            p.setPen(QPen(palette["label"] if available else palette["hint"]))
+            label_color = (
+                palette["app_action"]
+                if app_action and available
+                else palette["label"] if available
+                else palette["hint"]
+            )
             text_w = _W - _PAD_H - _TEXT_X
             label_y = y + (_ROW_H // 2) - 12
+            access = [str(item).strip().title() for item in row.get("access", []) if str(item).strip()]
+            if access:
+                tag_text = ", ".join(access)
+                tag_font = QFont("Segoe UI", 7, QFont.Weight.DemiBold)
+                tag_w = min(120, QFontMetrics(tag_font).horizontalAdvance(tag_text) + 14)
+                tag_rect = QRect(_W - _PAD_H - tag_w - 4, label_y + 1, tag_w, 18)
+                tag_color = {
+                    "green": QColor("#42b883"),
+                    "amber": QColor("#d9a441"),
+                    "red": QColor("#e06464"),
+                }.get(str(row.get("access_colour") or "green"), QColor("#42b883"))
+                tag_bg = QColor(tag_color)
+                tag_bg.setAlpha(42)
+                p.setBrush(QBrush(tag_bg))
+                p.setPen(QPen(tag_color, 1))
+                p.drawRoundedRect(tag_rect, 7, 7)
+                p.setFont(tag_font)
+                p.setPen(QPen(tag_color))
+                p.drawText(tag_rect, Qt.AlignmentFlag.AlignCenter, tag_text)
+                text_w -= tag_w + 10
+            p.setFont(label_font)
+            p.setPen(QPen(label_color))
             p.drawText(_TEXT_X, label_y, text_w, 20,
                        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
                        row["label"])
@@ -962,7 +1073,10 @@ class IntentOverlay(QWidget):
             )
             if subtitle:
                 p.setFont(hint_font)
-                p.setPen(QPen(palette["hint"]))
+                subtitle_color = (
+                    palette["app_action_dim"] if app_action else palette["hint"]
+                )
+                p.setPen(QPen(subtitle_color))
                 hint_y = y + (_ROW_H // 2) + 2
                 elided = QFontMetrics(hint_font).elidedText(
                     subtitle, Qt.TextElideMode.ElideRight, text_w
@@ -1968,7 +2082,8 @@ class IntentOverlay(QWidget):
             self._cancel()
             return
         if name.lower() in {"space", "spacebar"}:
-            self._toggle_conversation_mode()
+            if self._space_starts_new_chat:
+                self._toggle_conversation_mode()
             self._mark_raw_context_key("space")
             return
         if self._cycle_context_key(name):
@@ -1989,7 +2104,7 @@ class IntentOverlay(QWidget):
             super().keyPressEvent(event)
             return
         if event.key() == Qt.Key.Key_Space:
-            if not self._is_duplicate_qt_context_key("space"):
+            if self._space_starts_new_chat and not self._is_duplicate_qt_context_key("space"):
                 self._toggle_conversation_mode()
             event.accept()
             return
@@ -2078,6 +2193,9 @@ class IntentOverlay(QWidget):
             self._focus_deferred = False
             self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
             self.setEnabled(True)
+        if self.isHidden():
+            self.show()
+            self.raise_()
         self._start_interaction()
 
     def _start_interaction(self) -> None:
@@ -2167,11 +2285,26 @@ class IntentOverlay(QWidget):
 
     def closeEvent(self, event):
         """Close event."""
+        # Qt may try to close a disabled Popup shown without activation. During
+        # deferred context capture that is a platform lifecycle event, not a
+        # user dismissal. Internally superseded pickers are already marked
+        # handled by close_without_cancel(), so those still close normally.
+        if self._focus_deferred and not self._handled:
+            event.ignore()
+            return
         self._cancel_if_unhandled()
         super().closeEvent(event)
 
     def hideEvent(self, event):
         """Treat unexpected hides as cancellation so the icon returns idle."""
+        # A non-activating disabled Popup can be hidden by Qt before the native
+        # context capture completes (notably under the offscreen Windows
+        # backend). It is intentionally inert at this point, so the hide cannot
+        # represent a user cancellation. Activation re-shows it once capture is
+        # complete.
+        if self._focus_deferred:
+            super().hideEvent(event)
+            return
         if self._suppress_hide_cancel:
             self._suppress_hide_cancel = False
             super().hideEvent(event)

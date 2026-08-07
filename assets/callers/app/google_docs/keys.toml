@@ -1,0 +1,7 @@
+# Keep the same actions and keys as Microsoft Word and LibreOffice Writer.
+m = "summarize_document"
+e = "explain_selection"
+r = "rewrite_selection"
+i = "find_inconsistencies"
+t = "extract_action_items"
+o = "build_outline"

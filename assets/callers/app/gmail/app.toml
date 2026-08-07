@@ -1,0 +1,7 @@
+display_name = "Gmail"
+app = "email"
+priority = 90
+
+[match]
+url = ["mail.google.com"]
+title = ["gmail"]

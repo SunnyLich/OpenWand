@@ -1,0 +1,7 @@
+display_name = "PowerPoint for the web"
+app = "presentation"
+priority = 50
+
+[match]
+url = ["powerpoint.office.com", "powerpoint.cloud.microsoft", "powerpoint.microsoft.com", "office.com/powerpoint", "microsoft365.com/powerpoint"]
+title = ["powerpoint"]

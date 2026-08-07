@@ -1,0 +1,4 @@
+label = "Find story and logic gaps"
+hint = "Review the narrative flow, unsupported claims, and missing transitions"
+prompt = "Review this presentation's story and logic. Identify abrupt transitions, unsupported claims, duplicated points, missing evidence, unclear audience assumptions, and conclusions that do not follow from earlier slides. Explain why each issue matters and propose a reviewable fix without editing any slide."
+access = ["text"]

@@ -69,7 +69,15 @@ def test_addon_intent_rows_render_and_run_from_the_visible_picker(qapp, monkeypa
             "hint": "Addon: demo",
             "prompt": "Research the current selection with the add-on.",
             "is_custom": False,
-            "routing": {"mode": "legacy", "source": "addon"},
+            "routing": {
+                "mode": "addon",
+                "source": "addon",
+                "addon_id": "demo",
+                "action_id": "research",
+                "callback": False,
+            },
+            "access": [],
+            "access_colour": "",
         }
 
         QTest.keyClick(overlay, Qt.Key.Key_X)
@@ -123,6 +131,8 @@ def test_provider_suggestions_precede_but_preserve_configured_and_custom_rows(qa
             "Configured fix",
             "Freeform",
         ]
+        assert overlay._rows[0]["appearance"] == "app_action"
+        assert "appearance" not in overlay._rows[1]
         assert overlay._rows[0]["glyph"] != "F"
         assert overlay._rows[1]["glyph"] == "F"
         assert overlay._rows[1]["routing"] == {"mode": "answer", "source": "configured"}
@@ -145,8 +155,89 @@ def test_provider_suggestions_precede_but_preserve_configured_and_custom_rows(qa
         _close_overlay_if_valid(overlay, qapp)
 
 
-def test_rewrite_presets_use_structured_auto_routing_when_an_app_provider_is_active(qapp):
-    """Configured rewrite choices join the provider decision boundary instead of legacy paste."""
+def test_hidden_provider_primitive_stays_out_of_picker_rows(qapp):
+    import config
+    import ui.intent_overlay as intent_overlay
+
+    old_rows = list(config.CALLER_ROWS)
+    config.CALLER_ROWS[:] = [{"intents": [], "custom_key": "s"}]
+    provider = {
+        "id": "excel",
+        "app": "excel",
+        "display_name": "Microsoft Excel",
+        "suggested_intents": [
+            {
+                "id": "add_chart",
+                "label": "Create a chart",
+                "hint": "Planner primitive",
+                "prompt": "Create a chart.",
+                "preferred_key": "c",
+                "mode": "action",
+                "capability_type": "excel.add_chart@1",
+                "planning_tool": "excel_plan_add_chart",
+                "show_in_picker": False,
+            },
+            {
+                "id": "find_outliers",
+                "label": "Find outliers in this data",
+                "hint": "Explain unusual rows",
+                "prompt": "Find outliers.",
+                "preferred_key": "u",
+                "mode": "answer",
+                "show_in_picker": True,
+            },
+        ],
+    }
+    overlay = intent_overlay.IntentOverlay(caller_idx=0, action_provider=provider)
+    try:
+        assert [row["label"] for row in overlay._rows] == [
+            "Find outliers in this data",
+            "Custom prompt",
+        ]
+    finally:
+        config.CALLER_ROWS[:] = old_rows
+        _close_overlay_if_valid(overlay, qapp)
+
+
+def test_writer_app_action_is_golden_and_precedes_normal_actions():
+    """Text-app provider actions keep the same highlighted, top-of-list treatment."""
+    import config
+    import ui.intent_overlay as intent_overlay
+
+    old_rows = list(config.CALLER_ROWS)
+    config.CALLER_ROWS[:] = [{
+        "paste_back": False,
+        "intents": [{
+            "key": "w",
+            "label": "Normal writing action",
+            "hint": "Configured action",
+            "prompt": "Improve this writing.",
+        }],
+        "custom_key": "s",
+    }]
+    try:
+        rows = intent_overlay._build_rows(0, [{
+            "id": "writer.summarize_document",
+            "label": "Summarize this document",
+            "hint": "Use the active Writer document",
+            "prompt": "Summarize this document.",
+            "preferred_key": "d",
+            "mode": "answer",
+        }])
+
+        assert [row["label"] for row in rows] == [
+            "Summarize this document",
+            "Normal writing action",
+            "Custom prompt",
+        ]
+        assert rows[0]["appearance"] == "app_action"
+        assert all(row.get("appearance") != "app_action" for row in rows[1:])
+    finally:
+        config.CALLER_ROWS[:] = old_rows
+
+
+def test_rewrite_picker_ignores_app_action_provider(qapp):
+    """Rewrite & Paste never exposes app actions intended for the General caller."""
     import config
     import ui.intent_overlay as intent_overlay
 
@@ -177,8 +268,15 @@ def test_rewrite_presets_use_structured_auto_routing_when_an_app_provider_is_act
     }
     overlay = intent_overlay.IntentOverlay(caller_idx=0, action_provider=provider)
     try:
+        assert [row["label"] for row in overlay._rows] == ["Fix grammar", "Custom prompt"]
         configured = next(row for row in overlay._rows if row["label"] == "Fix grammar")
-        assert configured["routing"] == {"mode": "auto", "source": "configured"}
+        assert configured["routing"] == {"mode": "legacy", "source": "configured"}
+        assert overlay._action_provider == {}
+
+        overlay.update_action_provider(provider)
+
+        assert [row["label"] for row in overlay._rows] == ["Fix grammar", "Custom prompt"]
+        assert overlay._action_provider == {}
     finally:
         config.CALLER_ROWS[:] = old_rows
         _close_overlay_if_valid(overlay, qapp)
@@ -877,6 +975,7 @@ def test_intent_overlay_context_palette_uses_theme_settings():
         assert palette["ctx_text"].name().lower() == "#f0ead6"
         assert palette["badge_bg"].name().lower() == "#203040"
         assert palette["bg"].name().lower() == "#101820"
+        assert palette["app_action"].name().lower() == "#e0b03e"
     finally:
         for key, value in old_values.items():
             setattr(config, key, value)

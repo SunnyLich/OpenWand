@@ -1,4 +1,4 @@
-"""Safe HTML/CSS diff preview for an exact VS Code action plan."""
+"""Safe HTML/CSS diff preview for an exact code editor action plan."""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ def render_vscode_preview(plan: ActionPlan, snapshot: VSCodeSnapshot) -> ActionP
     diff, changed_lines = _diff(snapshot.selected_text, replacement, Path(snapshot.file_path).name)
 
     fragment = canvas_preview(
-        app="Visual Studio Code",
+        app=snapshot.editor_name,
         target=f"{Path(snapshot.file_path).name} · {snapshot.selection_start}:{snapshot.selection_end}",
         title=plan.summary,
         hero_html=(
@@ -62,7 +62,7 @@ def render_vscode_preview(plan: ActionPlan, snapshot: VSCodeSnapshot) -> ActionP
             + "</code></pre>"
         ),
         chips_html=chips((f"{changed_lines} changed lines", "Selected range only")),
-        badge="VS",
+        badge="IDE",
     )
     return ActionPreview(
         plan_id=plan.plan_id,

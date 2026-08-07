@@ -1,0 +1,3 @@
+d = "outlook.create_draft"
+l = "outlook.apply_category"
+u = "outlook.disabled_rule"

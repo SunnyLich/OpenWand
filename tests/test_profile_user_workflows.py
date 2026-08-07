@@ -459,9 +459,15 @@ def test_every_file_access_mode_saves_reloads_and_changes_runtime_tool_grants(
 
     profile_workflow.finish_wizard(name="File Access", provider="anthropic", model="claude-files")
     if mode == "off":
-        # Advanced setup defaults to Off. Persist Read first so selecting Off is
-        # a real user change that exercises Save rather than a no-op.
-        profile_workflow.settings_env.write_settings_env({"CALLER_1_FILE_ACCESS": "read"})
+        # Advanced setup defaults to Off. Save Read through the real file-backed
+        # caller editor first so selecting Off is a user change, not a no-op.
+        first_dialog = profile_workflow.open_settings()
+        first_driver = QtUserDriver(profile_workflow.app)
+        try:
+            first_driver.select_combo_data(first_dialog._caller_blocks[0]["file_access"], "read")
+            profile_workflow.save_changes(first_dialog)
+        finally:
+            profile_workflow.close_settings(first_dialog)
     profile_workflow.reload_runtime()
     dialog = profile_workflow.open_settings()
     driver = QtUserDriver(profile_workflow.app)
@@ -472,7 +478,10 @@ def test_every_file_access_mode_saves_reloads_and_changes_runtime_tool_grants(
     finally:
         profile_workflow.close_settings(dialog)
 
-    assert profile_workflow.saved()["CALLER_1_FILE_ACCESS"] == mode
+    saved = profile_workflow.saved()
+    assert "CALLER_1_FILE_ACCESS" not in saved
+    caller_file = profile_workflow.env_path.parent / "callers" / "general" / "caller.toml"
+    assert f'file_access = "{mode}"' in caller_file.read_text(encoding="utf-8")
     profile_workflow.reload_runtime()
     caller = profile_workflow.config.CALLER_ROWS[0]
     assert caller["file_access"] == mode

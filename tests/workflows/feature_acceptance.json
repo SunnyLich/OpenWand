@@ -6667,13 +6667,14 @@
       "function_id": "F358",
       "function": "Open the Addon Manager.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Open Addon Manager action -> singleton AddonManagerDialog creation/show/raise",
+      "production_entry_point": "Open Addon Manager action -> singleton/local or protocol-host dialog -> action catalogue cards",
       "test_node_ids": [
         "tests/test_addon_manager_ui.py::test_open_addon_manager_reuses_visible_singleton",
-        "tests/test_addon_manager_ui.py::test_open_addon_manager_keeps_parent_on_linux"
+        "tests/test_addon_manager_ui.py::test_open_addon_manager_keeps_parent_on_linux",
+        "tests/test_addon_manager_ui.py::test_protocol_addon_manager_action_toggle_emits_supervisor_event"
       ],
       "success_assertions": [
-        "The action opens the real manager with correct platform parenting and a repeat action reuses rather than duplicates the visible window."
+        "The action opens the real manager with correct platform parenting, a repeat action reuses rather than duplicates the visible window, and protocol-host cards show catalogued action kind/access metadata and emit the exact toggle event."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -6681,7 +6682,7 @@
         "I186",
         "I189"
       ],
-      "audit_note": "Real offscreen Qt dialog lifecycle is exercised on Linux and non-Linux branches."
+      "audit_note": "Real offscreen Qt dialog lifecycle and the production UI-worker catalogue card are exercised."
     },
     {
       "function_id": "F359",
@@ -6896,13 +6897,14 @@
       "function_id": "F370",
       "function": "Let add-ons contribute model-callable tools.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Enabled tools-permission add-on -> isolated host get_tools/execute_tool -> brain discovery -> supervisor allow-list -> model-tool registry",
+      "production_entry_point": "actions/*.toml tool/tool_provider -> isolated host get_tools/execute_tool -> brain discovery/toggle -> supervisor allow-list -> model-tool registry",
       "test_node_ids": [
-        "tests/test_addon_manager.py::test_addon_hooks_and_tools_run_in_host_process",
+        "tests/test_addon_manager.py::test_action_files_catalogue_addon_surfaces_and_preserve_host_isolation",
+        "tests/test_app_user_workflows.py::test_brain_addon_install_settings_actions_and_toggle_workflow",
         "tests/runtime/test_supervisor_ipc.py::test_real_addon_tools_flow_from_addon_host_through_brain_policy"
       ],
       "success_assertions": [
-        "A real isolated add-on host contributes a callable schema, executes outside the app PID, crosses brain discovery, removes duplicate names, and reaches the query allow-list under its saved policy."
+        "A catalogued real isolated add-on tool keeps its host schema/executor, carries action-file label/access metadata across brain discovery, executes outside the app PID, reaches the query allow-list, and disappears/reappears when its comment-preserving action toggle changes."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -6911,20 +6913,21 @@
         "I160",
         "I186"
       ],
-      "audit_note": "Uses real temporary add-on source, manifest, host process, worker IPC, registry execution, and supervisor query construction."
+      "audit_note": "Uses real action TOML, temporary add-on source, host process, brain workflow, worker IPC, registry execution, and supervisor query construction."
     },
     {
       "function_id": "F371",
       "function": "Let add-ons process a response after completion.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "completed brain reply -> transform/after_response permission hooks -> isolated add-on host",
+      "production_entry_point": "actions/*.toml response_transform -> completed brain reply -> permission/action gates -> isolated add-on host transform/after_response",
       "test_node_ids": [
-        "tests/test_addon_manager.py::test_addon_hooks_and_tools_run_in_host_process",
+        "tests/test_addon_manager.py::test_action_files_catalogue_addon_surfaces_and_preserve_host_isolation",
         "tests/test_addon_manager.py::test_response_transform_hook_requires_modify_permission_and_chains",
+        "tests/test_app_user_workflows.py::test_brain_addon_install_settings_actions_and_toggle_workflow",
         "tests/integration/brain/test_handler_query.py::test_query_uses_addon_modified_final_response"
       ],
       "success_assertions": [
-        "A modify-permitted chain changes the committed reply in order, the completed text reaches after_response, and the real host records the exact final response."
+        "A declared and modify-permitted transform changes the committed reply in order, the completed text reaches after_response, the real host records it, and disabling the action leaves the canonical response unchanged."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -6932,20 +6935,22 @@
         "I160",
         "I186"
       ],
-      "audit_note": "Production finalization and real host IPC are covered; provider text is deterministic."
+      "audit_note": "Production finalization, declarative action gate, permission gate, and real host IPC are covered; provider text is deterministic."
     },
     {
       "function_id": "F372",
       "function": "Let add-ons add intent actions and action rows.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Manifest/dynamic intents -> manager normalization -> visible IntentOverlay action row -> shortcut selection",
+      "production_entry_point": "actions/*.toml intent -> manager/host merge -> visible IntentOverlay access-labelled row -> supervisor prompt or brain callback route",
       "test_node_ids": [
-        "tests/test_addon_manager.py::test_addon_events_intents_and_notifications",
+        "tests/test_addon_manager.py::test_action_files_catalogue_addon_surfaces_and_preserve_host_isolation",
         "tests/test_intent_overlay.py::test_addon_intent_rows_render_and_run_from_the_visible_picker",
+        "tests/runtime/test_flows.py::test_addon_prompt_intent_uses_normal_query_path",
+        "tests/runtime/test_flows.py::test_addon_callback_intent_crosses_brain_host_boundary",
         "tests/test_app_user_workflows.py::test_brain_addon_install_settings_actions_and_toggle_workflow"
       ],
       "success_assertions": [
-        "Static and host-provided intents load, a contributed row paints with its key/label/hint, and pressing that visible key emits the exact prompt."
+        "A catalogued intent merges with its host handler, paints its key/label/hint/access metadata, pressing it emits the exact prompt, prompt actions use the normal query path, and callback actions cross the brain boundary into the isolated host."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -6953,7 +6958,7 @@
         "I160",
         "I186"
       ],
-      "audit_note": "Real host contribution is paired with real Qt picker rendering and input."
+      "audit_note": "Real action TOML and host contribution are paired with real Qt picker rendering/input and supervisor/brain routes."
     },
     {
       "function_id": "F373",

@@ -1,0 +1,6 @@
+kind = "tool"
+handler = "virtual_workspace_create_folder"
+label = "Create workspace folder"
+hint = "Create one folder inside the isolated workspace."
+access = ["files"]
+

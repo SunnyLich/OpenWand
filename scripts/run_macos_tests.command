@@ -133,6 +133,7 @@ lock_hash() {
 python_deps_ok() {
   "$1" - <<'PY' >/dev/null 2>&1
 import PySide6
+import anydoc
 import dotenv
 import PIL
 import numpy

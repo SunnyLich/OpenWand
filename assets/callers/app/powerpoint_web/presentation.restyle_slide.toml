@@ -1,0 +1,8 @@
+label = "Restyle this slide"
+hint = "Preview a content-preserving style preset"
+prompt = "Restyle the selected slide while preserving its content."
+capability = "presentation.restyle_slide@1"
+planner = "presentation_plan_restyle_slide"
+access = ["internet"]
+available = false
+unavailable_reason = "This app's authenticated Wisp API bridge is not connected yet"

@@ -1,0 +1,4 @@
+label = "Draft an agenda"
+hint = "Turn the deck's actual narrative into a concise opening agenda"
+prompt = "Draft a concise agenda that reflects the actual content and sequence of this presentation. Group related slides into clear sections, use audience-facing wording, and flag any slide that does not fit the proposed structure. Return text for review only and do not add or edit slides."
+access = ["text"]

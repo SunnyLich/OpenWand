@@ -290,9 +290,12 @@ class HotkeyListener:
                 if binding:
                     self._hotkey_defs.append((binding, callback))
 
+        from core.action_files.store import configured_caller_rows
+
+        action_callers = configured_caller_rows(config)
         for i, cb in enumerate(on_callers):
-            if i < len(config.CALLER_ROWS):
-                row = config.CALLER_ROWS[i]
+            if i < len(action_callers):
+                row = action_callers[i]
                 if bool(row.get("enabled", True)):
                     _add_bindings((row.get("hotkey"), row.get("hotkey_2")), cb)
         _add_bindings(

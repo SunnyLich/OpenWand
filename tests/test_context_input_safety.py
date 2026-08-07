@@ -1,14 +1,46 @@
 """Safety limits for files captured as model context."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from PySide6.QtCore import QMimeData, QUrl
 
 from core import attachment_source
 from core.conversation_store import store as conversation_store
 from core.llm_clients import documents
-from runtime.supervisor import flow_estimates
+from runtime.supervisor import flow_estimates, flows
 from ui import drop_zone
+
+
+@pytest.mark.parametrize("suffix", sorted(attachment_source.DOCUMENT_SUFFIXES))
+def test_anydoc_supported_extensions_route_as_document_paths(tmp_path, suffix):
+    """Every AnyDoc format follows the deferred worker-thread parser path."""
+    path = tmp_path / f"document{suffix}"
+    path.write_bytes(b"fixture")
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(path))])
+
+    items = drop_zone.process_drop_mime(mime)
+
+    assert len(items) == 1
+    assert items[0][0] == path.name
+    assert Path(items[0][1]) == path
+    assert items[0][2] == "document_path"
+
+
+def test_selected_csv_path_uses_anydoc_markdown_reader(tmp_path):
+    """Native Explorer/Finder selections use the same structured CSV parser."""
+    pytest.importorskip("anydoc")
+    path = tmp_path / "selected.csv"
+    path.write_text("name,value\nalpha,1", encoding="utf-8")
+
+    items = flows.FlowController._path_context_items([str(path)])
+
+    assert len(items) == 1
+    assert items[0]["type"] == "text"
+    assert "| name | value |" in items[0]["content"]
+    assert "| alpha | 1 |" in items[0]["content"]
 
 
 def test_large_text_document_reads_only_bounded_prefix(tmp_path):

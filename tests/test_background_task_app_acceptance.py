@@ -14,7 +14,10 @@ def test_chat_model_delegates_real_detached_work_and_result_returns(tmp_path: Pa
         cwd=Path(__file__).resolve().parents[1],
         capture_output=True,
         text=True,
-        timeout=75,
+        # The runner permits a 45-second delivery wait plus 20-second IPC calls
+        # and orderly worker shutdown. Leave enough outer-process headroom for
+        # loaded full-suite and CI hosts to report the runner's own diagnostics.
+        timeout=120,
         check=False,
     )
 

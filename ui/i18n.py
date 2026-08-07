@@ -155,8 +155,22 @@ def _original(obj: Any, prop_name: str, value: str) -> str:
         return value
 
 
+def _is_qobject_valid(obj: Any) -> bool:
+    """Return false for PySide wrappers whose underlying Qt object was deleted."""
+    try:
+        import shiboken6
+
+        return bool(shiboken6.isValid(obj))
+    except ImportError:
+        return True
+    except Exception:
+        return False
+
+
 def _translate_action(action: Any) -> None:
     """Handle translate action for UI i18n."""
+    if not _is_qobject_valid(action):
+        return
     try:
         text = action.text()
     except Exception:
@@ -195,6 +209,8 @@ def localize_widget_tree(root: Any) -> None:
         pass
 
     for widget in widgets:
+        if not _is_qobject_valid(widget):
+            continue
         try:
             title = widget.windowTitle()
             if title:

@@ -1,0 +1,7 @@
+id = "ui-lab-rewrite-reply"
+kind = "response_transform"
+handler = "transform_response_text"
+label = "Rewrite assistant replies"
+hint = "May replace assistant response text using UI Lab's configured prefix."
+access = ["text"]
+

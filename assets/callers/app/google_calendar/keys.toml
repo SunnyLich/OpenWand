@@ -1,0 +1,2 @@
+e = "calendar.create_event"
+r = "calendar.reschedule_event"

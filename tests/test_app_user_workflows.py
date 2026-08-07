@@ -2555,10 +2555,28 @@ def test_supervisor_rewrite_snip_voice_and_dictation_workflow(tmp_path: Path):
     with caller_config(rewrite_rows):
         _flow, native, ui, brain, _audio = make_flow(native=native, brain=brain)
         native.emit("native.hotkey", {"kind": "caller", "index": 0})
-        ui.emit("ui.intent.chosen", {"custom": "Fix grammar"})
+        annotation = ui.last_call("ui.rewrite.annotation.show")["params"]
+        ui.emit(
+            "ui.rewrite.annotation.submitted",
+            {
+                "annotation_id": annotation["annotation_id"],
+                "comment": "Fix grammar",
+                "include_document": False,
+            },
+        )
 
-    assert native.last_call("native.context.snapshot")["params"]["capture_focus"] is True
+    capture = native.calls_for("native.context.snapshot")[0]["params"]
+    assert capture["capture_focus"] is True
     assert brain.last_call("brain.rewrite")["params"]["selected_text"] == "bad grammar"
+    assert not native.calls_for("native.paste_text")
+    proposal = ui.last_call("ui.rewrite.annotation.proposal")["params"]
+    assert proposal["replacement_text"] == "good grammar"
+
+    ui.emit(
+        "ui.rewrite.annotation.accepted",
+        {"annotation_id": annotation["annotation_id"]},
+    )
+
     paste = native.last_call("native.paste_text")["params"]
     assert paste["text"] == "good grammar"
     assert paste["target_pid"] == 777
@@ -3082,6 +3100,7 @@ def test_settings_env_changes_reach_runtime_surfaces_workflow(
 ):
     """Saved settings reload into config and change the surfaces users touch."""
     import config
+    from core.action_files import save_callers
     from core.memory_store import store as memory_store
 
     managed_keys = {
@@ -3151,14 +3170,6 @@ def test_settings_env_changes_reach_runtime_surfaces_workflow(
                 "BUBBLE_FONT_SIZE=19",
                 "BUBBLE_HIDE_DELAY_MS=2400",
                 "INTENT_CONTEXT_TOGGLE_KEYS=7654321",
-                "CALLER_COUNT=1",
-                "CALLER_1_LABEL=Workflow Caller",
-                "CALLER_1_CONTEXT_AMBIENT=False",
-                "CALLER_1_CONTEXT_DOCUMENTS_MODE=model",
-                "CALLER_1_CONTEXT_BROWSER_MODE=auto",
-                "CALLER_1_CONTEXT_MEMORY_MODE=off",
-                "CALLER_1_CONTEXT_SCREENSHOT=model",
-                "CALLER_1_FILE_ACCESS=read",
                 "VOICE_CONTEXT_AMBIENT=False",
                 "VOICE_CONTEXT_DOCUMENTS_MODE=off",
                 "VOICE_CONTEXT_BROWSER_MODE=model",
@@ -3176,6 +3187,27 @@ def test_settings_env_changes_reach_runtime_surfaces_workflow(
             ]
         ),
         encoding="utf-8",
+    )
+    save_callers(
+        tmp_path / "callers",
+        [
+            {
+                "folder": "general",
+                "hotkey": "ctrl+q",
+                "enabled": True,
+                "label": "Workflow Caller",
+                "file_access": "read",
+                "context": {
+                    "ambient": "model",
+                    "browser": "on",
+                    "selection": "on",
+                    "screenshot": "model",
+                    "memory": "off",
+                    "files": "on",
+                },
+                "actions": [],
+            }
+        ],
     )
 
     try:
@@ -3201,7 +3233,7 @@ def test_settings_env_changes_reach_runtime_surfaces_workflow(
 
         caller = settings.callers.callers[0]
         assert caller["label"] == "Workflow Caller"
-        assert caller["context_ambient"] is False
+        assert caller["context_ambient"] is True
         assert caller["context_documents_mode"] == "model"
         assert caller["context_browser_mode"] == "auto"
         assert caller["context_memory_mode"] == "off"
@@ -3263,6 +3295,8 @@ def test_brain_addon_install_settings_actions_and_toggle_workflow(
     addons_dir = tmp_path / "installed-addons"
     source = tmp_path / "source-addon"
     source.mkdir()
+    actions_dir = source / "actions"
+    actions_dir.mkdir()
     (source / "addon.toml").write_text(
         textwrap.dedent(
             """
@@ -3273,9 +3307,10 @@ def test_brain_addon_install_settings_actions_and_toggle_workflow(
 
             [permissions]
             query = "modify"
-            response = "read"
+            response = "modify"
+            tools = true
             hotkeys = true
-            ui = ["tray", "settings", "intents", "notifications"]
+            ui = ["tray", "settings", "intents", "notifications", "message_actions"]
 
             [[hotkeys]]
             id = "static-hotkey"
@@ -3288,6 +3323,27 @@ def test_brain_addon_install_settings_actions_and_toggle_workflow(
             message = "Loaded"
             """
         ).strip(),
+        encoding="utf-8",
+    )
+    (actions_dir / "intent.toml").write_text(
+        'id = "workflow-intent"\nkind = "intent"\nhandler = "dynamic"\n'
+        'label = "Catalogued intent"\nkey = "d"\naccess = ["text"]\n',
+        encoding="utf-8",
+    )
+    tool_action = actions_dir / "tool.toml"
+    tool_action.write_text(
+        '# workflow comment\nid = "workflow-tool"\nkind = "tool"\nhandler = "workflow_tool"\n'
+        'label = "Workflow tool"\nhint = "Run the catalogued workflow tool."\naccess = ["files"]\n',
+        encoding="utf-8",
+    )
+    (actions_dir / "transform.toml").write_text(
+        'id = "workflow-transform"\nkind = "response_transform"\n'
+        'label = "Workflow response transform"\naccess = ["text"]\n',
+        encoding="utf-8",
+    )
+    (actions_dir / "message.toml").write_text(
+        'id = "workflow-message"\nkind = "message_action"\nhandler = "host-message"\n'
+        'label = "Workflow message"\naccess = ["text"]\n',
         encoding="utf-8",
     )
     (source / "__init__.py").write_text(
@@ -3309,10 +3365,22 @@ def test_brain_addon_install_settings_actions_and_toggle_workflow(
                 return [{"id": "dynamic-hotkey", "label": "Dynamic", "hotkey": "ctrl+alt+d", "callback": lambda payload: {"message": "hotkey ok"}}]
 
             def get_intents():
-                return [{"id": "dynamic", "label": "Dynamic", "key": "d", "prompt": "Dynamic prompt"}]
+                return [{"id": "dynamic", "label": "Dynamic", "key": "d", "callback": lambda payload: {"message": "intent ok"}}]
 
             def get_notifications():
                 return [{"title": "Runtime", "message": "Ready"}]
+
+            def get_tools():
+                return [{"name": "workflow_tool", "description": "runtime", "executor": lambda inputs: "tool ok"}]
+
+            def transform_response_text(payload):
+                return {"text": "catalogued: " + payload["text"]}
+
+            def get_message_actions(payload):
+                return [{"id": "host-message", "label": "Host message"}]
+
+            def run_message_action(action_id, payload):
+                return {"status": "ran " + action_id}
             """
         ).strip(),
         encoding="utf-8",
@@ -3328,12 +3396,46 @@ def test_brain_addon_install_settings_actions_and_toggle_workflow(
         installed = handlers.brain_addons_install_folder(path=str(source))
         assert installed["id"] == "workflow-demo"
         assert Path(installed["path"]).is_dir()
+        assert (Path(installed["path"]) / "actions" / "tool.toml").is_file()
         listed = handlers.brain_addons_list()["addons"]
         addon = next(item for item in listed if item["id"] == "workflow-demo")
         assert addon["enabled"] is True
         assert "Act" in addon["tray_actions"]
         assert addon["settings"][0]["value"] == "hi"
         assert {item["id"] for item in addon["hotkeys"]} >= {"static-hotkey", "dynamic-hotkey"}
+        assert {item["kind"] for item in addon["actions"]} == {
+            "intent", "message_action", "response_transform", "tool",
+        }
+        assert handlers.brain_addons_tools()["tools"][0]["access"] == ["files"]
+        assert handlers.brain_addons_run_intent(
+            addon_id="workflow-demo",
+            action_id="workflow-intent",
+        ) == {"message": "intent ok"}
+        assert handlers.brain_addons_transform_response_text({"text": "reply"}) == {
+            "text": "catalogued: reply"
+        }
+        assert handlers.brain_addons_run_message_action(
+            addon_id="workflow-demo",
+            action_id="workflow-message",
+            payload={"text": "reply", "role": "assistant"},
+        )["status"] == "ran host-message"
+
+        toggled = handlers.brain_addons_set_action_enabled(
+            addon_id="workflow-demo",
+            action_id="workflow-tool",
+            enabled=False,
+        )
+        assert toggled["enabled"] is False
+        assert handlers.brain_addons_tools()["tools"] == []
+        installed_tool_action = Path(installed["path"]) / "actions" / "tool.toml"
+        assert "# workflow comment" in installed_tool_action.read_text(encoding="utf-8")
+        assert "enabled = false" in installed_tool_action.read_text(encoding="utf-8")
+        assert handlers.brain_addons_set_action_enabled(
+            addon_id="workflow-demo",
+            action_id="workflow-tool",
+            enabled=True,
+        )["enabled"] is True
+        assert handlers.brain_addons_tools()["tools"][0]["name"] == "workflow_tool"
 
         assert handlers.brain_addons_set_setting(
             addon_id="workflow-demo",

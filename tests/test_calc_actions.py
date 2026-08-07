@@ -212,13 +212,36 @@ def test_calc_provider_offers_useful_actions_and_analysis() -> None:
 
     provider = detected_picker_context(context)
 
-    assert [item["label"] for item in provider["suggested_intents"]] == [
-        "Create a bar chart",
-        "Clean up this table",
-        "Sort this table",
-        "Analyze this data",
+    visible = [
+        item for item in provider["suggested_intents"]
+        if item.get("show_in_picker", True)
     ]
-    assert provider["suggested_intents"][-1]["mode"] == "answer"
+    assert [item["label"] for item in visible] == [
+        "Find outliers in this data",
+        "Find trends and relationships",
+        "Summarize this data",
+        "Clean up this export",
+        "Explain the selected formula",
+    ]
+    assert {
+        item["label"]: (item["mode"], item["capability_type"])
+        for item in visible
+    } == {
+        "Find outliers in this data": ("answer", ""),
+        "Find trends and relationships": ("answer", ""),
+        "Summarize this data": ("answer", ""),
+        "Clean up this export": ("action", "calc.clean_range@1"),
+        "Explain the selected formula": ("answer", ""),
+    }
+    cleanup = next(item for item in visible if item["label"] == "Clean up this export")
+    assert cleanup["access"] == ["files"]
+    assert cleanup["access_colour"] == "amber"
+    assert {item["capability_type"] for item in provider["suggested_intents"] if not item["show_in_picker"]} == {
+        "",
+        "calc.add_chart@1",
+        "calc.format_table@1",
+        "calc.sort_range@1",
+    }
 
 
 def test_calc_format_table_plan_previews_content_preservation() -> None:

@@ -7,6 +7,7 @@ from core.actions.contracts import ActionCapability, ActionRisk
 ADD_CHART = "calc.add_chart@1"
 FORMAT_TABLE = "calc.format_table@1"
 SORT_RANGE = "calc.sort_range@1"
+CLEAN_RANGE = "calc.clean_range@1"
 
 
 def calc_capabilities() -> tuple[ActionCapability, ...]:
@@ -62,6 +63,41 @@ def calc_capabilities() -> tuple[ActionCapability, ...]:
                     "column_label": {"type": "string"},
                     "direction": {"type": "string", "enum": ["ascending", "descending"]},
                     "has_header": {"const": True},
+                },
+                "additionalProperties": False,
+            },
+            risk=ActionRisk.MEDIUM,
+            reversible=True,
+        ),
+        ActionCapability(
+            type=CLEAN_RANGE,
+            app="libreoffice_calc",
+            title="Apply reviewed cleanup",
+            description=(
+                "Apply an exact, reviewed set of cell replacements inside the captured range."
+            ),
+            input_schema={
+                "type": "object",
+                "required": ["changes"],
+                "properties": {
+                    "range": {"type": "string"},
+                    "changes": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 32,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "row_offset": {"type": "integer", "minimum": 0},
+                                "column_offset": {"type": "integer", "minimum": 0},
+                                "after_kind": {"type": "string", "enum": ["value", "formula"]},
+                                "after_value": {},
+                                "replace_formula": {"type": "boolean"},
+                            },
+                            "required": ["row_offset", "column_offset", "after_kind", "after_value"],
+                            "additionalProperties": False,
+                        },
+                    },
                 },
                 "additionalProperties": False,
             },

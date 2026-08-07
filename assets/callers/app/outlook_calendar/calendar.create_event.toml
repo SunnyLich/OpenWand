@@ -1,0 +1,8 @@
+label = "Create calendar event"
+hint = "Preview time, guests, and details"
+prompt = "Create a calendar event from my request."
+capability = "calendar.create_event@1"
+planner = "calendar_plan_create_event"
+access = ["internet"]
+available = false
+unavailable_reason = "Connect this account to Wisp before using account API actions"

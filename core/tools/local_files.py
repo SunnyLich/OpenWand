@@ -119,25 +119,37 @@ def execute_live_file_tool(
                 "file_edit": mutation_mode,
             },
         )
+        resolved = workspace.resolve(rel_path or ".")
+        event_base = {
+            "tool": name,
+            "path": str(resolved),
+            "relative_path": str(workspace.relative(rel_path or ".")),
+            "root": str(workspace.root),
+        }
+        _emit_file_event(event_callback, {**event_base, "phase": "started"})
         result = _dispatch_tool(toolbox, name, inputs or {}, rel_path)
-        if event_callback is not None:
-            try:
-                resolved = workspace.resolve(rel_path or ".")
-                event_callback(
-                    {
-                        "tool": name,
-                        "path": str(resolved),
-                        "relative_path": str(workspace.relative(rel_path or ".")),
-                        "root": str(workspace.root),
-                        "ok": bool(result.ok),
-                        "message": str(result.message or ""),
-                    }
-                )
-            except Exception:
-                pass
+        _emit_file_event(
+            event_callback,
+            {
+                **event_base,
+                "phase": "completed",
+                "ok": bool(result.ok),
+                "message": str(result.message or ""),
+            },
+        )
         return _format_result(result)
     except Exception as exc:  # noqa: BLE001 - model tools should fail in-band
         return f"Local file tool failed: {exc}"
+
+
+def _emit_file_event(callback: FileEventCallback | None, event: dict[str, Any]) -> None:
+    """Publish best-effort live file activity without affecting tool execution."""
+    if callback is None:
+        return
+    try:
+        callback(event)
+    except Exception:
+        pass
 
 
 def workspace_for_input(

@@ -214,8 +214,10 @@ _HOTKEY_TAP: Any = None
 
 def _hotkey_specs_from_config(config: Any) -> list[tuple[str, str, dict]]:
     """The same hotkeys the Carbon backend registers, as (combo, kind, extra)."""
+    from core.action_files.store import configured_caller_rows
+
     specs: list[tuple[str, str, dict]] = []
-    for i, row in enumerate(getattr(config, "CALLER_ROWS", []) or []):
+    for i, row in enumerate(configured_caller_rows(config)):
         if not bool((row or {}).get("enabled", True)):
             continue
         for key_name in ("hotkey", "hotkey_2"):
@@ -567,9 +569,10 @@ def main() -> int:
 
     try:
         import config
+        from core.action_files.store import configured_caller_rows
         from core.hotkeys import HotkeyListener
 
-        caller_count = len(getattr(config, "CALLER_ROWS", []))
+        caller_count = len(configured_caller_rows(config))
         callers = [
             (lambda idx=idx: emit_hotkey("caller", index=idx))
             for idx in range(caller_count)

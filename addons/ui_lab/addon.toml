@@ -13,13 +13,6 @@ response = "modify"
 tools = true
 ui = ["tray", "settings", "intents", "notifications", "text_annotations", "text_context_menu"]
 
-[[intents]]
-id = "ui-lab-demo-reply"
-key = "u"
-label = "UI lab"
-hint = "Ask for a reply with repeated words you can label."
-prompt = "Reply with one short paragraph that repeats the words Wisp and label so selected text labels can be tested."
-
 [[notifications]]
 title = "UI Lab"
 message = "UI Lab addon loaded. Select text in chat or the bubble, then right-click to add a label."

@@ -327,7 +327,8 @@ def validate_spreadsheet_advanced_plan(
                             "duplicate_formula_target", "A cell can receive only one reviewed formula.", operation.id
                         )
                     )
-                seen.add((row, column))
+                else:
+                    seen.add((row, column))
                 if not formula.startswith("=") or len(formula) > 512 or _SAFE_FORMULA_BLOCKLIST.search(formula):
                     issues.append(
                         ValidationIssue(

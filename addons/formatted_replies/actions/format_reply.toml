@@ -1,0 +1,5 @@
+id = "format-reply"
+kind = "message_action"
+label = "Format"
+hint = "Generate a restricted rich presentation while keeping the canonical reply."
+access = ["text", "internet"]

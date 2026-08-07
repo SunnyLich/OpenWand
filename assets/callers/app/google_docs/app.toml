@@ -1,0 +1,8 @@
+# Google Docs is URL-matched so a generic browser window, Google Sheets, and
+# Google Slides remain separate surfaces.
+display_name = "Google Docs"
+app = "google_docs"
+priority = 35
+
+[match]
+url = ["docs.google.com/document/"]

@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "runtime" / "brain"))
 APP_ICON_ICNS = ROOT / "assets" / "app.icns"
 
 LITEPARSE_DATAS, LITEPARSE_BINARIES, LITEPARSE_HIDDENIMPORTS = collect_all("liteparse")
+ANYDOC_DATAS, ANYDOC_BINARIES, ANYDOC_HIDDENIMPORTS = collect_all("anydoc")
 LANGUAGE_TAGS_DATAS, LANGUAGE_TAGS_BINARIES, LANGUAGE_TAGS_HIDDENIMPORTS = collect_all("language_tags")
 CLAUDE_SDK_DATAS, CLAUDE_SDK_BINARIES, CLAUDE_SDK_HIDDENIMPORTS = collect_all("claude_agent_sdk")
 INSTALLER_OWNED_SPEECH_EXCLUDES = [
@@ -74,20 +75,21 @@ block_cipher = None
 a = Analysis(
     [str(ROOT / "runtime" / "supervisor" / "app.py")],
     pathex=[str(ROOT)],
-    binaries=LITEPARSE_BINARIES + LANGUAGE_TAGS_BINARIES + CLAUDE_SDK_BINARIES + UV_BINARIES,
+    binaries=LITEPARSE_BINARIES + ANYDOC_BINARIES + LANGUAGE_TAGS_BINARIES + CLAUDE_SDK_BINARIES + UV_BINARIES,
     datas=[
         (str(ROOT / "assets"), "assets"),
         (str(ROOT / "ui" / "locales"), "ui/locales"),
         (str(ROOT / ".env.example"), "."),
         (str(ROOT / "pyproject.toml"), "."),
+        (str(ROOT / "licenses" / "AnyDoc-LICENSE.txt"), "licenses"),
         (str(ROOT / "requirements" / "optional"), "requirements/optional"),
-    ] + BUNDLED_ADDON_DATAS + LITEPARSE_DATAS + LANGUAGE_TAGS_DATAS + CLAUDE_SDK_DATAS,
+    ] + BUNDLED_ADDON_DATAS + LITEPARSE_DATAS + ANYDOC_DATAS + LANGUAGE_TAGS_DATAS + CLAUDE_SDK_DATAS,
     hiddenimports=[
         "pynput.keyboard._darwin",
         "pynput.mouse._darwin",
         "AppKit",
         "Quartz",
-    ] + MODULE_MODE_HIDDENIMPORTS + OPTIONAL_RUNTIME_HIDDENIMPORTS + RUNTIME_WORKER_HIDDENIMPORTS + BRAIN_HIDDENIMPORTS + LITEPARSE_HIDDENIMPORTS + LANGUAGE_TAGS_HIDDENIMPORTS + CLAUDE_SDK_HIDDENIMPORTS,
+    ] + MODULE_MODE_HIDDENIMPORTS + OPTIONAL_RUNTIME_HIDDENIMPORTS + RUNTIME_WORKER_HIDDENIMPORTS + BRAIN_HIDDENIMPORTS + LITEPARSE_HIDDENIMPORTS + ANYDOC_HIDDENIMPORTS + LANGUAGE_TAGS_HIDDENIMPORTS + CLAUDE_SDK_HIDDENIMPORTS,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

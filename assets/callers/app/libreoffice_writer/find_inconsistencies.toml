@@ -1,0 +1,4 @@
+label = "Find inconsistencies and contradictions"
+hint = "Cross-check claims, dates, names, numbers, and terminology"
+prompt = "Review the selected passage when a meaningful selection is available; otherwise review the available document for inconsistencies and contradictions. Cross-check factual claims, dates, names, numbers, terminology, and conflicting instructions. Point to the relevant passages, distinguish definite conflicts from possible ambiguity, and do not edit the document."
+access = ["text"]

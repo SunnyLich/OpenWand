@@ -1,0 +1,30 @@
+display_name = "Code editor"
+app = "code_editor"
+priority = 9
+
+[match]
+process = [
+  "pycharm64.exe", "pycharm.exe", "pycharm",
+  "idea64.exe", "idea.exe", "idea",
+  "webstorm64.exe", "webstorm.exe", "webstorm",
+  "goland64.exe", "goland.exe", "goland",
+  "clion64.exe", "clion.exe", "clion",
+  "rider64.exe", "rider.exe", "rider",
+  "rubymine64.exe", "rubymine.exe", "rubymine",
+  "phpstorm64.exe", "phpstorm.exe", "phpstorm",
+  "datagrip64.exe", "datagrip.exe", "datagrip",
+  "studio64.exe", "studio.exe", "studio",
+  "devenv.exe", "devenv",
+  "eclipse.exe", "eclipse",
+  "sublime_text.exe", "sublime_text",
+  "zed.exe", "zed",
+  "notepad++.exe", "notepad++",
+  "gvim.exe", "gvim", "vim.exe", "vim", "nvim.exe", "nvim",
+  "emacs.exe", "emacs", "kate", "kwrite",
+]
+title = [
+  "pycharm", "intellij idea", "webstorm", "goland", "clion", "rider",
+  "rubymine", "phpstorm", "datagrip", "android studio",
+  "microsoft visual studio", "eclipse ide", "sublime text", "notepad++",
+  "neovim", "gnu emacs",
+]

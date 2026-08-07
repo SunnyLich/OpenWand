@@ -8,4 +8,5 @@ hint = "Build a reviewed chart from the selected cells"
 prompt = "Create a chart from the selected cells."
 capability = "excel.add_chart@1"
 planner = "excel_plan_add_chart"
+show_in_picker = false
 access = ["files"]

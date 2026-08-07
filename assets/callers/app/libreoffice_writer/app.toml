@@ -1,0 +1,9 @@
+# LibreOffice uses a shared soffice process for several apps, so the generic
+# process must not be matched here: the Writer title keeps Calc from colliding.
+display_name = "LibreOffice Writer"
+app = "libreoffice_writer"
+priority = 95
+
+[match]
+process = ["swriter.exe", "swriter"]
+title = ["libreoffice writer", "libreoffice text document"]

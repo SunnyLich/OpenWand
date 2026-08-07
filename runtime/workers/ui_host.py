@@ -2070,6 +2070,7 @@ class QtProtocolHost:
         self._intent = None
         self._snip = None
         self._bubble = None
+        self._rewrite_annotations: dict[str, Any] = {}
         self._chat = None
         self._chat_message_actions_cache: list[dict[str, Any]] = []
         self._chat_message_actions_ready = False
@@ -2444,6 +2445,20 @@ class QtProtocolHost:
             return self._prewarm_intent()
         if method == "ui.show_intent":
             return self._show_intent(**params)
+        if method == "ui.rewrite.annotation.show":
+            return self._rewrite_annotation_show(**params)
+        if method == "ui.rewrite.annotation.processing":
+            return self._rewrite_annotation_processing(**params)
+        if method == "ui.rewrite.annotation.proposal":
+            return self._rewrite_annotation_proposal(**params)
+        if method == "ui.rewrite.annotation.anchor":
+            return self._rewrite_annotation_anchor(**params)
+        if method == "ui.rewrite.annotation.failure":
+            return self._rewrite_annotation_failure(**params)
+        if method == "ui.rewrite.annotation.remove":
+            return self._rewrite_annotation_remove(**params)
+        if method == "ui.rewrite.held_count":
+            return self._rewrite_held_count(**params)
         if method == "ui.intent.context_items":
             return self._update_intent_context_items(**params)
         if method == "ui.intent.action_provider":
@@ -2618,6 +2633,9 @@ class QtProtocolHost:
             )
             self._overlay_signals.summon_caller.connect(
                 lambda idx: self.emit("ui.summon_caller", {"caller_idx": int(idx)})
+            )
+            self._overlay_signals.rewrite_send_all.connect(
+                lambda: self.emit("ui.rewrite.send_all", {})
             )
             self._overlay_signals.show_snip_overlay.connect(
                 lambda: self.emit("ui.request_snip", {})
@@ -2904,6 +2922,184 @@ class QtProtocolHost:
         except Exception as exc:
             log.debug("intent prewarm failed", exc_info=True)
             return {"prewarmed": False, "error": str(exc)}
+
+    def _rewrite_annotation_show(
+        self,
+        annotation_id: str = "",
+        display_number: int = 1,
+        selected_text: str = "",
+        source_window_id: int = 0,
+        source_pid: int = 0,
+        source_label: str = "",
+        selection_rect: dict[str, float] | None = None,
+    ) -> dict[str, Any]:
+        """Open a focused Rewrite comment composer for one captured selection."""
+        from ui.rewrite_annotation import RewriteAnnotationPopup
+
+        key = str(annotation_id or "").strip()
+        if not key:
+            return {"shown": False, "reason": "missing_annotation_id"}
+        self._rewrite_annotation_remove(key)
+        popup = RewriteAnnotationPopup(
+            annotation_id=key,
+            display_number=max(1, int(display_number or 1)),
+            selected_text=str(selected_text or ""),
+            source_window_id=int(source_window_id or 0),
+            source_pid=int(source_pid or 0),
+            source_label=str(source_label or ""),
+            selection_rect=selection_rect,
+        )
+        self._rewrite_annotations[key] = popup
+
+        popup.submitted.connect(
+            lambda item_id, comment, include_document: self.emit(
+                "ui.rewrite.annotation.submitted",
+                {
+                    "annotation_id": item_id,
+                    "comment": comment,
+                    "include_document": bool(include_document),
+                },
+            )
+        )
+        popup.held.connect(
+            lambda item_id, comment, include_document: self.emit(
+                "ui.rewrite.annotation.held",
+                {
+                    "annotation_id": item_id,
+                    "comment": comment,
+                    "include_document": bool(include_document),
+                },
+            )
+        )
+
+        def _cancel(item_id: str) -> None:
+            self.emit("ui.rewrite.annotation.cancelled", {"annotation_id": item_id})
+            self._rewrite_annotation_remove(item_id)
+
+        def _decline(item_id: str) -> None:
+            self.emit("ui.rewrite.annotation.declined", {"annotation_id": item_id})
+            self._rewrite_annotation_remove(item_id)
+
+        popup.cancel_requested.connect(_cancel)
+        popup.declined.connect(_decline)
+        popup.accept_requested.connect(
+            lambda item_id, replacement: self.emit(
+                "ui.rewrite.annotation.accepted",
+                {"annotation_id": item_id, "replacement_text": replacement},
+            )
+        )
+        popup.revision_requested.connect(
+            lambda item_id, prompt: self.emit(
+                "ui.rewrite.annotation.revision_requested",
+                {"annotation_id": item_id, "prompt": prompt},
+            )
+        )
+        popup.anchor_refresh_requested.connect(
+            lambda item_id: self.emit(
+                "ui.rewrite.annotation.anchor_refresh_requested",
+                {"annotation_id": item_id},
+            )
+        )
+        popup.destroyed.connect(
+            lambda *_args, item_id=key, instance=popup: (
+                self._rewrite_annotations.pop(item_id, None)
+                if self._rewrite_annotations.get(item_id) is instance
+                else None
+            )
+        )
+        popup.show_composer()
+        result = {
+            "created": True,
+            "shown": bool(popup.isVisible()),
+            "annotation_id": key,
+            "window_title": popup.windowTitle(),
+            "geometry": {
+                "left": popup.x(),
+                "top": popup.y(),
+                "width": popup.width(),
+                "height": popup.height(),
+            },
+        }
+        log.info("rewrite annotation popup show: %s", result)
+        return result
+
+    def _rewrite_annotation_processing(self, annotation_id: str = "") -> dict[str, Any]:
+        """Collapse an annotation into its no-close processing balloon."""
+        popup = self._rewrite_annotations.get(str(annotation_id or ""))
+        if popup is None:
+            return {"updated": False, "reason": "not_found"}
+        popup.show_processing()
+        return {"updated": True, "state": "processing"}
+
+    def _rewrite_annotation_proposal(
+        self,
+        annotation_id: str = "",
+        replacement_text: str = "",
+        copy_only: bool = False,
+    ) -> dict[str, Any]:
+        """Expand an annotation with a reviewable delayed-edit proposal."""
+        popup = self._rewrite_annotations.get(str(annotation_id or ""))
+        if popup is None:
+            return {"updated": False, "reason": "not_found"}
+        popup.show_proposal(str(replacement_text or ""), copy_only=bool(copy_only))
+        return {"updated": True, "state": "proposal", "copy_only": bool(copy_only)}
+
+    def _rewrite_annotation_anchor(
+        self,
+        annotation_id: str = "",
+        selection_rect: dict[str, float] | None = None,
+        visible: bool = True,
+        source: str = "",
+    ) -> dict[str, Any]:
+        """Move or hide a Rewrite popup when its cached source range scrolls."""
+        popup = self._rewrite_annotations.get(str(annotation_id or ""))
+        if popup is None:
+            return {"updated": False, "reason": "not_found"}
+        popup.update_selection_anchor(selection_rect, visible=bool(visible))
+        result = {
+            "updated": True,
+            "visible": bool(visible and popup.isVisible()),
+            "source": str(source or ""),
+            "geometry": {
+                "left": popup.x(),
+                "top": popup.y(),
+                "width": popup.width(),
+                "height": popup.height(),
+            },
+        }
+        log.info("rewrite annotation anchor update: annotation=%s result=%r", annotation_id, result)
+        return result
+
+    def _rewrite_annotation_failure(
+        self,
+        annotation_id: str = "",
+        message: str = "",
+    ) -> dict[str, Any]:
+        """Retain and reopen a failed annotation so the user can retry."""
+        popup = self._rewrite_annotations.get(str(annotation_id or ""))
+        if popup is None:
+            return {"updated": False, "reason": "not_found"}
+        popup.show_failure(str(message or ""))
+        return {"updated": True, "state": "failed"}
+
+    def _rewrite_annotation_remove(self, annotation_id: str = "") -> dict[str, Any]:
+        """Remove one annotation popup/balloon without leaving UI state behind."""
+        key = str(annotation_id or "")
+        popup = self._rewrite_annotations.pop(key, None)
+        if popup is None:
+            return {"removed": False, "reason": "not_found"}
+        try:
+            popup.remove()
+        except RuntimeError:
+            pass
+        return {"removed": True, "annotation_id": key}
+
+    def _rewrite_held_count(self, count: int = 0) -> dict[str, Any]:
+        """Keep the shared Send all comments control in sync with held state."""
+        overlay = self._ensure_overlay()
+        normalized = max(0, int(count or 0))
+        overlay.set_held_rewrite_count(normalized)
+        return {"updated": True, "count": normalized}
 
     def _show_intent(
         self,
@@ -3923,13 +4119,15 @@ class QtProtocolHost:
                     if kind == "chunk":
                         is_thought = False
                         is_progress = False
+                        local_work = {}
                         if isinstance(payload, dict):
                             chunk = str(payload.get("text") or "")
                             is_thought = bool(payload.get("is_thought"))
                             is_progress = bool(payload.get("is_progress"))
+                            local_work = dict(payload.get("local_work") or {})
                         else:
                             chunk = str(payload or "")
-                        if not is_thought and not is_progress:
+                        if not is_thought and not is_progress and not local_work:
                             streamed_text += chunk
                             yield chunk
                         else:
@@ -3938,6 +4136,8 @@ class QtProtocolHost:
                                 item["is_thought"] = True
                             if is_progress:
                                 item["is_progress"] = True
+                            if local_work:
+                                item["local_work"] = local_work
                             yield item
                     elif kind == "done":
                         final_text = ""
@@ -4011,6 +4211,7 @@ class QtProtocolHost:
         text: str = "",
         is_progress: bool = False,
         is_thought: bool = False,
+        local_work: dict | None = None,
     ) -> dict[str, Any]:
         """Handle chat chunk for qt protocol host."""
         stream = self._chat_stream(request_id)
@@ -4022,6 +4223,7 @@ class QtProtocolHost:
                         "text": text,
                         "is_progress": bool(is_progress),
                         "is_thought": bool(is_thought),
+                        "local_work": dict(local_work or {}),
                     },
                 )
             )
@@ -4032,6 +4234,7 @@ class QtProtocolHost:
                     "text": text,
                     "is_progress": bool(is_progress),
                     "is_thought": bool(is_thought),
+                    "local_work": dict(local_work or {}),
                 },
             )
             return {"queued": True}
@@ -6037,6 +6240,44 @@ class QtProtocolHost:
             detail_lbl.setWordWrap(True)
             detail_lbl.setStyleSheet("font-size: 8pt; opacity: 0.65;")
             layout.addWidget(detail_lbl)
+
+        actions = [item for item in (addon.get("actions") or []) if isinstance(item, dict)]
+        if actions:
+            actions_title = QLabel(t("Actions"))
+            actions_title.setStyleSheet("font-size: 8pt; font-weight: 600; opacity: 0.75;")
+            layout.addWidget(actions_title)
+        for action in actions:
+            action_row = QHBoxLayout()
+            action_label = str(action.get("label") or action.get("id") or t("Action"))
+            kind = str(action.get("kind") or "action").replace("_", " ")
+            access = [str(item).title() for item in (action.get("access") or [])]
+            suffix = f" · {kind}"
+            if access:
+                suffix += " · " + ", ".join(access)
+            descriptor = QLabel(action_label + suffix)
+            colour = str(action.get("colour") or "green")
+            tone = {"green": "#4fb477", "amber": "#d7a93f", "red": "#d05f5f"}.get(colour, "#9aa0aa")
+            descriptor.setStyleSheet(f"font-size: 8pt; color: {tone};")
+            descriptor.setToolTip(str(action.get("path") or action.get("hint") or ""))
+            action_row.addWidget(descriptor, 1)
+            action_enabled = QCheckBox(t("Enabled"))
+            action_enabled.setChecked(bool(action.get("enabled", True)))
+            action_id = str(action.get("id") or "")
+            action_enabled.toggled.connect(
+                lambda checked, aid=addon_id, action_id=action_id: self.emit(
+                    "ui.addons.set_action_enabled",
+                    {"addon_id": aid, "action_id": action_id, "enabled": bool(checked)},
+                )
+            )
+            action_row.addWidget(action_enabled)
+            layout.addLayout(action_row)
+
+        action_issues = [item for item in (addon.get("action_issues") or []) if isinstance(item, dict)]
+        if action_issues:
+            issue_lbl = QLabel("\n".join(str(item.get("message") or "") for item in action_issues))
+            issue_lbl.setWordWrap(True)
+            issue_lbl.setStyleSheet("font-size: 8pt; color: #b42318;")
+            layout.addWidget(issue_lbl)
 
         if has_dependencies:
             dep_parts = [self._addon_runtime_summary(runtime)]

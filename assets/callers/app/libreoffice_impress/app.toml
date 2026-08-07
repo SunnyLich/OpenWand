@@ -1,0 +1,10 @@
+# LibreOffice commonly hosts Impress in the shared soffice.bin process. Since
+# app matching is OR-based, shared soffice names must not appear as process
+# matches: those windows are recognized only by Impress-specific title text.
+display_name = "LibreOffice Impress"
+app = "presentation"
+priority = 94
+
+[match]
+process = ["simpress.exe", "simpress"]
+title = ["libreoffice impress"]

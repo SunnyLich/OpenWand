@@ -1,0 +1,6 @@
+label = "Create a slide"
+hint = "Set title, content, layout, and position"
+prompt = "Create one slide that fits this presentation."
+capability = "presentation.create_slide@1"
+planner = "presentation_plan_create_slide"
+access = ["files"]

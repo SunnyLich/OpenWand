@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -114,6 +115,7 @@ def test_unsaved_common_document_window_uses_visible_text_fallback(win_context_f
 
 
 def test_text_and_csv_document_readers(tmp_path):
+    pytest.importorskip("anydoc")
     from core.llm_clients import client as llm
 
     text_path = tmp_path / "notes.md"
@@ -122,10 +124,13 @@ def test_text_and_csv_document_readers(tmp_path):
     csv_path.write_text("name,value\nalpha,1", encoding="utf-8")
 
     assert "hello text" in llm.read_document_file(str(text_path))
-    assert "alpha,1" in llm.read_document_file(str(csv_path))
+    csv_text = llm.read_document_file(str(csv_path))
+    assert "| name | value |" in csv_text
+    assert "| alpha | 1 |" in csv_text
 
 
-def test_docx_reader_extracts_paragraph_text(tmp_path):
+def test_anydoc_docx_reader_preserves_heading_and_table_structure(tmp_path):
+    pytest.importorskip("anydoc")
     pytest.importorskip("docx")
     from docx import Document
 
@@ -133,13 +138,25 @@ def test_docx_reader_extracts_paragraph_text(tmp_path):
 
     path = tmp_path / "sample.docx"
     doc = Document()
+    doc.add_heading("Contract heading", level=1)
     doc.add_paragraph("Docx contract text")
+    table = doc.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Item"
+    table.cell(0, 1).text = "Total"
+    table.cell(1, 0).text = "Laptop"
+    table.cell(1, 1).text = "999"
     doc.save(path)
 
-    assert "Docx contract text" in llm.read_document_file(str(path))
+    text = llm.read_document_file(str(path))
+
+    assert "# Contract heading" in text
+    assert "Docx contract text" in text
+    assert "| Item | Total |" in text
+    assert "| Laptop | 999 |" in text
 
 
 def test_xlsx_reader_extracts_sheet_cells(tmp_path):
+    pytest.importorskip("anydoc")
     pytest.importorskip("openpyxl")
     import openpyxl
 
@@ -153,15 +170,20 @@ def test_xlsx_reader_extracts_sheet_cells(tmp_path):
     ws["B1"] = "Total"
     ws["A2"] = "Laptop"
     ws["B2"] = 999
+    archive = wb.create_sheet("Archive")
+    archive["A1"] = "Closed"
     wb.save(path)
 
     text = llm.read_document_file(str(path))
 
-    assert "[Sheet: Invoices]" in text
-    assert "Laptop\t999" in text
+    assert "## Invoices" in text
+    assert "## Archive" in text
+    assert "| Item | Total |" in text
+    assert "| Laptop | 999 |" in text
 
 
 def test_pptx_reader_extracts_slide_text(tmp_path):
+    pytest.importorskip("anydoc")
     pytest.importorskip("pptx")
     from pptx import Presentation
 
@@ -171,12 +193,17 @@ def test_pptx_reader_extracts_slide_text(tmp_path):
     prs = Presentation()
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = "Deck contract title"
+    slide.notes_slide.notes_text_frame.text = "Speaker-only detail"
     prs.save(path)
 
-    assert "Deck contract title" in llm.read_document_file(str(path))
+    text = llm.read_document_file(str(path))
+
+    assert "## Deck contract title" in text
+    assert "> Speaker-only detail" in text
 
 
 def test_odt_reader_extracts_paragraph_text(tmp_path):
+    pytest.importorskip("anydoc")
     pytest.importorskip("odf")
     from odf import text as odf_text
     from odf.opendocument import OpenDocumentText
@@ -189,6 +216,132 @@ def test_odt_reader_extracts_paragraph_text(tmp_path):
     doc.save(str(path))
 
     assert "ODT contract text" in llm.read_document_file(str(path))
+
+
+def test_anydoc_rtf_reader_preserves_inline_formatting(tmp_path):
+    pytest.importorskip("anydoc")
+    from core.llm_clients import client as llm
+
+    path = tmp_path / "sample.rtf"
+    path.write_text(r"{\rtf1\ansi\b Bold title\b0\par Plain body}", encoding="ascii")
+
+    text = llm.read_document_file(str(path))
+
+    assert "**Bold title**" in text
+    assert "Plain body" in text
+
+
+def test_anydoc_unavailable_uses_legacy_docx_fallback(tmp_path, monkeypatch):
+    pytest.importorskip("docx")
+    from docx import Document
+
+    from core.llm_clients import documents
+
+    path = tmp_path / "legacy.docx"
+    doc = Document()
+    doc.add_paragraph("Legacy fallback text")
+    doc.save(path)
+    monkeypatch.setattr(documents, "_load_anydoc", lambda: None)
+
+    assert "Legacy fallback text" in documents._read_document_file(str(path))
+
+
+def test_anydoc_conversion_failure_uses_legacy_fallback(tmp_path, monkeypatch):
+    pytest.importorskip("docx")
+    from docx import Document
+
+    from core.llm_clients import documents
+
+    class ConvertError(Exception):
+        pass
+
+    class ResourceLimitError(ConvertError):
+        pass
+
+    class EncryptedError(ConvertError):
+        pass
+
+    def fail_conversion(_path):
+        raise ConvertError("new parser could not recover")
+
+    parser = SimpleNamespace(
+        ConvertError=ConvertError,
+        ResourceLimitError=ResourceLimitError,
+        EncryptedError=EncryptedError,
+        to_markdown=fail_conversion,
+    )
+    path = tmp_path / "fallback.docx"
+    doc = Document()
+    doc.add_paragraph("Recovered by mature parser")
+    doc.save(path)
+    monkeypatch.setattr(documents, "_load_anydoc", lambda: parser)
+
+    assert "Recovered by mature parser" in documents._read_document_file(str(path))
+
+
+@pytest.mark.parametrize(
+    ("error_name", "expected"),
+    [
+        ("ResourceLimitError", "parser safety limit exceeded"),
+        ("EncryptedError", "encrypted or password-protected"),
+    ],
+)
+def test_anydoc_security_failures_do_not_fall_back(tmp_path, monkeypatch, error_name, expected):
+    from core.llm_clients import documents
+
+    class ConvertError(Exception):
+        pass
+
+    class ResourceLimitError(ConvertError):
+        pass
+
+    class EncryptedError(ConvertError):
+        pass
+
+    error_type = {
+        "ResourceLimitError": ResourceLimitError,
+        "EncryptedError": EncryptedError,
+    }[error_name]
+
+    def fail_conversion(_path):
+        raise error_type("blocked")
+
+    parser = SimpleNamespace(
+        ConvertError=ConvertError,
+        ResourceLimitError=ResourceLimitError,
+        EncryptedError=EncryptedError,
+        to_markdown=fail_conversion,
+    )
+    path = tmp_path / "blocked.docx"
+    path.write_bytes(b"not a real document")
+    monkeypatch.setattr(documents, "_load_anydoc", lambda: parser)
+
+    text = documents._read_document_file(str(path))
+
+    assert text.startswith("Failed to read")
+    assert expected in text
+
+
+def test_anydoc_output_is_truncated_after_conversion(tmp_path, monkeypatch):
+    from core.llm_clients import documents
+
+    class ConvertError(Exception):
+        pass
+
+    parser = SimpleNamespace(
+        ConvertError=ConvertError,
+        ResourceLimitError=type("ResourceLimitError", (ConvertError,), {}),
+        EncryptedError=type("EncryptedError", (ConvertError,), {}),
+        to_markdown=lambda _path: "x" * 10_000,
+    )
+    path = tmp_path / "bounded.rtf"
+    path.write_text(r"{\rtf1 bounded}", encoding="ascii")
+    monkeypatch.setattr(documents, "_load_anydoc", lambda: parser)
+
+    text = documents._read_document_file(str(path), max_chars=500)
+
+    assert len(text) < 550
+    assert "truncated" in text
 
 
 def test_pdf_reader_dispatches_to_pdf_text_extractor(tmp_path, monkeypatch):

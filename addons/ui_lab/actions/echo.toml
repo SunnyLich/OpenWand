@@ -1,0 +1,7 @@
+id = "ui-lab-echo"
+kind = "tool"
+handler = "ui_lab_echo"
+label = "UI Lab echo"
+hint = "Echo text so UI Lab can be tested as a harmless model tool."
+access = ["text"]
+

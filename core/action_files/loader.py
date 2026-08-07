@@ -107,7 +107,9 @@ def _bind(folder: Path, issues: list[LoadIssue]) -> tuple[BoundAction, ...]:
     if isinstance(bindings, dict):
         for raw_key, raw_name in bindings.items():
             key = str(raw_key).strip().casefold()
-            name = Path(str(raw_name).strip()).stem
+            name = str(raw_name).strip()
+            if name.casefold().endswith(ACTION_SUFFIX):
+                name = name[: -len(ACTION_SUFFIX)]
             where = str(folder / KEYS_FILE)
             if not _valid_key(key):
                 issues.append(LoadIssue(where, "bad_key", f"{raw_key!r} is not a single letter or digit."))
@@ -189,8 +191,13 @@ def _app(folder: Path, issues: list[LoadIssue]) -> tuple[AppDef | None, int]:
             item.strip().casefold() for item in value if isinstance(item, str) and item.strip()
         )
 
-    match = AppMatch(process=entries("process"), title=entries("title"), url=entries("url"))
-    if not (match.process or match.title or match.url):
+    match = AppMatch(
+        process=entries("process"),
+        title=entries("title"),
+        url=entries("url"),
+        bundle=entries("bundle"),
+    )
+    if not (match.process or match.title or match.url or match.bundle):
         issues.append(
             LoadIssue(str(folder / APP_FILE), "no_match", "An app folder needs at least one process, title, or url.")
         )
@@ -200,6 +207,7 @@ def _app(folder: Path, issues: list[LoadIssue]) -> tuple[AppDef | None, int]:
     app = AppDef(
         folder=folder.name,
         display_name=str(manifest.get("display_name") or folder.name),
+        app=str(manifest.get("app") or folder.name),
         match=match,
         actions=_bind(folder, issues),
     )
@@ -271,6 +279,7 @@ def lookup_report(catalog: ActionCatalog) -> str:
             ("process", app.match.process),
             ("title", app.match.title),
             ("url", app.match.url),
+            ("bundle", app.match.bundle),
         ):
             if values:
                 lines.append(f"- {field_name}: {', '.join(values)}")

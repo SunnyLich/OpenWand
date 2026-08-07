@@ -12,6 +12,8 @@ from core.actions.adapters.vscode import (
     action_plan_from_dict,
     build_replace_file_plan,
     build_replace_selection_plan,
+    code_editor_name,
+    is_code_editor_app,
     is_vscode_app,
     render_vscode_untitled_preview,
 )
@@ -35,6 +37,62 @@ def test_vscode_app_recognizes_code_and_supported_forks() -> None:
     assert is_vscode_app({"process_name": "cursor", "name": "main.py - Cursor"})
     assert is_vscode_app({"process_name": "windsurf", "name": "main.py - Windsurf"})
     assert not is_vscode_app({"process_name": "notepad.exe", "name": "main.py"})
+
+
+@pytest.mark.parametrize(
+    ("process_name", "title", "expected_name"),
+    [
+        ("pycharm64.exe", "main.py – demo – PyCharm", "PyCharm"),
+        ("idea64.exe", "Main.java – demo – IntelliJ IDEA", "IntelliJ IDEA"),
+        ("devenv.exe", "demo - Microsoft Visual Studio", "Visual Studio"),
+        ("eclipse.exe", "main.py - demo - Eclipse IDE", "Eclipse"),
+        ("sublime_text.exe", "main.py - Sublime Text", "Sublime Text"),
+        ("nvim.exe", "main.py - Neovim", "Neovim"),
+    ],
+)
+def test_saved_file_editor_family_is_recognized(
+    process_name: str,
+    title: str,
+    expected_name: str,
+) -> None:
+    active = {"process_name": process_name, "name": title}
+    assert is_code_editor_app(active)
+    assert code_editor_name(active) == expected_name
+
+
+def test_jetbrains_saved_selection_reuses_exact_verified_writer(tmp_path: Path) -> None:
+    path = tmp_path / "main.py"
+    path.write_text("value = old_value\n", encoding="utf-8")
+    active = {
+        "name": "main.py – demo – PyCharm",
+        "process_name": "pycharm64.exe",
+        "pid": 51,
+        "window_id": 901,
+        "document_path": str(path),
+    }
+
+    snapshot = VSCodeSelectionReader().inspect_selection(active, "old_value")
+    plan = build_replace_selection_plan(snapshot, "new_value")
+    preview = VSCodeActionAdapter().render_preview(plan, snapshot)
+    result = VSCodeActionAdapter().execute(plan, confirmed=True, idempotency_key="pycharm-edit")
+
+    assert snapshot.editor_name == "PyCharm"
+    assert "PyCharm" in preview.html
+    assert path.read_text(encoding="utf-8") == "value = new_value\n"
+    assert result.status == "applied"
+
+
+def test_trailing_jetbrains_dirty_marker_is_refused(tmp_path: Path) -> None:
+    path = tmp_path / "main.py"
+    path.write_text("value = old_value\n", encoding="utf-8")
+    active = {
+        "name": "main.py* – demo – PyCharm",
+        "process_name": "pycharm64.exe",
+        "document_path": str(path),
+    }
+
+    with pytest.raises(ValueError, match="Save the active"):
+        VSCodeSelectionReader().inspect_selection(active, "old_value")
 
 
 def test_vscode_reader_requires_one_unique_saved_selection(tmp_path: Path) -> None:

@@ -1,0 +1,7 @@
+label = "Create a bar chart"
+hint = "Build a reviewed chart from the selected cells"
+prompt = "Create a vertical bar chart from the selected cells."
+capability = "calc.add_chart@1"
+planner = "calc_plan_add_chart"
+show_in_picker = false
+access = ["files"]

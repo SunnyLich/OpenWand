@@ -1,0 +1,7 @@
+display_name = "Google Slides"
+app = "presentation"
+priority = 40
+
+[match]
+url = ["docs.google.com/presentation/"]
+title = ["google slides"]

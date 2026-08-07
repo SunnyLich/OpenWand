@@ -1,0 +1,4 @@
+label = "Draft a rewrite of this passage"
+hint = "Propose clearer wording while preserving meaning and intent"
+prompt = "Draft a proposed replacement for the selected passage. Preserve its meaning, factual claims, intent, and appropriate tone while improving clarity and flow. Clearly label the result as a draft for review, note any material ambiguity, and do not replace text in the document."
+access = ["text"]

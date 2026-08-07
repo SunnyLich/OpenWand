@@ -1,0 +1,7 @@
+label = "Sort this table"
+hint = "Choose a selected column and preview the new row order"
+prompt = "Sort the selected table by the most relevant column in ascending order."
+capability = "calc.sort_range@1"
+planner = "calc_plan_sort_range"
+show_in_picker = false
+access = ["files"]

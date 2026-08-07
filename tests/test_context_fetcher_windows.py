@@ -154,6 +154,36 @@ class WindowsContextFetcherDocumentTests(unittest.TestCase):
 
         self.assertEqual(paths, [r"C:\Users\TestUser\Documents\Budget.xlsx"])
 
+    def test_open_document_paths_active_only_excludes_other_open_files(self):
+        active = self.cf.WindowInfo(
+            title="Active.odt - LibreOffice Writer",
+            process_name="soffice.bin",
+            pid=202,
+            hwnd=222,
+        )
+        other = self.cf.WindowInfo(
+            title="Other.odt - LibreOffice Writer",
+            process_name="soffice.bin",
+            pid=303,
+            hwnd=333,
+        )
+
+        def open_files(pid: int) -> list[str]:
+            return {
+                202: [r"C:\Docs\Active.odt"],
+                303: [r"C:\Docs\Other.odt"],
+            }.get(pid, [])
+
+        with patch.object(self.cf, "_win_open_files_for_pid", side_effect=open_files), \
+             patch.object(self.cf, "_enumerate_open_doc_windows", return_value=[other]), \
+             patch.object(self.cf, "_fetch_recent_files", return_value=[]):
+            paths = self.cf.get_all_open_document_paths(
+                active_window=active,
+                active_only=True,
+            )
+
+        self.assertEqual(paths, [r"C:\Docs\Active.odt"])
+
     def test_open_document_window_texts_prioritize_passed_unsaved_calc_window(self):
         self.cf._context_window = self.cf.WindowInfo(
             title="Summary.txt - Notepad",
@@ -173,6 +203,29 @@ class WindowsContextFetcherDocumentTests(unittest.TestCase):
             docs = self.cf.get_all_open_document_window_texts(active_window=active)
 
         self.assertEqual(docs, [("Untitled 1", "A1\tB1")])
+
+    def test_open_document_window_texts_active_only_excludes_other_windows(self):
+        active = self.cf.WindowInfo(
+            title="Active.odt - LibreOffice Writer",
+            process_name="soffice.bin",
+            pid=202,
+            hwnd=222,
+        )
+        other = self.cf.WindowInfo(
+            title="Other.odt - LibreOffice Writer",
+            process_name="soffice.bin",
+            pid=303,
+            hwnd=333,
+        )
+
+        with patch.object(self.cf, "_enumerate_open_doc_windows", return_value=[other]), \
+             patch.object(self.cf, "_get_window_text_uia", return_value="active body"):
+            docs = self.cf.get_all_open_document_window_texts(
+                active_window=active,
+                active_only=True,
+            )
+
+        self.assertEqual(docs, [("Active.odt", "active body")])
 
     def test_open_document_window_texts_use_hotkey_window(self):
         self.cf._context_window = self.cf.WindowInfo(

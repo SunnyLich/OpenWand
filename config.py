@@ -702,6 +702,13 @@ def _load_snip_caller() -> dict:
 
 
 def _load_caller_rows() -> list[dict]:
+    """Read callers from the live action-file tree; legacy CALLER_* keys are unused."""
+    from core.action_files.store import caller_rows
+
+    return caller_rows(os.getenv("ASSISTANT_LANGUAGE", ""))
+
+
+def _load_legacy_caller_rows() -> list[dict]:
     """Read CALLER_COUNT + CALLER_N_* env vars, fall back to _CALLER_DEFAULTS."""
     count = env_int("CALLER_COUNT", len(_CALLER_DEFAULTS))
     rows: list[dict] = []
@@ -889,7 +896,7 @@ def _load_config() -> None:
     global STT_MODEL, STT_COMPUTE_TYPE, STT_LANGUAGE, STT_BEAM_SIZE, STT_DEVICE
     global STT_PROVIDER, STT_CLOUDFLARE_ACCOUNT_ID, STT_CLOUDFLARE_MODEL
     global STT_CLOUDFLARE_TIMEOUT_SECONDS, STT_CLOUDFLARE_FALLBACK_LOCAL
-    global CALLER_ROWS, VOICE_CALLER
+    global ACTION_FILE_CALLER_ROWS, CALLER_ROWS, VOICE_CALLER
     global CONTEXT_BROWSER_MAX_CHARS, CONTEXT_AMBIENT_DOCUMENT_MAX_CHARS, CONTEXT_TOOL_DOCUMENT_MAX_CHARS
     global TOOL_TURN_MAX_CALLS, TOOL_TURN_MAX_RESULT_CHARS, TOOL_TURN_MAX_TOTAL_CHARS
     global TOOL_PLUGIN_DIR, TOOL_GIT_ROOT, TOOL_FILE_ROOTS, TOOL_FILE_MODE, TOOL_FILE_BLOCKED_GLOBS
@@ -1233,6 +1240,7 @@ def _load_config() -> None:
         CALLER_ROWS.extend(new_rows)
     else:
         CALLER_ROWS = new_rows
+    ACTION_FILE_CALLER_ROWS = [dict(row) for row in new_rows]
 
     # --- Snip screen-region caller context ---
     new_snip = _load_snip_caller()

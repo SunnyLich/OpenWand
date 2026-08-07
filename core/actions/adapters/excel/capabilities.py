@@ -7,6 +7,8 @@ from core.actions.registry import ActionRegistry
 
 CREATE_TABLE = "excel.create_table@1"
 ADD_CHART = "excel.add_chart@1"
+SORT_RANGE = "excel.sort_range@1"
+CLEAN_RANGE = "excel.clean_range@1"
 
 
 def excel_capabilities() -> tuple[ActionCapability, ...]:
@@ -44,6 +46,60 @@ def excel_capabilities() -> tuple[ActionCapability, ...]:
                     "title": {"type": "string"},
                 },
                 "required": ["source", "name", "kind", "title"],
+                "additionalProperties": False,
+            },
+            risk=ActionRisk.MEDIUM,
+            reversible=True,
+        ),
+        ActionCapability(
+            type=SORT_RANGE,
+            app="excel",
+            title="Sort selected Excel rows",
+            description=(
+                "Sort the complete selected rows by one unique header while preserving every cell value."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "column_header": {"type": "string"},
+                    "direction": {"type": "string", "enum": ["ascending", "descending"]},
+                },
+                "required": ["column_header", "direction"],
+                "additionalProperties": False,
+            },
+            risk=ActionRisk.MEDIUM,
+            reversible=True,
+        ),
+        ActionCapability(
+            type=CLEAN_RANGE,
+            app="excel",
+            title="Apply reviewed cleanup",
+            description=(
+                "Apply an exact, reviewed set of cell replacements inside the captured range."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "range": {"type": "string"},
+                    "changes": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 32,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "row_offset": {"type": "integer", "minimum": 0},
+                                "column_offset": {"type": "integer", "minimum": 0},
+                                "after_kind": {"type": "string", "enum": ["value", "formula"]},
+                                "after_value": {},
+                                "replace_formula": {"type": "boolean"},
+                            },
+                            "required": ["row_offset", "column_offset", "after_kind", "after_value"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["changes"],
                 "additionalProperties": False,
             },
             risk=ActionRisk.MEDIUM,

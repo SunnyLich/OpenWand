@@ -11,6 +11,160 @@ from core.platform import linux_atspi
 from runtime.workers import native_host
 
 
+def test_windows_selection_anchor_fallback_order(monkeypatch):
+    app_rect = {"left": 10, "top": 20, "width": 30, "height": 12}
+    uia_rect = {"left": 40, "top": 50, "width": 60, "height": 14}
+    caret_rect = {"left": 70, "top": 80, "width": 2, "height": 18}
+    mouse_rect = {"left": 90, "top": 100, "width": 2, "height": 20}
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(
+        native_host,
+        "_focus_cache",
+        {"token": 9, "kind": "win-uia", "range": object()},
+    )
+    monkeypatch.setattr(native_host, "_win_uia_selection_screen_rect", lambda _range: uia_rect)
+    monkeypatch.setattr(native_host, "_win_caret_screen_rect", lambda _hwnd=0: caret_rect)
+    monkeypatch.setattr(native_host, "_win_cursor_screen_rect", lambda: mouse_rect)
+
+    native = native_host.selection_anchor_resolve(
+        focus_token=9,
+        app_native_rect=app_rect,
+    )
+    assert native["source"] == "app-native"
+
+    uia = native_host.selection_anchor_resolve(focus_token=9, app_native_rect={})
+    assert uia["source"] == "uia"
+
+    caret = native_host.selection_anchor_resolve(focus_token=0, allow_mouse=True)
+    assert caret["source"] == "os-caret"
+
+    monkeypatch.setattr(native_host, "_win_caret_screen_rect", lambda _hwnd=0: {})
+    mouse = native_host.selection_anchor_resolve(focus_token=0, allow_mouse=True)
+    assert mouse["source"] == "mouse"
+
+
+def test_windows_scrolled_exact_range_hides_without_random_fallback(monkeypatch):
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(
+        native_host,
+        "_focus_cache",
+        {"token": 12, "kind": "win-uia", "range": object()},
+    )
+    monkeypatch.setattr(native_host, "_win_uia_selection_screen_rect", lambda _range: {})
+    monkeypatch.setattr(
+        native_host,
+        "_win_caret_screen_rect",
+        lambda _hwnd=0: pytest.fail("scroll refresh must not use Wisp's current caret"),
+    )
+    monkeypatch.setattr(
+        native_host,
+        "_win_cursor_screen_rect",
+        lambda: pytest.fail("scroll refresh must not use the current mouse"),
+    )
+
+    result = native_host.selection_anchor_resolve(
+        focus_token=12,
+        refresh=True,
+        allow_mouse=False,
+    )
+
+    assert result == {
+        "ok": True,
+        "visible": False,
+        "source": "uia",
+        "selection_rect": {},
+    }
+
+
+def test_windows_classic_richedit_uses_cached_uia_range_for_geometry(monkeypatch):
+    geometry_range = object()
+    expected = {"left": 380, "top": 260, "width": 90, "height": 20}
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(
+        native_host,
+        "_focus_cache",
+        {
+            "token": 14,
+            "kind": "win-edit",
+            "class_name": "RICHEDIT50W",
+            "geometry_range": geometry_range,
+        },
+    )
+    monkeypatch.setattr(
+        native_host,
+        "_win_uia_selection_screen_rect",
+        lambda value: expected if value is geometry_range else {},
+    )
+    monkeypatch.setattr(
+        native_host,
+        "_win_edit_selection_screen_rect",
+        lambda *_args, **_kwargs: pytest.fail("cross-process RichEdit POINT must not be trusted"),
+    )
+
+    result = native_host.selection_anchor_resolve(focus_token=14, refresh=True)
+
+    assert result["source"] == "uia"
+    assert result["selection_rect"] == expected
+
+
+def test_windows_scroll_visibility_uses_editor_viewport_not_whole_app(monkeypatch):
+    expected = {"left": 140, "top": 90, "width": 80, "height": 20}
+    validated_against: list[int] = []
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(
+        native_host,
+        "_focus_cache",
+        {
+            "token": 15,
+            "kind": "win-edit",
+            "class_name": "EDIT",
+            "input_hwnd": 222,
+            "selection_end": 4,
+            "document_text": "text",
+        },
+    )
+    monkeypatch.setattr(
+        native_host,
+        "_win_edit_selection_screen_rect",
+        lambda *_args, **_kwargs: expected,
+    )
+
+    def validate(value, *, source_window_id=0):
+        validated_against.append(source_window_id)
+        # The rectangle could still overlap the top-level app (111), but it is
+        # outside the actual editor viewport (222) and therefore not visible.
+        return {} if source_window_id == 222 else value
+
+    monkeypatch.setattr(native_host, "_win_valid_selection_anchor", validate)
+
+    result = native_host.selection_anchor_resolve(
+        focus_token=15,
+        source_window_id=111,
+        refresh=True,
+    )
+
+    assert result["visible"] is False
+    assert result["source"] == "native-edit"
+    assert validated_against == [222]
+
+
+def test_windows_uia_selection_uses_last_visible_screen_rectangle(monkeypatch):
+    """Multi-line selections anchor the popup beside the selection's final line."""
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+
+    class FakeRange:
+        @staticmethod
+        def GetBoundingRectangles():
+            return [100.0, 120.0, 180.0, 20.0, 100.0, 140.0, 90.0, 20.0]
+
+    assert native_host._win_uia_selection_screen_rect(FakeRange()) == {
+        "left": 100.0,
+        "top": 140.0,
+        "width": 90.0,
+        "height": 20.0,
+    }
+
+
 def test_capture_worker_failure_matrix_is_in_band(tmp_path, monkeypatch):
     """Capture permission, backend, stale-target, and empty-region faults stay controlled."""
     monkeypatch.setattr(native_host, "IS_MAC", False)
@@ -74,7 +228,7 @@ def test_paste_text_can_restore_clipboard(monkeypatch):
 
     result = native_host.paste_text("model reply", target_pid=777, restore_clipboard=True)
 
-    assert result["ok"] is True
+    assert result["ok"] is True, result
     assert result["clipboard_restored"] is True
     assert focused == [777]
     assert keys == [platform_utils.PASTE_COMBO]
@@ -253,6 +407,289 @@ def test_windows_background_text_units_preserve_unicode_and_normalize_newlines()
     units = native_host._win_background_text_units("A\n\U0001f642")
 
     assert units == [0x0041, 0x000D, 0xD83D, 0xDE42]
+
+
+def test_windows_uia_range_context_binds_exact_prefix_selection_and_suffix(monkeypatch):
+    class Range:
+        def __init__(self, text: str, start: int, end: int):
+            self.text = text
+            self.start = start
+            self.end = end
+
+        def Clone(self):
+            return Range(self.text, self.start, self.end)
+
+        def MoveEndpointByRange(self, endpoint, other, other_endpoint):
+            value = other.start if other_endpoint == 0 else other.end
+            if endpoint == 0:
+                self.start = value
+            else:
+                self.end = value
+
+        def GetText(self, _limit):
+            return self.text[self.start : self.end]
+
+    class Pattern:
+        DocumentRange = Range("A rough sentence.", 0, 17)
+
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    context = native_host._win_uia_range_context(Pattern(), Range("A rough sentence.", 2, 7))
+
+    assert context == {
+        "range_context_bound": True,
+        "selected_text": "rough",
+        "document_prefix": "A ",
+        "document_suffix": " sentence.",
+        "document_text": "A rough sentence.",
+    }
+
+
+def test_context_snapshot_retries_focus_binding_after_browser_copy_exposes_selection(monkeypatch):
+    tokens = iter((0, 0, 17))
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(
+        native_host,
+        "_active_app",
+        lambda: {"name": "Page - Google Chrome", "process_name": "chrome.exe", "pid": 8},
+    )
+    monkeypatch.setattr(native_host, "_screen_size", lambda: {"width": 1920, "height": 1080})
+    monkeypatch.setattr(native_host, "_capture_focus", lambda: next(tokens))
+    monkeypatch.setattr(
+        native_host,
+        "_selected_text_and_stale",
+        lambda **_kwargs: ("rough", ""),
+    )
+    monkeypatch.setattr(native_host, "_win_cursor_screen_rect", lambda: {})
+
+    snapshot = native_host.context_snapshot(
+        include_clipboard=False,
+        include_selection=True,
+        capture_focus=True,
+    )
+
+    assert snapshot["selected_text"] == "rough"
+    assert snapshot["focus_token"] == 17
+
+
+def test_windows_wordpad_capture_prefers_exact_native_edit_range(monkeypatch):
+    snapshot = {
+        "input_hwnd": 501,
+        "root_hwnd": 500,
+        "target_pid": 77,
+        "class_name": "RICHEDIT50W",
+        "selection_start": 2,
+        "selection_end": 7,
+        "selected_text": "rough",
+        "document_prefix": "A ",
+        "document_suffix": " sentence.",
+        "document_text": "A rough sentence.",
+        "range_context_bound": True,
+    }
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(native_host, "_focus_seq", 40)
+    monkeypatch.setattr(native_host, "_focus_cache", {})
+    monkeypatch.setattr(native_host, "_win_edit_control_snapshot", lambda: dict(snapshot))
+    monkeypatch.setattr(
+        native_host,
+        "_win_uia_capture_focus",
+        lambda: pytest.fail("WordPad must use its exact RichEdit range before UIA"),
+    )
+
+    token = native_host._capture_focus()
+
+    assert token == 41
+    assert native_host._focus_cache["kind"] == "win-edit"
+    assert native_host._focus_cache["class_name"] == "RICHEDIT50W"
+    assert native_host._focus_cache["selected_text"] == "rough"
+
+
+def test_windows_modern_notepad_d2d_control_uses_verified_uia_path() -> None:
+    assert native_host._win_direct_edit_class_supported("RICHEDIT50W") is True
+    assert native_host._win_direct_edit_class_supported("RichEdit20W") is True
+    assert native_host._win_direct_edit_class_supported("Edit") is True
+    assert native_host._win_direct_edit_class_supported("RichEditD2DPT") is False
+
+
+def test_windows_wordpad_rich_edit_replaces_and_verifies_without_focus_or_clipboard(monkeypatch):
+    import ctypes as real_ctypes
+    import types
+
+    state = {"document": "A rough sentence.", "replaced": False}
+    cached = {
+        "token": 41,
+        "kind": "win-edit",
+        "input_hwnd": 501,
+        "root_hwnd": 500,
+        "target_pid": 77,
+        "class_name": "RICHEDIT50W",
+        "selection_start": 2,
+        "selection_end": 7,
+        "selected_text": "rough",
+        "document_prefix": "A ",
+        "document_suffix": " sentence.",
+        "document_text": "A rough sentence.",
+        "range_context_bound": True,
+    }
+
+    def snapshot(_hwnd=0, *, require_selection=True):
+        del require_selection
+        if not state["replaced"]:
+            return dict(cached)
+        return {
+            **cached,
+            "selection_start": 7,
+            "selection_end": 7,
+            "selected_text": "",
+            "document_prefix": "A clear",
+            "document_suffix": " sentence.",
+            "document_text": state["document"],
+        }
+
+    class User32:
+        @staticmethod
+        def GetForegroundWindow():
+            return 900
+
+        @staticmethod
+        def SendMessageW(_hwnd, message, _wparam, lparam):
+            if message == native_host._EM_REPLACESEL:
+                state["document"] = f"A {lparam.value} sentence."
+                state["replaced"] = True
+            return 1
+
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(native_host, "_focus_cache", cached)
+    monkeypatch.setattr(native_host, "_win_edit_control_snapshot", snapshot)
+    monkeypatch.setattr(
+        native_host,
+        "ctypes",
+        types.SimpleNamespace(
+            windll=types.SimpleNamespace(user32=User32()),
+            c_wchar_p=real_ctypes.c_wchar_p,
+        ),
+    )
+
+    result = native_host.paste_text(
+        "clear",
+        target_pid=77,
+        focus_token=41,
+        restore_clipboard=True,
+    )
+
+    assert result["ok"] is True, result
+    assert result["method"] == "win-richedit"
+    assert result["text_verified"] is True
+    assert result["clipboard_restored"] is True
+    assert result["foreground_unchanged"] is True
+    assert state["document"] == "A clear sentence."
+
+
+def test_windows_uia_browser_fallback_focuses_pastes_verifies_and_restores(monkeypatch):
+    import types
+
+    comtypes_module = types.ModuleType("comtypes")
+    comtypes_gen_module = types.ModuleType("comtypes.gen")
+    uiac_module = types.ModuleType("comtypes.gen.UIAutomationClient")
+    uiac_module.IUIAutomationTextPattern = object()
+    comtypes_module.gen = comtypes_gen_module
+    comtypes_gen_module.UIAutomationClient = uiac_module
+    monkeypatch.setitem(sys.modules, "comtypes", comtypes_module)
+    monkeypatch.setitem(sys.modules, "comtypes.gen", comtypes_gen_module)
+    monkeypatch.setitem(sys.modules, "comtypes.gen.UIAutomationClient", uiac_module)
+
+    state = {"document": "A rough sentence.", "foreground": 800, "clipboard": "keep me"}
+    focus_events: list[int | str] = []
+
+    class DocumentRange:
+        def GetText(self, _limit):
+            return state["document"]
+
+    class Pattern:
+        def __init__(self):
+            self.DocumentRange = DocumentRange()
+
+    class RawPattern:
+        def QueryInterface(self, _interface):
+            return Pattern()
+
+    class Element:
+        def GetCurrentPattern(self, _pattern_id):
+            return RawPattern()
+
+        def SetFocus(self):
+            focus_events.append("element")
+
+    class TextRange:
+        def GetText(self, _limit):
+            return "rough"
+
+        def Select(self):
+            focus_events.append("selection")
+
+    class User32:
+        @staticmethod
+        def GetForegroundWindow():
+            return state["foreground"]
+
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(
+        native_host,
+        "ctypes",
+        types.SimpleNamespace(windll=types.SimpleNamespace(user32=User32())),
+    )
+    monkeypatch.setattr(
+        native_host,
+        "_focus_cache",
+        {
+            "token": 41,
+            "kind": "win-uia",
+            "element": Element(),
+            "range": TextRange(),
+            "root_hwnd": 700,
+            "target_pid": 71,
+            "range_context_bound": True,
+            "selected_text": "rough",
+            "document_prefix": "A ",
+            "document_suffix": " sentence.",
+        },
+    )
+    monkeypatch.setattr(
+        native_host,
+        "_win_post_text_to_cached_target",
+        lambda *_args, **_kwargs: pytest.fail("partial WM_CHAR replacement must never run"),
+    )
+
+    def restore_foreground(hwnd: int) -> bool:
+        state["foreground"] = hwnd
+        focus_events.append(hwnd)
+        return True
+
+    monkeypatch.setattr(native_host, "_win_restore_foreground", restore_foreground)
+    monkeypatch.setattr(native_host, "clipboard_get", lambda: {"text": state["clipboard"]})
+
+    def clipboard_set(text=""):
+        state["clipboard"] = text
+        return {"ok": True}
+
+    monkeypatch.setattr(native_host, "clipboard_set", clipboard_set)
+    monkeypatch.setattr(native_host.time, "sleep", lambda _seconds: None)
+    import core.platform_utils as platform_utils
+
+    monkeypatch.setattr(
+        platform_utils,
+        "send_keys",
+        lambda combo: state.update(document="A two words sentence.") if combo == "ctrl+v" else None,
+    )
+
+    result = native_host._win_uia_apply_selected_text(41, "two words", restore_clipboard=True)
+
+    assert result["ok"] is True, result
+    assert result["method"] == "win-uia-foreground-paste"
+    assert result["text_verified"] is True
+    assert result["clipboard_restored"] is True
+    assert result["focus_restored"] is True
+    assert state == {"document": "A two words sentence.", "foreground": 800, "clipboard": "keep me"}
+    assert focus_events == ["selection", "element", 700, 800]
 
 
 def test_paste_text_refuses_windows_unanchored_fallback_when_focus_token_fails(monkeypatch):

@@ -1503,9 +1503,9 @@
         278
       ],
       "test_node_ids": [
-        "tests/runtime/test_flows.py::test_long_action_stage_gets_an_exact_heads_up"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_long_action_stage_gets_an_exact_heads_up",
+      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document",
       "scenarios": [
         "normal",
         "repeat",
@@ -1525,7 +1525,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.25,
+      "mapping_score": 0.277,
       "source_section": "ask_rewrite"
     },
     {
@@ -1541,9 +1541,9 @@
         285
       ],
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_message_position_action_matrix"
+        "tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_chat_message_position_action_matrix",
+      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_document_answer_action_attaches_the_active_document",
       "scenarios": [
         "normal",
         "repeat",
@@ -1561,7 +1561,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.336,
+      "mapping_score": 0.345,
       "source_section": "ask_rewrite"
     },
     {
@@ -3354,9 +3354,9 @@
         578
       ],
       "test_node_ids": [
-        "tests/test_document_context_contract.py::test_text_and_csv_document_readers"
+        "tests/test_context_input_safety.py::test_anydoc_supported_extensions_route_as_document_paths"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_document_context_contract.py::test_text_and_csv_document_readers",
+      "production_entry_point": "Section-level production surface represented by tests/test_context_input_safety.py::test_anydoc_supported_extensions_route_as_document_paths",
       "scenarios": [
         "normal",
         "repeat",
@@ -3374,7 +3374,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.385,
+      "mapping_score": 0.478,
       "source_section": "context_capture"
     },
     {
@@ -12496,9 +12496,9 @@
         2300
       ],
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text"
+        "tests/runtime/test_flows.py::test_web_document_answer_action_attaches_browser_content"
       ],
-      "production_entry_point": "Section-level production surface represented by tests/test_app_user_workflows.py::test_chat_history_search_finds_titles_projects_and_transcript_text",
+      "production_entry_point": "Section-level production surface represented by tests/runtime/test_flows.py::test_web_document_answer_action_attaches_browser_content",
       "scenarios": [
         "normal",
         "repeat",
@@ -12516,7 +12516,7 @@
         "workflow-owned processes, threads, timers, and temporary paths"
       ],
       "mapping_status": "section",
-      "mapping_score": 0.244,
+      "mapping_score": 0.279,
       "source_section": "tools_permissions"
     },
     {

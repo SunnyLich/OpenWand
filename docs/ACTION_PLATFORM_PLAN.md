@@ -11,8 +11,11 @@ to this plan and must preserve the safety and preview contract below.
 
 ## Product Contract
 
-`Ctrl+Shift+Q` should understand the active app and either rewrite content or
-propose an action. Wisp must show a preview before changing another app.
+The General caller (`Ctrl+Q` by default, or `Ctrl+1` in the alternate local
+mapping) should understand the active app and propose actions. Rewrite & Paste
+(`Ctrl+Shift+Q` by default, or `Ctrl+2` in that mapping) remains a separate,
+selection-focused workflow and does not show provider actions. Wisp must show a
+preview before changing another app.
 
 The model proposes a versioned, typed `ActionPlan`. Only a registered adapter
 may validate and execute its operations. The model never directly emits mouse
@@ -58,7 +61,7 @@ is a fallback for unsupported apps, not the primary implementation strategy.
 
 ### Functional now: app-context-first picker and forced planning tools
 
-`Ctrl+Shift+Q` now detects a supported Browser, VS Code-family editor, or
+The General caller now detects a supported Browser, VS Code-family editor, or
 LibreOffice Calc window from the hotkey-time context snapshot before it builds
 the intent overlay. The picker prepends provider-owned actions while preserving
 the caller's configured rows, add-on rows, and Custom Prompt. Provider action
@@ -175,7 +178,7 @@ explicit heads-up that drafting is continuing and may take a few more seconds.
 The first bounded action set works end to end for a Wisp-managed LibreOffice
 Calc session:
 
-- `Ctrl+Shift+Q` detects the exact Calc window before opening the intent overlay,
+- The General caller detects the exact Calc window before opening the intent overlay,
   but deliberately does not invoke Calc's accessible Copy command while the
   popup is visible. Wisp gathers the selected range, values, and fingerprint
   only after the user chooses a Calc action and the picker closes normally.
@@ -251,12 +254,12 @@ The shared contracts and `pywin32` adapter have now been exercised against a
 real, hidden disposable Excel instance. Wisp created a table and chart, read back
 the exact six numeric series values, preserved the source cells, kept the
 foreground window unchanged, and closed the owned instance. Excel is still not
-a shipped `Ctrl+Shift+Q` action because provider-picker/shared-runner wiring and
+a shipped General-caller action because provider-picker/shared-runner wiring and
 complete rollback remain unfinished.
 
 ### Functional saved-file and Untitled slice: VS Code on Windows
 
-The first narrow VS Code action now runs through `Ctrl+Shift+Q`'s production
+The first narrow VS Code action now runs through the General caller's production
 intent path rather than through a disconnected file API:
 
 - Wisp recognizes VS Code, VS Code Insiders, Cursor, and Windsurf windows without
@@ -266,7 +269,7 @@ intent path rather than through a disconnected file API:
   and asks the model to describe the issue and return the replacement block.
 - An empty saved UTF-8 file is also supported as an exact whole-file insertion;
   this lets Wisp create the first contents of a new file without editor focus.
-- An Untitled buffer uses the text target captured at Ctrl+Shift+Q time. Wisp
+- An Untitled buffer uses the text target captured when the General caller opens. Wisp
   accepts a selected range or a collapsed caret, drafts the exact replacement,
   displays the same sanitized diff preview, and writes only after Apply through
   the existing anchored paste-back boundary.
@@ -311,7 +314,7 @@ This is not yet a full VS Code integration. Current limitations are:
 ### Functional managed-Chrome form slice on Windows
 
 Chrome is the next completed application slice through the production
-`Ctrl+Shift+Q` intent route:
+General-caller intent route:
 
 - Wisp recognizes explicit form-fill requests in Chrome/Edge/Brave/Chromium.
 - A Wisp-managed Chromium DevTools endpoint snapshots visible editable text,
@@ -375,7 +378,7 @@ to prevent another same-user local process from racing the endpoint.
 | 2 | Excel: inspect active selection | Real hidden-instance adapter acceptance complete; production picker/shared-runner route pending |
 | 3 | LibreOffice Calc: real UNO table/chart smoke test | Live smoke complete |
 | 4 | Capture Calc selection after a Calc action is chosen through its recorded window | Complete on Windows |
-| 5 | Add Calc action planning, HTML preview, and Apply to `Ctrl+Shift+Q` | Complete for one column-chart action in Wisp-managed Windows Calc sessions |
+| 5 | Add Calc action planning, HTML preview, and Apply to the General caller | Complete for one column-chart action in Wisp-managed Windows Calc sessions |
 | 6 | Calc table formatting, chart options, journals, and safe Undo | Next |
 | 7 | VS Code-family saved-file context, model fix, diff preview, safe Apply | First saved-file slice live and complete on Windows |
 | 8 | Managed Chrome: model-planned form fill, HTML preview, safe Apply | Live isolated smoke complete on Windows |
@@ -392,7 +395,7 @@ Finish and test one vertical slice before broadening the capability list.
 
 Target journey:
 
-> Select a range in Excel -> press `Ctrl+Shift+Q` -> ask "make this a table and
+> Select a range in Excel -> open the General caller -> ask "make this a table and
 > add a chart" -> inspect the real selection -> preview the exact table/chart
 > operations -> Apply -> verify the created objects.
 

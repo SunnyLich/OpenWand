@@ -32,6 +32,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -547,7 +548,9 @@ def _all_context_off_policy() -> dict:
 
 def _default_context_policy() -> dict:
     """Default chat policy: first caller row, or no context when none exists."""
-    rows = getattr(config, "CALLER_ROWS", [])
+    from core.action_files.store import configured_caller_rows
+
+    rows = configured_caller_rows(config)
     if not rows:
         return _all_context_off_policy()
     return _normalized_context_policy(rows[0])
@@ -773,6 +776,81 @@ class _StreamSignals(QObject):
     metadata  = Signal(object)
     finished  = Signal()
     external_sync = Signal(object)
+
+
+class LocalWorkProgressDialog(QDialog):
+    """On-demand monitor for local-file work started by one chat turn."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        """Build the monitor without showing it automatically."""
+        super().__init__(parent)
+        self.setWindowTitle(t("Local file progress"))
+        self.setMinimumSize(560, 340)
+        enable_standard_window_controls(self)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+        title = QLabel(f"<b>{html.escape(t('Model work'))}</b>")
+        title.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(title)
+        self.status_label = QLabel(t("Working with local files…"))
+        self.status_label.setObjectName("localWorkMonitorStatus")
+        self.status_label.setStyleSheet(f"color: {_HINT};")
+        layout.addWidget(self.status_label)
+        self.activity_view = QTextBrowser()
+        self.activity_view.setObjectName("localWorkMonitorActivity")
+        self.activity_view.setReadOnly(True)
+        self.activity_view.setOpenLinks(False)
+        self.activity_view.setPlaceholderText(t("File activity will appear here."))
+        self.activity_view.setStyleSheet(
+            f"QTextBrowser {{ background: {_SIDEBAR_BG}; color: {_TEXT};"
+            f" border: 1px solid {_BORDER}; border-radius: 8px; padding: 9px; }}"
+        )
+        layout.addWidget(self.activity_view, stretch=1)
+        row = QHBoxLayout()
+        row.addStretch()
+        close_button = QPushButton(t("Close"))
+        close_button.clicked.connect(self.close)
+        row.addWidget(close_button)
+        layout.addLayout(row)
+        self._lines: list[str] = []
+        fit_window_to_screen(self, preferred_width=620, preferred_height=420)
+
+    def add_activity(self, event: dict) -> None:
+        """Append one started/completed file operation."""
+        tool = str(event.get("tool") or "").strip()
+        path = str(event.get("relative_path") or event.get("path") or "").strip()
+        phase = str(event.get("phase") or "completed").strip().lower()
+        if not tool or not path:
+            return
+        verbs = {
+            "list_files": (t("Inspecting folder"), t("Inspected folder")),
+            "read_file": (t("Reading"), t("Read")),
+            "create_file": (t("Creating"), t("Created")),
+            "edit_file": (t("Editing"), t("Edited")),
+            "write_file": (t("Writing"), t("Wrote")),
+        }
+        started, completed = verbs.get(tool, (t("Working on"), t("Finished")))
+        if phase == "started":
+            line = f"{started}: {path}"
+        elif not bool(event.get("ok", True)):
+            line = t("Failed: {path}").format(path=path)
+        else:
+            line = f"{completed}: {path}"
+        if self._lines and self._lines[-1] == line:
+            return
+        self._lines.append(line)
+        del self._lines[:-100]
+        self.activity_view.setHtml(
+            "<br>".join(f"• {html.escape(item)}" for item in self._lines)
+        )
+        bar = self.activity_view.verticalScrollBar()
+        bar.setValue(bar.maximum())
+
+    def mark_finished(self) -> None:
+        """Mark this turn's monitored work complete."""
+        self.status_label.setText(t("Local-file work finished."))
 
 
 class _MessageTextView(QTextBrowser):
@@ -1234,6 +1312,9 @@ class ChatWindow(QWidget):
         self._current_tool_context: dict = {}
         self._current_context_snippets: list[dict] = []
         self._current_harness: dict = {}
+        self._current_local_work_dialog: LocalWorkProgressDialog | None = None
+        self._current_local_work_notice: QLabel | None = None
+        self._local_work_dialogs: list[LocalWorkProgressDialog] = []
         self._current_user_message: dict | None = None
         self._pending_attachment_context = ""
         self._pending_attachment_image_b64: str | None = None
@@ -2402,6 +2483,8 @@ class ChatWindow(QWidget):
         self._current_tool_context = {}
         self._current_context_snippets = []
         self._current_harness = {}
+        self._current_local_work_dialog = None
+        self._current_local_work_notice = None
         self._current_user_message = None
         self._current_ai_label = self._bubble(layout, "...", "assistant", created_at=_now_iso())
         self._scroll_bottom()
@@ -2428,6 +2511,8 @@ class ChatWindow(QWidget):
             return
         if final_text:
             self._on_final_text(final_text)
+        if self._current_local_work_dialog is not None:
+            self._current_local_work_dialog.mark_finished()
         label = self._current_ai_label
         wrapper = label.parentWidget() if label is not None else None
         self._current_ai_label = None
@@ -4021,7 +4106,9 @@ class ChatWindow(QWidget):
             (
                 f"{t('Supported files')} (*.png *.jpg *.jpeg *.gif *.bmp *.webp *.tiff *.tif "
                 "*.txt *.md *.py *.js *.ts *.json *.yaml *.yml *.csv *.html *.css *.xml "
-                "*.docx *.pdf *.xlsx *.xls *.pptx *.odt *.ods *.odp);;"
+                "*.doc *.docx *.docm *.pdf *.xls *.xlsx *.xlsm *.xlsb "
+                "*.ppt *.pps *.pot *.pptx *.pptm *.ppsx *.ppsm "
+                "*.odt *.ods *.odp *.rtf *.epub);;"
                 f"{t('All files')} (*)"
             ),
         )
@@ -4260,6 +4347,8 @@ class ChatWindow(QWidget):
         self._current_tool_context = {}
         self._current_context_snippets = []
         self._current_harness = {}
+        self._current_local_work_dialog = None
+        self._current_local_work_notice = None
         self._current_user_message = user_message
         self._current_ai_label = self._bubble(layout, "...", "assistant", created_at=_now_iso()) if layout else None
         self._scroll_bottom()
@@ -4305,6 +4394,11 @@ class ChatWindow(QWidget):
     def _on_chunk(self, chunk: object):
         """Handle chunk events."""
         if isinstance(chunk, dict):
+            local_work = chunk.get("local_work")
+            if isinstance(local_work, dict) and local_work:
+                self._on_local_work_activity(local_work)
+                if not str(chunk.get("text") or ""):
+                    return
             text = str(chunk.get("text") or "")
             is_thought = bool(chunk.get("is_thought"))
             is_progress = bool(chunk.get("is_progress"))
@@ -4345,6 +4439,56 @@ class ChatWindow(QWidget):
                 self._current_ai_reply_text += text
         self._render_current_ai_stream()
         self._scroll_bottom()
+
+    def _on_local_work_activity(self, event: dict) -> None:
+        """Show one opt-in monitor link and update its hidden progress window."""
+        dialog = self._current_local_work_dialog
+        if dialog is None:
+            dialog = LocalWorkProgressDialog(self)
+            self._current_local_work_dialog = dialog
+            self._local_work_dialogs.append(dialog)
+
+        dialog.add_activity(event)
+        if self._current_local_work_notice is not None:
+            return
+        layout = self._active_layout()
+        if layout is None:
+            return
+
+        notice = QLabel()
+        notice.setObjectName("localWorkMonitorNotice")
+        notice.setTextFormat(Qt.TextFormat.RichText)
+        notice.setOpenExternalLinks(False)
+        notice.setWordWrap(True)
+        notice.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByKeyboard
+        )
+        notice.setStyleSheet(
+            f"QLabel#localWorkMonitorNotice {{ color: {_HINT}; background: transparent;"
+            " padding: 2px 0 6px 0; }}"
+        )
+        linked_here = (
+            f"<a href='wisp-local-work' style='color:#4da3ff; text-decoration:underline;'>"
+            f"&nbsp;{html.escape(t('here'))}&nbsp;</a>"
+        )
+        notice.setText(
+            t("The model is working with local files — follow progress {here}.").format(
+                here=linked_here,
+            )
+        )
+        notice.linkActivated.connect(lambda _href, target=dialog: self._open_local_work_monitor(target))
+        layout.insertWidget(max(0, layout.count() - 1), notice)
+        self._current_local_work_notice = notice
+        self._scroll_bottom()
+
+    @staticmethod
+    def _open_local_work_monitor(dialog: LocalWorkProgressDialog) -> None:
+        """Open and focus the selected turn's local-work monitor."""
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
 
     def _render_current_ai_stream(self) -> None:
         """Render durable chronological segments plus the replaceable live status."""
@@ -4565,6 +4709,8 @@ class ChatWindow(QWidget):
         auto_action: tuple[int, int, str, str] | None = None
         completed_action_message: tuple[int, int] | None = None
         self._current_ai_status_text = ""
+        if self._current_local_work_dialog is not None:
+            self._current_local_work_dialog.mark_finished()
         if self._current_ai_parser is not None:
             flushed = self._current_ai_parser.finish()
             self._current_ai_segments = merge_segment_iterables(self._current_ai_segments, flushed)

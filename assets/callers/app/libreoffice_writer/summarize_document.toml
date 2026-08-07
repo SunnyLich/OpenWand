@@ -1,0 +1,4 @@
+label = "Summarize this document"
+hint = "Distill the main points, decisions, and unresolved questions"
+prompt = "Summarize the selected passage when a meaningful selection is available; otherwise summarize the available document. Separate key facts, decisions, and unresolved questions, preserve important qualifications, and do not edit the document."
+access = ["text"]

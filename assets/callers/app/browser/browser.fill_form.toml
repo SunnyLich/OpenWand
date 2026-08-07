@@ -1,0 +1,6 @@
+label = "Fill this form"
+hint = "Preview safe visible fields; never submit"
+prompt = "Fill in this form using the information in my selected context."
+capability = "browser.fill_form"
+planner = "browser_plan_fill_form"
+access = ["internet"]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import ctypes
 import json
+import math
 import os
 import re
 import subprocess
@@ -157,7 +158,9 @@ class _DirectHotkeys:
                 """Emit hotkey."""
                 _event("native.hotkey", {"kind": kind, **extra})
 
-            caller_count = len(getattr(config, "CALLER_ROWS", []))
+            from core.action_files.store import configured_caller_rows
+
+            caller_count = len(configured_caller_rows(config))
             callers = [
                 (lambda idx=idx: emit_hotkey("caller", index=idx))
                 for idx in range(caller_count)
@@ -814,6 +817,7 @@ _vscode_selection_reader: Any = None
 _vscode_action_adapter: Any = None
 _vscode_extension_api_adapter: Any = None
 _browser_action_adapter: Any = None
+_browser_rewrite_adapter: Any = None
 _calc_automation_status: dict[str, Any] = {
     "available": False,
     "managed": False,
@@ -1097,6 +1101,89 @@ def action_calc_apply(
         return {"ok": False, "result": {}, "error": f"{type(exc).__name__}: {exc}"}
 
 
+def _run_libreoffice_rewrite_helper(arguments: list[str], *, timeout: float) -> dict[str, Any]:
+    """Run the fixed Writer/Impress UNO helper through Wisp's persisted pipe."""
+    status = calc_automation_prewarm(wait_for_startup=True)
+    if not status.get("available") or status.get("transport") != "uno_named_pipe_persisted":
+        reason = str(status.get("reason") or "named_pipe_unavailable")
+        raise RuntimeError(f"Wisp's local LibreOffice action pipe is unavailable ({reason}).")
+    pipe_name = str(status.get("pipe_name") or os.environ.get("WISP_CALC_UNO_PIPE") or "").strip()
+    libreoffice_python = Path(
+        os.environ.get("LIBREOFFICE_PYTHON")
+        or r"C:\Program Files\LibreOffice\program\python.exe"
+    )
+    helper = repo_root() / "runtime" / "helpers" / "libreoffice_rewrite.py"
+    if not libreoffice_python.is_file() or not helper.is_file() or not pipe_name:
+        raise RuntimeError("LibreOffice's exact Rewrite runtime is unavailable.")
+    completed = subprocess.run(  # noqa: S603 - fixed local executable and helper
+        [str(libreoffice_python), str(helper), "--pipe", pipe_name, *arguments],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+        check=False,
+    )
+    output = next((line for line in reversed(completed.stdout.splitlines()) if line.strip()), "")
+    try:
+        result = json.loads(output) if output else {}
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("LibreOffice returned invalid exact Rewrite output.") from exc
+    if completed.returncode != 0 or not isinstance(result, dict) or not result.get("ok"):
+        error = str(result.get("error") if isinstance(result, dict) else "").strip()
+        raise RuntimeError(error or completed.stderr.strip() or "LibreOffice exact Rewrite failed.")
+    return result
+
+
+def action_libreoffice_rewrite_snapshot(
+    active_app: dict[str, Any] | None = None,
+    selected_text: str = "",
+) -> dict[str, Any]:
+    """Capture one exact Writer or Impress text range through UNO."""
+    try:
+        from core.rewrite_libreoffice import libreoffice_rewrite_surface
+
+        app = active_app if isinstance(active_app, dict) else {}
+        surface = libreoffice_rewrite_surface(app)
+        if not surface:
+            raise RuntimeError("The captured app is not LibreOffice Writer or Impress.")
+        result = _run_libreoffice_rewrite_helper(
+            [
+                "--mode",
+                "snapshot",
+                "--surface",
+                surface,
+                "--title",
+                str(app.get("name") or app.get("title") or ""),
+                "--selected-text",
+                str(selected_text or ""),
+            ],
+            timeout=10.0,
+        )
+        snapshot = result.get("snapshot") if isinstance(result.get("snapshot"), dict) else {}
+        return {"ok": bool(snapshot), "snapshot": snapshot, "error": ""}
+    except Exception as exc:  # noqa: BLE001 - controlled IPC failure
+        return {"ok": False, "snapshot": {}, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def action_libreoffice_rewrite_apply(plan: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Apply and verify one captured Writer or Impress Rewrite plan."""
+    try:
+        result = _run_libreoffice_rewrite_helper(
+            [
+                "--mode",
+                "apply",
+                "--plan-json",
+                json.dumps(plan or {}, ensure_ascii=False, separators=(",", ":")),
+            ],
+            timeout=12.0,
+        )
+        return {"ok": True, "result": result, "error": ""}
+    except Exception as exc:  # noqa: BLE001 - controlled IPC failure
+        return {"ok": False, "result": {}, "error": f"{type(exc).__name__}: {exc}"}
+
+
 def action_vscode_snapshot(
     active_app: dict[str, Any] | None = None,
     selected_text: str = "",
@@ -1221,6 +1308,44 @@ def action_browser_form_snapshot(active_app: dict[str, Any] | None = None) -> di
             "error": f"{type(exc).__name__}: {exc}",
             "timing": {"worker_total_ms": round((time.perf_counter() - started) * 1000, 3)},
         }
+
+
+def action_browser_rewrite_snapshot(active_app: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Capture one exact editable selection in a Wisp-managed Chromium tab."""
+    global _browser_rewrite_adapter
+    try:
+        from core.rewrite_browser import BrowserRewriteAdapter
+
+        if _browser_rewrite_adapter is None:
+            _browser_rewrite_adapter = BrowserRewriteAdapter()
+        snapshot = _browser_rewrite_adapter.inspect_selection(active_app or {})
+        return {"ok": True, "snapshot": snapshot.to_dict(), "error": ""}
+    except Exception as exc:  # noqa: BLE001 - controlled IPC failure
+        return {"ok": False, "snapshot": {}, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def action_browser_rewrite_apply(plan: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Apply and verify one exact managed-browser selected-text Rewrite."""
+    global _browser_rewrite_adapter
+    try:
+        from core.rewrite_browser import (
+            BrowserRewriteAdapter,
+            BrowserRewritePlan,
+            BrowserRewriteSnapshot,
+        )
+
+        value = plan if isinstance(plan, dict) else {}
+        snapshot = BrowserRewriteSnapshot.from_dict(dict(value.get("snapshot") or {}))
+        rewrite_plan = BrowserRewritePlan(
+            snapshot=snapshot,
+            replacement_text=str(value.get("replacement_text") or ""),
+        )
+        if _browser_rewrite_adapter is None:
+            _browser_rewrite_adapter = BrowserRewriteAdapter()
+        applied = _browser_rewrite_adapter.apply(rewrite_plan)
+        return {"ok": applied, "result": {"status": "applied", "verification": applied}, "error": ""}
+    except Exception as exc:  # noqa: BLE001 - controlled IPC failure
+        return {"ok": False, "result": {}, "error": f"{type(exc).__name__}: {exc}"}
 
 
 def action_browser_form_apply(
@@ -1611,6 +1736,8 @@ def context_snapshot(
         snapshot["focus_token"] = _capture_focus()
         if snapshot["focus_token"] and isinstance(_focus_cache.get("editor_point"), dict):
             snapshot["editor_point"] = dict(_focus_cache["editor_point"])
+        if snapshot["focus_token"] and isinstance(_focus_cache.get("selection_rect"), dict):
+            snapshot["selection_rect"] = dict(_focus_cache["selection_rect"])
     sel_dt = path_dt = clip_dt = window_text_dt = br_dt = 0.0
     selection_kind = _selection_source_kind(active) if include_selected_paths else "text"
     defer_app_selection = bool(
@@ -1625,7 +1752,46 @@ def context_snapshot(
             require_active_owner=bool(require_active_selection_owner),
             selection_dedupe_key=str(selection_dedupe_key or ""),
         )
+        if (
+            not snapshot["selected_text"]
+            and snapshot["focus_token"]
+            and _focus_cache.get("token") == snapshot["focus_token"]
+            and _focus_cache.get("kind") == "win-edit"
+        ):
+            # WordPad's RichEdit control exposes its exact selected range through
+            # Win32 even when Ctrl+C/clipboard selection capture is unavailable.
+            snapshot["selected_text"] = str(_focus_cache.get("selected_text") or "")
         sel_dt = time.monotonic() - _s
+        if (
+            capture_focus
+            and not structured_calc_target
+            and not snapshot["focus_token"]
+            and snapshot["selected_text"]
+        ):
+            # Chromium can expose the copied selection a few milliseconds
+            # before its renderer publishes the corresponding UIA TextRange.
+            # Copying does not move focus, so one bounded retry binds the same
+            # user-selected range without guessing or targeting a new control.
+            deadline = time.monotonic() + 0.6
+            while not snapshot["focus_token"] and time.monotonic() < deadline:
+                snapshot["focus_token"] = _capture_focus()
+                if not snapshot["focus_token"]:
+                    time.sleep(0.05)
+            if snapshot["focus_token"] and isinstance(_focus_cache.get("editor_point"), dict):
+                snapshot["editor_point"] = dict(_focus_cache["editor_point"])
+            if snapshot["focus_token"] and isinstance(_focus_cache.get("selection_rect"), dict):
+                snapshot["selection_rect"] = dict(_focus_cache["selection_rect"])
+    if capture_focus and IS_WIN:
+        anchor = selection_anchor_resolve(
+            focus_token=int(snapshot.get("focus_token") or 0),
+            source_window_id=int(active.get("window_id") or 0),
+            allow_mouse=True,
+        )
+        if anchor.get("ok") and anchor.get("visible"):
+            snapshot["selection_rect"] = dict(anchor.get("selection_rect") or {})
+            snapshot["selection_anchor_source"] = str(anchor.get("source") or "")
+        else:
+            snapshot.pop("selection_rect", None)
     if include_active_window_text and not IS_WIN and not IS_MAC and os.environ.get("WAYLAND_DISPLAY"):
         _s = time.monotonic()
         try:
@@ -2048,6 +2214,13 @@ _AX_ERROR_SUCCESS = 0  # kAXErrorSuccess
 _UIA_TEXT_PATTERN_ID = 10014
 _UIA_TEXT_PATTERN_RANGE_ENDPOINT_START = 0
 _UIA_TEXT_PATTERN_RANGE_ENDPOINT_END = 1
+_WM_GETTEXT = 0x000D
+_WM_GETTEXTLENGTH = 0x000E
+_EM_GETSEL = 0x00B0
+_EM_SETSEL = 0x00B1
+_EM_REPLACESEL = 0x00C2
+_EM_POSFROMCHAR = 0x00D6
+_MAX_NATIVE_EDIT_CHARS = 4_000_000
 
 _focus_seq = 0
 _focus_cache: dict[str, Any] = {}  # {"token": int, "kind": str, ...native objects}
@@ -2058,8 +2231,232 @@ def _capture_focus() -> int:
     if IS_MAC:
         return _ax_capture_focus()
     if IS_WIN:
-        return _win_uia_capture_focus()
+        edit_token = _win_edit_capture_focus()
+        if edit_token:
+            return edit_token
+        uia_token = _win_uia_capture_focus()
+        return uia_token
     return 0
+
+
+def _win_utf16_slice(text: str, start: int, end: int) -> str:
+    """Slice Windows text offsets, which are UTF-16 code units, without guessing."""
+    raw = str(text or "").encode("utf-16-le", errors="surrogatepass")
+    unit_count = len(raw) // 2
+    lower = max(0, min(int(start), unit_count))
+    upper = max(lower, min(int(end), unit_count))
+    return raw[lower * 2 : upper * 2].decode("utf-16-le", errors="surrogatepass")
+
+
+def _win_focused_input_hwnd() -> int:
+    """Return the foreground thread's focused child control."""
+    if not IS_WIN:
+        return 0
+    try:
+        from ctypes import wintypes
+
+        class GuiThreadInfo(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.DWORD),
+                ("flags", wintypes.DWORD),
+                ("hwndActive", wintypes.HWND),
+                ("hwndFocus", wintypes.HWND),
+                ("hwndCapture", wintypes.HWND),
+                ("hwndMenuOwner", wintypes.HWND),
+                ("hwndMoveSize", wintypes.HWND),
+                ("hwndCaret", wintypes.HWND),
+                ("rcCaret", wintypes.RECT),
+            ]
+
+        user32 = ctypes.windll.user32
+        root_hwnd = int(user32.GetForegroundWindow() or 0)
+        thread_id = int(user32.GetWindowThreadProcessId(root_hwnd, None) or 0)
+        info = GuiThreadInfo(cbSize=ctypes.sizeof(GuiThreadInfo))
+        if thread_id and user32.GetGUIThreadInfo(thread_id, ctypes.byref(info)):
+            return int(info.hwndFocus or info.hwndCaret or 0)
+    except Exception:
+        pass
+    return 0
+
+
+def _win_direct_edit_class_supported(class_name: str) -> bool:
+    """Return whether cross-process Edit messages are atomic for this control."""
+    folded = str(class_name or "").strip().casefold()
+    if folded == "edit":
+        return True
+    # Classic RichEdit controls marshal EM_REPLACESEL correctly. Windows 11
+    # Notepad's RichEditD2DPT looks related but can reject or partially apply
+    # the same cross-process message, so it must use the verified UIA paste.
+    return folded.startswith("richedit") and "d2d" not in folded
+
+
+def _win_edit_control_snapshot(
+    input_hwnd: int = 0,
+    *,
+    require_selection: bool = True,
+) -> dict[str, Any]:
+    """Read one standard Edit/RichEdit control and its exact selected range."""
+    if not IS_WIN:
+        return {}
+    try:
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        hwnd = int(input_hwnd or _win_focused_input_hwnd())
+        if not hwnd or not user32.IsWindow(hwnd):
+            return {}
+        class_buffer = ctypes.create_unicode_buffer(256)
+        if not user32.GetClassNameW(hwnd, class_buffer, len(class_buffer)):
+            return {}
+        class_name = str(class_buffer.value or "")
+        if not _win_direct_edit_class_supported(class_name):
+            return {}
+        length = int(user32.SendMessageW(hwnd, _WM_GETTEXTLENGTH, 0, 0) or 0)
+        if length < 0 or length > _MAX_NATIVE_EDIT_CHARS:
+            return {}
+        text_buffer = ctypes.create_unicode_buffer(length + 1)
+        user32.SendMessageW(hwnd, _WM_GETTEXT, length + 1, text_buffer)
+        document_text = str(text_buffer.value or "")
+        start = wintypes.DWORD()
+        end = wintypes.DWORD()
+        user32.SendMessageW(hwnd, _EM_GETSEL, ctypes.byref(start), ctypes.byref(end))
+        selection_start = int(start.value)
+        selection_end = int(end.value)
+        if require_selection and selection_end <= selection_start:
+            return {}
+        root_hwnd = int(user32.GetAncestor(hwnd, 2) or 0) or hwnd  # GA_ROOT
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        prefix = _win_utf16_slice(document_text, 0, selection_start)
+        selected_text = _win_utf16_slice(document_text, selection_start, selection_end)
+        suffix_units = len(document_text.encode("utf-16-le", errors="surrogatepass")) // 2
+        suffix = _win_utf16_slice(document_text, selection_end, suffix_units)
+        if document_text != f"{prefix}{selected_text}{suffix}":
+            return {}
+        snapshot = {
+            "input_hwnd": hwnd,
+            "root_hwnd": root_hwnd,
+            "target_pid": int(pid.value),
+            "class_name": class_name,
+            "selection_start": selection_start,
+            "selection_end": selection_end,
+            "selected_text": selected_text,
+            "document_prefix": prefix,
+            "document_suffix": suffix,
+            "document_text": document_text,
+            "range_context_bound": True,
+        }
+        selection_rect = _win_edit_selection_screen_rect(
+            hwnd,
+            class_name=class_name,
+            selection_end=selection_end,
+            document_units=suffix_units,
+        )
+        if selection_rect:
+            snapshot["selection_rect"] = selection_rect
+        return snapshot
+    except Exception as exc:  # noqa: BLE001 - legacy controls are optional
+        _plog(f"native edit snapshot raised {type(exc).__name__}: {exc}")
+        return {}
+
+
+def _win_edit_selection_screen_rect(
+    hwnd: int,
+    *,
+    class_name: str,
+    selection_end: int,
+    document_units: int,
+) -> dict[str, float]:
+    """Return a screen-space anchor at a standard Edit/RichEdit selection end."""
+    if not IS_WIN or not hwnd:
+        return {}
+    try:
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        folded_class = str(class_name or "").casefold()
+        index = max(0, min(int(selection_end), max(0, int(document_units))))
+        point = wintypes.POINT()
+        if folded_class.startswith("richedit"):
+            # RichEdit 2.0+ writes a POINT through wParam and reads the character
+            # index from lParam. Unlike GetCaretPos, this does not need to attach
+            # Wisp's thread or change focus.
+            user32.SendMessageW(hwnd, _EM_POSFROMCHAR, ctypes.byref(point), index)
+        else:
+            packed = int(user32.SendMessageW(hwnd, _EM_POSFROMCHAR, index, 0))
+            if packed == -1:
+                return {}
+            point.x = ctypes.c_short(packed & 0xFFFF).value
+            point.y = ctypes.c_short((packed >> 16) & 0xFFFF).value
+        if not user32.ClientToScreen(hwnd, ctypes.byref(point)):
+            return {}
+        dpi = int(user32.GetDpiForWindow(hwnd) or 96) if hasattr(user32, "GetDpiForWindow") else 96
+        line_height = max(18, round(20 * max(96, dpi) / 96))
+        return {
+            "left": float(point.x),
+            "top": float(point.y),
+            "width": 2.0,
+            "height": float(line_height),
+        }
+    except Exception as exc:  # noqa: BLE001 - placement falls back to the source window
+        _plog(f"native edit selection rect unavailable: {type(exc).__name__}: {exc}")
+        return {}
+
+
+def _win_edit_capture_focus() -> int:
+    """Bind WordPad and other standard RichEdit selections without UIA."""
+    global _focus_seq
+    snapshot = _win_edit_control_snapshot()
+    if not snapshot:
+        return 0
+    _focus_seq += 1
+    _focus_cache.clear()
+    _focus_cache.update(snapshot)
+    _focus_cache["token"] = _focus_seq
+    _focus_cache["kind"] = "win-edit"
+    geometry_range = _win_uia_focused_geometry_range(str(snapshot.get("selected_text") or ""))
+    if geometry_range is not None:
+        geometry_rect = _win_uia_selection_screen_rect(geometry_range)
+        if geometry_rect:
+            _focus_cache["geometry_range"] = geometry_range
+            _focus_cache["selection_rect"] = geometry_rect
+            _focus_cache["selection_rect_source"] = "uia"
+    _plog(
+        f"native edit capture token={_focus_seq} class={snapshot.get('class_name')!r} "
+        f"selection={snapshot.get('selection_start')}:{snapshot.get('selection_end')}"
+    )
+    return _focus_seq
+
+
+def _win_uia_focused_geometry_range(expected_selected_text: str = "") -> Any | None:
+    """Capture a UIA range only for geometry while native Edit owns mutation."""
+    if not IS_WIN:
+        return None
+    try:
+        import comtypes.client
+
+        comtypes.client.GetModule("UIAutomationCore.dll")
+        import comtypes.gen.UIAutomationClient as uiac  # type: ignore
+
+        uia = comtypes.client.CreateObject(
+            "{ff48dba4-60ef-4201-aa87-54103eef594e}",
+            interface=uiac.IUIAutomation,
+        )
+        element = uia.GetFocusedElement()
+        raw_pattern = element.GetCurrentPattern(_UIA_TEXT_PATTERN_ID)
+        text_pattern = raw_pattern.QueryInterface(uiac.IUIAutomationTextPattern)
+        selections = text_pattern.GetSelection()
+        if selections.Length <= 0:
+            return None
+        text_range = selections.GetElement(0)
+        if expected_selected_text:
+            selected = str(text_range.GetText(-1) or "")
+            if selected != str(expected_selected_text):
+                return None
+        return text_range
+    except Exception as exc:  # noqa: BLE001 - geometry falls through to caret/mouse
+        _plog(f"uia geometry range unavailable: {type(exc).__name__}: {exc}")
+        return None
 
 
 def _ax_capture_focus() -> int:
@@ -2134,7 +2531,11 @@ def _win_uia_capture_focus() -> int:
         _focus_cache["element"] = element
         _focus_cache["range"] = text_range
         _focus_cache["collapsed"] = collapsed
+        _focus_cache.update(_win_uia_range_context(text_pattern, text_range))
         _focus_cache.update(_win_capture_background_input_target(element))
+        selection_rect = _win_uia_selection_screen_rect(text_range)
+        if selection_rect:
+            _focus_cache["selection_rect"] = selection_rect
         editor_point = _win_uia_editor_client_point(
             text_range,
             int(_focus_cache.get("root_hwnd") or 0),
@@ -2148,6 +2549,42 @@ def _win_uia_capture_focus() -> int:
         return 0
 
 
+def _win_uia_range_context(text_pattern: Any, text_range: Any) -> dict[str, Any]:
+    """Bind a UIA selection to its exact editable document prefix and suffix."""
+    if not IS_WIN:
+        return {}
+    try:
+        document_range = text_pattern.DocumentRange
+        selected_text = str(text_range.GetText(-1) or "")
+        prefix_range = document_range.Clone()
+        prefix_range.MoveEndpointByRange(
+            _UIA_TEXT_PATTERN_RANGE_ENDPOINT_END,
+            text_range,
+            _UIA_TEXT_PATTERN_RANGE_ENDPOINT_START,
+        )
+        suffix_range = document_range.Clone()
+        suffix_range.MoveEndpointByRange(
+            _UIA_TEXT_PATTERN_RANGE_ENDPOINT_START,
+            text_range,
+            _UIA_TEXT_PATTERN_RANGE_ENDPOINT_END,
+        )
+        prefix = str(prefix_range.GetText(-1) or "")
+        suffix = str(suffix_range.GetText(-1) or "")
+        document_text = str(document_range.GetText(-1) or "")
+        if document_text != f"{prefix}{selected_text}{suffix}":
+            return {}
+        return {
+            "range_context_bound": True,
+            "selected_text": selected_text,
+            "document_prefix": prefix,
+            "document_suffix": suffix,
+            "document_text": document_text,
+        }
+    except Exception as exc:  # noqa: BLE001 - older controls may expose only selection
+        _plog(f"uia range context unavailable: {type(exc).__name__}: {exc}")
+        return {}
+
+
 def _win_uia_editor_client_point(text_range: Any, root_hwnd: int) -> dict[str, float]:
     """Convert the captured UIA range rectangle to a DevTools viewport point."""
     if not IS_WIN or not root_hwnd:
@@ -2156,14 +2593,13 @@ def _win_uia_editor_client_point(text_range: Any, root_hwnd: int) -> dict[str, f
         import ctypes
         from ctypes import wintypes
 
-        values = list(text_range.GetBoundingRectangles() or [])
-        if len(values) < 4:
-            clone = text_range.Clone()
-            clone.ExpandToEnclosingUnit(0)  # TextUnit_Character
-            values = list(clone.GetBoundingRectangles() or [])
-        if len(values) < 4:
+        selection_rect = _win_uia_selection_screen_rect(text_range)
+        if not selection_rect:
             return {}
-        left, top, width, height = (float(values[index]) for index in range(4))
+        left = float(selection_rect["left"])
+        top = float(selection_rect["top"])
+        width = float(selection_rect["width"])
+        height = float(selection_rect["height"])
         window_rect = wintypes.RECT()
         if not ctypes.windll.user32.GetWindowRect(root_hwnd, ctypes.byref(window_rect)):
             return {}
@@ -2173,6 +2609,227 @@ def _win_uia_editor_client_point(text_range: Any, root_hwnd: int) -> dict[str, f
         }
     except Exception:
         return {}
+
+
+def _win_uia_selection_screen_rect(text_range: Any) -> dict[str, float]:
+    """Return the last visible UIA selection rectangle in screen coordinates."""
+    if not IS_WIN:
+        return {}
+    try:
+        values = list(text_range.GetBoundingRectangles() or [])
+        if len(values) < 4:
+            clone = text_range.Clone()
+            clone.ExpandToEnclosingUnit(0)  # TextUnit_Character
+            values = list(clone.GetBoundingRectangles() or [])
+        rectangles: list[tuple[float, float, float, float]] = []
+        for index in range(0, len(values) - 3, 4):
+            left, top, width, height = (float(values[index + offset]) for offset in range(4))
+            if width > 0 and height > 0:
+                rectangles.append((left, top, width, height))
+        if not rectangles:
+            return {}
+        left, top, width, height = rectangles[-1]
+        return {"left": left, "top": top, "width": width, "height": height}
+    except Exception:
+        return {}
+
+
+def _win_cursor_screen_rect() -> dict[str, float]:
+    """Return a small screen-space anchor at the current Windows pointer."""
+    if not IS_WIN:
+        return {}
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        point = wintypes.POINT()
+        if not ctypes.windll.user32.GetCursorPos(ctypes.byref(point)):
+            return {}
+        return {
+            "left": float(point.x),
+            "top": float(point.y - 10),
+            "width": 2.0,
+            "height": 20.0,
+        }
+    except Exception:
+        return {}
+
+
+def _win_caret_screen_rect(source_window_id: int = 0) -> dict[str, float]:
+    """Return the source thread's OS caret rectangle without changing focus."""
+    if not IS_WIN or not source_window_id:
+        return {}
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class GuiThreadInfo(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.DWORD),
+                ("flags", wintypes.DWORD),
+                ("hwndActive", wintypes.HWND),
+                ("hwndFocus", wintypes.HWND),
+                ("hwndCapture", wintypes.HWND),
+                ("hwndMenuOwner", wintypes.HWND),
+                ("hwndMoveSize", wintypes.HWND),
+                ("hwndCaret", wintypes.HWND),
+                ("rcCaret", wintypes.RECT),
+            ]
+
+        user32 = ctypes.windll.user32
+        source_hwnd = int(source_window_id)
+        if not user32.IsWindow(source_hwnd):
+            return {}
+        thread_id = int(user32.GetWindowThreadProcessId(source_hwnd, None) or 0)
+        info = GuiThreadInfo(cbSize=ctypes.sizeof(GuiThreadInfo))
+        if not thread_id or not user32.GetGUIThreadInfo(thread_id, ctypes.byref(info)):
+            return {}
+        caret_hwnd = int(info.hwndCaret or info.hwndFocus or 0)
+        if not caret_hwnd:
+            return {}
+        caret_root = int(user32.GetAncestor(caret_hwnd, 2) or 0)  # GA_ROOT
+        if caret_root and caret_root != source_hwnd:
+            return {}
+        point = wintypes.POINT(int(info.rcCaret.left), int(info.rcCaret.top))
+        if not user32.ClientToScreen(caret_hwnd, ctypes.byref(point)):
+            return {}
+        return {
+            "left": float(point.x),
+            "top": float(point.y),
+            "width": float(max(2, int(info.rcCaret.right - info.rcCaret.left))),
+            "height": float(max(18, int(info.rcCaret.bottom - info.rcCaret.top))),
+        }
+    except Exception:
+        return {}
+
+
+def _win_valid_selection_anchor(
+    value: dict[str, Any] | None,
+    *,
+    source_window_id: int = 0,
+) -> dict[str, float]:
+    """Validate and normalize one screen-space anchor against its source window."""
+    if not IS_WIN or not isinstance(value, dict):
+        return {}
+    try:
+        left = float(value.get("left"))
+        top = float(value.get("top"))
+        width = float(value.get("width"))
+        height = float(value.get("height"))
+    except (TypeError, ValueError, OverflowError):
+        return {}
+    if not all(math.isfinite(item) for item in (left, top, width, height)):
+        return {}
+    if width <= 0 or height <= 0 or width > 100_000 or height > 100_000:
+        return {}
+    if not source_window_id:
+        return {"left": left, "top": top, "width": width, "height": height}
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        hwnd = int(source_window_id)
+        window = wintypes.RECT()
+        if not user32.IsWindow(hwnd) or not user32.GetWindowRect(hwnd, ctypes.byref(window)):
+            return {}
+        right = left + width
+        bottom = top + height
+        intersects = (
+            right > float(window.left)
+            and left < float(window.right)
+            and bottom > float(window.top)
+            and top < float(window.bottom)
+        )
+        if not intersects:
+            return {}
+    except Exception:
+        return {}
+    return {"left": left, "top": top, "width": width, "height": height}
+
+
+def selection_anchor_resolve(
+    focus_token: int = 0,
+    source_window_id: int = 0,
+    app_native_rect: dict[str, Any] | None = None,
+    allow_mouse: bool = True,
+    refresh: bool = False,
+) -> dict[str, Any]:
+    """Resolve app-native -> accessibility -> OS caret -> mouse anchor geometry."""
+    if not IS_WIN:
+        return {"ok": False, "visible": False, "source": "unsupported", "selection_rect": {}}
+    source_hwnd = int(source_window_id or 0)
+    candidates: list[tuple[str, dict[str, Any] | None, bool, int]] = [
+        ("app-native", app_native_rect, True, source_hwnd),
+    ]
+    exact_source = ""
+    exact_viewport_hwnd = source_hwnd
+    token = int(focus_token or 0)
+    if token and _focus_cache.get("token") == token:
+        kind = str(_focus_cache.get("kind") or "")
+        exact_rect: dict[str, Any] | None = None
+        if kind == "win-edit":
+            exact_viewport_hwnd = int(_focus_cache.get("input_hwnd") or source_hwnd)
+            geometry_range = _focus_cache.get("geometry_range")
+            class_name = str(_focus_cache.get("class_name") or "")
+            if geometry_range is not None:
+                exact_source = "uia"
+                exact_rect = _win_uia_selection_screen_rect(geometry_range)
+            elif not class_name.casefold().startswith("richedit"):
+                # Standard Edit returns packed coordinates by value. RichEdit's
+                # pointer-based EM_POSFROMCHAR does not marshal reliably across
+                # processes, so never treat its zeroed POINT as valid geometry.
+                exact_source = "native-edit"
+                document_text = str(_focus_cache.get("document_text") or "")
+                document_units = len(document_text.encode("utf-16-le", errors="surrogatepass")) // 2
+                exact_rect = _win_edit_selection_screen_rect(
+                    int(_focus_cache.get("input_hwnd") or 0),
+                    class_name=class_name,
+                    selection_end=int(_focus_cache.get("selection_end") or 0),
+                    document_units=document_units,
+                )
+        elif kind == "win-uia":
+            exact_viewport_hwnd = int(_focus_cache.get("input_hwnd") or source_hwnd)
+            exact_source = "uia"
+            exact_rect = _win_uia_selection_screen_rect(_focus_cache.get("range"))
+        if exact_source:
+            candidates.append((exact_source, exact_rect, True, exact_viewport_hwnd))
+            # During scrolling, an exact range with no on-screen rectangle means
+            # it moved out of view. Never replace it with the current caret or
+            # mouse, which now belong to Wisp's popup.
+            if refresh and not _win_valid_selection_anchor(
+                exact_rect,
+                source_window_id=exact_viewport_hwnd,
+            ):
+                return {
+                    "ok": True,
+                    "visible": False,
+                    "source": exact_source,
+                    "selection_rect": {},
+                }
+    if not refresh:
+        candidates.append(("os-caret", _win_caret_screen_rect(source_hwnd), False, source_hwnd))
+        if allow_mouse:
+            candidates.append(("mouse", _win_cursor_screen_rect(), False, source_hwnd))
+    for source, candidate, exact, viewport_hwnd in candidates:
+        rect = _win_valid_selection_anchor(
+            candidate,
+            source_window_id=viewport_hwnd,
+        )
+        if rect:
+            _plog(
+                f"selection anchor source={source} refresh={refresh} "
+                f"token={token} rect={rect}"
+            )
+            return {
+                "ok": True,
+                "visible": True,
+                "source": source,
+                "exact": bool(exact),
+                "selection_rect": rect,
+            }
+    _plog(f"selection anchor unavailable refresh={refresh} token={token}")
+    return {"ok": False, "visible": False, "source": "unavailable", "selection_rect": {}}
 
 
 def _win_capture_background_input_target(element: Any) -> dict[str, int]:
@@ -2262,6 +2919,34 @@ def _win_post_text_to_cached_target(token: int, text: str) -> dict[str, Any]:
 
         foreground_before = int(user32.GetForegroundWindow() or 0)
         text_range = _focus_cache.get("range")
+        verification_pattern = None
+        expected_after = ""
+        if bool(_focus_cache.get("range_context_bound")):
+            try:
+                import comtypes.gen.UIAutomationClient as uiac  # type: ignore
+
+                element = _focus_cache.get("element")
+                raw_pattern = element.GetCurrentPattern(_UIA_TEXT_PATTERN_ID)
+                verification_pattern = raw_pattern.QueryInterface(uiac.IUIAutomationTextPattern)
+                prefix = str(_focus_cache.get("document_prefix") or "")
+                selected = str(_focus_cache.get("selected_text") or "")
+                suffix = str(_focus_cache.get("document_suffix") or "")
+                current_document = str(verification_pattern.DocumentRange.GetText(-1) or "")
+                current_selection = str(text_range.GetText(-1) or "")
+                if current_document != f"{prefix}{selected}{suffix}" or current_selection != selected:
+                    return {
+                        "ok": False,
+                        "method": "win-post-message",
+                        "error": "the browser text or selection changed before Rewrite was accepted",
+                        "stale": True,
+                    }
+                expected_after = f"{prefix}{text}{suffix}"
+            except Exception as exc:
+                return {
+                    "ok": False,
+                    "method": "win-post-message",
+                    "error": f"exact UIA verification unavailable: {type(exc).__name__}: {exc}",
+                }
         if text_range is not None:
             # Re-anchor the captured Monaco selection. UIA Select changes the
             # target's internal selection, but unlike SetFocus it does not
@@ -2291,15 +2976,19 @@ def _win_post_text_to_cached_target(token: int, text: str) -> dict[str, Any]:
         delivered = not text
         if text:
             try:
-                import comtypes.gen.UIAutomationClient as uiac  # type: ignore
+                text_pattern = verification_pattern
+                if text_pattern is None:
+                    import comtypes.gen.UIAutomationClient as uiac  # type: ignore
 
-                element = _focus_cache.get("element")
-                raw_pattern = element.GetCurrentPattern(_UIA_TEXT_PATTERN_ID)
-                text_pattern = raw_pattern.QueryInterface(uiac.IUIAutomationTextPattern)
+                    element = _focus_cache.get("element")
+                    raw_pattern = element.GetCurrentPattern(_UIA_TEXT_PATTERN_ID)
+                    text_pattern = raw_pattern.QueryInterface(uiac.IUIAutomationTextPattern)
                 deadline = time.monotonic() + 0.5
                 while time.monotonic() < deadline:
                     document_text = str(text_pattern.DocumentRange.GetText(-1) or "")
-                    if text in document_text:
+                    if (expected_after and document_text == expected_after) or (
+                        not expected_after and text in document_text
+                    ):
                         delivered = True
                         break
                     time.sleep(0.05)
@@ -2316,6 +3005,7 @@ def _win_post_text_to_cached_target(token: int, text: str) -> dict[str, Any]:
             "clipboard_ok": False,
             "clipboard_restored": True,
             "foreground_unchanged": unchanged,
+            "focus_restored": unchanged,
             "text_verified": delivered,
             "posted_utf16_units": len(units),
             "target_pid": int(pid.value),
@@ -2399,9 +3089,191 @@ def _win_uia_apply_selected_text(
     paste_combo: str = "",
     restore_clipboard: bool = False,
 ) -> dict[str, Any]:
-    """Apply to the cached Windows selection without activating the target app."""
-    del paste_combo, restore_clipboard
-    return _win_post_text_to_cached_target(token, text)
+    """Atomically replace the cached Windows selection and verify the document.
+
+    Posting replacement text as individual ``WM_CHAR`` messages is unsafe: an
+    editor may accept only part of the sequence, leaving words at opposite ends
+    of the old selection before Wisp can detect failure. One clipboard paste is
+    the only generic Windows path used here, and success requires the complete
+    editable document to match the expected result.
+    """
+    return _win_foreground_paste_to_cached_target(
+        token,
+        text,
+        paste_combo=paste_combo,
+        restore_clipboard=restore_clipboard,
+    )
+
+
+def _win_edit_apply_selected_text(token: int, text: str) -> dict[str, Any]:
+    """Replace a freshness-bound WordPad/RichEdit selection without taking focus."""
+    method = "win-richedit"
+    if not IS_WIN:
+        return {"ok": False, "method": method, "error": "not windows"}
+    if not token or _focus_cache.get("token") != token or _focus_cache.get("kind") != "win-edit":
+        return {"ok": False, "method": method, "error": "stale or missing focus token"}
+    input_hwnd = int(_focus_cache.get("input_hwnd") or 0)
+    before = _win_edit_control_snapshot(input_hwnd)
+    if not before:
+        return {"ok": False, "method": method, "error": "the WordPad text control is unavailable"}
+    identity_fields = ("root_hwnd", "target_pid", "class_name")
+    if any(before.get(field) != _focus_cache.get(field) for field in identity_fields):
+        return {"ok": False, "method": method, "error": "the WordPad text control changed", "stale": True}
+    freshness_fields = (
+        "document_text",
+        "selection_start",
+        "selection_end",
+        "selected_text",
+    )
+    if any(before.get(field) != _focus_cache.get(field) for field in freshness_fields):
+        return {
+            "ok": False,
+            "method": method,
+            "error": "the WordPad text or selection changed before Rewrite was accepted",
+            "stale": True,
+        }
+    original_document = str(before.get("document_text") or "")
+    normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if "\r\n" in original_document:
+        normalized = normalized.replace("\n", "\r\n")
+    expected = (
+        f"{before.get('document_prefix') or ''}"
+        f"{normalized}"
+        f"{before.get('document_suffix') or ''}"
+    )
+    foreground_before = int(ctypes.windll.user32.GetForegroundWindow() or 0)
+    try:
+        user32 = ctypes.windll.user32
+        user32.SendMessageW(
+            input_hwnd,
+            _EM_SETSEL,
+            int(before["selection_start"]),
+            int(before["selection_end"]),
+        )
+        user32.SendMessageW(input_hwnd, _EM_REPLACESEL, 1, ctypes.c_wchar_p(normalized))
+        after = _win_edit_control_snapshot(input_hwnd, require_selection=False)
+        verified = str(after.get("document_text") or "") == expected
+        foreground_after = int(user32.GetForegroundWindow() or 0)
+        return {
+            "ok": verified,
+            "method": method,
+            "activated": False,
+            "confirmed": True,
+            "keystroke_sent": False,
+            "clipboard_ok": False,
+            "clipboard_restored": True,
+            "foreground_unchanged": foreground_after == foreground_before,
+            "focus_restored": foreground_after == foreground_before,
+            "text_verified": verified,
+            "target_pid": int(before.get("target_pid") or 0),
+            "error": "" if verified else "WordPad did not expose the expected rewritten document",
+        }
+    except Exception as exc:  # noqa: BLE001 - retain the proposal on failure
+        return {"ok": False, "method": method, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def _win_foreground_paste_to_cached_target(
+    token: int,
+    text: str,
+    *,
+    paste_combo: str = "",
+    restore_clipboard: bool = False,
+) -> dict[str, Any]:
+    """Temporarily focus one freshness-bound UIA range, paste, and verify it."""
+    if not IS_WIN:
+        return {"ok": False, "method": "win-uia-foreground-paste", "error": "not windows"}
+    if not token or _focus_cache.get("token") != token or _focus_cache.get("kind") != "win-uia":
+        return {
+            "ok": False,
+            "method": "win-uia-foreground-paste",
+            "error": "stale or missing focus token",
+        }
+    if not bool(_focus_cache.get("range_context_bound")):
+        return {
+            "ok": False,
+            "method": "win-uia-foreground-paste",
+            "error": "the selected control did not expose a freshness-bound text range",
+        }
+    element = _focus_cache.get("element")
+    text_range = _focus_cache.get("range")
+    root_hwnd = int(_focus_cache.get("root_hwnd") or 0)
+    if element is None or text_range is None or not root_hwnd:
+        return {
+            "ok": False,
+            "method": "win-uia-foreground-paste",
+            "error": "the captured browser selection is no longer available",
+        }
+    prefix = str(_focus_cache.get("document_prefix") or "")
+    selected = str(_focus_cache.get("selected_text") or "")
+    suffix = str(_focus_cache.get("document_suffix") or "")
+    expected_before = f"{prefix}{selected}{suffix}"
+    expected_after = f"{prefix}{text}{suffix}"
+    foreground_before = int(ctypes.windll.user32.GetForegroundWindow() or 0)
+    clipboard_before = clipboard_get().get("text", "") if restore_clipboard else ""
+    clipboard_changed = False
+    restored = not restore_clipboard
+    focus_restored = foreground_before in {0, root_hwnd}
+    result: dict[str, Any] = {"ok": False, "method": "win-uia-foreground-paste"}
+    try:
+        import comtypes.gen.UIAutomationClient as uiac  # type: ignore
+
+        raw_pattern = element.GetCurrentPattern(_UIA_TEXT_PATTERN_ID)
+        text_pattern = raw_pattern.QueryInterface(uiac.IUIAutomationTextPattern)
+        current_document = str(text_pattern.DocumentRange.GetText(-1) or "")
+        current_selection = str(text_range.GetText(-1) or "")
+        if current_document != expected_before or current_selection != selected:
+            result.update(
+                error="the browser text or selection changed before Rewrite was accepted",
+                stale=True,
+            )
+            return result
+        text_range.Select()
+        element.SetFocus()
+        if not _win_restore_foreground(root_hwnd):
+            result["error"] = "the original browser window could not be focused"
+            return result
+        if int(ctypes.windll.user32.GetForegroundWindow() or 0) != root_hwnd:
+            result["error"] = "the original browser window was not confirmed"
+            return result
+        if not clipboard_set(text).get("ok"):
+            result.update(error="clipboard write failed", clipboard_ok=False)
+            return result
+        clipboard_changed = True
+        from core.platform_utils import PASTE_COMBO, send_keys
+
+        send_keys(paste_combo or PASTE_COMBO)
+        verified = False
+        deadline = time.monotonic() + 1.25
+        while time.monotonic() < deadline:
+            if str(text_pattern.DocumentRange.GetText(-1) or "") == expected_after:
+                verified = True
+                break
+            time.sleep(0.05)
+        result.update(
+            ok=verified,
+            activated=True,
+            confirmed=True,
+            keystroke_sent=True,
+            clipboard_ok=True,
+            text_verified=verified,
+            target_pid=int(_focus_cache.get("target_pid") or 0),
+            error="" if verified else "the browser did not expose the expected rewritten text",
+        )
+        return result
+    except Exception as exc:  # noqa: BLE001 - return a safe copy-only failure
+        result["error"] = f"{type(exc).__name__}: {exc}"
+        return result
+    finally:
+        if clipboard_changed and restore_clipboard:
+            restored = bool(clipboard_set(clipboard_before).get("ok"))
+        if foreground_before and foreground_before != root_hwnd:
+            focus_restored = _win_restore_foreground(foreground_before)
+        result["clipboard_restored"] = restored
+        result["focus_restored"] = focus_restored
+        _plog(
+            "uia foreground paste "
+            f"token={token} clipboard_restored={restored} focus_restored={focus_restored}"
+        )
 
 
 def _win_restore_foreground(hwnd: int) -> bool:
@@ -2527,16 +3399,19 @@ def paste_text(
         )
 
         if focus_token:
-            uia = _win_uia_apply_selected_text(
-                int(focus_token),
-                text,
-                paste_combo=paste_combo,
-                restore_clipboard=restore_clipboard,
-            )
+            if _focus_cache.get("kind") == "win-edit":
+                uia = _win_edit_apply_selected_text(int(focus_token), text)
+            else:
+                uia = _win_uia_apply_selected_text(
+                    int(focus_token),
+                    text,
+                    paste_combo=paste_combo,
+                    restore_clipboard=restore_clipboard,
+                )
             if uia.get("ok"):
                 return uia
             _plog(
-                f"paste UIA range token={focus_token} failed "
+                f"paste anchored range token={focus_token} failed "
                 f"({uia.get('error')}); refusing unanchored paste"
             )
             return {
@@ -2621,9 +3496,17 @@ def _focus_cached_edit_target(token: int) -> bool:
     """Best-effort focus of the exact text control captured for paste-back."""
     if not token or _focus_cache.get("token") != token:
         return False
-    expected_kind = "mac-ax" if IS_MAC else "win-uia" if IS_WIN else ""
-    if expected_kind and _focus_cache.get("kind") != expected_kind:
+    expected_kinds = {"mac-ax"} if IS_MAC else {"win-uia", "win-edit"} if IS_WIN else set()
+    if expected_kinds and _focus_cache.get("kind") not in expected_kinds:
         return False
+    if IS_WIN and _focus_cache.get("kind") == "win-edit":
+        input_hwnd = int(_focus_cache.get("input_hwnd") or 0)
+        root_hwnd = int(_focus_cache.get("root_hwnd") or 0)
+        if not input_hwnd or not ctypes.windll.user32.IsWindow(input_hwnd):
+            return False
+        _win_restore_foreground(root_hwnd)
+        ctypes.windll.user32.SetFocus(input_hwnd)
+        return True
     element = _focus_cache.get("element")
     if element is None:
         return False
@@ -2772,13 +3655,14 @@ def native_config_reload() -> dict[str, Any]:
     Mirrors audio.config.reload / brain.config.reload.
     """
     import config
+    from core.action_files.store import configured_caller_rows
 
     config.reload()
     print("[native] config reloaded", flush=True)
     return {
         "ok": True,
         "hotkey_voice": str(getattr(config, "HOTKEY_VOICE", "") or ""),
-        "caller_count": len(getattr(config, "CALLER_ROWS", []) or []),
+        "caller_count": len(configured_caller_rows(config)),
     }
 
 
@@ -2856,14 +3740,19 @@ HANDLERS = {
     "native.hotkeys.reload": hotkeys_reload,
     "native.context.snapshot": context_snapshot,
     "native.context.app_selection": context_app_selection,
+    "native.selection.anchor.resolve": selection_anchor_resolve,
     "native.action.calc.status": action_calc_status,
     "native.action.calc.snapshot": action_calc_snapshot,
     "native.action.calc.apply": action_calc_apply,
+    "native.action.libreoffice.rewrite_snapshot": action_libreoffice_rewrite_snapshot,
+    "native.action.libreoffice.rewrite_apply": action_libreoffice_rewrite_apply,
     "native.action.vscode.snapshot": action_vscode_snapshot,
     "native.action.vscode.apply": action_vscode_apply,
     "native.action.vscode.live_apply": action_vscode_live_apply,
     "native.action.browser.form_snapshot": action_browser_form_snapshot,
     "native.action.browser.form_apply": action_browser_form_apply,
+    "native.action.browser.rewrite_snapshot": action_browser_rewrite_snapshot,
+    "native.action.browser.rewrite_apply": action_browser_rewrite_apply,
     "native.context.await_selection": await_selection_context,
     "native.context.browser_content": context_browser_content,
     "native.capture.fullscreen": capture_fullscreen,

@@ -1104,6 +1104,47 @@ def test_chat_window_streams_and_persists_remote_agent_activity_in_order():
 
 
 @pytest.mark.skipif(not PYSIDE6_AVAILABLE, reason="PySide6 not installed")
+def test_local_file_work_shows_link_without_auto_opening_monitor():
+    """A local-file turn advertises its monitor but leaves opening it to the user."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QLabel
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    conversations = [{"messages": [{"role": "user", "content": "edit the file"}]}]
+    window = ChatWindow(conversations, lambda _messages: iter(()))
+    try:
+        window.begin_external_reply_stream(0)
+        window._on_chunk({
+            "type": "chunk",
+            "local_work": {
+                "tool": "read_file",
+                "relative_path": "notes.txt",
+                "path": "C:/repo/notes.txt",
+                "phase": "started",
+            },
+        })
+        notice = window.findChild(QLabel, "localWorkMonitorNotice")
+        dialog = window._current_local_work_dialog
+
+        assert notice is not None
+        assert "working with local files" in notice.text().lower()
+        assert "#4da3ff" in notice.text()
+        assert "text-decoration:underline" in notice.text()
+        assert dialog is not None and dialog.isVisible() is False
+
+        notice.linkActivated.emit("wisp-local-work")
+        app.processEvents()
+        assert dialog.isVisible() is True
+        assert "Reading: notes.txt" in dialog.activity_view.toPlainText()
+
+        window.finish_external_reply_stream(0)
+        assert dialog.status_label.text() == "Local-file work finished."
+    finally:
+        window.close()
+        app.processEvents()
+
+
+@pytest.mark.skipif(not PYSIDE6_AVAILABLE, reason="PySide6 not installed")
 def test_late_chunk_for_other_conversation_does_not_contaminate_active_stream():
     """An in-flight query's late reply must not append into a newer query's bubble.
 

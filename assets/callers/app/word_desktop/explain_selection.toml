@@ -1,0 +1,4 @@
+label = "Explain the selected passage"
+hint = "Clarify its meaning, implications, and unfamiliar terms"
+prompt = "Explain the selected passage in plain language. Clarify its main claim, implications, assumptions, and unfamiliar terms; identify ambiguity instead of inventing missing context. If no useful text is selected, say exactly what the user should select. Do not edit the document."
+access = ["text"]
