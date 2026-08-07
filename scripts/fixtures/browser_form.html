@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wisp Browser Action Test</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #10131a; color: #eef0ff; }
+    main { width: min(680px, 86vw); padding: 40px; border: 1px solid #34394b; border-radius: 22px; background: #1a1e28; box-shadow: 0 24px 80px #0008; }
+    .eyebrow { color: #9b8cff; letter-spacing: .14em; font-weight: 700; font-size: 12px; }
+    h1 { margin: 10px 0 8px; font-size: 34px; }
+    p { color: #aeb4c8; margin: 0 0 28px; }
+    form { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    label { display: grid; gap: 8px; font-weight: 650; }
+    label:last-of-type { grid-column: 1 / -1; }
+    input, select { color: #f4f3ff; background: #11141b; border: 1px solid #3c4255; border-radius: 10px; padding: 13px 14px; font: inherit; }
+    button { grid-column: 1 / -1; justify-self: start; border: 0; border-radius: 10px; padding: 12px 18px; background: #7c68ff; color: white; font-weight: 750; }
+    #status { margin-top: 22px; padding: 14px; border-left: 3px solid #7c68ff; background: #141821; color: #c8cbe0; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">WISP MANAGED CHROME</div>
+    <h1>Contact details</h1>
+    <p>Safe form-fill smoke test. Wisp must fill these fields without submitting.</p>
+    <form id="contact-form" data-submits="0">
+      <label>Full name<input id="full-name" name="fullName" type="text" placeholder="Your full name" required></label>
+      <label>Email address<input id="email" name="email" type="email" placeholder="name@example.com" required></label>
+      <label>Country
+        <select id="country" name="country" required>
+          <option value="ca">Canada</option>
+          <option value="us">United States</option>
+          <option value="tw">Taiwan</option>
+        </select>
+      </label>
+      <button type="submit">Submit</button>
+    </form>
+    <div id="status">Waiting for a reviewed Wisp action.</div>
+  </main>
+  <script>
+    const form = document.querySelector('#contact-form');
+    form.addEventListener('input', () => {
+      document.querySelector('#status').textContent = 'Fields updated; form not submitted.';
+    });
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      form.dataset.submits = String(Number(form.dataset.submits || '0') + 1);
+      document.querySelector('#status').textContent = 'Submitted.';
+    });
+  </script>
+</body>
+</html>
