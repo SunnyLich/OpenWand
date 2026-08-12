@@ -463,7 +463,7 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                 parsed["final"] = None
                 parsed["status"] = "continue"
                 parsed["reason"] = (
-                    "Wisp applied one visible milestone. Continue with the next unfinished milestone."
+                    "OpenWand applied one visible milestone. Continue with the next unfinished milestone."
                 )
             if final and not calls:
                 deferred_agent = self._deferred_final_handoff_agent(final, agent, agents, turns)
@@ -2301,7 +2301,7 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
     def _safe_agent_key(agent: str) -> str:
         """Return a compact stable identifier suitable for Workspace activity ids."""
         key = "".join(character if character.isalnum() or character in "-_" else "-" for character in str(agent))
-        return key.strip("-").casefold()[:60] or "wisp"
+        return key.strip("-").casefold()[:60] or "openwand"
 
     @staticmethod
     def _emit_model_response_progress(
@@ -2326,10 +2326,10 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
         shown = text
         truncated = len(text) > limit
         if truncated:
-            shown = text[: limit - 80] + "\n\n[Wisp display truncated this response after 190,000 characters.]"
+            shown = text[: limit - 80] + "\n\n[OpenWand display truncated this response after 190,000 characters.]"
         progress({
             "kind": "model_response",
-            "agent": str(agent or "Wisp")[:80],
+            "agent": str(agent or "OpenWand")[:80],
             "response_id": str(response_id or "response")[:120],
             "content": shown,
             "chars": len(text),

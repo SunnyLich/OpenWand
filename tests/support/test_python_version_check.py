@@ -27,10 +27,10 @@ class PythonVersionCheckTests(unittest.TestCase):
         stderr = io.StringIO()
 
         with contextlib.redirect_stderr(stderr):
-            exit_code = check_python_version.main([expected, "--label", "Wisp Python"])
+            exit_code = check_python_version.main([expected, "--label", "OpenWand Python"])
 
         self.assertEqual(exit_code, 1)
-        self.assertIn(f"Wisp Python {expected} is required", stderr.getvalue())
+        self.assertIn(f"OpenWand Python {expected} is required", stderr.getvalue())
 
 
 if __name__ == "__main__":

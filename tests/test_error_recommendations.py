@@ -46,27 +46,26 @@ def test_request_failure_matrix_has_actionable_recommendations():
 
 
 def test_worker_recovery_failure_matrix_always_preserves_diagnostic_action():
-    """Unresponsive workers and sparse or unknown errors retain a recovery path."""
+    """Known worker faults stay actionable without inventing generic advice."""
     worker = format_error(
         "The worker is unresponsive.",
         technical_detail="brain heartbeat exceeded 12 seconds in request req-42",
     )
-    assert "restart Wisp" in worker
+    assert "restart OpenWand" in worker
     assert "Runtime Status" in worker
     assert "brain heartbeat exceeded 12 seconds" in worker
 
     sparse = format_error("Worker failed.")
-    assert "Recommendation:" in sparse
-    assert "crash report" in sparse
+    assert sparse == "Worker failed."
+    assert "Recommendation:" not in sparse
 
     unknown = recommendation_for("unclassified runtime fault zeta-17")
-    assert "Runtime Status" in unknown
-    assert "recent logs" in unknown
+    assert unknown == ""
 
 
 def test_libreoffice_connection_failure_is_not_reported_as_internet_failure():
     rendered = format_error(
-        "Wisp couldn't create the chart: RuntimeError: "
+        "OpenWand couldn't create the chart: RuntimeError: "
         "com.sun.star.connection.NoConnectException: connection refused"
     )
 
@@ -78,6 +77,6 @@ def test_libreoffice_connection_failure_is_not_reported_as_internet_failure():
 def test_calc_stale_preview_reports_no_mutation_instead_of_crash_recovery():
     rendered = format_error("Calc data changed after the preview; refusing to apply.")
 
-    assert "Wisp made no change" in rendered
+    assert "OpenWand made no change" in rendered
     assert "new preview" in rendered
     assert "crash report" not in rendered

@@ -190,7 +190,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    app = QApplication.instance() or QApplication(["wisp-rewrite-isolated-smoke"])
+    app = QApplication.instance() or QApplication(["openwand-rewrite-isolated-smoke"])
     font_family = "Sans Serif"
     for font_path in (
         Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "segoeui.ttf",

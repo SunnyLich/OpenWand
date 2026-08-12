@@ -1,8 +1,9 @@
 # Shared Workspace (Experimental)
 
-An optional Wisp addon for visible, focus-free background work. It uses a
-native Wisp window and an isolated session folder; it never moves the user's
-physical mouse, types into the user's applications, or opens a browser.
+An optional OpenWand addon for visible, focus-free background work. When the
+model starts or changes files in its isolated session, OpenWand automatically
+opens the native workspace window. It never moves the user's physical mouse,
+types into the user's applications, or opens a browser.
 
 The primary window contains:
 
@@ -15,7 +16,7 @@ The primary window contains:
 - a task composer scoped to the current session;
 - cooperative pause, resume, and stop controls; and
 - a compact mouse indicator only for actual virtual mouse actions, plus a
-  Google Docs-style `Wisp agent` caret for text edits.
+  Google Docs-style `OpenWand agent` caret for text edits.
 
 Native previews currently support plain text and code, rendered Markdown,
 network-isolated non-scriptable HTML, CSV/TSV tables, Qt-supported images, and
@@ -27,9 +28,9 @@ a terminal. These are fixed syntax/data checks, not arbitrary commands. See
 [`CAPABILITY_REPORT.md`](CAPABILITY_REPORT.md) for the tested matrix and exact
 security limitations.
 
-Session files remain under Wisp's per-addon data directory after the session
+Session files remain under OpenWand's per-addon data directory after the session
 stops so the user can audit them.
 
-This is cooperative file editing, not character-level CRDT merging. If Wisp
+This is cooperative file editing, not character-level CRDT merging. If OpenWand
 changes a file while the user has unsaved text, the editor preserves the user's
 text and rejects a stale save instead of silently overwriting either version.

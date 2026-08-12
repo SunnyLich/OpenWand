@@ -40,7 +40,7 @@ class WorkspaceController:
         self._root: Path | None = None
         self._status = "idle"
         self._paused = False
-        self._control_owner = "wisp"
+        self._control_owner = "openwand"
         self._started_at = 0.0
         self._updated_at = time.time()
         self._operations: deque[dict[str, Any]] = deque(maxlen=2_000)
@@ -51,14 +51,14 @@ class WorkspaceController:
         self._viewer: Any = None
 
     def configure(self, data_dir: Path) -> None:
-        """Set the per-addon data directory supplied by Wisp."""
+        """Set the per-addon data directory supplied by OpenWand."""
         path = Path(data_dir).resolve()
         with self._lock:
             if self._status == "running" and self._data_dir != path:
                 raise WorkspaceError("Cannot move a running workspace.")
             self._data_dir = path
 
-    def start(self, label: str = "Wisp Workspace") -> dict[str, Any]:
+    def start(self, label: str = "OpenWand Workspace") -> dict[str, Any]:
         """Start a session and its local viewer, or return the running session."""
         with self._lock:
             if self._status == "running":
@@ -73,7 +73,7 @@ class WorkspaceController:
             self._root = root
             self._status = "running"
             self._paused = False
-            self._control_owner = "wisp"
+            self._control_owner = "openwand"
             self._started_at = time.time()
             self._updated_at = self._started_at
             self._operations.clear()
@@ -126,17 +126,17 @@ class WorkspaceController:
             if not self._paused or self._control_owner != owner:
                 self._paused = True
                 self._control_owner = owner
-                self._record("control", "Wisp paused", owner=owner)
+                self._record("control", "OpenWand paused", owner=owner)
             return self.status()
 
     def resume(self) -> dict[str, Any]:
-        """Return mutation control to Wisp."""
+        """Return mutation control to OpenWand."""
         with self._lock:
             self._require_running()
-            if self._paused or self._control_owner != "wisp":
+            if self._paused or self._control_owner != "openwand":
                 self._paused = False
-                self._control_owner = "wisp"
-                self._record("control", "Wisp resumed", owner="wisp")
+                self._control_owner = "openwand"
+                self._record("control", "OpenWand resumed", owner="openwand")
             return self.status()
 
     def apply_viewer_control(self, action: str) -> dict[str, Any]:
@@ -156,7 +156,7 @@ class WorkspaceController:
                 self._sync_external_activity(self.list_entries())
                 self._task_active = False
                 self._paused = False
-                self._control_owner = "wisp"
+                self._control_owner = "openwand"
                 self._cursor = {"visible": False, "path": "", "label": "", "kind": ""}
                 self._record("task", "Agent task finished")
                 return self.status()
@@ -327,7 +327,7 @@ class WorkspaceController:
         text: str,
         expected_modified_ns: int,
     ) -> dict[str, Any]:
-        """Optimistically save a user's edit without silently overwriting Wisp."""
+        """Optimistically save a user's edit without silently overwriting OpenWand."""
         payload = str(text).encode("utf-8")
         if len(payload) > MAX_TEXT_BYTES:
             raise WorkspaceError(f"Text is larger than {MAX_TEXT_BYTES // 1024} KB.")
@@ -343,9 +343,9 @@ class WorkspaceController:
             if expected <= 0 or before.st_mtime_ns != expected:
                 raise WorkspaceError(
                     "This file changed after you opened it. Your text is still in the editor; "
-                    "review Wisp's newer version before saving again."
+                    "review OpenWand's newer version before saving again."
                 )
-            temporary = target.with_name(f".{target.name}.wisp-user-{secrets.token_hex(5)}.tmp")
+            temporary = target.with_name(f".{target.name}.openwand-user-{secrets.token_hex(5)}.tmp")
             try:
                 with temporary.open("xb") as handle:
                     handle.write(payload)
@@ -354,7 +354,7 @@ class WorkspaceController:
                 latest = target.stat()
                 if latest.st_mtime_ns != before.st_mtime_ns:
                     raise WorkspaceError(
-                        "Wisp changed this file while your save was being prepared. "
+                        "OpenWand changed this file while your save was being prepared. "
                         "Your text is still in the editor."
                     )
                 os.replace(temporary, target)
@@ -530,7 +530,7 @@ class WorkspaceController:
 
     @property
     def viewer_url(self) -> str:
-        """Return the secret-bearing local viewer URL for explicit user opening only."""
+        """Return the secret-bearing local viewer URL for the trusted UI boundary only."""
         with self._lock:
             if self._viewer is None:
                 raise WorkspaceError("The viewer is not running.")
@@ -542,8 +542,8 @@ class WorkspaceController:
 
     def _require_mutation_control(self) -> None:
         self._require_running()
-        if self._paused or self._control_owner != "wisp":
-            raise WorkspaceError("Wisp is paused because you have control of this workspace.")
+        if self._paused or self._control_owner != "openwand":
+            raise WorkspaceError("OpenWand is paused because you have control of this workspace.")
 
     def _safe_target(self, raw_path: str) -> tuple[Path, str]:
         root = self._root
@@ -700,7 +700,7 @@ class WorkspaceController:
                 pass
 
     def _point_cursor(self, path: str, *, kind: str) -> None:
-        label = "Wisp agent" if kind == "text" else "Wisp"
+        label = "OpenWand agent" if kind == "text" else "OpenWand"
         self._cursor = {
             "visible": True,
             "path": path,
@@ -736,7 +736,7 @@ class WorkspaceController:
         for path in sorted(current.keys() - previous.keys()):
             kind = current[path][0]
             noun = "folder" if kind == "folder" else "file"
-            actor = "Wisp" if self._task_active else "Workspace"
+            actor = "OpenWand" if self._task_active else "Workspace"
             if self._task_active:
                 self._agent_changes[path] = "created"
             self._record(kind, f"{actor} created {noun} {path}", path=path)
@@ -747,13 +747,13 @@ class WorkspaceController:
         for path in sorted(current.keys() & previous.keys()):
             if current[path] == previous[path] or current[path][0] != "file":
                 continue
-            actor = "Wisp" if self._task_active else "Workspace"
+            actor = "OpenWand" if self._task_active else "Workspace"
             if self._task_active and self._agent_changes.get(path) != "created":
                 self._agent_changes[path] = "edited"
             self._record("file", f"{actor} updated file {path}", path=path)
             self._point_cursor(path, kind="text")
         for path in sorted(previous.keys() - current.keys()):
-            actor = "Wisp" if self._task_active else "Workspace"
+            actor = "OpenWand" if self._task_active else "Workspace"
             if self._task_active:
                 self._agent_changes[path] = "deleted"
             self._record("file", f"{actor} removed {path}", path=path)

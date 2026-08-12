@@ -1,4 +1,4 @@
-"""Install Wisp's optional local AI privacy detector and runtime."""
+"""Install OpenWand's optional local AI privacy detector and runtime."""
 from __future__ import annotations
 
 import argparse
@@ -24,7 +24,7 @@ def _write_status(path: Path | None, *, ok: bool | None, message: str) -> None:
 
 
 def _install(status_path: Path | None = None) -> int:
-    # These must be set before importing huggingface_hub. The Wisp installer
+    # These must be set before importing huggingface_hub. The OpenWand installer
     # provides its own progress and error reporting, so Hub warnings/progress
     # would only duplicate or obscure the useful status lines.
     os.environ.setdefault("HF_HUB_VERBOSITY", "error")

@@ -17,7 +17,7 @@ Layout:
   - handlers.py   methods that run *inside* the worker (STT now; TTS/audio next).
   - client.py     the parent-side supervisor + request/response transport.
 
-The whole package is gated behind ``WISP_MACOS_HELPER=1`` (see ``is_enabled``)
+The whole package is gated behind ``OPENWAND_MACOS_HELPER=1`` (see ``is_enabled``)
 and is a no-op everywhere it is not enabled, so the in-process paths remain the
 default until the worker is proven on the Mac.
 """
@@ -29,5 +29,5 @@ import sys
 
 def is_enabled() -> bool:
     """True when the macOS helper subprocess should be used instead of in-process
-    native work. macOS-only and opt-in via ``WISP_MACOS_HELPER=1``."""
-    return sys.platform == "darwin" and os.environ.get("WISP_MACOS_HELPER") == "1"
+    native work. macOS-only and opt-in via ``OPENWAND_MACOS_HELPER=1``."""
+    return sys.platform == "darwin" and os.environ.get("OPENWAND_MACOS_HELPER") == "1"

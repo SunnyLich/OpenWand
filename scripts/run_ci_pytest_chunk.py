@@ -197,7 +197,7 @@ def _run_file(
     output_thread = threading.Thread(
         target=_forward_process_output,
         args=(process, mark_activity),
-        name="wisp-ci-pytest-output",
+        name="openwand-ci-pytest-output",
         daemon=True,
     )
     output_thread.start()

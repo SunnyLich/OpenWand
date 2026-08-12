@@ -21,9 +21,9 @@ from core.llm_clients.chat_tool_loop import (
     ChatToolLoop,
     ChatToolLoopConfig,
     ChatToolRequest,
-    WispObservation,
-    WispToolCall,
-    WispToolResult,
+    OpenWandObservation,
+    OpenWandToolCall,
+    OpenWandToolResult,
 )
 from core.llm_clients.harness_grading import (
     ExpectedTool,
@@ -91,7 +91,7 @@ class ChatToolLoopTypesTests(unittest.TestCase):
             scenario="arg_check",
             prompt=item.prompt,
             tools_offered=["read_file"],
-            tool_calls=[WispToolCall(id="read_1", name="read_file", arguments={"path": "README.md"})],
+            tool_calls=[OpenWandToolCall(id="read_1", name="read_file", arguments={"path": "README.md"})],
             observations=[],
             final_text="settings.json",
             final_status="final",
@@ -101,7 +101,7 @@ class ChatToolLoopTypesTests(unittest.TestCase):
             scenario="arg_check",
             prompt=item.prompt,
             tools_offered=["read_file"],
-            tool_calls=[WispToolCall(id="read_1", name="read_file", arguments={"path": "config.py"})],
+            tool_calls=[OpenWandToolCall(id="read_1", name="read_file", arguments={"path": "config.py"})],
             observations=[],
             final_text="settings.json",
             final_status="final",
@@ -164,8 +164,8 @@ class ChatToolLoopTypesTests(unittest.TestCase):
         turn = model.next_turn(request, [], [])
         followup = model.next_turn(
             request,
-            [WispObservation(
-                tool_results=[WispToolResult(call_id="tool_1", name="read_file", ok=True, content="contents")],
+            [OpenWandObservation(
+                tool_results=[OpenWandToolResult(call_id="tool_1", name="read_file", ok=True, content="contents")],
                 summary="read_file: ok",
             )],
             turn.tool_calls,
@@ -219,11 +219,11 @@ class ChatFlowHarnessTests(unittest.TestCase):
             {
                 scenario.name: [
                     ScriptedModelStep(
-                        tool_calls=[WispToolCall(id="read_1", name="read_file", arguments={"path": "app.py"})]
+                        tool_calls=[OpenWandToolCall(id="read_1", name="read_file", arguments={"path": "app.py"})]
                     ),
                     ScriptedModelStep(
                         tool_calls=[
-                            WispToolCall(
+                            OpenWandToolCall(
                                 id="edit_1",
                                 name="edit_file",
                                 arguments={"path": "app.py", "old": "bad", "new": "good"},
@@ -232,7 +232,7 @@ class ChatFlowHarnessTests(unittest.TestCase):
                     ),
                     ScriptedModelStep(
                         tool_calls=[
-                            WispToolCall(
+                            OpenWandToolCall(
                                 id="verify_1",
                                 name="run_command",
                                 arguments={"args": ["python", "-m", "py_compile", "app.py"]},
@@ -295,7 +295,7 @@ class ChatFlowHarnessTests(unittest.TestCase):
                     ScriptedModelStep(final="I do not remember.", status="premature"),
                     ScriptedModelStep(
                         tool_calls=[
-                            WispToolCall(
+                            OpenWandToolCall(
                                 id="memory_1",
                                 name="memory_search",
                                 arguments={"query": "answer style"},
@@ -329,11 +329,11 @@ class ChatFlowHarnessTests(unittest.TestCase):
             "unified",
             {
                 scenario.name: [
-                    ScriptedModelStep(tool_calls=[WispToolCall(id="read_1", name="read_file")]),
+                    ScriptedModelStep(tool_calls=[OpenWandToolCall(id="read_1", name="read_file")]),
                     ScriptedModelStep(final="I could not find notes.md.", status="premature"),
-                    ScriptedModelStep(tool_calls=[WispToolCall(id="list_1", name="list_files")]),
+                    ScriptedModelStep(tool_calls=[OpenWandToolCall(id="list_1", name="list_files")]),
                     ScriptedModelStep(final="I found docs/notes.md.", status="premature_after_list"),
-                    ScriptedModelStep(tool_calls=[WispToolCall(id="read_2", name="read_file")]),
+                    ScriptedModelStep(tool_calls=[OpenWandToolCall(id="read_2", name="read_file")]),
                     ScriptedModelStep(final="Found docs/notes.md and summarized it.", status="handled"),
                 ]
             },
@@ -341,7 +341,7 @@ class ChatFlowHarnessTests(unittest.TestCase):
                 scenario.name: {
                     "list_files": ["docs/notes.md"],
                     "read_file": [
-                        WispToolResult(
+                        OpenWandToolResult(
                             call_id="fixture",
                             name="read_file",
                             ok=False,
@@ -373,9 +373,9 @@ class ChatFlowHarnessTests(unittest.TestCase):
             "unified",
             {
                 scenario.name: [
-                    ScriptedModelStep(tool_calls=[WispToolCall(id="list_1", name="list_files")]),
-                    ScriptedModelStep(tool_calls=[WispToolCall(id="read_1", name="read_file")]),
-                    ScriptedModelStep(tool_calls=[WispToolCall(id="read_2", name="read_file")]),
+                    ScriptedModelStep(tool_calls=[OpenWandToolCall(id="list_1", name="list_files")]),
+                    ScriptedModelStep(tool_calls=[OpenWandToolCall(id="read_1", name="read_file")]),
+                    ScriptedModelStep(tool_calls=[OpenWandToolCall(id="read_2", name="read_file")]),
                     ScriptedModelStep(final="The tool budget is exhausted. Please ask again.", status="budget_apology"),
                     ScriptedModelStep(final="It uses settings.json.", status="handled"),
                 ]
@@ -410,8 +410,8 @@ class ChatFlowHarnessTests(unittest.TestCase):
                 scenario.name: [
                     ScriptedModelStep(
                         tool_calls=[
-                            WispToolCall(id="read_1", name="read_file"),
-                            WispToolCall(id="read_2", name="read_file"),
+                            OpenWandToolCall(id="read_1", name="read_file"),
+                            OpenWandToolCall(id="read_2", name="read_file"),
                         ]
                     ),
                     ScriptedModelStep(final="Done.", status="handled"),
@@ -495,7 +495,7 @@ class ChatFlowHarnessTests(unittest.TestCase):
         """Verify synthetic fixtures cannot leak stale call ids into provider output."""
         executor = FakeToolExecutor({
             "read_file": [
-                WispToolResult(
+                OpenWandToolResult(
                     call_id="fixture_id",
                     name="fixture_name",
                     ok=False,
@@ -504,7 +504,7 @@ class ChatFlowHarnessTests(unittest.TestCase):
             ]
         })
 
-        result = executor.execute(WispToolCall(id="real_call_id", name="read_file"))
+        result = executor.execute(OpenWandToolCall(id="real_call_id", name="read_file"))
 
         self.assertEqual(result.call_id, "real_call_id")
         self.assertEqual(result.name, "read_file")
@@ -516,7 +516,7 @@ class ChatFlowHarnessTests(unittest.TestCase):
         executor = FakeToolExecutor({
             "read_file": {
                 "path=notes.md": [
-                    WispToolResult(
+                    OpenWandToolResult(
                         call_id="fixture_missing",
                         name="read_file",
                         ok=False,
@@ -527,8 +527,8 @@ class ChatFlowHarnessTests(unittest.TestCase):
             }
         })
 
-        missing = executor.execute(WispToolCall(id="call_1", name="read_file", arguments={"path": "notes.md"}))
-        found = executor.execute(WispToolCall(id="call_2", name="read_file", arguments={"path": "docs/notes.md"}))
+        missing = executor.execute(OpenWandToolCall(id="call_1", name="read_file", arguments={"path": "notes.md"}))
+        found = executor.execute(OpenWandToolCall(id="call_2", name="read_file", arguments={"path": "docs/notes.md"}))
 
         self.assertFalse(missing.ok)
         self.assertEqual(missing.content, "File not found: notes.md")
@@ -557,11 +557,11 @@ class ChatFlowHarnessTests(unittest.TestCase):
             "unified",
             {
                 scenario.name: [
-                    ScriptedModelStep(tool_calls=[WispToolCall(id="read_1", name="read_file")]),
-                    ScriptedModelStep(tool_calls=[WispToolCall(id="list_1", name="list_files")]),
+                    ScriptedModelStep(tool_calls=[OpenWandToolCall(id="read_1", name="read_file")]),
+                    ScriptedModelStep(tool_calls=[OpenWandToolCall(id="list_1", name="list_files")]),
                     ScriptedModelStep(
                         tool_calls=[
-                            WispToolCall(id="read_2", name="read_file", arguments={"path": "docs/notes.md"})
+                            OpenWandToolCall(id="read_2", name="read_file", arguments={"path": "docs/notes.md"})
                         ]
                     ),
                     ScriptedModelStep(final="notes.md says settings load from settings.json at startup.", status="final"),
@@ -571,7 +571,7 @@ class ChatFlowHarnessTests(unittest.TestCase):
                 scenario.name: {
                     "read_file": {
                         "*": [
-                            WispToolResult(
+                            OpenWandToolResult(
                                 call_id="fixture",
                                 name="read_file",
                                 ok=False,
@@ -604,7 +604,7 @@ class ChatFlowHarnessTests(unittest.TestCase):
             "unified",
             {
                 scenario.name: [
-                    ScriptedModelStep(tool_calls=[WispToolCall(id="list_1", name="list_files")]),
+                    ScriptedModelStep(tool_calls=[OpenWandToolCall(id="list_1", name="list_files")]),
                     ScriptedModelStep(final="It uses config.py.", status="handled"),
                 ]
             },

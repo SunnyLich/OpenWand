@@ -1,4 +1,4 @@
-"""Generate the Wisp release manifest consumed by the in-app updater."""
+"""Generate the OpenWand release manifest consumed by the in-app updater."""
 from __future__ import annotations
 
 import argparse

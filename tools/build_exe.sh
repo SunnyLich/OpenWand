@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the Linux Wisp executable with PyInstaller and required assets.
+# Builds the Linux OpenWand executable with PyInstaller and required assets.
 set -euo pipefail
 
 # A GUI launch (double-clicking the script in a file manager) attaches no
@@ -96,8 +96,8 @@ if [[ ! "$WANT" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
 fi
 WANT_MM="$(printf '%s' "$WANT" | cut -d. -f1,2)"
 
-SPEC_NAME="WispLinux.spec"
-APP_NAME="Wisp"
+SPEC_NAME="OpenWandLinux.spec"
+APP_NAME="OpenWand"
 REQUIREMENTS_FILE="$ROOT/requirements/requirements-linux.lock"
 BUILD_REQUIREMENTS_FILE="$ROOT/requirements/requirements-build.lock"
 
@@ -211,7 +211,7 @@ install_uv_with_python() {
     if [[ -z "$python" || ! -x "$python" ]]; then
         return 1
     fi
-    echo "Installing uv into the build Python so it can be bundled with Wisp..." >&2
+    echo "Installing uv into the build Python so it can be bundled with OpenWand..." >&2
     ensure_pip "$python" >&2
     "$python" -m pip install uv >&2
     find_uv_for_python "$python"
@@ -244,7 +244,7 @@ stage_portable_uv() {
         uv="$(install_uv_with_python "$python" || true)"
     fi
     if [[ -z "$uv" || ! -x "$uv" ]]; then
-        echo "Could not find or install uv. Runtime package installs in packaged Wisp require bundled uv." >&2
+        echo "Could not find or install uv. Runtime package installs in packaged OpenWand require bundled uv." >&2
         exit 1
     fi
 
@@ -298,7 +298,7 @@ if ! $USE_GLOBAL_PYTHON; then
     PYTHON="$VENV_PYTHON"
     HAVE_VERSION="$(python_version "$PYTHON")"
     if ! python_matches_want "$PYTHON"; then
-        echo "$PYTHON is Python $HAVE_VERSION, but Wisp packaging is pinned to Python $WANT." >&2
+        echo "$PYTHON is Python $HAVE_VERSION, but OpenWand packaging is pinned to Python $WANT." >&2
         echo "Rebuild $VENV_DIR with Python $WANT installed." >&2
         exit 1
     fi
@@ -341,7 +341,7 @@ fi
 if ! $SKIP_INSTALL; then
     if confirm "Install/update Python packages in $PYTHON before building?"; then
         mkdir -p "$ROOT/build"
-        BUILD_RUNTIME_REQUIREMENTS="$ROOT/build/wisp-runtime-build-requirements.txt"
+        BUILD_RUNTIME_REQUIREMENTS="$ROOT/build/openwand-runtime-build-requirements.txt"
         grep -Ev '^[[:space:]]*(av|ctranslate2|elevenlabs|faster-whisper|flatbuffers|onnxruntime)[[:space:]]*==' \
             "$REQUIREMENTS_FILE" > "$BUILD_RUNTIME_REQUIREMENTS"
         echo "Optional speech SDKs are installer-owned and will not be installed into the build environment."
@@ -363,11 +363,11 @@ stage_portable_uv "$PYTHON"
 
 "$PYTHON" -m PyInstaller --noconfirm "$SPEC"
 
-# Seed the user config dir (~/.config/wisp/.env) with the repo's .env if the
+# Seed the user config dir (~/.config/openwand/.env) with the repo's .env if the
 # user has no settings yet. The app reads/writes settings there at runtime so
 # they survive rebuilds and updates.
 XDG_CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
-USER_CFG="$XDG_CFG/wisp"
+USER_CFG="$XDG_CFG/openwand"
 ENV_TARGET="$USER_CFG/.env"
 mkdir -p "$USER_CFG"
 if [[ ! -f "$ENV_TARGET" ]]; then

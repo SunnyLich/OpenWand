@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import config
 from core import secret_store
+from core.custom_connections import connection_id as _custom_connection_id
+from core.custom_connections import is_custom as _is_custom_provider
+from core.custom_connections import secret_name as _custom_secret_name
 from core.ollama_manager import OLLAMA_BASE_URL as _OLLAMA_MANAGED_BASE_URL
 
 GOOGLE_OPENAI_BASE_URL  = "https://generativelanguage.googleapis.com/v1beta/openai/"
@@ -43,8 +46,9 @@ def api_key_for(provider: str) -> str:
         return "chatgpt-oauth"
     if p == "copilot":
         return "copilot-token"
-    if p == "custom":
-        return config.CUSTOM_API_KEY
+    if _is_custom_provider(p):
+        connection_id = _custom_connection_id(p)
+        return secret_store.get_secret(_custom_secret_name(connection_id))
     if p == "deepseek":
         return config.DEEPSEEK_API_KEY
     if p == "openrouter":
@@ -99,8 +103,8 @@ def credential_source_for_provider(provider: str) -> str:
         return "chatgpt-oauth"
     if p == "copilot":
         return "copilot-keychain"
-    if p == "custom":
-        return secret_store.secret_source("CUSTOM_API_KEY")
+    if _is_custom_provider(p):
+        return secret_store.secret_source(_custom_secret_name(_custom_connection_id(p)))
     if p == "deepseek":
         return secret_store.secret_source("DEEPSEEK_API_KEY")
     if p == "openrouter":

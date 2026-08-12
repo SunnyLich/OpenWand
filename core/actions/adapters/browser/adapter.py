@@ -80,7 +80,7 @@ class BrowserActionAdapter:
 
     def __init__(self, *, session_token: str = "") -> None:
         self._idempotent_results: dict[str, ActionExecutionResult] = {}
-        self._session_token = str(session_token or os.environ.get("WISP_BROWSER_SESSION_TOKEN") or "").strip()
+        self._session_token = str(session_token or os.environ.get("OPENWAND_BROWSER_SESSION_TOKEN") or "").strip()
 
     def capabilities(self):
         return browser_capabilities()
@@ -98,7 +98,7 @@ class BrowserActionAdapter:
                 command_line = " ".join(process.info.get("cmdline") or [])
             except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
                 continue
-            marker = re.search(r"--wisp-managed-session(?:=|\s+)([^\s]+)", command_line)
+            marker = re.search(r"--openwand-managed-session(?:=|\s+)([^\s]+)", command_line)
             if marker is None or marker.group(1) != self._session_token:
                 continue
             match = re.search(r"--remote-debugging-port(?:=|\s+)(\d+)", command_line)
@@ -164,8 +164,8 @@ class BrowserActionAdapter:
         if len(targets) == 1:
             return targets[0]
         if not targets:
-            raise RuntimeError("This browser was not opened with Wisp's private managed action session.")
-        raise RuntimeError("Wisp could not identify one unique managed browser tab.")
+            raise RuntimeError("This browser was not opened with OpenWand's private managed action session.")
+        raise RuntimeError("OpenWand could not identify one unique managed browser tab.")
 
     @staticmethod
     def _clean_window_title(title: str) -> str:
@@ -298,7 +298,7 @@ class BrowserActionAdapter:
         encoded = json.dumps(assignments, ensure_ascii=False)
         try:
             client.call("Runtime.enable")
-            outcome = client.evaluate(_FORM_APPLY_SCRIPT.replace("__WISP_ASSIGNMENTS__", encoded))
+            outcome = client.evaluate(_FORM_APPLY_SCRIPT.replace("__OPENWAND_ASSIGNMENTS__", encoded))
             if not isinstance(outcome, dict):
                 raise RuntimeError("The browser returned an invalid Apply result.")
             return outcome
@@ -349,7 +349,7 @@ _FORM_SNAPSHOT_SCRIPT = r"""
 
 _FORM_APPLY_SCRIPT = r"""
 (() => {
-  const assignments = __WISP_ASSIGNMENTS__;
+  const assignments = __OPENWAND_ASSIGNMENTS__;
   const changed = [];
   const setValue = (element, value) => {
     const proto = element instanceof HTMLTextAreaElement

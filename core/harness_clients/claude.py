@@ -34,7 +34,7 @@ def _permission_mode(approval_mode: str) -> str:
 
 def _claude_executable(*, required: bool = True) -> str:
     """Return the same Claude Code CLI executable used by the Agent SDK."""
-    configured = os.getenv("WISP_CLAUDE_CLI", "").strip()
+    configured = os.getenv("OPENWAND_CLAUDE_CLI", "").strip()
     if configured:
         return configured
     try:
@@ -52,7 +52,7 @@ def _claude_executable(*, required: bool = True) -> str:
     if not required:
         return ""
     raise ClaudeHarnessError(
-        "Claude harness is unavailable. Install claude-agent-sdk or set WISP_CLAUDE_CLI to its executable."
+        "Claude harness is unavailable. Install claude-agent-sdk or set OPENWAND_CLAUDE_CLI to its executable."
     )
 
 
@@ -86,14 +86,14 @@ async def _run_async(
     try:
         import config
 
-        model = str(getattr(config, "WISP_CLAUDE_MODEL", "") or "").strip()
-        fast_mode = bool(getattr(config, "WISP_CLAUDE_FAST_MODE", False))
-        approval_mode = str(getattr(config, "WISP_CLAUDE_APPROVAL_MODE", "ask") or "ask")
-        effort = str(getattr(config, "WISP_CLAUDE_REASONING_EFFORT", "high") or "").strip()
+        model = str(getattr(config, "OPENWAND_CLAUDE_MODEL", "") or "").strip()
+        fast_mode = bool(getattr(config, "OPENWAND_CLAUDE_FAST_MODE", False))
+        approval_mode = str(getattr(config, "OPENWAND_CLAUDE_APPROVAL_MODE", "ask") or "ask")
+        effort = str(getattr(config, "OPENWAND_CLAUDE_REASONING_EFFORT", "high") or "").strip()
         reasoning_summary = str(
-            getattr(config, "WISP_CLAUDE_REASONING_SUMMARY", "summarized") or "summarized"
+            getattr(config, "OPENWAND_CLAUDE_REASONING_SUMMARY", "summarized") or "summarized"
         )
-        system_prompt = str(getattr(config, "WISP_CLAUDE_SYSTEM_PROMPT", "") or "")
+        system_prompt = str(getattr(config, "OPENWAND_CLAUDE_SYSTEM_PROMPT", "") or "")
     except (ImportError, AttributeError):
         model = ""
         fast_mode = False
@@ -104,11 +104,11 @@ async def _run_async(
 
     async def can_use_tool(tool_name: str, input_data: dict[str, Any], _context: Any) -> Any:
         if approval_callback is None:
-            return PermissionResultDeny(message="Wisp approval UI is unavailable", interrupt=False)
+            return PermissionResultDeny(message="OpenWand approval UI is unavailable", interrupt=False)
         allowed = approval_allowed(approval_callback(_tool_request(tool_name, input_data)))
         if allowed:
             return PermissionResultAllow(updated_input=input_data)
-        return PermissionResultDeny(message="Declined in Wisp", interrupt=False)
+        return PermissionResultDeny(message="Declined in OpenWand", interrupt=False)
 
     options_kwargs: dict[str, Any] = {
         "cwd": cwd,

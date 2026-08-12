@@ -11,10 +11,14 @@ from core.conversation_store.external_sync import (
     apply_external_conversations,
     discover_external_conversations,
     export_conversation_as_new_session,
+    external_conversations_since,
+    external_project_path,
     parse_claude_session,
     parse_codex_session,
     pending_external_push_count,
     push_conversation_to_source,
+    select_external_conversations,
+    set_external_auto_sync,
     sync_external_conversations,
 )
 
@@ -190,7 +194,7 @@ def test_parse_claude_follows_active_chain_and_ignores_tools(tmp_path):
     ]
 
 
-def test_sync_updates_in_place_and_preserves_wisp_tail(tmp_path):
+def test_sync_updates_in_place_and_preserves_openwand_tail(tmp_path):
     codex_home = tmp_path / ".codex"
     claude_home = tmp_path / ".claude"
     path = codex_home / "sessions" / "2026" / "session.jsonl"
@@ -206,7 +210,7 @@ def test_sync_updates_in_place_and_preserves_wisp_tail(tmp_path):
     conversations: list[dict] = []
 
     first = sync_external_conversations(conversations, codex_home=codex_home, claude_home=claude_home)
-    conversations[0]["messages"].append({"role": "user", "content": "Wisp follow-up"})
+    conversations[0]["messages"].append({"role": "user", "content": "OpenWand follow-up"})
     records.append(
         {
             "type": "event_msg",
@@ -223,7 +227,7 @@ def test_sync_updates_in_place_and_preserves_wisp_tail(tmp_path):
     assert [message["content"] for message in conversations[0]["messages"]] == [
         "Question",
         "Answer",
-        "Wisp follow-up",
+        "OpenWand follow-up",
     ]
 
 
@@ -251,6 +255,126 @@ def test_discovery_does_not_mutate_until_applied(tmp_path):
     assert conversations[0]["messages"][0]["content"] == "Hello"
 
 
+def test_external_discovery_and_selection_are_provider_project_and_limit_scoped(tmp_path):
+    codex_home = tmp_path / ".codex"
+    claude_home = tmp_path / ".claude"
+
+    def codex_session(name: str, cwd: str, timestamp: str) -> None:
+        _write_jsonl(
+            codex_home / "sessions" / f"{name}.jsonl",
+            [
+                {
+                    "timestamp": timestamp,
+                    "type": "session_meta",
+                    "payload": {"id": name, "cwd": cwd},
+                },
+                {
+                    "timestamp": timestamp,
+                    "type": "event_msg",
+                    "payload": {"type": "user_message", "message": name},
+                },
+            ],
+        )
+
+    codex_session("general-old", "", "2026-01-01T00:00:00Z")
+    codex_session("general-new", "", "2026-01-03T00:00:00Z")
+    codex_session("alpha-old", "/projects/alpha", "2026-01-02T00:00:00Z")
+    codex_session("alpha-new", "/projects/alpha", "2026-01-04T00:00:00Z")
+    codex_session("beta", "/projects/beta", "2026-01-05T00:00:00Z")
+    _write_jsonl(
+        claude_home / "projects" / "alpha" / "claude.jsonl",
+        [
+            {
+                "type": "user",
+                "uuid": "claude-user",
+                "sessionId": "claude-only",
+                "cwd": "/projects/alpha",
+                "timestamp": "2026-01-06T00:00:00Z",
+                "message": {"role": "user", "content": "Claude"},
+            }
+        ],
+    )
+
+    discovered, _report = discover_external_conversations(
+        codex_home=codex_home,
+        claude_home=claude_home,
+        provider="codex",
+    )
+    assert {item["external_source"]["provider"] for item in discovered} == {"codex"}
+
+    selected = select_external_conversations(
+        discovered,
+        provider="codex",
+        include_general=True,
+        general_limit=1,
+        include_project=True,
+        project_path="/projects/alpha",
+        project_limit=1,
+    )
+
+    assert {item["external_source"]["session_id"] for item in selected} == {
+        "general-new",
+        "alpha-new",
+    }
+    assert {external_project_path(item) for item in selected} == {"", "/projects/alpha"}
+
+    with pytest.raises(ValueError, match="unsupported external conversation provider"):
+        discover_external_conversations(
+            codex_home=codex_home,
+            claude_home=claude_home,
+            provider="unknown",
+        )
+
+
+def test_external_auto_sync_state_starts_at_enable_time_without_backfill(tmp_path):
+    state_path = tmp_path / "external_sync_state.json"
+
+    state = set_external_auto_sync(
+        "codex",
+        True,
+        path=state_path,
+        enabled_at="2026-08-11T12:00:00+00:00",
+    )
+    assert state["codex"] == {
+        "enabled": True,
+        "since": "2026-08-11T12:00:00+00:00",
+    }
+    assert state["claude"] == {"enabled": False, "since": ""}
+
+    discovered = [
+        {
+            "external_source": {
+                "provider": "codex",
+                "session_id": "old",
+                "source_updated_at": "2026-08-11T11:59:59+00:00",
+            }
+        },
+        {
+            "external_source": {
+                "provider": "codex",
+                "session_id": "new",
+                "source_updated_at": "2026-08-11T12:00:01+00:00",
+            }
+        },
+    ]
+    assert [
+        item["external_source"]["session_id"]
+        for item in external_conversations_since(discovered, state["codex"]["since"])
+    ] == ["new"]
+
+    disabled = set_external_auto_sync("codex", False, path=state_path)
+    assert disabled["codex"]["enabled"] is False
+    assert disabled["codex"]["since"] == "2026-08-11T12:00:00+00:00"
+
+    reenabled = set_external_auto_sync(
+        "codex",
+        True,
+        path=state_path,
+        enabled_at="2026-08-12T00:00:00+00:00",
+    )
+    assert reenabled["codex"]["since"] == "2026-08-12T00:00:00+00:00"
+
+
 def test_push_codex_turns_backs_up_and_round_trips(tmp_path):
     source_root = tmp_path / ".codex"
     path = source_root / "sessions" / "session.jsonl"
@@ -265,8 +389,8 @@ def test_push_codex_turns_backs_up_and_round_trips(tmp_path):
     assert conversation is not None
     conversation["messages"].extend(
         [
-            {"role": "assistant", "content": "Wisp answer", "created_at": "2026-01-01T00:00:01Z"},
-            {"role": "user", "content": "Wisp follow-up", "created_at": "2026-01-01T00:00:02Z"},
+            {"role": "assistant", "content": "OpenWand answer", "created_at": "2026-01-01T00:00:01Z"},
+            {"role": "user", "content": "OpenWand follow-up", "created_at": "2026-01-01T00:00:02Z"},
         ]
     )
 
@@ -283,8 +407,8 @@ def test_push_codex_turns_backs_up_and_round_trips(tmp_path):
     assert reparsed is not None
     assert [message["content"] for message in reparsed["messages"]] == [
         "Original",
-        "Wisp answer",
-        "Wisp follow-up",
+        "OpenWand answer",
+        "OpenWand follow-up",
     ]
 
 
@@ -306,7 +430,7 @@ def test_push_claude_turns_preserves_parent_chain(tmp_path):
     )
     conversation = parse_claude_session(path)
     assert conversation is not None
-    conversation["messages"].append({"role": "assistant", "content": "Wisp answer"})
+    conversation["messages"].append({"role": "assistant", "content": "OpenWand answer"})
 
     report = push_conversation_to_source(
         conversation,
@@ -317,7 +441,7 @@ def test_push_claude_turns_preserves_parent_chain(tmp_path):
 
     assert report.pushed == 1
     assert reparsed is not None
-    assert [message["content"] for message in reparsed["messages"]] == ["Original", "Wisp answer"]
+    assert [message["content"] for message in reparsed["messages"]] == ["Original", "OpenWand answer"]
 
 
 def test_push_rejects_source_outside_provider_root(tmp_path):
@@ -341,12 +465,12 @@ def test_push_rejects_source_outside_provider_root(tmp_path):
         raise AssertionError("unsafe external source path was accepted")
 
 
-def test_export_wisp_native_conversation_as_new_codex_session(tmp_path):
+def test_export_openwand_native_conversation_as_new_codex_session(tmp_path):
     conversation = {
-        "title": "Native Wisp chat",
+        "title": "Native OpenWand chat",
         "messages": [
             {"role": "user", "content": "Original question", "created_at": "2026-01-01T00:00:00Z"},
-            {"role": "assistant", "content": "Wisp answer", "created_at": "2026-01-01T00:00:01Z"},
+            {"role": "assistant", "content": "OpenWand answer", "created_at": "2026-01-01T00:00:01Z"},
         ],
     }
     codex_home = tmp_path / ".codex"
@@ -367,16 +491,16 @@ def test_export_wisp_native_conversation_as_new_codex_session(tmp_path):
     assert reparsed is not None
     assert [message["content"] for message in reparsed["messages"]] == [
         "Original question",
-        "Wisp answer",
+        "OpenWand answer",
     ]
 
 
-def test_export_wisp_native_conversation_as_new_claude_session(tmp_path):
+def test_export_openwand_native_conversation_as_new_claude_session(tmp_path):
     conversation = {
         "title_override": "Native title",
         "messages": [
             {"role": "user", "content": "Original question"},
-            {"role": "assistant", "content": "Wisp answer"},
+            {"role": "assistant", "content": "OpenWand answer"},
         ],
     }
     claude_home = tmp_path / ".claude"
@@ -395,7 +519,7 @@ def test_export_wisp_native_conversation_as_new_claude_session(tmp_path):
     assert reparsed["title"] == "Native title"
     assert [message["content"] for message in reparsed["messages"]] == [
         "Original question",
-        "Wisp answer",
+        "OpenWand answer",
     ]
     with pytest.raises(ValueError, match="already linked"):
         export_conversation_as_new_session(

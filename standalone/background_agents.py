@@ -1,8 +1,8 @@
-"""Standalone launcher for Wisp's scoped multi-agent task engine.
+"""Standalone launcher for OpenWand's scoped multi-agent task engine.
 
 This module intentionally has no Qt, overlay, supervisor, or worker imports.
 It can be exercised from a terminal before the same task contract is handed to
-the Wisp UI::
+the OpenWand UI::
 
     python -m standalone.background_agents demo --workspace .tmp/agent-demo
     python -m standalone.background_agents start --spec task.json
@@ -52,12 +52,12 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _scripted_model_from_env():
     """Return the existing opt-in Agent Team test script as a model callback."""
-    script_path = str(os.getenv("WISP_BRAIN_AGENT_TEST_SCRIPT") or "").strip()
+    script_path = str(os.getenv("OPENWAND_BRAIN_AGENT_TEST_SCRIPT") or "").strip()
     if not script_path:
         return None
     raw = json.loads(Path(script_path).read_text(encoding="utf-8"))
     if not isinstance(raw, list):
-        raise ValueError("WISP_BRAIN_AGENT_TEST_SCRIPT must contain a JSON array")
+        raise ValueError("OPENWAND_BRAIN_AGENT_TEST_SCRIPT must contain a JSON array")
     responses = [item if isinstance(item, str) else json.dumps(item) for item in raw]
     index = 0
 
@@ -319,7 +319,7 @@ def start_payload_detached(
     state_path: str | Path | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Persist and detach one task payload without importing any Wisp UI code."""
+    """Persist and detach one task payload without importing any OpenWand UI code."""
     root = Path(log_root).expanduser().resolve()
     jobs_root = root / "background_jobs"
     jobs_root.mkdir(parents=True, exist_ok=True)
@@ -353,7 +353,7 @@ def _default_paths(args: argparse.Namespace) -> None:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run Wisp's scoped Agent Team without launching the Wisp UI.")
+    parser = argparse.ArgumentParser(description="Run OpenWand's scoped Agent Team without launching the OpenWand UI.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run = subparsers.add_parser("run", help="Run a task-spec JSON in this process.")

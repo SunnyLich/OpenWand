@@ -81,7 +81,7 @@ def _apply_installer_overlay(result: dict[str, object], installer: dict[str, obj
             state="restart_required",
             usable=current_usable,
             summary=message,
-            action="Restart Wisp to apply and verify the staged speech packages.",
+            action="Restart OpenWand to apply and verify the staged speech packages.",
         )
     elif installer.get("ok") is None:
         result.update(
@@ -299,7 +299,7 @@ def tts_status(
         "ready": None,
         "warming": False,
         "state": "disabled",
-        "summary": "TTS is off; replies stay text-only.",
+        "summary": "TTS is off; replies will stay text-only.",
         "error": "",
         "action": "",
         "package": {},
@@ -370,7 +370,24 @@ def tts_status(
             _installer_status(config, "kokoro", device=install_device),
         ):
             return result
-        if package.get("valid") is not True:
+        runtime: dict[str, object] = {}
+        package_usable = package.get("valid") is True
+        installed_candidate = bool(package.get("installed"))
+        if not package_usable and installed_candidate:
+            if verify_runtime:
+                # Package pins can move while the installed Kokoro entry point
+                # stays compatible. Verify the runtime before asking for a
+                # needless repair.
+                runtime = dict(optional_deps.kokoro_runtime_import_status_subprocess())
+                result["runtime"] = runtime
+                package_usable = runtime.get("valid") is True
+            else:
+                # Lightweight/live status must not disable an existing Kokoro
+                # layer just because the checked-in lock changed. Startup and
+                # synthesis import the real entry point and report actual errors.
+                package_usable = True
+                result["version_drift"] = True
+        if not package_usable:
             detail = str(package.get("message") or "Kokoro packages are missing or invalid").strip()
             result.update(
                 state="repair_required" if package.get("installed") else "not_installed",
@@ -406,8 +423,9 @@ def tts_status(
             result.update(state="repair_required", summary=detail, error=detail, action="Repair the Kokoro voice files.")
             return result
         if verify_runtime:
-            runtime = dict(optional_deps.kokoro_runtime_import_status_subprocess())
-            result["runtime"] = runtime
+            if not runtime:
+                runtime = dict(optional_deps.kokoro_runtime_import_status_subprocess())
+                result["runtime"] = runtime
             failure = _runtime_failure(runtime)
             if not failure:
                 torch = dict(optional_deps.kokoro_torch_status_subprocess())

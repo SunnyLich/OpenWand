@@ -1,12 +1,12 @@
 <div align="center">
 
-<img src="../assets/doll/idle.png" width="112" alt="Wisp 圖示" />
+<img src="../assets/doll/idle.png" width="112" alt="OpenWand 圖示" />
 
-# Wisp
+# OpenWand
 
-**許多任務更適合由 AI 協助完成，而不是完全交給 AI 代辦。Wisp 讓這種協作更高效、更易用、更可自訂，是一個開源協作平台。**
+**許多任務更適合由 AI 協助完成，而不是完全交給 AI 代辦。OpenWand 讓這種協作更高效、更易用、更可自訂，是一個開源協作平台。**
 
-Wisp 為您提供快捷鍵驅動的 AI，能夠讀取您的選取內容、剪貼簿、應用程式、瀏覽器、文件或螢幕截圖，同時您無需離開目前工作環境。按下快捷鍵，選擇操作，答案將以串流方式顯示在小懸浮視窗中，或直接出現在輸入游標處。它完全開源、跨平台、可擴充、採用寬鬆授權，並且 100% 使用 Python 編寫，因此始終易於折騰和改造；這種開放性，即使是 Microsoft Copilot 這樣的十億美元級產品也仍未實現。
+OpenWand 為您提供快捷鍵驅動的 AI，能夠讀取您的選取內容、剪貼簿、應用程式、瀏覽器、文件或螢幕截圖，同時您無需離開目前工作環境。按下快捷鍵，選擇操作，答案將以串流方式顯示在小懸浮視窗中，或直接出現在輸入游標處。它完全開源、跨平台、可擴充、採用寬鬆授權，並以 Python 為主，因此始終易於折騰和改造；這種開放性，即使是 Microsoft Copilot 這樣的十億美元級產品也仍未實現。
 
 [![平台](https://img.shields.io/badge/平台-Windows%20%7C%20macOS%20%7C%20Linux-333333?style=flat-square)](#平台狀態)
 [![Python](https://img.shields.io/badge/python-3.12-3572A5?style=flat-square)](#快速開始)
@@ -15,11 +15,11 @@ Wisp 為您提供快捷鍵驅動的 AI，能夠讀取您的選取內容、剪貼
 
 **語言：** [English](README.md) | [简体中文](README.zh-CN.md) | 繁體中文 | [Français](README.fr.md) | [Español](README.es.md)
 
-**網站：** [Wisp 文件](https://sunnylich.github.io/Wisp-AI-Assistant/)
+**網站：** [OpenWand 文件](https://sunnylich.github.io/OpenWand/)
 
-[快速開始](#快速開始) | [功能介紹](#wisp-的功能) | [示範](#示範) | [設定](#設定) | [免費 API](#免費模型-api-來源) | [隱私](#隱私與控制)
+[快速開始](#快速開始) | [功能介紹](#openwand-的功能) | [示範](#示範) | [設定](#設定) | [免費 API](#免費模型-api-來源) | [隱私](#隱私與控制)
 
-![Wisp Ctrl+Q 示範](readme-assets/readme-1st-demo.gif)
+![OpenWand Ctrl+Q 示範](readme-assets/readme-1st-demo.gif)
 
 **懸浮視窗查詢：** 按下快捷鍵，選擇操作，無需離開目前應用即可獲得串流回答。
 </div>
@@ -28,15 +28,15 @@ Wisp 為您提供快捷鍵驅動的 AI，能夠讀取您的選取內容、剪貼
 
 ## 已知問題
 
-[已知問題](https://sunnylich.github.io/Wisp-AI-Assistant/#known-issues)
+[已知問題](https://sunnylich.github.io/OpenWand/#known-issues)
 
-## Wisp 的功能
+## OpenWand 的功能
 
-Wisp 專為那些開啟聊天應用程式會打斷工作流程的時刻而設計。
+OpenWand 專為那些開啟聊天應用程式會打斷工作流程的時刻而設計。
 
-選取文字，按下通用快捷鍵，點擊一個操作鍵，Wisp 就會使用您啟用的上下文來源向您設定的模型提問。回覆將以串流方式顯示在浮動圖示旁邊的緊湊氣泡中。如果啟用了 TTS，答案會在到達時同步朗讀。
+選取文字，按下通用快捷鍵，點擊一個操作鍵，OpenWand 就會使用您啟用的上下文來源向您設定的模型提問。回覆將以串流方式顯示在浮動圖示旁邊的緊湊氣泡中。如果啟用了 TTS，答案會在到達時同步朗讀。
 
-| 以前您需要... | 現在 Wisp 讓您... |
+| 以前您需要... | 現在 OpenWand 讓您... |
 | --- | --- |
 | 將文字複製到單獨的聊天視窗 | 直接從您正在使用的應用中提問 |
 | 每次都為重複任務重新輸入說明 | 儲存可重用操作，並選擇需要的上下文來源 |
@@ -48,37 +48,39 @@ Wisp 專為那些開啟聊天應用程式會打斷工作流程的時刻而設計
 ## 亮點
 
 - **懸浮視窗優先** — 浮動圖示、操作選擇器和回覆氣泡始終置頂，不占用桌面。
-- **即時 ChatGPT/Codex 與 Claude 代理** — 在「設定」頂部選擇 Wisp、ChatGPT 或 Claude Agent，再決定由 Wisp 保持對話連續性，或把連續性轉交給所選代理。Codex CLI app-server 和 Claude Agent SDK 會在 Wisp 後端執行，並提供即時推理摘要、回覆、工具進度、核准和可選的可恢復工作階段。轉錄記錄的提取、推送和匯出仍可作為離線備援方案。
-- **預設隱私保護** — Wisp 沒有託管儲存層；資料保留在您的機器上，隱私模式可在敏感上下文送出前發出警告或進行去識別化處理。
+- **完整聊天視窗** — 點擊浮動圖示即可開啟可搜尋的持久聊天，依專案整理對話，保留已擷取的上下文，安全地原生呈現 Markdown，並可從本機 ChatGPT/Codex 與 Claude 歷史記錄匯入對話；滑鼠滾輪、中鍵自動捲動和加寬捲軸都可用於瀏覽長回覆。
+- **回覆呈現控制** — 一般回覆無需額外模型呼叫即可顯示清楚的標題、清單、表格、程式碼、引文和多語言文字；可選的「格式化回覆」附加元件會保留原文，在執行前顯示格式化模型，並檢查可見的來源內容是否完整保留。
+- **即時 ChatGPT/Codex 與 Claude 代理** — 在「設定」頂部選擇 OpenWand、ChatGPT 或 Claude Agent，再決定由 OpenWand 保持對話連續性，或把連續性轉交給所選代理。Codex CLI app-server 和 Claude Agent SDK 會在 OpenWand 後端執行，並提供即時推理摘要、回覆、工具進度、核准和可選的可恢復工作階段。本機對話匯入、可選的從啟用後開始同步，以及匯出為新對話都無需聯絡提供者。
+- **預設隱私保護** — OpenWand 沒有託管儲存層；資料保留在您的機器上，隱私模式可在敏感上下文送出前發出警告或進行去識別化處理。
 - **高度可自訂** — 每個快捷鍵、操作鍵、提示詞、上下文來源、貼上行為、模型路由、語音設定和氣泡尺寸均可修改。
 - **友善的圖形介面** — 設定、檢查、隱私報告、記憶工具和模型警告清楚說明正在發生的事情，無需閱讀程式碼。
-- **上下文擷取** — Wisp 可以讀取選取文字、剪貼簿文字、聚焦 UI、已開啟的文件、瀏覽器內容、最近的檔案和可選截圖。
+- **上下文擷取** — OpenWand 可以讀取選取文字、剪貼簿文字、聚焦 UI、已開啟的文件、瀏覽器內容、最近的檔案和可選截圖。
 - **語音輸入輸出** — 透過 faster-whisper 實現本地語音辨識，外加在本機執行的神經 TTS（Kokoro 以及 GPT-SoVITS 語音複製），或雲端/相容語音（Cartesia、ElevenLabs、OpenAI 以及任何 OpenAI 相容伺服器），預設停用 TTS。
 - **視覺截圖** — 使用 `Ctrl+Alt+Q` 繪製區域並將截圖傳送給視覺模型。
 - **改寫並貼上** — 使用改寫快捷鍵改寫選取文字並將結果貼回作用中的欄位。
 - **自備提供商** — 支援 Groq、Anthropic、OpenAI、Google、DeepSeek、OpenRouter、Mistral、XAI、Together、Cerebras、自訂 OpenAI 相容伺服器、GitHub Copilot 等。
 - **本地記憶** — 可選的短期和長期記憶儲存在本地，支援檢視器編輯或刪除記錄。
-- **附加元件** — 透過掛鉤、系統匣動作、設定、模型可呼叫工具、可設定操作和快捷鍵擴充 Wisp。
+- **附加元件** — 透過掛鉤、系統匣動作、設定、模型可呼叫工具、可設定操作和快捷鍵擴充 OpenWand。
 - **聊天背景工作** — 啟用本機專案寫入後，聊天模型可以委派較複雜的程式工作、立即回覆，並在完成後將報告加入同一對話。
 - **代理團隊** — 由你直接設定專案、目標、代理、模型和權限，並透過可見的即時進度與可審查產出物執行團隊。
 
 ## 示範
 
-![Wisp Ctrl+Alt+Q 螢幕截圖示範](readme-assets/readme-2nd-demo.gif)
+![OpenWand Ctrl+Alt+Q 螢幕截圖示範](readme-assets/readme-2nd-demo.gif)
 
 **視覺截圖：** 截圖流程適用於視覺上下文重要的場景。`Ctrl+Alt+Q` 允許您繪製區域，將該截圖傳送給視覺模型，並將答案保留在懸浮視窗中而不需要切換應用程式。
 
-![Wisp 上下文感知改寫示範](readme-assets/readme-3rd-demo.gif)
+![OpenWand 上下文感知改寫示範](readme-assets/readme-3rd-demo.gif)
 
-**上下文感知改寫：** Wisp 可以在不截圖的情況下收集有用的應用程式上下文，讓模型了解您正在做什麼。然後改寫快捷鍵只重寫選取的文字，並把貼回目標指向按下快捷鍵時擷取的原始欄位。
+**上下文感知改寫：** OpenWand 可以在不截圖的情況下收集有用的應用程式上下文，讓模型了解您正在做什麼。然後改寫快捷鍵只重寫選取的文字，並把貼回目標指向按下快捷鍵時擷取的原始欄位。
 
-![Wisp 代理團隊示範](readme-assets/readme-4th-demo.gif)
+![OpenWand 代理團隊示範](readme-assets/readme-4th-demo.gif)
 
-**代理團隊：** 將較長的工作委派給協調者、建構者和審查者。團隊可以檢查專案檔案、進行有針對性的變更、執行檢查，並在你繼續使用 Wisp 時留下最終報告和可審查的產出物。
+**代理團隊：** 將較長的工作委派給協調者、建構者和審查者。團隊可以檢查專案檔案、進行有針對性的變更、執行檢查，並在你繼續使用 OpenWand 時留下最終報告和可審查的產出物。
 
 ## 工作流程
 
-| 您這邊 | Wisp 會做什麼 |
+| 您這邊 | OpenWand 會做什麼 |
 | --- | --- |
 | 選取文字、選擇上下文或繪製截圖 | 只擷取您選取或啟用的上下文 |
 | 按下呼叫快捷鍵並選擇操作或自訂提示詞 | 根據您的提示詞和所選上下文建立模型請求 |
@@ -88,7 +90,7 @@ Wisp 專為那些開啟聊天應用程式會打斷工作流程的時刻而設計
 
 示例流程：
 
-| 您想做什麼 | Wisp 會做什麼 |
+| 您想做什麼 | OpenWand 會做什麼 |
 | --- | --- |
 | 想解釋選取的文字 | 在您按下通用快捷鍵並選擇 `W`（這是什麼？）或 `A`（簡單解釋）後讀取選取內容，並在懸浮視窗中解釋 |
 | 想改寫一句話 | 讀取選取的句子，套用您選擇的改寫操作，並可將結果貼回原處 |
@@ -98,40 +100,40 @@ Wisp 專為那些開啟聊天應用程式會打斷工作流程的時刻而設計
 | 想在另一個應用程式中聽寫 | 將您的 `F8` 語音直接轉寫到目前聚焦的文字框中 |
 ## 快速開始
 
-Wisp 有兩種支援的啟動方式。
+OpenWand 有兩種支援的啟動方式。
 
 ### 選項 1：封裝應用程式
 
 如果您希望使用應用程式而無需複製儲存庫或管理 Python 相依性，請使用此選項。
 
-1. 從 [GitHub Releases](https://github.com/SunnyLich/Wisp-AI-Assistant/releases) 下載適用於您平台的最新資源。
+1. 從 [GitHub Releases](https://github.com/SunnyLich/OpenWand/releases) 下載適用於您平台的最新資源。
 2. 解壓縮存檔並啟動封裝應用程式。
 3. 開啟設定以新增您的模型提供商金鑰、語音設定和首選快捷鍵。
 
 | 作業系統 | 發布檔案 | 啟動方式 |
 | --- | --- | --- |
-| Windows | `Wisp-<tag>-windows-x64.zip` | `Wisp.exe` |
-| macOS | `Wisp-<tag>-macos-<arch>.zip` | `Wisp.app` |
-| Linux | `Wisp-<tag>-linux-x64.tar.gz` | `Wisp` |
+| Windows | `OpenWand-<tag>-windows-x64.zip` | `OpenWand.exe` |
+| macOS | `OpenWand-<tag>-macos-<arch>.zip` | `OpenWand.app` |
+| Linux | `OpenWand-<tag>-linux-x64.tar.gz` | `OpenWand` |
 
 ### 選項 2：儲存庫啟動器
 
-如果您希望從原始碼執行、開發 Wisp 或測試最新的簽出版本，請使用此選項。
+如果您希望從原始碼執行、開發 OpenWand 或測試最新的簽出版本，請使用此選項。
 
 複製儲存庫：
 
 ```bash
-git clone https://github.com/SunnyLich/Wisp-AI-Assistant.git
-cd Wisp-AI-Assistant
+git clone https://github.com/SunnyLich/OpenWand.git
+cd OpenWand
 ```
 
-然後使用適合您平台的儲存庫啟動器啟動 Wisp：
+然後使用適合您平台的儲存庫啟動器啟動 OpenWand：
 
 | 作業系統 | 啟動方式 | 相依來源 |
 | --- | --- | --- |
-| Windows | `Start Wisp.bat` | `requirements/requirements-windows.lock` |
-| macOS | `Start Wisp.command` | `requirements/requirements-macos.lock` |
-| Linux | `Start Wisp.sh` | `requirements/requirements-linux.lock` |
+| Windows | `Start OpenWand.bat` | `requirements/requirements-windows.lock` |
+| macOS | `Start OpenWand.command` | `requirements/requirements-macos.lock` |
+| Linux | `Start OpenWand.sh` | `requirements/requirements-linux.lock` |
 
 首次啟動將設定 Python 環境並安裝相依性。後續啟動將直接進入應用程式。
 
@@ -146,9 +148,9 @@ cd Wisp-AI-Assistant
 要查看完整執行時日誌，請使用對應的除錯啟動器：
 
 ```text
-Start Wisp Debug.bat
-Start Wisp Debug.command
-Start Wisp Debug.sh
+Start OpenWand Debug.bat
+Start OpenWand Debug.command
+Start OpenWand Debug.sh
 ```
 
 ## 設定
@@ -161,19 +163,19 @@ Start Wisp Debug.sh
 
 | 引擎 | 行為 |
 | --- | --- |
-| **Wisp** | 使用 Wisp 中設定的 LLM 提供者和模型。 |
+| **OpenWand** | 使用 OpenWand 中設定的 LLM 提供者和模型。 |
 | **ChatGPT** | 以 app-server 模式執行已安裝的 Codex CLI，並使用您的 ChatGPT/Codex 帳戶。 |
 | **Claude Agent** | 透過 Claude Code CLI 驗證執行 Claude Agent SDK，並使用您的 Claude 帳戶。 |
 
-選擇 ChatGPT 或 Claude Agent 後，可以檢視登入狀態以及**登入**、**登出**和**重新整理**操作。ChatGPT 模式需要 Codex CLI；Wisp 會把 Codex 登入狀態和可恢復工作階段儲存在隔離的本機設定檔中，因此不會出現在您的個人 Codex 歷史記錄裡。Claude Agent 會在可用時使用內附 SDK，並透過 Claude Code CLI 進行驗證。
+選擇 ChatGPT 或 Claude Agent 後，可以檢視登入狀態以及**登入**、**登出**和**重新整理**操作。ChatGPT 模式需要 Codex CLI；OpenWand 會把 Codex 登入狀態和可恢復工作階段儲存在隔離的本機設定檔中，因此不會出現在您的個人 Codex 歷史記錄裡。Claude Agent 會在可用時使用內附 SDK，並透過 Claude Code CLI 進行驗證。
 
-**對話傳送至**控制對話連續性。選擇 **Wisp** 時，每次請求都會傳送完整的本機 Wisp 歷史記錄，但不會保留提供者的連續工作階段連結。選擇 **ChatGPT** 或 **Claude Agent** 時，Wisp 只傳輸一次歷史記錄，儲存傳回的工作階段 ID，並在後續提示中恢復該提供者工作階段。Wisp 始終保留本機顯示副本，並分別儲存 Wisp、ChatGPT/Codex 和 Claude 的歷史記錄，因此切換引擎不會把訊息附加到錯誤的對話中。
+**對話傳送至**控制對話連續性。選擇 **OpenWand** 時，每次請求都會傳送完整的本機 OpenWand 歷史記錄，但不會保留提供者的連續工作階段連結。選擇 **ChatGPT** 或 **Claude Agent** 時，OpenWand 只傳輸一次歷史記錄，儲存傳回的工作階段 ID，並在後續提示中恢復該提供者工作階段。OpenWand 始終保留本機顯示副本，並分別儲存 OpenWand、ChatGPT/Codex 和 Claude 的歷史記錄，因此切換引擎不會把訊息附加到錯誤的對話中。
 
-代理工作時，Wisp 會串流顯示回覆，以及提供者公開的所有可見推理摘要、計畫、工具啟動、命令或檔案狀態和核准請求。私密的隱藏思維鏈無法使用。浮動圖示下方的提供者徽章可開啟下一輪的即時控制：模型、專案、快速模式、推理投入、可見摘要，以及三種權限模式之一——要求權限、允許在專案內變更或僅規劃的唯讀模式。
+代理工作時，OpenWand 會串流顯示回覆，以及提供者公開的所有可見推理摘要、計畫、工具啟動、命令或檔案狀態和核准請求。私密的隱藏思維鏈無法使用。浮動圖示下方的提供者徽章可開啟下一輪的即時控制：模型、專案、快速模式、推理投入、可見摘要，以及三種權限模式之一——要求權限、允許在專案內變更或僅規劃的唯讀模式。
 
-專案可以明確選擇，也可以根據已恢復工作階段、附件和檔案情境推斷；最後會回復使用 Wisp 的目前目錄。變更專案會啟動全新的提供者工作階段。代理的寫入權限僅限該專案；Codex 在其工作區沙箱中執行時也無法存取網路。
+專案可以明確選擇，也可以根據已恢復工作階段、附件和檔案情境推斷；最後會回復使用 OpenWand 的目前目錄。變更專案會啟動全新的提供者工作階段。代理的寫入權限僅限該專案；Codex 在其工作區沙箱中執行時也無法存取網路。
 
-即時代理工作階段是受支援的正常路徑。實驗性的轉錄記錄提取、推送和匯出是本機相容備援方案：提取會讀取 Codex 和 Claude 的 JSONL 歷史記錄，但不會聯絡提供者；推送需要確認，會建立完整備份，並只附加 Wisp 獨有的輪次；匯出需要確認，會建立新的轉錄記錄，而不會覆寫現有提供者歷史。請參閱[完整的即時代理指南](../Wisp%20Website/Wisp%20Docs.html#live-agents)。
+即時代理工作階段是受支援的正常路徑。OpenWand 也能在不聯絡提供者的情況下匯入選定的本機 ChatGPT/Codex 與 Claude 對話，可選擇從啟用自動同步的時刻起同步後續變化，並可將 OpenWand 聊天匯出為新的提供者對話，而不覆寫現有歷史。請參閱[完整的即時代理指南](../OpenWand%20Website/OpenWand%20Docs.html#live-agents)。
 
 對於原始碼建置和進階設定，`.env.example` 記錄了可用的設定金鑰。通常不需要手動編輯這些內容。
 
@@ -199,9 +201,9 @@ Start Wisp Debug.sh
 
 ## 附加元件
 
-高度可擴充的 Wisp 會隨著附加元件而變化：新功能、新工作流程、新可能性。每個附加元件在 `addons/` 下的獨立資料夾中，帶有 `addon.toml` 清單檔案，並在自己的**隔離 Python 宿主程序**中執行，因此一個附加元件的崩潰、緩慢掛鉤或錯誤相依性不會影響大腦工作器或其他附加元件。**功能是可選加入的**：附加元件只獲取其清單宣告的內容，缺少權限的請求會被拒絕。需要第三方套件的附加元件會獲得一個專用虛擬環境，在執行前需要您的批准。
+高度可擴充的 OpenWand 會隨著附加元件而變化：新功能、新工作流程、新可能性。每個附加元件在 `addons/` 下的獨立資料夾中，帶有 `addon.toml` 清單檔案，並在自己的**隔離 Python 宿主程序**中執行，因此一個附加元件的崩潰、緩慢掛鉤或錯誤相依性不會影響大腦工作器或其他附加元件。**功能是可選加入的**：附加元件只獲取其清單宣告的內容，缺少權限的請求會被拒絕。需要第三方套件的附加元件會獲得一個專用虛擬環境，在執行前需要您的批准。
 
-附加元件可以在多個點接入 Wisp：
+附加元件可以在多個點接入 OpenWand：
 
 - **上下文** — 在查詢傳送前讀取或改寫提示詞和上下文。
 - **工具** — 注冊模型可在回答過程中呼叫的模型可呼叫工具。
@@ -224,13 +226,13 @@ Start Wisp Debug.sh
 
 ## MCP 用戶端與伺服器
 
-### MCP 用戶端：在 Wisp 中使用外部伺服器
+### MCP 用戶端：在 OpenWand 中使用外部伺服器
 
-Wisp 內建了一個充當 MCP 用戶端的 **MCP 橋接** 附加元件（`addons/mcp_bridge`）：在它的 `servers.json` 中列出任意 [Model Context Protocol](https://modelcontextprotocol.io) 伺服器，Wisp 就會將這些伺服器的整套工具作為 Wisp 工具公開給模型。這讓懸浮視窗無需離開桌面工作流程即可使用外部 MCP 功能。請參閱 [附加元件指南](../addons/README.md) 了解完整的清單和掛鉤合約，或 [Wisp 文件網站](../Wisp%20Website/Wisp%20Docs.html) 中的**附加元件**頁面。
+OpenWand 內建了一個充當 MCP 用戶端的 **MCP 橋接** 附加元件（`addons/mcp_bridge`）：在它的 `servers.json` 中列出任意 [Model Context Protocol](https://modelcontextprotocol.io) 伺服器，OpenWand 就會將這些伺服器的整套工具作為 OpenWand 工具公開給模型。這讓懸浮視窗無需離開桌面工作流程即可使用外部 MCP 功能。請參閱 [附加元件指南](../addons/README.md) 了解完整的清單和掛鉤合約，或 [OpenWand 文件網站](../OpenWand%20Website/OpenWand%20Docs.html) 中的**附加元件**頁面。
 
-### MCP 伺服器：Wisp 上下文伺服器
+### MCP 伺服器：OpenWand 上下文伺服器
 
-Wisp 也內建了一個名為 **Wisp Context Server** 的本機 **MCP stdio 伺服器**。受信任的 MCP 用戶端（例如 Claude Desktop、Cursor 和 Codex）可以啟動它以讀取即時桌面上下文；Wisp 應用程式本身無需保持開啟。
+OpenWand 也內建了一個名為 **OpenWand Context Server** 的本機 **MCP stdio 伺服器**。受信任的 MCP 用戶端（例如 Claude Desktop、Cursor 和 Codex）可以啟動它以讀取即時桌面上下文；OpenWand 應用程式本身無需保持開啟。
 
 它提供五個唯讀工具：
 
@@ -242,20 +244,20 @@ Wisp 也內建了一個名為 **Wisp Context Server** 的本機 **MCP stdio 伺�
 
 ### 連接用戶端
 
-啟動一次 Wisp，然後將 `addons/mcp_bridge/claude_config_snippet.json` 中的 `mcpServers` 項目複製到 MCP 用戶端設定中。Wisp 會使用其自身 Python 解譯器和 `addons/mcp_bridge/context_server.py` 的正確本機路徑產生此設定片段；請勿替換為系統 Python。有關平台說明與疑難排解，請參閱 [MCP Bridge 伺服器設定指南](../addons/mcp_bridge/README.md)。
+啟動一次 OpenWand，然後將 `addons/mcp_bridge/claude_config_snippet.json` 中的 `mcpServers` 項目複製到 MCP 用戶端設定中。OpenWand 會使用其自身 Python 解譯器和 `addons/mcp_bridge/context_server.py` 的正確本機路徑產生此設定片段；請勿替換為系統 Python。有關平台說明與疑難排解，請參閱 [MCP Bridge 伺服器設定指南](../addons/mcp_bridge/README.md)。
 
 只應向受信任的用戶端註冊此伺服器：工具結果可能包含選取文字、剪貼簿內容、瀏覽器內容和桌面螢幕截圖。
 
 ## 隱私與控制
 
-Wisp 被設計為本地桌面助手。**儲存保留在您的機器上**，請求直接傳送到您設定的模型提供商或本地伺服器。
+OpenWand 被設計為本地桌面助手。**儲存保留在您的機器上**，請求直接傳送到您設定的模型提供商或本地伺服器。
 
 - **本地資料保持本地**：設定、聊天記錄、記憶、隱私報告和設定儲存在您的機器上。
 - **金鑰存放在作業系統金鑰圈**：提供商金鑰和 OAuth token 保存在 Windows、macOS 或 Linux 桌面內建的安全密碼儲存區中。
 - **請求直達**：模型請求直接從您的機器傳送到您設定的提供商或本地伺服器。
 - **傳送內容由您決定**：您設定的模型提供商只接收您傳送的提示詞和為該呼叫者選擇或啟用的上下文來源。
-- **預覽僅在本地進行**：Wisp 可能會在本地檢查可用上下文以顯示 token 估算、可用性和隱私去識別化計數，然後再傳送。預覽來源不會將其傳送到模型提供商或儲存為聊天/記憶。
-- **外部聊天同步保留在本機**：提取操作為唯讀，且絕不會聯絡提供者。實驗性的推送和匯出操作需要確認；推送會建立備份並附加到現有轉錄記錄，匯出則會建立新轉錄記錄，而不會覆寫提供者歷史。
+- **預覽僅在本地進行**：OpenWand 可能會在本地檢查可用上下文以顯示 token 估算、可用性和隱私去識別化計數，然後再傳送。預覽來源不會將其傳送到模型提供商或儲存為聊天/記憶。
+- **外部對話工具保留在本機**：匯入和後續同步只讀取本機歷史，不會聯絡提供者服務。匯出會建立新的提供者對話，不會覆寫現有歷史。
 - **上下文按快捷鍵設定檔控制**：環境應用上下文、剪貼簿、文件、瀏覽器頁面、GitHub 上下文、記憶、工具和截圖均可按需啟用、停用或路由。
 - **隱私模式**：保持隱私優先的設定檢查和警告行為，包括在傳送敏感上下文之前的去識別化狀態。
 - **預設關閉**：可選的語音、文件閱讀、瀏覽器內容、截圖、GitHub Copilot 和附加元件在設定之前保持不活躍。
@@ -267,7 +269,7 @@ Wisp 被設計為本地桌面助手。**儲存保留在您的機器上**，請�
 
 在**設定 → 應用程式 → 隱私模式**中選擇三個互斥模式之一：**關閉**、**內建**（預設）或**進階**。內建模式使用本機模式比對來偵測認證資訊、權杖、付款資料及其他結構化機密。進階模式會保留這些規則，並加入選用的 [OpenAI Privacy Filter](https://openai.com/index/introducing-openai-privacy-filter/)；該模型完全在您的電腦上執行，可結合上下文偵測姓名、地址、電子郵件地址、電話號碼、私人 URL 和日期、帳號及機密。
 
-進階模型為選用下載，大小約 2.8 GB，此外還會安裝其專用本機執行環境。Wisp 啟動時或您啟用進階模式後，會在背景將模型載入記憶體並進行預熱。在 CPU 上，預熱可能需要數十秒。如果您在預熱完成前傳送請求，該請求會等待；後續掃描會重複使用已載入的模型，因此速度更快。Wisp 會將偵測到的片段替換為 `[PERSON_1]` 等穩定預留位置，可在傳送前顯示審查畫面，並再次檢查去識別化後的文字。如果進階模型無法使用、偵測失敗或仍有敏感文字殘留，Wisp 會阻止傳送至雲端。
+進階模型為選用下載，大小約 2.8 GB，此外還會安裝其專用本機執行環境。OpenWand 啟動時或您啟用進階模式後，會在背景將模型載入記憶體並進行預熱。在 CPU 上，預熱可能需要數十秒。如果您在預熱完成前傳送請求，該請求會等待；後續掃描會重複使用已載入的模型，因此速度更快。OpenWand 會將偵測到的片段替換為 `[PERSON_1]` 等穩定預留位置，可在傳送前顯示審查畫面，並再次檢查去識別化後的文字。如果進階模型無法使用、偵測失敗或仍有敏感文字殘留，OpenWand 會阻止傳送至雲端。
 
 隱私過濾可以降低意外洩露的風險，但不能保證匿名化或符合法規要求。
 
@@ -288,7 +290,7 @@ Wisp 被設計為本地桌面助手。**儲存保留在您的機器上**，請�
 
 日誌可在 `build_logs/` 資料夾中找到。
 
-我們目前正在推進 Linux Wayland 支援，特別需要協助測試或改進它。也歡迎測試 macOS 支援；這些平台有最多的原生整合邊緣情況，因此來自不同機器、桌面環境和權限狀態的真實報告能讓 Wisp 對所有人都更好。
+我們目前正在推進 Linux Wayland 支援，特別需要協助測試或改進它。也歡迎測試 macOS 支援；這些平台有最多的原生整合邊緣情況，因此來自不同機器、桌面環境和權限狀態的真實報告能讓 OpenWand 對所有人都更好。
 
 如果您想支持這個專案和更廣泛的使命，可以直接參與開發，或在[這裡](https://buymeacoffee.com/sunnylich)捐助。
 
@@ -306,7 +308,7 @@ Wisp 被設計為本地桌面助手。**儲存保留在您的機器上**，請�
 
 ## 免費模型 API 來源
 
-Wisp 是免費的，您也可以將模型費用保持在零。多個提供商提供真正的免費層、每月免費積分或無費用的限速存取。Wisp 透過其 OpenAI 相容用戶端存取其中大多數——少數有專用的 `LLM_PROVIDER` 值，其餘透過 `custom` 端點工作，只需將 `CUSTOM_BASE_URL` 指向提供商的 OpenAI 相容 URL。在**設定 → LLM** 中新增金鑰。
+OpenWand 是免費的，您也可以將模型費用保持在零。多個提供商提供真正的免費層、每月免費積分或無費用的限速存取。OpenWand 透過其 OpenAI 相容用戶端存取其中大多數——少數有專用的提供者路由，其餘透過具名自訂連線運作。在**設定 → 連線**中新增憑證，再到**設定 → LLM**中選擇模型路由。
 
 | 提供商 | 免費內容 | 適合場景 |
 | --- | --- | --- |
@@ -321,11 +323,11 @@ Wisp 是免費的，您也可以將模型費用保持在零。多個提供商提
 | Cloudflare Workers AI | Workers 免費方案帶每日免費配額 | 已在 Cloudflare 上的應用程式；無伺服器 AI 端點 |
 | Vercel AI Gateway | 免費層，符合條件的模型每月 $5 閘道積分 | Next.js/Vercel 專案；統一的 OpenAI 相容存取 |
 | SambaNova Cloud | $5 免費 API 積分，無需信用卡 | 快速託管開放模型推理 |
-| Puter.js | 前端 JS 存取多種模型，無需自己的 API 金鑰 | 瀏覽器應用程式和示範；不是 Wisp 後端提供商 |
-| [OmniRoute](https://github.com/diegosouzapw/OmniRoute)（本機閘道） | 本機執行的開源路由器；把多個提供商帳戶和免費層彙整到一個 OpenAI 相容端點後面，支援路由、容錯移轉和可選壓縮 | 透過 Wisp 的自訂端點連接 OmniRoute：`LLM_PROVIDER=custom`、`CUSTOM_BASE_URL=http://localhost:20128/v1`，模型可用 `auto`，API 金鑰來自 OmniRoute 儀表板 |
+| Puter.js | 前端 JS 存取多種模型，無需自己的 API 金鑰 | 瀏覽器應用程式和示範；不是 OpenWand 後端提供商 |
+| [OmniRoute](https://github.com/diegosouzapw/OmniRoute)（本機閘道） | 本機執行的開源路由器；把多個提供商帳戶和免費層彙整到一個 OpenAI 相容端點後面，支援路由、容錯移轉和可選壓縮 | 透過 OpenWand 的自訂端點連接 OmniRoute：`LLM_PROVIDER=custom`、`CUSTOM_BASE_URL=http://localhost:20128/v1`，模型可用 `auto`，API 金鑰來自 OmniRoute 儀表板 |
 | 本地 — Ollama / LM Studio / vLLM | 自行執行模型時免費 | 隱私保護、無 token 計費、OpenAI 相容本地端點 |
 
-免費層有限速且經常變化，因此請至少新增一個備用路由，並避免將敏感上下文傳送給可能用您的提示詞進行訓練的提供商（Wisp 的去識別化功能仍然適用）。完整的連接指南和注意事項，請參閱 [Wisp 文件網站](../Wisp%20Website/Wisp%20Docs.html) 中的**免費 API 來源**頁面。
+免費層有限速且經常變化，因此請至少新增一個備用路由，並避免將敏感上下文傳送給可能用您的提示詞進行訓練的提供商（OpenWand 的去識別化功能仍然適用）。完整的連接指南和注意事項，請參閱 [OpenWand 文件網站](../OpenWand%20Website/OpenWand%20Docs.html) 中的**免費 API 來源**頁面。
 
 ## 授權條款
 

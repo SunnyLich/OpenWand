@@ -427,7 +427,7 @@ def _start_background_stt() -> None:
         target=_stt_background_worker,
         args=(stop_event,),
         daemon=True,
-        name="wisp-stt-background",
+        name="openwand-stt-background",
     )
     _stt_bg_thread.start()
 

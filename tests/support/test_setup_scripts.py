@@ -99,7 +99,7 @@ class SetupScriptTests(unittest.TestCase):
         self.assertNotIn('"$VPY" -m pip install -r requirements/requirements.txt -r requirements/requirements-dev.txt', script)
 
     def test_install_entry_points_check_dependency_manifests_before_mutating_venv(self) -> None:
-        launcher = (ROOT / "Start Wisp.command").read_text(encoding="utf-8")
+        launcher = (ROOT / "Start OpenWand.command").read_text(encoding="utf-8")
         self.assertIn('if [ ! -s "$REQ_FILE" ]; then', launcher)
         self.assertIn("is required for setup", launcher)
         self.assertIn("scripts/compile_dependency_locks.sh", launcher)
@@ -118,7 +118,7 @@ class SetupScriptTests(unittest.TestCase):
         self.assertIn("requirements/requirements.txt", compile_all)
         self.assertIn("uv pip compile requirements/requirements.txt", compile_all)
 
-        batch = (ROOT / "Start Wisp.bat").read_text(encoding="utf-8")
+        batch = (ROOT / "Start OpenWand.bat").read_text(encoding="utf-8")
         self.assertIn('set "REQ_FILE=requirements/requirements-windows.lock"', batch)
         self.assertIn('if not exist "%REQ_FILE%"', batch)
         self.assertIn('for %%I in ("%REQ_FILE%") do if %%~zI EQU 0', batch)
@@ -192,7 +192,7 @@ class SetupScriptTests(unittest.TestCase):
         self.assertLess(preflight, powershell.index("Remove-VenvBackup", preflight))
 
     def test_launch_paths_keep_stale_venv_until_replacement_is_known(self) -> None:
-        launcher = (ROOT / "Start Wisp.command").read_text(encoding="utf-8")
+        launcher = (ROOT / "Start OpenWand.command").read_text(encoding="utf-8")
 
         self.assertIn("rebuild_venv=0", launcher)
         self.assertIn("rebuild_venv=1", launcher)
@@ -215,7 +215,7 @@ class SetupScriptTests(unittest.TestCase):
             macos_runner.rindex('rm -rf "$REPO_ROOT/.venv"'),
         )
 
-        batch = (ROOT / "Start Wisp.bat").read_text(encoding="utf-8")
+        batch = (ROOT / "Start OpenWand.bat").read_text(encoding="utf-8")
 
         self.assertIn('set "REBUILD_VENV=0"', batch)
         self.assertIn('set "REBUILD_VENV=1"', batch)
@@ -226,7 +226,7 @@ class SetupScriptTests(unittest.TestCase):
 
     def test_entry_points_accept_python_minor_or_patch_target(self) -> None:
         posix_scripts = [
-            "Start Wisp.command",
+            "Start OpenWand.command",
             "scripts/setup_dev.sh",
             "scripts/run_macos_tests.command",
             "scripts/compile_dependency_locks.sh",
@@ -240,7 +240,7 @@ class SetupScriptTests(unittest.TestCase):
                 self.assertIn('[[ ! "$WANT" =~ ^[0-9]+\\.[0-9]+(\\.[0-9]+)?$ ]]', script)
                 self.assertIn(".python-version must contain a Python version like 3.12 or 3.12.13", script)
 
-        batch = (ROOT / "Start Wisp.bat").read_text(encoding="utf-8")
+        batch = (ROOT / "Start OpenWand.bat").read_text(encoding="utf-8")
         self.assertIn('set "WANT="', batch)
         self.assertIn('if not exist ".python-version"', batch)
         self.assertNotIn('set "WANT=3.12.13"', batch)
@@ -257,7 +257,7 @@ class SetupScriptTests(unittest.TestCase):
         self.assertIn(".python-version must contain a Python version like 3.12 or 3.12.13", powershell)
 
     def test_macos_launcher_requires_lock_file(self) -> None:
-        script = (ROOT / "Start Wisp.command").read_text(encoding="utf-8")
+        script = (ROOT / "Start OpenWand.command").read_text(encoding="utf-8")
 
         self.assertIn('if [ "$OS_NAME" = "Darwin" ]; then', script)
         self.assertIn('REQ_FILE="$REPO_ROOT/requirements/requirements-macos.lock"', script)
@@ -265,24 +265,24 @@ class SetupScriptTests(unittest.TestCase):
         self.assertIn("Regenerate locks with: bash scripts/compile_dependency_locks.sh", script)
 
     def test_macos_launcher_closes_terminal_only_after_app_launch(self) -> None:
-        script = (ROOT / "Start Wisp.command").read_text(encoding="utf-8")
-        debug = (ROOT / "Start Wisp Debug.command").read_text(encoding="utf-8")
+        script = (ROOT / "Start OpenWand.command").read_text(encoding="utf-8")
+        debug = (ROOT / "Start OpenWand Debug.command").read_text(encoding="utf-8")
 
         self.assertIn("close_macos_terminal_on_exit()", script)
         self.assertIn("trap close_macos_terminal_on_exit EXIT", script)
-        self.assertIn('if [ "$WISP_APP_LAUNCHED" != "1" ]; then', script)
-        self.assertIn('if [ "${WISP_KEEP_TERMINAL_ON_EXIT:-}" = "1" ]; then', script)
-        self.assertIn('WISP_APP_LAUNCHED=1', script)
-        self.assertLess(script.index("setup_venv"), script.rindex('WISP_APP_LAUNCHED=1'))
-        self.assertIn("export WISP_KEEP_TERMINAL_ON_EXIT=1", debug)
+        self.assertIn('if [ "$OPENWAND_APP_LAUNCHED" != "1" ]; then', script)
+        self.assertIn('if [ "${OPENWAND_KEEP_TERMINAL_ON_EXIT:-}" = "1" ]; then', script)
+        self.assertIn('OPENWAND_APP_LAUNCHED=1', script)
+        self.assertLess(script.index("setup_venv"), script.rindex('OPENWAND_APP_LAUNCHED=1'))
+        self.assertIn("export OPENWAND_KEEP_TERMINAL_ON_EXIT=1", debug)
 
     def test_linux_sh_launcher_reexecs_under_bash(self) -> None:
-        script = (ROOT / "Start Wisp.sh").read_text(encoding="utf-8")
+        script = (ROOT / "Start OpenWand.sh").read_text(encoding="utf-8")
 
         self.assertTrue(script.startswith("#!/bin/sh"))
         self.assertIn('if [ -z "${BASH_VERSION:-}" ]; then', script)
         self.assertIn('exec bash "$0" "$@"', script)
-        self.assertIn('exec bash "./Start Wisp.command" "$@"', script)
+        self.assertIn('exec bash "./Start OpenWand.command" "$@"', script)
 
     def test_macos_test_runner_requires_lock_file(self) -> None:
         script = (ROOT / "scripts" / "run_macos_tests.command").read_text(encoding="utf-8")
@@ -294,14 +294,14 @@ class SetupScriptTests(unittest.TestCase):
     def test_runtime_dependency_probes_match_preflight(self) -> None:
         expected = check_dev_environment.RUNTIME_MODULES
 
-        self.assertEqual(shell_imports("Start Wisp.command"), expected)
+        self.assertEqual(shell_imports("Start OpenWand.command"), expected)
         self.assertEqual(shell_imports("scripts/run_macos_tests.command"), expected)
-        self.assertEqual(batch_inline_imports("Start Wisp.bat"), expected)
+        self.assertEqual(batch_inline_imports("Start OpenWand.bat"), expected)
 
     def test_windows_launcher_requires_dependency_stamp_for_ready_venv(self) -> None:
-        script = (ROOT / "Start Wisp.bat").read_text(encoding="utf-8")
+        script = (ROOT / "Start OpenWand.bat").read_text(encoding="utf-8")
 
-        self.assertIn('set "STAMP_FILE=.venv\\.wisp-deps.stamp"', script)
+        self.assertIn('set "STAMP_FILE=.venv\\.openwand-deps.stamp"', script)
         self.assertIn("call :venv_ready", script)
         self.assertIn("call :deps_stamp_ok", script)
         self.assertIn('if not exist "%STAMP_FILE%" exit /b 1', script)
@@ -309,7 +309,7 @@ class SetupScriptTests(unittest.TestCase):
         self.assertIn("Get-FileHash -Algorithm SHA256 -LiteralPath '%REQ_FILE%'", script)
 
     def test_windows_launcher_writes_dependency_stamp_after_installs(self) -> None:
-        script = (ROOT / "Start Wisp.bat").read_text(encoding="utf-8")
+        script = (ROOT / "Start OpenWand.bat").read_text(encoding="utf-8")
 
         self.assertEqual(script.count("call :write_req_stamp"), 3)
         self.assertIn('>"%STAMP_FILE%" echo !REQ_HASH!', script)

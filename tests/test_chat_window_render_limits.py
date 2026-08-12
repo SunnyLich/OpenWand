@@ -455,6 +455,265 @@ def test_chat_window_is_not_always_on_top():
 
 
 @pytest.mark.skipif(not PYSIDE6_AVAILABLE, reason="PySide6 not installed")
+def test_conversation_scrollbar_has_a_mouse_friendly_drag_target():
+    """The main transcript thumb must not collapse into a few-pixel target."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QScrollArea, QTextBrowser
+
+    from ui.chat_window import (
+        _CHAT_SCROLLBAR_HANDLE_MIN_HEIGHT,
+        _CHAT_SCROLLBAR_WIDTH,
+        ChatWindow,
+    )
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    long_reply = "\n\n".join(f"Paragraph {index}" for index in range(120))
+    window = ChatWindow(
+        [{"messages": [{"role": "assistant", "content": long_reply}]}],
+        lambda _messages: iter(()),
+    )
+    try:
+        window.show()
+        app.processEvents()
+        pages = [
+            area
+            for area in window.findChildren(QScrollArea)
+            if area.widget() is not None and area.widget().findChildren(QTextBrowser)
+        ]
+        assert len(pages) == 1
+        scrollbar = pages[0].verticalScrollBar()
+        assert scrollbar.width() >= _CHAT_SCROLLBAR_WIDTH
+        assert f"min-height: {_CHAT_SCROLLBAR_HANDLE_MIN_HEIGHT}px" in pages[0].styleSheet()
+        assert "QScrollBar::handle:vertical:hover" in pages[0].styleSheet()
+        assert "QScrollBar::groove:vertical" in pages[0].styleSheet()
+        assert "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical" in pages[0].styleSheet()
+        assert "background: transparent" not in pages[0].styleSheet()
+    finally:
+        window.close()
+        app.processEvents()
+
+
+@pytest.mark.skipif(not PYSIDE6_AVAILABLE, reason="PySide6 not installed")
+def test_wheel_over_reply_text_scrolls_the_outer_conversation():
+    """Nested read-only reply views must not swallow ordinary wheel input."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QApplication
+
+    from ui.chat_window import ChatWindow, _MessageTextView
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    long_reply = "\n\n".join(f"Paragraph {index}" for index in range(160))
+    window = ChatWindow(
+        [{"messages": [{"role": "assistant", "content": long_reply}]}],
+        lambda _messages: iter(()),
+    )
+    try:
+        window.show()
+        app.processEvents()
+        page = window._active_scroll()
+        assert page is not None
+        bar = page.verticalScrollBar()
+        assert bar.maximum() > 0
+        bar.setValue(bar.maximum() // 2)
+        before = bar.value()
+        view = window.findChild(_MessageTextView)
+        assert view is not None
+        wheel = QWheelEvent(
+            QPointF(10, 10),
+            QPointF(view.viewport().mapToGlobal(QPoint(10, 10))),
+            QPoint(),
+            QPoint(0, -120),
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+            Qt.ScrollPhase.NoScrollPhase,
+            False,
+        )
+        QApplication.sendEvent(view.viewport(), wheel)
+        assert wheel.isAccepted()
+        assert bar.value() > before
+    finally:
+        window.close()
+        app.processEvents()
+
+
+@pytest.mark.skipif(not PYSIDE6_AVAILABLE, reason="PySide6 not installed")
+def test_middle_mouse_press_move_scrolls_and_release_stops():
+    """A held middle press scrolls by pointer distance and stops on release."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QApplication
+
+    from ui.chat_window import ChatWindow, _MessageTextView
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    long_reply = "\n\n".join(f"Paragraph {index}" for index in range(160))
+    window = ChatWindow(
+        [{"messages": [{"role": "assistant", "content": long_reply}]}],
+        lambda _messages: iter(()),
+    )
+    try:
+        window.show()
+        app.processEvents()
+        page = window._active_scroll()
+        assert page is not None
+        bar = page.verticalScrollBar()
+        assert bar.maximum() > 0
+        bar.setValue(bar.maximum() // 2)
+        before = bar.value()
+        view = window.findChild(_MessageTextView)
+        assert view is not None
+        target = view.viewport()
+        local_start = QPointF(20, 100)
+        global_start = QPointF(target.mapToGlobal(local_start.toPoint()))
+        local_end = QPointF(20, 40)
+        global_end = QPointF(target.mapToGlobal(local_end.toPoint()))
+        press = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            local_start,
+            global_start,
+            Qt.MouseButton.MiddleButton,
+            Qt.MouseButton.MiddleButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        move = QMouseEvent(
+            QEvent.Type.MouseMove,
+            local_end,
+            global_end,
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.MiddleButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        release = QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            local_end,
+            global_end,
+            Qt.MouseButton.MiddleButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        QApplication.sendEvent(target, press)
+        QApplication.sendEvent(target, move)
+        window._tick_middle_autoscroll()
+        assert bar.value() < before
+        assert window._middle_autoscroll is not None
+        QApplication.sendEvent(target, release)
+        assert press.isAccepted() and move.isAccepted() and release.isAccepted()
+        assert window._middle_autoscroll is None
+    finally:
+        window.close()
+        app.processEvents()
+
+
+@pytest.mark.skipif(not PYSIDE6_AVAILABLE, reason="PySide6 not installed")
+def test_middle_mouse_stationary_release_latches_until_next_click():
+    """A click-release without movement keeps browser-style autoscroll active."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QApplication
+
+    from ui.chat_window import ChatWindow, _MessageTextView
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    long_reply = "\n\n".join(f"Paragraph {index}" for index in range(160))
+    window = ChatWindow(
+        [{"messages": [{"role": "assistant", "content": long_reply}]}],
+        lambda _messages: iter(()),
+    )
+    try:
+        window.show()
+        app.processEvents()
+        page = window._active_scroll()
+        assert page is not None
+        bar = page.verticalScrollBar()
+        bar.setValue(bar.maximum() // 2)
+        before = bar.value()
+        view = window.findChild(_MessageTextView)
+        assert view is not None
+        target = view.viewport()
+        local_anchor = QPointF(20, 100)
+        global_anchor = QPointF(target.mapToGlobal(local_anchor.toPoint()))
+
+        def mouse_event(event_type, local, global_pos, button, buttons):
+            return QMouseEvent(
+                event_type,
+                local,
+                global_pos,
+                button,
+                buttons,
+                Qt.KeyboardModifier.NoModifier,
+            )
+
+        press = mouse_event(
+            QEvent.Type.MouseButtonPress,
+            local_anchor,
+            global_anchor,
+            Qt.MouseButton.MiddleButton,
+            Qt.MouseButton.MiddleButton,
+        )
+        release = mouse_event(
+            QEvent.Type.MouseButtonRelease,
+            local_anchor,
+            global_anchor,
+            Qt.MouseButton.MiddleButton,
+            Qt.MouseButton.NoButton,
+        )
+        QApplication.sendEvent(target, press)
+        QApplication.sendEvent(target, release)
+        assert window._middle_autoscroll is not None
+
+        local_moved = QPointF(20, 40)
+        global_moved = QPointF(target.mapToGlobal(local_moved.toPoint()))
+        move = mouse_event(
+            QEvent.Type.MouseMove,
+            local_moved,
+            global_moved,
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.NoButton,
+        )
+        QApplication.sendEvent(target, move)
+        window._tick_middle_autoscroll()
+        assert bar.value() < before
+        stop = mouse_event(
+            QEvent.Type.MouseButtonPress,
+            local_moved,
+            global_moved,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+        )
+        QApplication.sendEvent(target, stop)
+        assert stop.isAccepted()
+        assert window._middle_autoscroll is None
+    finally:
+        window.close()
+        app.processEvents()
+
+
+@pytest.mark.skipif(not PYSIDE6_AVAILABLE, reason="PySide6 not installed")
+def test_rich_chat_messages_use_the_same_ui_font_family_as_chat_controls():
+    """Large Markdown headings must not fall back to QTextDocument's serif font."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ui.chat_window import _MessageTextView, _ui_font
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    view = _MessageTextView("#000000", presentation="assistant")
+    try:
+        view.setHtml("<h1>Large heading</h1><p>Body text</p>")
+
+        assert view.font().family() == _ui_font(11).family()
+        assert view.document().defaultFont().family() == _ui_font(11).family()
+        assert view.document().defaultFont().family() == app.font().family()
+    finally:
+        view.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(not PYSIDE6_AVAILABLE, reason="PySide6 not installed")
 def test_application_event_filter_ignores_non_qobject_model_items():
     """Global chat filtering must tolerate Qt model-item action events."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -1052,7 +1311,7 @@ def test_chat_final_text_replaces_partial_stream_before_persist():
 
 @pytest.mark.skipif(not PYSIDE6_AVAILABLE, reason="PySide6 not installed")
 def test_chat_window_streams_and_persists_remote_agent_activity_in_order():
-    """ChatGPT/Claude progress should render live and remain in Wisp history."""
+    """ChatGPT/Claude progress should render live and remain in OpenWand history."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
@@ -1088,7 +1347,15 @@ def test_chat_window_streams_and_persists_remote_agent_activity_in_order():
                 {"text": "\nRunning: rg\n", "is_thought": True},
                 {"text": "Second answer", "is_thought": False},
             ],
-            "harness": {"provider": "codex", "session_id": "thread-1", "cwd": "/repo"},
+            "harness": {
+                "provider": "codex",
+                "session_id": "thread-1",
+                "cwd": "/repo",
+                "workspace_changes": {
+                    "source": "harness_file_events",
+                    "files": [{"path": "module.py", "added": 1, "deleted": 1}],
+                },
+            },
         })
         window._on_finished()
 
@@ -1096,6 +1363,7 @@ def test_chat_window_streams_and_persists_remote_agent_activity_in_order():
         assert saved["content"] == "First answer\nSecond answer"
         assert [segment["is_thought"] for segment in saved["display_segments"]] == [True, False, True, False]
         assert "Running: rg" in saved["display_content"]
+        assert saved["workspace_changes"]["files"][0]["path"] == "module.py"
         assert conversations[0]["harness_sessions"]["codex"]["session_id"] == "thread-1"
     finally:
         window._current_ai_label = None
@@ -1128,11 +1396,11 @@ def test_local_file_work_shows_link_without_auto_opening_monitor():
 
         assert notice is not None
         assert "working with local files" in notice.text().lower()
-        assert "#4da3ff" in notice.text()
+        assert "#d8a145" in notice.text()
         assert "text-decoration:underline" in notice.text()
         assert dialog is not None and dialog.isVisible() is False
 
-        notice.linkActivated.emit("wisp-local-work")
+        notice.linkActivated.emit("openwand-local-work")
         app.processEvents()
         assert dialog.isVisible() is True
         assert "Reading: notes.txt" in dialog.activity_view.toPlainText()
@@ -1513,7 +1781,7 @@ def test_assistant_image_only_bubble_renders_a_thumbnail(tmp_path):
         ]
 
         assert thumbnails
-        assert view.property("wisp_has_image") is True
+        assert view.property("openwand_has_image") is True
         assert view.isHidden()
     finally:
         window.close()

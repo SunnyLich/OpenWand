@@ -53,7 +53,7 @@ class GhostCursorOverlay(QWidget):
         """Return ``mouse``, ``text``, or an empty string while hidden."""
         return self._mode
 
-    def show_mouse(self, bounds: Bounds, label: str = "Wisp", *, pulse: bool = False) -> None:
+    def show_mouse(self, bounds: Bounds, label: str = "OpenWand", *, pulse: bool = False) -> None:
         """Show a compact ordinary pointer only for an actual agent mouse action."""
         del pulse  # Kept for callers; the calmer pointer intentionally never pulses.
         point = self._target_point(bounds, text=False)
@@ -62,13 +62,13 @@ class GhostCursorOverlay(QWidget):
             return
         self._target = bounds
         self._mode = "mouse"
-        self._label = " ".join(str(label or "Wisp").split())[:18]
+        self._label = " ".join(str(label or "OpenWand").split())[:18]
         self._blink_timer.stop()
         self._caret_visible = True
         self.move(point[0] - _MOUSE_ANCHOR_X, point[1] - _MOUSE_ANCHOR_Y)
         self._show_passively()
 
-    def show_text_caret(self, bounds: Bounds, label: str = "Wisp agent") -> None:
+    def show_text_caret(self, bounds: Bounds, label: str = "OpenWand agent") -> None:
         """Show a blinking collaborative caret for agent text/keyboard focus."""
         point = self._target_point(bounds, text=True)
         if point is None:
@@ -76,13 +76,13 @@ class GhostCursorOverlay(QWidget):
             return
         self._target = bounds
         self._mode = "text"
-        self._label = " ".join(str(label or "Wisp agent").split())[:20]
+        self._label = " ".join(str(label or "OpenWand agent").split())[:20]
         self._caret_visible = True
         self.move(point[0] - _CARET_ANCHOR_X, point[1] - _CARET_ANCHOR_Y)
         self._blink_timer.start()
         self._show_passively()
 
-    def show_target(self, bounds: Bounds, label: str = "Wisp", *, pulse: bool = False) -> None:
+    def show_target(self, bounds: Bounds, label: str = "OpenWand", *, pulse: bool = False) -> None:
         """Compatibility alias for callers explicitly representing mouse targeting."""
         self.show_mouse(bounds, label, pulse=pulse)
 
@@ -110,6 +110,9 @@ class GhostCursorOverlay(QWidget):
 
     def _paint_mouse(self, painter: QPainter) -> None:
         # Familiar OS-style arrow: restrained, high contrast, and no glow.
+        from ui.shared.theme import theme_colors
+
+        colors = theme_colors()
         arrow = QPainterPath()
         arrow.moveTo(3, 2)
         arrow.lineTo(3, 23)
@@ -119,27 +122,32 @@ class GhostCursorOverlay(QWidget):
         arrow.lineTo(13, 16)
         arrow.lineTo(21, 16)
         arrow.closeSubpath()
-        painter.fillPath(arrow, QColor("#f7f7f8"))
-        painter.setPen(QPen(QColor("#202124"), 1.4))
+        painter.fillPath(arrow, QColor(colors["surface"]))
+        painter.setPen(QPen(QColor(colors["text"]), 1.4))
         painter.drawPath(arrow)
         if self._label:
             width = min(88, max(42, painter.fontMetrics().horizontalAdvance(self._label) + 14))
             label_rect = QRect(24, 5, width, 22)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(46, 48, 55, 238))
+            label_bg = QColor(colors["raised"])
+            label_bg.setAlpha(238)
+            painter.setBrush(label_bg)
             painter.drawRoundedRect(label_rect, 5, 5)
-            painter.setPen(QColor("#f5f5f6"))
+            painter.setPen(QColor(colors["text"]))
             painter.setFont(QFont("Segoe UI", 8, QFont.Weight.Medium))
             painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, self._label)
 
     def _paint_text_caret(self, painter: QPainter) -> None:
-        accent = QColor("#7651c9")
+        from ui.shared.theme import theme_colors
+
+        colors = theme_colors()
+        accent = QColor(colors["accent_fill"])
         label_width = min(110, max(72, painter.fontMetrics().horizontalAdvance(self._label) + 18))
         label_rect = QRect(0, 0, label_width, 22)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(accent)
         painter.drawRoundedRect(label_rect, 4, 4)
-        painter.setPen(QColor("#ffffff"))
+        painter.setPen(QColor(colors["on_accent"]))
         painter.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold))
         painter.drawText(label_rect.adjusted(8, 0, -7, 0), Qt.AlignmentFlag.AlignVCenter, self._label)
         if self._caret_visible:

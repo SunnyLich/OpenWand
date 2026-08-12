@@ -16,7 +16,7 @@ _SETTINGS_FILENAME = "settings.json"
 
 def store_path() -> Path:
     """Handle store path for addon store."""
-    override = os.getenv("WISP_ADDON_STORE")
+    override = os.getenv("OPENWAND_ADDON_STORE")
     return Path(override) if override else _STORE_PATH
 
 

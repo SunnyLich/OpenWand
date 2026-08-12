@@ -10,7 +10,7 @@ from core.actions.contracts import ActionTarget
 
 @dataclass(frozen=True)
 class CalcSnapshot:
-    """Structured values and target identity from Wisp's background reader."""
+    """Structured values and target identity from OpenWand's background reader."""
 
     document_title: str
     window_id: int

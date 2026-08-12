@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-_TRACE_PATH_ENV = "WISP_ACTION_TRACE_PATH"
+_TRACE_PATH_ENV = "OPENWAND_ACTION_TRACE_PATH"
 _MAX_TRACE_BYTES = 5 * 1024 * 1024
 _TRACE_BACKUPS = 3
 _WRITE_LOCK = threading.Lock()
@@ -83,7 +83,7 @@ class ActionTrace:
         when = int(unix_ns or time.time_ns())
         self._sequence += 1
         event = {
-            "schema": "wisp.action_trace@1",
+            "schema": "openwand.action_trace@1",
             "trace_id": self.trace_id,
             "seq": self._sequence,
             "action": self.action,

@@ -109,7 +109,7 @@ class WindowsUIAutomationBackend:
             raise ElementNotFoundError("The recorded Windows accessibility element no longer exists.")
         if len(matches) > 1:
             raise AmbiguousElementError(
-                "The Windows accessibility locator matched more than one element; Wisp refused to guess."
+                "The Windows accessibility locator matched more than one element; OpenWand refused to guess."
             )
         element = matches[0]
         if self._fingerprint(element, root, locator) != locator.snapshot_fingerprint:

@@ -6,7 +6,7 @@ import sys
 import threading
 import types
 
-from wisp_brain import handlers
+from openwand_brain import handlers
 
 
 def test_addons_list_handler_registered():
@@ -539,7 +539,7 @@ def test_addon_message_action_returns_after_exactly_three_llm_operations(monkeyp
 
 
 def test_addon_llm_chat_route_uses_configured_chat_provider(monkeypatch):
-    """The host maps the narrow chat route name to Wisp's configured Chat model."""
+    """The host maps the narrow chat route name to OpenWand's configured Chat model."""
     from types import SimpleNamespace
 
     import config
@@ -594,7 +594,7 @@ def test_addon_llm_chat_route_uses_configured_chat_provider(monkeypatch):
 
 
 def test_addon_llm_mini_route_uses_lower_cost_chatgpt_model(monkeypatch):
-    """The formatter can use a host-approved small model without changing Wisp's writer."""
+    """The formatter can use a host-approved small model without changing OpenWand's writer."""
     from types import SimpleNamespace
 
     from core import addon_store, privacy_gateway

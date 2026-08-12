@@ -18,7 +18,7 @@ def test_failure_manifest_tracks_every_reference_without_inflating_coverage():
         "failure_references": 3296,
         "verified_references": 3296,
         "uncovered_references": 0,
-        "unique_causes": 361,
+        "unique_causes": 365,
         "enforce_complete": True,
     }
 

@@ -1,4 +1,4 @@
-"""Run Wisp user-workflow tests from one entry point.
+"""Run OpenWand user-workflow tests from one entry point.
 
 Default run:
     python scripts/run_app_workflow_tests.py
@@ -493,7 +493,7 @@ def _run_pytest_phase(
 
 def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Run the Wisp app user-workflow test suite.",
+        description="Run the OpenWand app user-workflow test suite.",
     )
     parser.add_argument(
         "--real-gpt55",
@@ -552,12 +552,12 @@ def _main(argv: list[str] | None = None) -> int:
     env.setdefault("PYTHONFAULTHANDLER", "1")
     env.setdefault("QT_QPA_PLATFORM", "offscreen")
     if args.real_gpt55:
-        env["WISP_RUN_REAL_GPT55_TESTS"] = "1"
+        env["OPENWAND_RUN_REAL_GPT55_TESTS"] = "1"
 
     extra = _with_cache_disabled(_normalize_pytest_args(args.pytest_args))
     python = _preferred_python(root)
     summary_lines = [
-        "Wisp app workflow test run",
+        "OpenWand app workflow test run",
         f"started={_dt.datetime.now().isoformat(timespec='seconds')}",
         f"cwd={root}",
         f"python={python}",
@@ -713,7 +713,7 @@ def _main(argv: list[str] | None = None) -> int:
         if sys.platform == "darwin":
             print(
                 "macOS grants privacy permissions to the launcher running pytest "
-                "(Terminal, Codex, or Python), not automatically to the packaged Wisp app.",
+                "(Terminal, Codex, or Python), not automatically to the packaged OpenWand app.",
                 flush=True,
             )
     if args.real_host_interactive:
@@ -752,9 +752,9 @@ def _main(argv: list[str] | None = None) -> int:
     host_env = base_env.copy()
     host_env.setdefault("PYTHONFAULTHANDLER", "1")
     host_env.pop("QT_QPA_PLATFORM", None)
-    host_env["WISP_RUN_REAL_HOST_TESTS"] = "1"
+    host_env["OPENWAND_RUN_REAL_HOST_TESTS"] = "1"
     if args.real_host_interactive:
-        host_env["WISP_RUN_REAL_HOST_INTERACTIVE_TESTS"] = "1"
+        host_env["OPENWAND_RUN_REAL_HOST_INTERACTIVE_TESTS"] = "1"
     host_extra = _with_cache_disabled(
         _with_default_basetemp(_normalize_pytest_args(args.pytest_args), root)
     )

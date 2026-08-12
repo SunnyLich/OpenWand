@@ -23,8 +23,8 @@ def test_optional_packages_default_to_shared_user_data_dir(monkeypatch, tmp_path
     with monkeypatch.context() as mp:
         mp.setenv("APPDATA", str(appdata))
         mp.setenv("XDG_CONFIG_HOME", str(xdg_config))
-        mp.setenv("WISP_REPO_ROOT", str(repo_root))
-        mp.delenv("WISP_OPTIONAL_PACKAGES_DIR", raising=False)
+        mp.setenv("OPENWAND_REPO_ROOT", str(repo_root))
+        mp.delenv("OPENWAND_OPTIONAL_PACKAGES_DIR", raising=False)
         reloaded_paths = importlib.reload(paths)
         reloaded_optional = importlib.reload(optional_deps)
 
@@ -41,7 +41,7 @@ def test_optional_packages_dir_env_override(monkeypatch, tmp_path):
 
     target = tmp_path / "custom-python-packages"
     with monkeypatch.context() as mp:
-        mp.setenv("WISP_OPTIONAL_PACKAGES_DIR", str(target))
+        mp.setenv("OPENWAND_OPTIONAL_PACKAGES_DIR", str(target))
         reloaded_optional = importlib.reload(optional_deps)
 
         assert reloaded_optional.OPTIONAL_PACKAGES_DIR == target
@@ -207,6 +207,37 @@ def test_windows_cuda_runtime_adds_optional_nvidia_bin_directories(monkeypatch, 
     path_entries = stt_device.os.environ["PATH"].split(stt_device.os.pathsep)
     assert str(runtime_bin.resolve()) in path_entries
     assert str(cublas_bin.resolve()) in path_entries
+
+
+def test_windows_cuda_runtime_finds_managed_torch_dlls_from_source_checkout(
+    monkeypatch,
+    tmp_path,
+):
+    """A venv STT provider may reuse the managed speech layer's CUDA runtime."""
+    from core import stt_device
+    from core.system import paths
+
+    user_data = tmp_path / "OpenWand"
+    torch_lib = user_data / "python_packages" / "torch" / "lib"
+    torch_lib.mkdir(parents=True)
+    handles: list[str] = []
+    monkeypatch.setattr(stt_device.sys, "platform", "win32")
+    monkeypatch.setattr(stt_device.sys, "path", [str(tmp_path / "venv" / "site-packages")])
+    monkeypatch.setattr(paths, "USER_DATA_DIR", user_data)
+    monkeypatch.delenv("OPENWAND_OPTIONAL_PACKAGES_DIR", raising=False)
+    monkeypatch.setattr(stt_device, "_WINDOWS_CUDA_DLL_DIRECTORY_HANDLES", [])
+    monkeypatch.setattr(stt_device, "_WINDOWS_CUDA_DLL_DIRECTORIES", set())
+    monkeypatch.setattr(
+        stt_device.os,
+        "add_dll_directory",
+        lambda path: handles.append(path) or object(),
+        raising=False,
+    )
+
+    directories = stt_device._configure_windows_cuda_dll_directories()
+
+    assert directories == [str(torch_lib.resolve())]
+    assert handles == directories
 
 
 def test_stt_model_probe_rejects_cpu_fallback_for_explicit_cuda(monkeypatch):
@@ -462,7 +493,7 @@ def test_optional_installer_paths_ignore_ephemeral_run_log_dir(monkeypatch, tmp_
 
     optional_root = tmp_path / "user-data" / "python_packages"
     monkeypatch.setattr(optional_deps, "OPTIONAL_PACKAGES_DIR", optional_root)
-    monkeypatch.setenv("WISP_RUN_LOG_DIR", str(tmp_path / "run-123"))
+    monkeypatch.setenv("OPENWAND_RUN_LOG_DIR", str(tmp_path / "run-123"))
 
     path = optional_deps.optional_install_status_path("Local speech")
 
@@ -516,7 +547,7 @@ def test_optional_deps_bootstraps_pip_for_source_installs(monkeypatch):
 
 
 def test_optional_deps_frozen_install_does_not_bootstrap_pip(monkeypatch):
-    """Packaged builds use bundled uv, so Wisp.exe should not run ensurepip."""
+    """Packaged builds use bundled uv, so OpenWand.exe should not run ensurepip."""
     from core import optional_deps
 
     monkeypatch.setattr(optional_deps.sys, "frozen", True, raising=False)
@@ -646,7 +677,7 @@ def test_remove_stale_artifacts_keeps_other_namespace_members(monkeypatch, tmp_p
 
 
 def test_optional_deps_frozen_install_uses_bundled_uv(monkeypatch, tmp_path):
-    """Packaged launches must not run Wisp.exe as `python -m pip`."""
+    """Packaged launches must not run OpenWand.exe as `python -m pip`."""
     from core import optional_deps
 
     suffix = ".exe" if sys.platform == "win32" else ""
@@ -659,7 +690,7 @@ def test_optional_deps_frozen_install_uses_bundled_uv(monkeypatch, tmp_path):
     monkeypatch.setattr(optional_deps, "REPO_ROOT", tmp_path / "data")
     monkeypatch.setattr(optional_deps.sys, "frozen", True, raising=False)
     monkeypatch.setattr(optional_deps.sys, "_MEIPASS", str(bundle), raising=False)
-    monkeypatch.setattr(optional_deps.sys, "executable", str(tmp_path / "Wisp.exe"))
+    monkeypatch.setattr(optional_deps.sys, "executable", str(tmp_path / "OpenWand.exe"))
     monkeypatch.setattr(optional_deps.shutil, "which", lambda _name: "")
 
     command = optional_deps.pip_install_command([
@@ -677,7 +708,7 @@ def test_optional_deps_frozen_install_uses_bundled_uv(monkeypatch, tmp_path):
 
 
 def test_optional_deps_frozen_stt_install_uses_bundled_uv(monkeypatch, tmp_path):
-    """Packaged STT installs must use bundled uv too, not Wisp.exe as pip."""
+    """Packaged STT installs must use bundled uv too, not OpenWand.exe as pip."""
     from core import optional_deps
 
     suffix = ".exe" if sys.platform == "win32" else ""
@@ -690,7 +721,7 @@ def test_optional_deps_frozen_stt_install_uses_bundled_uv(monkeypatch, tmp_path)
     monkeypatch.setattr(optional_deps, "REPO_ROOT", tmp_path / "data")
     monkeypatch.setattr(optional_deps.sys, "frozen", True, raising=False)
     monkeypatch.setattr(optional_deps.sys, "_MEIPASS", str(bundle), raising=False)
-    monkeypatch.setattr(optional_deps.sys, "executable", str(tmp_path / "Wisp.exe"))
+    monkeypatch.setattr(optional_deps.sys, "executable", str(tmp_path / "OpenWand.exe"))
     monkeypatch.setattr(optional_deps.shutil, "which", lambda _name: "")
 
     command = optional_deps.pip_install_command(optional_deps.stt_install_packages())
@@ -718,7 +749,7 @@ def test_optional_deps_frozen_kokoro_cuda_uses_uv_best_match_index_strategy(monk
     monkeypatch.setattr(optional_deps, "REPO_ROOT", tmp_path / "data")
     monkeypatch.setattr(optional_deps.sys, "frozen", True, raising=False)
     monkeypatch.setattr(optional_deps.sys, "_MEIPASS", str(bundle), raising=False)
-    monkeypatch.setattr(optional_deps.sys, "executable", str(tmp_path / "Wisp.exe"))
+    monkeypatch.setattr(optional_deps.sys, "executable", str(tmp_path / "OpenWand.exe"))
     monkeypatch.setattr(optional_deps.shutil, "which", lambda _name: "")
 
     command = optional_deps.pip_install_command(
@@ -748,7 +779,7 @@ def test_optional_deps_frozen_reinstall_can_force_replacement(monkeypatch, tmp_p
     monkeypatch.setattr(optional_deps, "REPO_ROOT", tmp_path / "data")
     monkeypatch.setattr(optional_deps.sys, "frozen", True, raising=False)
     monkeypatch.setattr(optional_deps.sys, "_MEIPASS", str(bundle), raising=False)
-    monkeypatch.setattr(optional_deps.sys, "executable", str(tmp_path / "Wisp.exe"))
+    monkeypatch.setattr(optional_deps.sys, "executable", str(tmp_path / "OpenWand.exe"))
     monkeypatch.setattr(optional_deps.shutil, "which", lambda _name: "")
 
     command = optional_deps.pip_install_command(["torch"], reinstall=True)
@@ -764,7 +795,7 @@ def test_optional_deps_frozen_install_explains_missing_uv(monkeypatch, tmp_path)
     monkeypatch.setattr(optional_deps, "REPO_ROOT", tmp_path / "data")
     monkeypatch.setattr(optional_deps.sys, "frozen", True, raising=False)
     monkeypatch.setattr(optional_deps.sys, "_MEIPASS", str(tmp_path / "_internal"), raising=False)
-    monkeypatch.setattr(optional_deps.sys, "executable", str(tmp_path / "Wisp.exe"))
+    monkeypatch.setattr(optional_deps.sys, "executable", str(tmp_path / "OpenWand.exe"))
     monkeypatch.setattr(optional_deps.shutil, "which", lambda _name: "")
 
     try:
@@ -775,7 +806,7 @@ def test_optional_deps_frozen_install_explains_missing_uv(monkeypatch, tmp_path)
         raise AssertionError("expected missing uv to raise")
 
     assert "uv was not bundled" in message
-    assert "rebuild Wisp" in message
+    assert "rebuild OpenWand" in message
 
 
 def test_optional_deps_install_env_sets_uv_http_timeout(monkeypatch):
@@ -1390,7 +1421,7 @@ def test_optional_tts_installer_stages_restart_apply_plan(monkeypatch, tmp_path)
     calls: list[tuple[list[str], bool, object]] = []
 
     monkeypatch.setattr(optional_deps, "OPTIONAL_PACKAGES_DIR", active)
-    monkeypatch.setattr(updater, "wisp_wait_pid", lambda: 1111)
+    monkeypatch.setattr(updater, "openwand_wait_pid", lambda: 1111)
     monkeypatch.setattr(
         optional_tts_installer,
         "_launch_staged_apply",
@@ -1633,8 +1664,8 @@ def test_optional_apply_status_window_receives_app_language(monkeypatch, tmp_pat
     assert launched["env"]["APP_LANGUAGE"] == "zh-Hant"
 
 
-def test_optional_install_apply_reopens_wisp_after_post_install_failure(monkeypatch, tmp_path):
-    """Once Wisp has closed for staged apply, verification failure should still reopen it."""
+def test_optional_install_apply_reopens_openwand_after_post_install_failure(monkeypatch, tmp_path):
+    """Once OpenWand has closed for staged apply, verification failure should still reopen it."""
     from core import updater
     from scripts import optional_tts_installer
 
@@ -1655,7 +1686,7 @@ def test_optional_install_apply_reopens_wisp_after_post_install_failure(monkeypa
         encoding="utf-8",
     )
     restarts: list[tuple[list[str], object]] = []
-    monkeypatch.setattr(updater, "wait_for_wisp_exit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(updater, "wait_for_openwand_exit", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(updater, "app_restart_command", lambda: (["python", "-m", "runtime.supervisor.app"], tmp_path))
     monkeypatch.setattr(updater, "launch_detached_helper", lambda command, **kwargs: restarts.append((command, kwargs.get("cwd"))))
     monkeypatch.setattr(optional_tts_installer, "_launch_apply_status_window", lambda *_args, **_kwargs: None)
@@ -1670,8 +1701,8 @@ def test_optional_install_apply_reopens_wisp_after_post_install_failure(monkeypa
     assert status["message"] == "STT verification failed."
 
 
-def test_optional_install_apply_status_window_starts_after_wisp_exits(monkeypatch, tmp_path):
-    """The visible apply helper should appear only after Wisp has closed."""
+def test_optional_install_apply_status_window_starts_after_openwand_exits(monkeypatch, tmp_path):
+    """The visible apply helper should appear only after OpenWand has closed."""
     from core import updater
     from core.system import paths
     from scripts import optional_tts_installer
@@ -1700,7 +1731,7 @@ def test_optional_install_apply_status_window_starts_after_wisp_exits(monkeypatc
     )
     events: list[str] = []
 
-    monkeypatch.setattr(updater, "wait_for_wisp_exit", lambda *_args, **_kwargs: events.append("wait"))
+    monkeypatch.setattr(updater, "wait_for_openwand_exit", lambda *_args, **_kwargs: events.append("wait"))
     monkeypatch.setattr(
         optional_tts_installer,
         "_launch_apply_status_window",
@@ -1720,7 +1751,7 @@ def test_optional_install_apply_status_window_starts_after_wisp_exits(monkeypatc
 
     monkeypatch.setattr(paths, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(optional_tts_installer, "_apply_post_install_settings", apply_settings)
-    monkeypatch.setattr(optional_tts_installer, "_restart_wisp", lambda *_args: events.append("restart"))
+    monkeypatch.setattr(optional_tts_installer, "_restart_openwand", lambda *_args: events.append("restart"))
 
     assert optional_tts_installer._run_staged_apply(plan_path) == 0
 
@@ -1732,7 +1763,7 @@ def test_optional_install_apply_status_window_starts_after_wisp_exits(monkeypatc
     assert "NOT_AN_INSTALL_SETTING" not in saved_env
 
 
-def test_optional_install_staged_apply_keeps_staging_when_wisp_stays_open(monkeypatch, tmp_path):
+def test_optional_install_staged_apply_keeps_staging_when_openwand_stays_open(monkeypatch, tmp_path):
     """A missed restart window must not delete the staged download."""
     from core import updater
     from scripts import optional_tts_installer
@@ -1757,10 +1788,10 @@ def test_optional_install_staged_apply_keeps_staging_when_wisp_stays_open(monkey
     )
 
     def raise_timeout(*_args, **_kwargs):
-        raise updater.UpdateError("Timed out waiting for Wisp to exit.")
+        raise updater.UpdateError("Timed out waiting for OpenWand to exit.")
 
     launched: list[str] = []
-    monkeypatch.setattr(updater, "wait_for_wisp_exit", raise_timeout)
+    monkeypatch.setattr(updater, "wait_for_openwand_exit", raise_timeout)
     monkeypatch.setattr(optional_tts_installer, "_launch_apply_status_window", lambda *_args, **_kwargs: launched.append("window"))
 
     assert optional_tts_installer._run_staged_apply(plan_path) == 0
@@ -1797,9 +1828,9 @@ def test_optional_install_staged_apply_failure_keeps_restart_apply_status(monkey
         ),
         encoding="utf-8",
     )
-    monkeypatch.setattr(updater, "wait_for_wisp_exit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(updater, "wait_for_openwand_exit", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(optional_tts_installer, "_apply_staging", lambda *_args: (_ for _ in ()).throw(PermissionError("locked c10.dll")))
-    monkeypatch.setattr(optional_tts_installer, "_restart_wisp", lambda *_args: None)
+    monkeypatch.setattr(optional_tts_installer, "_restart_openwand", lambda *_args: None)
     # The real launcher spawns a detached status-window process that polls the
     # restart_apply status forever, outliving the test run (and failing CI).
     monkeypatch.setattr(optional_tts_installer, "_launch_apply_status_window", lambda *_args, **_kwargs: None)
@@ -1815,7 +1846,7 @@ def test_optional_install_staged_apply_failure_keeps_restart_apply_status(monkey
 
 
 def test_optional_install_staged_apply_records_restart_launch_failure(monkeypatch, tmp_path):
-    """A failed replacement launch remains visible after Wisp has closed."""
+    """A failed replacement launch remains visible after OpenWand has closed."""
     from core import updater
     from scripts import optional_tts_installer
 
@@ -1836,19 +1867,19 @@ def test_optional_install_staged_apply_records_restart_launch_failure(monkeypatc
         ),
         encoding="utf-8",
     )
-    monkeypatch.setattr(updater, "wait_for_wisp_exit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(updater, "wait_for_openwand_exit", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(optional_tts_installer, "_launch_apply_status_window", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(optional_tts_installer, "_apply_staging", lambda *_args: (_ for _ in ()).throw(PermissionError("locked")))
     monkeypatch.setattr(
         optional_tts_installer,
-        "_restart_wisp",
+        "_restart_openwand",
         lambda *_args: (_ for _ in ()).throw(OSError("replacement launch failed")),
     )
 
     assert optional_tts_installer._run_staged_apply(plan_path) == 1
 
     text = log_path.read_text(encoding="utf-8")
-    assert "Failed to reopen Wisp" in text
+    assert "Failed to reopen OpenWand" in text
     assert "replacement launch failed" in text
 
 
@@ -1876,13 +1907,13 @@ def test_optional_install_staged_apply_consumes_staging_and_plan_on_success(monk
         encoding="utf-8",
     )
     restarts: list[str] = []
-    monkeypatch.setattr(updater, "wait_for_wisp_exit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(updater, "wait_for_openwand_exit", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         optional_tts_installer,
         "_post_install_result",
         lambda *_args: (True, "Kokoro installed successfully."),
     )
-    monkeypatch.setattr(optional_tts_installer, "_restart_wisp", lambda *_args: restarts.append("restart"))
+    monkeypatch.setattr(optional_tts_installer, "_restart_openwand", lambda *_args: restarts.append("restart"))
     monkeypatch.setattr(optional_tts_installer, "_launch_apply_status_window", lambda *_args, **_kwargs: None)
 
     assert optional_tts_installer._run_staged_apply(plan_path) == 0
@@ -1923,9 +1954,9 @@ def test_optional_install_staged_apply_discards_superseded_staging(monkeypatch, 
         )
 
     verified: list[str] = []
-    monkeypatch.setattr(updater, "wait_for_wisp_exit", fake_wait)
+    monkeypatch.setattr(updater, "wait_for_openwand_exit", fake_wait)
     monkeypatch.setattr(optional_tts_installer, "_post_install_result", lambda *_args: verified.append("verify") or (True, ""))
-    monkeypatch.setattr(optional_tts_installer, "_restart_wisp", lambda *_args: None)
+    monkeypatch.setattr(optional_tts_installer, "_restart_openwand", lambda *_args: None)
 
     assert optional_tts_installer._run_staged_apply(plan_path) == 0
 
@@ -2005,8 +2036,8 @@ def test_resume_pending_staged_applies_rearms_dead_helper(monkeypatch, tmp_path)
 
     launched: list[object] = []
     monkeypatch.setattr(optional_deps, "OPTIONAL_PACKAGES_DIR", tmp_path / "python_packages")
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
-    monkeypatch.setattr(updater, "wisp_wait_pid", lambda: 4242)
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
+    monkeypatch.setattr(updater, "openwand_wait_pid", lambda: 4242)
     monkeypatch.setattr(
         optional_tts_installer,
         "_current_plan_contract",
@@ -2048,8 +2079,8 @@ def test_resume_pending_staged_applies_skips_running_helper(monkeypatch, tmp_pat
 
     launched: list[object] = []
     monkeypatch.setattr(optional_deps, "OPTIONAL_PACKAGES_DIR", tmp_path / "python_packages")
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
-    monkeypatch.setattr(updater, "wisp_wait_pid", lambda: 4242)
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
+    monkeypatch.setattr(updater, "openwand_wait_pid", lambda: 4242)
     monkeypatch.setattr(
         optional_tts_installer,
         "_current_plan_contract",
@@ -2087,7 +2118,7 @@ def test_resume_pending_staged_applies_discards_old_app_contract(monkeypatch, tm
         encoding="utf-8",
     )
     monkeypatch.setattr(optional_deps, "OPTIONAL_PACKAGES_DIR", tmp_path / "python_packages")
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
     monkeypatch.setattr(
         optional_tts_installer,
         "_current_plan_contract",
@@ -2104,7 +2135,7 @@ def test_resume_pending_staged_applies_discards_old_app_contract(monkeypatch, tm
     assert "discarded" in status["message"]
 
 
-def test_startup_cleanup_removes_only_wisp_package_swap_leftovers(monkeypatch, tmp_path):
+def test_startup_cleanup_removes_only_openwand_package_swap_leftovers(monkeypatch, tmp_path):
     """Startup removes exact current/legacy swap names without touching user data."""
     from core import optional_deps
     from scripts import optional_tts_installer
@@ -2476,7 +2507,7 @@ def test_source_stt_probe_uses_environment_dependency_layer(monkeypatch):
     status = optional_deps.stt_runtime_import_status_subprocess()
 
     assert status["valid"] is True
-    assert captured["env"]["WISP_OPTIONAL_PROBE_SOURCE"] == "environment"
+    assert captured["env"]["OPENWAND_OPTIONAL_PROBE_SOURCE"] == "environment"
 
 
 def test_stt_probe_marks_present_but_broken_package_installed(monkeypatch):
@@ -2554,7 +2585,7 @@ def test_stt_model_status_subprocess_reports_heartbeat_while_waiting(monkeypatch
         captured.update(kwargs)
         return process
 
-    monkeypatch.delenv("WISP_STT_MODEL_VERIFY_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("OPENWAND_STT_MODEL_VERIFY_TIMEOUT_SECONDS", raising=False)
     monkeypatch.setattr(optional_deps.subprocess, "Popen", fake_popen)
     heartbeats: list[int] = []
 
@@ -2597,6 +2628,8 @@ def test_kokoro_runtime_status_subprocess_parses_status(monkeypatch):
         "runtime.workers.optional_deps_probe",
         "kokoro-runtime-status",
     ]
+    assert captured["timeout"] == 90
+    assert captured["timeout"] == 90
 
 
 def test_kokoro_torch_status_flags_incomplete_torch_import(monkeypatch):
@@ -2677,12 +2710,62 @@ def test_require_optional_package_runtime_rejects_invalid_managed_install(monkey
         lambda *_args, **_kwargs: {
             "display_name": "STT",
             "valid": False,
-            "message": "STT package files do not match this Wisp release.",
+            "message": "STT package files do not match this OpenWand release.",
         },
     )
 
     with pytest.raises(RuntimeError, match="Open Settings > Voice"):
         optional_deps.require_optional_package_runtime("stt", device="cpu")
+
+
+def test_kokoro_runtime_can_use_complete_managed_layer_with_version_drift(monkeypatch):
+    """A frozen release lets the real Kokoro import decide version-drift compatibility."""
+    from types import SimpleNamespace
+
+    from core import optional_deps
+
+    calls: list[object] = []
+    monkeypatch.setattr(optional_deps.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        optional_deps,
+        "optional_package_runtime_status",
+        lambda *_args, **_kwargs: {
+            "display_name": "Kokoro",
+            "source": "managed",
+            "installed": True,
+            "valid": False,
+            "message": "version mismatch for transitive dependencies",
+        },
+    )
+    monkeypatch.setattr(
+        optional_deps,
+        "optional_package_spec",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            display_name="Kokoro",
+            required_modules=("kokoro", "en_core_web_sm"),
+        ),
+    )
+    monkeypatch.setattr(
+        optional_deps,
+        "_find_module_spec",
+        lambda module_name, paths: calls.append((module_name, paths)) or object(),
+    )
+    monkeypatch.setattr(
+        optional_deps,
+        "add_optional_packages_to_path",
+        lambda *, prepend=False: calls.append(("path", prepend)),
+    )
+
+    status = optional_deps.require_optional_package_runtime(
+        "kokoro",
+        device="cuda",
+        allow_version_drift=True,
+    )
+
+    assert status["runtime_compatible"] is True
+    assert status["version_drift"] is True
+    assert ("path", True) in calls
+    assert any(call[0] == "kokoro" for call in calls if isinstance(call, tuple))
 
 
 def test_require_optional_package_runtime_prepares_only_the_managed_layer(monkeypatch):

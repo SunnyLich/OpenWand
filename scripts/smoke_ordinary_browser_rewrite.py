@@ -24,7 +24,7 @@ from runtime.workers import native_host  # noqa: E402
 from scripts.capture_window import _window_by_title  # noqa: E402
 
 PAGE = (PROJECT_ROOT / "testlab" / "rewrite_browser_smoke.html").resolve().as_uri()
-TITLE = "Wisp Ordinary Browser Rewrite Smoke"
+TITLE = "OpenWand Ordinary Browser Rewrite Smoke"
 
 BROWSERS = {
     "chrome": {
@@ -140,7 +140,7 @@ def _smoke(name: str, config: dict, output: Path) -> dict:
         _capture(hwnd, before)
 
         popup = tk.Tk()
-        popup.title("Wisp Rewrite Popup Focus Test")
+        popup.title("OpenWand Rewrite Popup Focus Test")
         popup.geometry("360x120+80+80")
         tk.Label(popup, text="Rewrite proposal ready", padx=30, pady=30).pack()
         popup.attributes("-topmost", True)

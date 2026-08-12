@@ -21,7 +21,7 @@ _APP_NAMES = {
 }
 
 
-def app_name(app: str, *, fallback: str = "Wisp") -> str:
+def app_name(app: str, *, fallback: str = "OpenWand") -> str:
     """Return a stable product name for one action target."""
     key = str(app or "").strip().lower()
     return _APP_NAMES.get(key, fallback)
@@ -45,7 +45,7 @@ def chips(items: Iterable[str]) -> str:
 
 def app_header(*, app: str, target: str, badge: str = "") -> str:
     """Render the shared application identity and exact target."""
-    clean_app = " ".join(str(app or "Wisp").split())[:80]
+    clean_app = " ".join(str(app or "OpenWand").split())[:80]
     clean_target = " ".join(str(target or "").split())[:240]
     del badge
     return f"""

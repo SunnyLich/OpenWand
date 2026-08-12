@@ -6,10 +6,10 @@
       "tests/test_profile_user_workflows.py::test_first_run_wizard_profile_is_active_in_runtime_and_visible_in_settings"
     ],
     "F016": [
-      "tests/runtime/test_supervisor_ipc.py::test_wisp_supervisor_starts_real_app_worker_process_set"
+      "tests/runtime/test_supervisor_ipc.py::test_openwand_supervisor_starts_real_app_worker_process_set"
     ],
     "F030": [
-      "tests/runtime/test_supervisor_ipc.py::test_wisp_supervisor_starts_real_app_worker_process_set",
+      "tests/runtime/test_supervisor_ipc.py::test_openwand_supervisor_starts_real_app_worker_process_set",
       "tests/runtime/test_supervisor_ipc.py::test_supervisor_shutdown_continues_after_one_worker_raises"
     ],
     "F049": [

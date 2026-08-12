@@ -297,8 +297,8 @@ class AgentToolboxTests(unittest.TestCase):
 
             self.assertEqual(run.call_count, 3)
             commit_env = run.call_args_list[2].kwargs["env"]
-            self.assertEqual(commit_env["GIT_AUTHOR_NAME"], "Wisp Agent")
-            self.assertEqual(commit_env["GIT_COMMITTER_EMAIL"], "wisp-agent@example.invalid")
+            self.assertEqual(commit_env["GIT_AUTHOR_NAME"], "OpenWand Agent")
+            self.assertEqual(commit_env["GIT_COMMITTER_EMAIL"], "openwand-agent@example.invalid")
 
     def test_git_lifecycle_allowlist_rejects_unsafe_commands_and_paths(self):
         """Verify Git allowance is scoped and does not unlock arbitrary Git commands."""
@@ -2197,14 +2197,14 @@ class AgentRunnerTests(unittest.TestCase):
                 finish_on_successful_tools=True,
                 max_tool_calls_per_turn=0,
             )
-            pdf = b"%PDF-1.4\nWisp PDF preview\n%%EOF\n"
+            pdf = b"%PDF-1.4\nOpenWand PDF preview\n%%EOF\n"
             response = json.dumps({
                 "thought": "Create the exact requested artifacts.",
                 "status": "done",
                 "tool_calls": [
                     {"tool": "create_file", "args": {"path": "preview.md", "content": "# Preview"}},
                     {"tool": "create_file", "args": {"path": "preview.html", "content": "<h1>Preview</h1>"}},
-                    {"tool": "create_file", "args": {"path": "preview.csv", "content": "Name,Status,Score\nWisp,Ready,10\n"}},
+                    {"tool": "create_file", "args": {"path": "preview.csv", "content": "Name,Status,Score\nOpenWand,Ready,10\n"}},
                     {"tool": "create_file", "args": {"path": "preview.svg", "content": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>"}},
                     {"tool": "create_file", "args": {"path": "valid.py", "content": "print('hello')\n"}},
                     {"tool": "create_file", "args": {"path": "valid.json", "content": "{\"nested\": {\"ok\": true}}"}},

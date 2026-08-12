@@ -13,8 +13,8 @@ class LlmFallbackTests(unittest.TestCase):
         self._env_patch = patch.dict(
             llm.macos_safety.os.environ,
             {
-                "WISP_MACOS_OPENAI_COMPAT_STREAMING": "1",
-                "WISP_MACOS_ENABLE_OPENAI_TOOLS": "1",
+                "OPENWAND_MACOS_OPENAI_COMPAT_STREAMING": "1",
+                "OPENWAND_MACOS_ENABLE_OPENAI_TOOLS": "1",
             },
         )
         self._env_patch.start()
@@ -892,7 +892,7 @@ class LlmFallbackTests(unittest.TestCase):
                     choices=[
                         SimpleNamespace(
                             finish_reason="stop",
-                            message=SimpleNamespace(content="I can see the Wisp window.", tool_calls=None),
+                            message=SimpleNamespace(content="I can see the OpenWand window.", tool_calls=None),
                         )
                     ]
                 )
@@ -915,7 +915,7 @@ class LlmFallbackTests(unittest.TestCase):
 
         self.assertEqual(chunks, [
             "I need to use the screenshot tool to answer this.",
-            "I can see the Wisp window.",
+            "I can see the OpenWand window.",
         ])
         self.assertEqual(getattr(chunks[0], "kind", ""), "progress")
         self.assertEqual(getattr(chunks[1], "kind", "answer"), "answer")
@@ -1716,7 +1716,7 @@ class LlmFallbackTests(unittest.TestCase):
         self.assertIn("User: previous", calls[0]["prompt"])
         self.assertIn("Assistant: ok", calls[0]["prompt"])
         self.assertTrue(calls[0]["prompt"].endswith("now"))
-        self.assertEqual(calls[0]["session_id"], "wisp-chat")
+        self.assertEqual(calls[0]["session_id"], "openwand-chat")
         self.assertFalse(calls[0]["allow_tools"])
 
     def test_macos_openai_compat_query_uses_non_streaming_safe_mode(self):

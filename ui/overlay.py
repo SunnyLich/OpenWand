@@ -17,11 +17,12 @@ from collections.abc import Callable
 
 from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QIcon, QPixmap
-from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QMenu, QPushButton, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QPushButton, QSystemTrayIcon
 
 import config
 from core.system.paths import DOLL_ASSETS_DIR
 from ui.i18n import t
+from ui.openwand_icon import OpenWandIconLabel
 from ui.shared.window_utils import is_wayland, start_wayland_system_move
 
 ASSETS_DIR = str(DOLL_ASSETS_DIR)
@@ -197,7 +198,7 @@ class IconOverlay(QMainWindow):
         x = screen.x() + screen.width()  - sz - margin - context_panel_reserved_width(sz)
         y = screen.y() + screen.height() - sz - margin
 
-        self._icon_label = QLabel(None)
+        self._icon_label = OpenWandIconLabel(None)
         self._icon_label.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -212,6 +213,9 @@ class IconOverlay(QMainWindow):
         self._icon_label.setFixedSize(sz, sz)
         self._icon_label.move(x, y)
         self._icon_label.setScaledContents(True)
+        self._icon_label.set_vector_source(os.path.join(ASSETS_DIR, "openwand.svg"))
+        self._icon_label.set_vfx_sources(os.path.join(ASSETS_DIR, "vfx"))
+        self._icon_label.set_animation_state("idle")
         self._set_icon_pixmap("idle")
         if config.ICON_AUTO_HIDE:
             self._icon_label.hide()
@@ -236,7 +240,10 @@ class IconOverlay(QMainWindow):
         self._icon_hide_timer.timeout.connect(self._on_icon_hide_timeout)
 
     def _build_rewrite_batch_button(self) -> None:
-        """Create the shared held-comment action directly above the Wisp icon."""
+        """Create the shared held-comment action directly above the OpenWand icon."""
+        from ui.shared.theme import theme_colors
+
+        colors = theme_colors()
         self._rewrite_batch_button = QPushButton(None)
         self._rewrite_batch_button.setObjectName("rewriteBatchButton")
         self._rewrite_batch_button.setWindowFlags(
@@ -250,10 +257,10 @@ class IconOverlay(QMainWindow):
         self._rewrite_batch_button.setFixedHeight(_REWRITE_BATCH_HEIGHT)
         self._rewrite_batch_button.setStyleSheet(
             "QPushButton#rewriteBatchButton {"
-            "background:#3b82f6; color:white; border:1px solid #93c5fd;"
+            f"background:{colors['accent_fill']}; color:{colors['on_accent']}; border:1px solid {colors['accent']};"
             "border-radius:9px; padding:6px 12px; font-size:11px; font-weight:700;"
-            "} QPushButton#rewriteBatchButton:hover { background:#2563eb; }"
-            "QPushButton#rewriteBatchButton:pressed { background:#1d4ed8; }"
+            f"}} QPushButton#rewriteBatchButton:hover {{ background:{colors['accent_fill_hover']}; }}"
+            f"QPushButton#rewriteBatchButton:pressed {{ background:{colors['accent_hover']}; }}"
         )
         self._rewrite_batch_button.clicked.connect(self.signals.rewrite_send_all.emit)
         self._rewrite_batch_button.hide()
@@ -314,8 +321,8 @@ class IconOverlay(QMainWindow):
 
     @staticmethod
     def _provider_badge_mode() -> str:
-        """Return the configured external harness, or blank for normal Wisp."""
-        mode = str(getattr(config, "CHAT_EXECUTION_MODE", "wisp") or "wisp").strip().lower()
+        """Return the configured external harness, or blank for normal OpenWand."""
+        mode = str(getattr(config, "CHAT_EXECUTION_MODE", "openwand") or "openwand").strip().lower()
         return mode if mode in {"codex", "claude"} else ""
 
     def _position_provider_badge(self, icon_pos: QPoint | None = None) -> None:
@@ -394,7 +401,7 @@ class IconOverlay(QMainWindow):
         menu = QMenu(self._icon_label)
         menu.setWindowFlags(Qt.WindowType.Popup)
 
-        if os.environ.get("WISP_MACOS_PY_UI_HOST") == "1":
+        if os.environ.get("OPENWAND_MACOS_PY_UI_HOST") == "1":
             agent_task_action = QAction(t("Start Agent Team..."), self)
             agent_task_action.triggered.connect(self.signals.show_agent_task.emit)
             agent_history_action = QAction(t("Agent Team Activity..."), self)
@@ -419,7 +426,7 @@ class IconOverlay(QMainWindow):
         memory_action = QAction(t("Memory"), self)
         memory_action.triggered.connect(self.signals.show_memory_viewer.emit)
         settings_action = QAction(t("Settings"), self)
-        if os.environ.get("WISP_MACOS_PY_UI_HOST") == "1":
+        if os.environ.get("OPENWAND_MACOS_PY_UI_HOST") == "1":
             settings_action.triggered.connect(self.signals.show_settings.emit)
         else:
             settings_action.triggered.connect(self._open_settings)
@@ -438,12 +445,12 @@ class IconOverlay(QMainWindow):
             )
             menu.addAction(addon_action)
         addon_manager_action = QAction(t("Addon Manager"), self)
-        if os.environ.get("WISP_MACOS_PY_UI_HOST") == "1":
+        if os.environ.get("OPENWAND_MACOS_PY_UI_HOST") == "1":
             addon_manager_action.triggered.connect(self.signals.show_addon_manager.emit)
         else:
             addon_manager_action.triggered.connect(self._open_addon_manager)
         menu.addAction(addon_manager_action)
-        if os.environ.get("WISP_MACOS_PY_UI_HOST") == "1":
+        if os.environ.get("OPENWAND_MACOS_PY_UI_HOST") == "1":
             runtime_status_action = QAction(t("Runtime Status"), self)
             runtime_status_action.triggered.connect(self.signals.show_runtime_status.emit)
             menu.addAction(runtime_status_action)
@@ -490,7 +497,7 @@ class IconOverlay(QMainWindow):
 
     def _run_addon_tray_action(self, addon_id: str, label: str) -> None:
         """Dispatch an explicit tray click without moving focus or injecting input."""
-        if os.environ.get("WISP_MACOS_PY_UI_HOST") == "1":
+        if os.environ.get("OPENWAND_MACOS_PY_UI_HOST") == "1":
             self.signals.run_addon_tray_action.emit(addon_id, label)
             return
         try:
@@ -498,7 +505,7 @@ class IconOverlay(QMainWindow):
 
             get_manager().run_tray_action(addon_id, label)
         except Exception:
-            # Runtime-hosted Wisp routes this through the signal above.  A
+            # Runtime-hosted OpenWand routes this through the signal above.  A
             # standalone overlay without an addon manager should stay usable.
             return
 
@@ -513,6 +520,8 @@ class IconOverlay(QMainWindow):
     def _on_state_changed(self, state: str):
         """Handle state changed events."""
         self._current_state = state
+        if hasattr(self, "_icon_label"):
+            self._icon_label.set_animation_state(state)
         icon = self._state_icons.get(state) or self._state_icons.get("idle")
         if icon:
             self._tray.setIcon(icon)
@@ -521,8 +530,9 @@ class IconOverlay(QMainWindow):
             self._show_icon()
 
     def _on_mouth_amp(self, amp: float):
-        """Handle mouth amp events."""
-        pass
+        """Drive the speaking glow and waves from the real playback level."""
+        if hasattr(self, "_icon_label"):
+            self._icon_label.set_audio_amplitude(amp)
 
     def apply_settings(self):
         """Apply settings that affect existing overlay widgets without restart."""
@@ -572,7 +582,7 @@ class IconOverlay(QMainWindow):
             self._run_bubble_after_icon(lambda: self._bubble.show_notice(message, timeout_ms=5000))
         if hasattr(self, "_tray"):
             self._tray.showMessage(
-                title or t("Wisp"),
+                title or t("OpenWand"),
                 message,
                 QSystemTrayIcon.MessageIcon.Information,
                 5000,

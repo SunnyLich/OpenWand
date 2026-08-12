@@ -2,7 +2,7 @@
 
 These tests intentionally call a live GPT 5.5 route and may spend tokens. They
 prefer OPENAI_API_KEY when present, but can also use the app's ChatGPT OAuth
-credential. They are skipped unless WISP_RUN_REAL_GPT55_TESTS=1 is set.
+credential. They are skipped unless OPENWAND_RUN_REAL_GPT55_TESTS=1 is set.
 """
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ _BRAIN_DIR = _REPO_ROOT / "runtime" / "brain"
 if str(_BRAIN_DIR) not in sys.path:
     sys.path.insert(0, str(_BRAIN_DIR))
 
-_RUN_ENV = "WISP_RUN_REAL_GPT55_TESTS"
-_MODEL_ENV = "WISP_REAL_GPT55_MODEL"
-_PROVIDER_ENV = "WISP_REAL_GPT55_PROVIDER"
+_RUN_ENV = "OPENWAND_RUN_REAL_GPT55_TESTS"
+_MODEL_ENV = "OPENWAND_REAL_GPT55_MODEL"
+_PROVIDER_ENV = "OPENWAND_REAL_GPT55_PROVIDER"
 _DEFAULT_MODEL = "gpt-5.5"
-_MARKER_PHRASE = "wisp-real-gpt55-celadon"
+_MARKER_PHRASE = "openwand-real-gpt55-celadon"
 
 pytestmark = [
     pytest.mark.workflow,
@@ -36,7 +36,7 @@ pytestmark = [
 
 def _recording_stream_context(req_id: Any = 1):
     """Create a real brain StreamContext while recording emitted events."""
-    from wisp_brain.handlers import StreamContext
+    from openwand_brain.handlers import StreamContext
 
     events: list[tuple[str, Any]] = []
     ctx = StreamContext(lambda event, data, _rid: events.append((event, data)), req_id)
@@ -67,11 +67,11 @@ def real_gpt55_route(monkeypatch):
             "or sign in with ChatGPT"
         )
     if provider == "openai" and not openai_key_available:
-        pytest.skip("WISP_REAL_GPT55_PROVIDER=openai but OPENAI_API_KEY is not visible")
+        pytest.skip("OPENWAND_REAL_GPT55_PROVIDER=openai but OPENAI_API_KEY is not visible")
     if provider == "chatgpt" and not chatgpt_available:
-        pytest.skip("WISP_REAL_GPT55_PROVIDER=chatgpt but ChatGPT auth is not visible")
+        pytest.skip("OPENWAND_REAL_GPT55_PROVIDER=chatgpt but ChatGPT auth is not visible")
 
-    monkeypatch.delenv("WISP_BRAIN_FAKE_LLM", raising=False)
+    monkeypatch.delenv("OPENWAND_BRAIN_FAKE_LLM", raising=False)
     monkeypatch.setattr(config, "LLM_PROVIDER", provider)
     monkeypatch.setattr(config, "LLM_MODEL", model)
     monkeypatch.setattr(config, "LLM_FALLBACKS", "")
@@ -143,7 +143,7 @@ def test_real_gpt55_chat_uses_real_conversation_and_project_memory(
     isolated_real_conversation_and_memory,
 ):
     """Spend a tiny real GPT 5.5 request and prove chat sees project memory."""
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     conversation_store, project = isolated_real_conversation_and_memory
     conversations = conversation_store.load_conversations()
@@ -156,7 +156,7 @@ def test_real_gpt55_chat_uses_real_conversation_and_project_memory(
         {
             "role": "system",
             "content": (
-                "You are running a Wisp integration test. "
+                "You are running a OpenWand integration test. "
                 "Use supplied memory context. If a project marker phrase is present, "
                 "reply only with that phrase. If no marker phrase is present, reply MISSING."
             ),
@@ -193,7 +193,7 @@ def test_real_gpt55_query_uses_selected_ambient_and_project_memory(
     isolated_real_conversation_and_memory,
 ):
     """Spend a tiny real GPT 5.5 request through the intent/query path."""
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     from core.memory_store import store as memory_store
 
@@ -208,7 +208,7 @@ def test_real_gpt55_query_uses_selected_ambient_and_project_memory(
     result = handlers.HANDLERS["brain.query"](
         ctx,
         intent_prompt=(
-            "This is a Wisp real-provider query test. Reply with exactly two comma-separated "
+            "This is a OpenWand real-provider query test. Reply with exactly two comma-separated "
             f"tokens: selected-cobalt, {_MARKER_PHRASE}."
         ),
         selected="The selected-context token is selected-cobalt.",

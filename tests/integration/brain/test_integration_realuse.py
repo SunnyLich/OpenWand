@@ -1,11 +1,11 @@
-﻿"""End-to-end integration: drive the real ``wisp_brain.host`` subprocess through a
+﻿"""End-to-end integration: drive the real ``openwand_brain.host`` subprocess through a
 full session, the way the the supervisor client would in real use.
 
 This is the "try them together" pass. It spawns the actual brain worker process and
 exercises every handler over the real newline-JSON transport -- liveness,
 streaming reply, a context-bearing query, TTS file synthesis, STT short-clip
 handling, a scoped agent run, mid-stream cancel, and clean shutdown -- all
-offline via the ``WISP_BRAIN_FAKE_LLM`` seam so it needs no API keys, models, or
+offline via the ``OPENWAND_BRAIN_FAKE_LLM`` seam so it needs no API keys, models, or
 audio devices and never touches the user's real memory store.
 
 The ``BrainSidecar`` host harness is reused from ``test_brain_host`` so this test
@@ -29,8 +29,8 @@ _HAS_SOUNDFILE = importlib.util.find_spec("soundfile") is not None
 def brain_worker(tmp_path, monkeypatch):
     # Offline, deterministic brain; artifacts confined to the test's tmp dir.
     """Verify brain worker behavior."""
-    monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
-    monkeypatch.setenv("WISP_RUN_LOG_DIR", str(tmp_path))
+    monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
+    monkeypatch.setenv("OPENWAND_RUN_LOG_DIR", str(tmp_path))
     s = BrainSidecar()
     try:
         yield s
@@ -119,7 +119,7 @@ def test_cancel_stops_a_long_stream(brain_worker):
     ev = threading.Event()
     s._pending[rid] = {"event": ev, "resp": None}
     with s._write_lock:
-        from wisp_brain import protocol
+        from openwand_brain import protocol
 
         protocol.write_message(
             s._proc.stdin,

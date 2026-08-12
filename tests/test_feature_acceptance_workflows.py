@@ -53,7 +53,7 @@ def isolated_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         encoding="utf-8",
     )
     theme_calls: list[bool] = []
-    monkeypatch.setenv("WISP_LAUNCH_SMOKE_DISABLE_AUTOSTART_SYNC", "1")
+    monkeypatch.setenv("OPENWAND_LAUNCH_SMOKE_DISABLE_AUTOSTART_SYNC", "1")
     monkeypatch.setattr(settings_dialog, "ENV_PATH", env_path)
     monkeypatch.setattr(settings_env, "ENV_PATH", env_path)
     monkeypatch.setattr(
@@ -461,8 +461,18 @@ def test_intent_shortcut_editor_mutations_policies_tools_and_reopen_are_one_real
 
         driver.replace_text(block["custom_key"], "c")
         driver.replace_text(block["custom_label"], "Custom research")
+        assert block["show_only"].isChecked()
+        assert not block["paste_back"].isChecked()
+        assert block["result_behavior_group"].checkedButton() is block["show_only"]
         driver.click(block["paste_back"])
         assert block["paste_back"].isChecked()
+        assert not block["show_only"].isChecked()
+        assert block["result_behavior_group"].checkedButton() is block["paste_back"]
+        # An exclusive selected option cannot be clicked into an invalid
+        # zero-selection state.
+        driver.click(block["paste_back"])
+        assert block["paste_back"].isChecked()
+        assert not block["show_only"].isChecked()
 
         driver.select_combo_data(block["context_documents_mode"], "auto")
         driver.select_combo_data(block["context_clipboard"], "true")
@@ -491,8 +501,9 @@ def test_intent_shortcut_editor_mutations_policies_tools_and_reopen_are_one_real
         # must remain intact and in the same position.
         driver.click(add_button)
         temporary = dialog._caller_blocks[-1]
-        open_detail(temporary)
-        driver.click(button_with_text(temporary["detail"], "Remove intent shortcut"))
+        remove_button = temporary["widget"].findChild(QPushButton, "shortcutRemoveButton")
+        assert remove_button is not None
+        driver.click(remove_button)
         driver.pump()
         assert len(dialog._caller_blocks) == original_count + 1
         assert dialog._caller_blocks[-1] is block
@@ -521,6 +532,8 @@ def test_intent_shortcut_editor_mutations_policies_tools_and_reopen_are_one_real
         assert saved["hotkey"].text() == "ctrl+alt+r"
         assert saved["hotkey_2"].text() == "ctrl+shift+alt+r"
         assert saved["paste_back"].isChecked()
+        assert not saved["show_only"].isChecked()
+        assert saved["result_behavior_group"].checkedButton() is saved["paste_back"]
         assert len(saved["intent_rows"]) == 1
         assert saved["intent_rows"][0]["key"].text() == "g"
         assert saved["intent_rows"][0]["label"].text() == "Gather sources"
@@ -1184,7 +1197,7 @@ def test_three_conversation_system_prompts_save_reload_and_remain_independent(
     qapp,
     live_runtime_settings,
 ):
-    """Edit Wisp, ChatGPT, and Claude prompts through their real Settings fields."""
+    """Edit OpenWand, ChatGPT, and Claude prompts through their real Settings fields."""
 
     from PySide6.QtWidgets import QPushButton
 
@@ -1196,9 +1209,9 @@ def test_three_conversation_system_prompts_save_reload_and_remain_independent(
     dialog = SettingsDialog()
     reopened = None
     prompts = {
-        "SYSTEM_PROMPT_UTILITY": "Wisp acceptance prompt only.",
-        "WISP_CODEX_SYSTEM_PROMPT": "ChatGPT acceptance prompt only.",
-        "WISP_CLAUDE_SYSTEM_PROMPT": "Claude acceptance prompt only.",
+        "SYSTEM_PROMPT_UTILITY": "OpenWand acceptance prompt only.",
+        "OPENWAND_CODEX_SYSTEM_PROMPT": "ChatGPT acceptance prompt only.",
+        "OPENWAND_CLAUDE_SYSTEM_PROMPT": "Claude acceptance prompt only.",
     }
     try:
         _unique_shortcuts(dialog)
@@ -1212,8 +1225,8 @@ def test_three_conversation_system_prompts_save_reload_and_remain_independent(
         saved = settings_env.read_settings_env()
         assert {key: saved[key] for key in prompts} == prompts
         assert config.SYSTEM_PROMPT_UTILITY == prompts["SYSTEM_PROMPT_UTILITY"]
-        assert config.WISP_CODEX_SYSTEM_PROMPT == prompts["WISP_CODEX_SYSTEM_PROMPT"]
-        assert config.WISP_CLAUDE_SYSTEM_PROMPT == prompts["WISP_CLAUDE_SYSTEM_PROMPT"]
+        assert config.OPENWAND_CODEX_SYSTEM_PROMPT == prompts["OPENWAND_CODEX_SYSTEM_PROMPT"]
+        assert config.OPENWAND_CLAUDE_SYSTEM_PROMPT == prompts["OPENWAND_CLAUDE_SYSTEM_PROMPT"]
 
         reopened = SettingsDialog()
         for key, value in prompts.items():
@@ -1242,7 +1255,7 @@ def test_conversation_engine_and_owner_settings_drive_runtime_dispatch_matrix(
     from ui.settings_panel.dialog import SettingsDialog, _set
 
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "runtime" / "brain"))
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     driver = QtUserDriver(qapp, timeout=2.0)
     harness_calls = []
@@ -1255,15 +1268,15 @@ def test_conversation_engine_and_owner_settings_drive_runtime_dispatch_matrix(
     monkeypatch.setattr(
         handlers,
         "_stream_chat_reply",
-        lambda *_args, **_kwargs: iter(["wisp answer"]),
+        lambda *_args, **_kwargs: iter(["openwand answer"]),
     )
 
     scenarios = [
-        ("wisp", "wisp", "wisp"),
-        ("wisp", "agent", "wisp"),
-        ("codex", "wisp", "wisp"),
+        ("openwand", "openwand", "openwand"),
+        ("openwand", "agent", "openwand"),
+        ("codex", "openwand", "openwand"),
         ("codex", "agent", "agent"),
-        ("claude", "wisp", "wisp"),
+        ("claude", "openwand", "openwand"),
         ("claude", "agent", "agent"),
     ]
     for index, (provider, requested_owner, effective_owner) in enumerate(scenarios):
@@ -1273,14 +1286,14 @@ def test_conversation_engine_and_owner_settings_drive_runtime_dispatch_matrix(
             _set(dialog._fields["CHAT_EXECUTION_MODE"], provider)
             driver.pump()
             owner_field = dialog._fields["CHAT_CONVERSATION_OWNER"]
-            assert owner_field.isEnabled() is (provider != "wisp")
+            assert owner_field.isEnabled() is (provider != "openwand")
             if owner_field.isEnabled():
                 _set(owner_field, requested_owner)
             else:
-                assert requested_owner in {"wisp", "agent"}
-                assert owner_field.currentData() == "wisp"
+                assert requested_owner in {"openwand", "agent"}
+                assert owner_field.currentData() == "openwand"
             dialog._fields["SYSTEM_PROMPT_UTILITY"].setPlainText(
-                f"Wisp runtime prompt {index}."
+                f"OpenWand runtime prompt {index}."
             )
             driver.pump()
 
@@ -1290,10 +1303,10 @@ def test_conversation_engine_and_owner_settings_drive_runtime_dispatch_matrix(
 
             assert config.CHAT_EXECUTION_MODE == provider
             assert config.CHAT_CONVERSATION_OWNER == effective_owner
-            assert f"Wisp runtime prompt {index}." in config.get_system_prompt()
+            assert f"OpenWand runtime prompt {index}." in config.get_system_prompt()
 
             # Keep this workflow offline after the real Settings reload. The
-            # selected Wisp route/agent adapter and ownership logic remain real.
+            # selected OpenWand route/agent adapter and ownership logic remain real.
             config.TRUST_PRIVACY_MODE = False
             harness_calls.clear()
             events = []
@@ -1318,9 +1331,9 @@ def test_conversation_engine_and_owner_settings_drive_runtime_dispatch_matrix(
                 },
             )
 
-            if provider == "wisp":
+            if provider == "openwand":
                 assert harness_calls == []
-                assert result["text"] == "wisp answer"
+                assert result["text"] == "openwand answer"
                 assert "harness" not in result
             else:
                 assert len(harness_calls) == 1
@@ -1329,14 +1342,14 @@ def test_conversation_engine_and_owner_settings_drive_runtime_dispatch_matrix(
                 assert kwargs["session_id"] == (
                     "old-session" if effective_owner == "agent" else ""
                 )
-                assert ("Earlier question" in prompt) is (effective_owner == "wisp")
+                assert ("Earlier question" in prompt) is (effective_owner == "openwand")
                 assert prompt.endswith("Continue now")
                 assert result["text"] == f"{provider} answer"
                 assert result["harness"]["conversation_owner"] == effective_owner
                 assert result["harness"]["session_id"] == (
                     "new-session" if effective_owner == "agent" else ""
                 )
-                assert result["harness"]["clear_session"] is (effective_owner == "wisp")
+                assert result["harness"]["clear_session"] is (effective_owner == "openwand")
             assert [
                 data["text"] for event, data, _request_id in events if event == "reply.done"
             ] == [result["text"]]
@@ -1698,7 +1711,7 @@ def test_visible_speech_install_and_kokoro_asset_actions_reach_runtime_boundarie
         assert elevenlabs_plan["reinstall"] is False
         assert elevenlabs_plan["external_plan_extra"]["settings_updates"] == {
             "TTS_PROVIDER": "elevenlabs",
-            "WISP_TTS_PREFERENCE": "cloud",
+            "OPENWAND_TTS_PREFERENCE": "cloud",
         }
         assert dialog._fields["TTS_PROVIDER"].currentData() == "elevenlabs"
 
@@ -1722,7 +1735,7 @@ def test_visible_speech_install_and_kokoro_asset_actions_reach_runtime_boundarie
         assert kokoro_plan["reinstall"] is False
         assert kokoro_plan["external_plan_extra"]["settings_updates"] == {
             "TTS_PROVIDER": "kokoro",
-            "WISP_TTS_PREFERENCE": "local",
+            "OPENWAND_TTS_PREFERENCE": "local",
             "KOKORO_VOICE": "af_heart",
             "KOKORO_LANG_CODE": "a",
             "KOKORO_DEVICE": "cpu",
@@ -1870,7 +1883,7 @@ def test_visible_stt_install_button_covers_every_model_device_compute_language_a
             observed_cases.add(case)
             assert plan["packages"] == optional_deps.stt_install_packages(case[1])
             assert plan["remove_artifacts"] == optional_deps.stt_remove_artifacts()
-            assert updates["WISP_STT_PREFERENCE"] == "local"
+            assert updates["OPENWAND_STT_PREFERENCE"] == "local"
         assert observed_cases == expected_cases
         assert {case[0] for case in observed_cases} == set(model_values)
         assert {case[1] for case in observed_cases} == set(device_values)
@@ -2250,7 +2263,7 @@ def test_builtin_profile_action_saves_and_reopens_as_the_active_runtime_profile(
         assert save is not None and save.isEnabled()
         driver.click(save)
         saved = settings_env.read_settings_env()
-        assert "WISP_SETTINGS_PRESET" not in saved
+        assert "OPENWAND_SETTINGS_PRESET" not in saved
         assert saved["ACTIVE_PROFILE"] == "low_setup"
         assert config.SETTINGS.chat_llm.provider == "chatgpt"
 
@@ -2589,10 +2602,10 @@ def test_chat_memory_phrases_model_tools_scope_search_and_delete_use_real_store(
     import config
     from core.llm_clients import client as llm_client
     from core.memory_store import store
-    from runtime.brain.wisp_brain import handlers
+    from runtime.brain.openwand_brain import handlers
 
     manager, _fallback = isolated_memory
-    monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
+    monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
     monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", False)
     emitted: list[tuple[str, object, object]] = []
 
@@ -2613,7 +2626,7 @@ def test_chat_memory_phrases_model_tools_scope_search_and_delete_use_real_store(
                 messages=[{"role": "user", "content": scoped_message}],
                 memory_enabled=True,
                 memory_project=project,
-                harness_provider="wisp",
+                harness_provider="openwand",
             )
             assert result["text"].startswith("[fake-chat]")
             assert any(event == "reply.done" and req_id == ctx.req_id for event, _data, req_id in emitted)
@@ -2890,7 +2903,7 @@ def test_saved_privacy_modes_change_exact_model_bound_text_and_restore_the_reply
     import config
     from core import privacy_model, secret_store
     from core.privacy_redaction import SensitiveEntity
-    from runtime.brain.wisp_brain import handlers
+    from runtime.brain.openwand_brain import handlers
     from ui.settings_panel.dialog import SettingsDialog
 
     monkeypatch.setattr(secret_store, "has_secret", lambda _name: False)
@@ -2952,7 +2965,7 @@ def test_saved_privacy_modes_change_exact_model_bound_text_and_restore_the_reply
                 messages=[{"role": "user", "content": message}],
                 memory_enabled=False,
                 privacy_session_id=f"privacy-mode-{index}",
-                harness_provider="wisp",
+                harness_provider="openwand",
             )
             assert model_inputs[-1] == expected[mode]
             assert result["text"] == f"Provider received: {message}"
@@ -2979,7 +2992,7 @@ def test_privacy_review_runtime_redacted_full_and_cancel_decisions_block_the_sen
 
     import config
     from core.privacy_gateway import PrivacyReviewCanceled
-    from runtime.brain.wisp_brain import handlers
+    from runtime.brain.openwand_brain import handlers
 
     monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", True)
     monkeypatch.setattr(config, "PRIVACY_AI_ENABLED", False)
@@ -3009,7 +3022,7 @@ def test_privacy_review_runtime_redacted_full_and_cancel_decisions_block_the_sen
                     messages=[{"role": "user", "content": f"Email {email}"}],
                     memory_enabled=False,
                     privacy_session_id=f"review-{decision}",
-                    harness_provider="wisp",
+                    harness_provider="openwand",
                 )
             except Exception as exc:  # expected only for Cancel
                 outcome["error"] = exc

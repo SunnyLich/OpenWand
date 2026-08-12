@@ -1,4 +1,4 @@
-"""Versioned VS Code capabilities implemented by Wisp."""
+"""Versioned VS Code capabilities implemented by OpenWand."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Check that the running interpreter matches Wisp's Python version target."""
+"""Check that the running interpreter matches OpenWand's Python version target."""
 
 from __future__ import annotations
 

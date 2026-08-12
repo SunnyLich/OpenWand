@@ -28,12 +28,12 @@ def test_general_project_always_present(tmp_path, monkeypatch):
 
 def test_add_and_delete_project(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
-    proj = store.add_project("Wisp Redesign")
+    proj = store.add_project("OpenWand Redesign")
     assert proj["id"] != store.GENERAL_PROJECT_ID
-    assert any(p["name"] == "Wisp Redesign" for p in store.load_projects())
+    assert any(p["name"] == "OpenWand Redesign" for p in store.load_projects())
 
     # Duplicate name returns the existing project rather than creating a second.
-    again = store.add_project("wisp redesign")
+    again = store.add_project("openwand redesign")
     assert again["id"] == proj["id"]
 
     assert store.delete_project(proj["id"]) is True
@@ -69,14 +69,14 @@ def test_add_project_failure_matrix_is_transactional(tmp_path, monkeypatch):
 
 
 def test_projects_with_same_name_are_isolated_by_conversation_scope(tmp_path, monkeypatch):
-    """Native Wisp and Codex can each own an independent project name."""
+    """Native OpenWand and Codex can each own an independent project name."""
     _isolate(tmp_path, monkeypatch)
 
-    native = store.add_project("Overlay", conversation_scope="wisp")
+    native = store.add_project("Overlay", conversation_scope="openwand")
     codex = store.add_project("Overlay", conversation_scope="codex")
 
     assert native["id"] != codex["id"]
-    assert store.project_scope(native) == "wisp"
+    assert store.project_scope(native) == "openwand"
     assert store.project_scope(codex) == "codex"
 
 
@@ -104,7 +104,7 @@ def test_conversation_round_trip_and_title(tmp_path, monkeypatch):
     assert len(loaded) == 1
     assert loaded[0]["title"].startswith("How do I configure the overlay hotkey")
     assert loaded[0]["project_id"] == store.GENERAL_PROJECT_ID
-    assert loaded[0]["conversation_scope"] == "wisp"
+    assert loaded[0]["conversation_scope"] == "openwand"
     assert loaded[0]["id"]
     assert all(msg.get("created_at") for msg in loaded[0]["messages"])
     assert all(msg.get("id") for msg in loaded[0]["messages"])

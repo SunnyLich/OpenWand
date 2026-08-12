@@ -212,7 +212,7 @@ class VSCodeActionAdapter:
             payload = b"\xef\xbb\xbf" + payload
         temporary_path = ""
         try:
-            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f".{path.name}.wisp-", delete=False) as handle:
+            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f".{path.name}.openwand-", delete=False) as handle:
                 temporary_path = handle.name
                 handle.write(payload)
                 handle.flush()

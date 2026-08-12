@@ -7,7 +7,7 @@ from pathlib import Path
 from core.system.env_utils import format_env_value, read_env_file, write_env_file
 from core.system.paths import REPO_ROOT
 
-ENV_PATH = Path(os.environ.get("WISP_SETTINGS_ENV_PATH") or REPO_ROOT / ".env")
+ENV_PATH = Path(os.environ.get("OPENWAND_SETTINGS_ENV_PATH") or REPO_ROOT / ".env")
 
 
 def read_settings_env() -> dict[str, str]:

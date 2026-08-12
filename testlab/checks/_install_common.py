@@ -3,7 +3,7 @@
 Simulates "user clicks Install in Settings on a machine without the package":
 build the same installer plan Settings writes, run the REAL installer script
 (``scripts/optional_tts_installer.py``) in direct mode against an empty scratch
-``WISP_OPTIONAL_PACKAGES_DIR``, then verify in a clean subprocess that the
+``OPENWAND_OPTIONAL_PACKAGES_DIR``, then verify in a clean subprocess that the
 package imports from the scratch dir and real inference runs.
 
 The user's real python_packages dir is never touched. Downloads go through the
@@ -84,7 +84,7 @@ def run_install_check(kind: str, *, device: str = "auto", keep: bool = False) ->
     pkgs_dir.mkdir(parents=True, exist_ok=True)
     log_path = scratch / "installer.log"
     status_path = scratch / "installer.status.json"
-    env = _lab.child_env(extra={"WISP_OPTIONAL_PACKAGES_DIR": str(pkgs_dir)})
+    env = _lab.child_env(extra={"OPENWAND_OPTIONAL_PACKAGES_DIR": str(pkgs_dir)})
 
     if kind == "stt":
         plan = {
@@ -104,7 +104,7 @@ def run_install_check(kind: str, *, device: str = "auto", keep: bool = False) ->
     plan.update(
         {
             "reinstall": False,
-            "restart_apply": False,  # direct mode: Wisp is not running in the scratch world
+            "restart_apply": False,  # direct mode: OpenWand is not running in the scratch world
             "log_path": str(log_path),
             "status_path": str(status_path),
             "app_language": "en",

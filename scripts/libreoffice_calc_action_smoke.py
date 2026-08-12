@@ -1,4 +1,4 @@
-"""Real LibreOffice Calc smoke harness for Wisp's preview-first actions.
+"""Real LibreOffice Calc smoke harness for OpenWand's preview-first actions.
 
 Run with LibreOffice's bundled Python while a socket-enabled LibreOffice
 instance is active. ``setup`` creates a disposable workbook and selects its
@@ -192,16 +192,16 @@ def apply(path: Path, expected_fingerprint: str, port: int) -> dict[str, object]
 
     chart_range = sheet.getCellRangeByName("A1:B7").RangeAddress
     charts = sheet.Charts
-    if charts.hasByName("WispRevenueChart"):
-        charts.removeByName("WispRevenueChart")
+    if charts.hasByName("OpenWandRevenueChart"):
+        charts.removeByName("OpenWandRevenueChart")
     charts.addNewByName(
-        "WispRevenueChart",
+        "OpenWandRevenueChart",
         Rectangle(9500, 1000, 15500, 9500),
         (chart_range,),
         True,
         True,
     )
-    chart = charts.getByName("WispRevenueChart").EmbeddedObject
+    chart = charts.getByName("OpenWandRevenueChart").EmbeddedObject
     chart.HasMainTitle = True
     chart.Title.String = "Revenue by month"
     chart.HasLegend = False
@@ -212,7 +212,7 @@ def apply(path: Path, expected_fingerprint: str, port: int) -> dict[str, object]
     data_range.setDataArray(current)
     post_chart_values = tuple(tuple(row) for row in data_range.getDataArray())
     if post_chart_values != current:
-        charts.removeByName("WispRevenueChart")
+        charts.removeByName("OpenWandRevenueChart")
         raise RuntimeError("Calc chart creation changed source cells; the chart was rolled back.")
 
     document.CurrentController.select(sheet.getCellRangeByName("D10"))
@@ -222,9 +222,9 @@ def apply(path: Path, expected_fingerprint: str, port: int) -> dict[str, object]
         "phase": "applied_and_verified",
         "document": str(path),
         "table_range": "Sales.A1:C7",
-        "chart": "WispRevenueChart",
+        "chart": "OpenWandRevenueChart",
         "fingerprint": actual_fingerprint,
-        "verified": charts.hasByName("WispRevenueChart"),
+        "verified": charts.hasByName("OpenWandRevenueChart"),
         "header_values": list(sheet.getCellRangeByName("A1:C1").getDataArray()[0]),
         "header_text_colors": [sheet.getCellByPosition(column, 0).CharColor for column in range(3)],
     }

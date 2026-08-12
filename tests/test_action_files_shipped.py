@@ -1,4 +1,4 @@
-"""Loading checks over the action files Wisp actually ships.
+"""Loading checks over the action files OpenWand actually ships.
 
 This is the gate the old hardcoded action list could never have: every shipped
 file is parsed, every binding is resolved, and every capability an action names

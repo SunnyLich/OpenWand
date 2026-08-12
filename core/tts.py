@@ -50,11 +50,11 @@ _EL_DTYPE = "int16"
 _OPENAI_SAMPLE_RATE = 24000
 _OPENAI_DTYPE = "int16"
 
-# GPT-SoVITS API returns WAV by default; Wisp plays signed 16-bit PCM.
+# GPT-SoVITS API returns WAV by default; OpenWand plays signed 16-bit PCM.
 _GPT_SOVITS_SAMPLE_RATE = 32000
 _GPT_SOVITS_DTYPE = "int16"
 
-# Kokoro returns float audio at 24 kHz; Wisp plays signed 16-bit PCM.
+# Kokoro returns float audio at 24 kHz; OpenWand plays signed 16-bit PCM.
 _KOKORO_SAMPLE_RATE = 24000
 _KOKORO_DTYPE = "int16"
 _KOKORO_REPO_ID = "hexgrad/Kokoro-82M"
@@ -106,7 +106,7 @@ def _kokoro_diag(message: str) -> None:
     line = f"[tts] {message}"
     print(line, flush=True)
     try:
-        root = os.environ.get("WISP_RUN_LOG_DIR")
+        root = os.environ.get("OPENWAND_RUN_LOG_DIR")
         path = Path(root) / "kokoro-debug.log" if root else Path(config.BASE_DIR) / "build_logs" / "kokoro-debug.log"
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as handle:
@@ -390,14 +390,18 @@ def _stream_elevenlabs(text: str) -> Generator[bytes, None, None]:
 # ------------------------------------------------------------------
 
 def kokoro_installed() -> bool:
-    """Return whether the installer-owned Kokoro package layer is complete."""
+    """Return whether a complete Kokoro runtime layer is available."""
     try:
         from core import optional_deps
 
         requested = str(getattr(config, "KOKORO_DEVICE", "auto") or "auto")
         install_device = "cuda" if optional_deps.kokoro_install_mode_for_device(requested) == "gpu" else "cpu"
-        status = optional_deps.optional_package_spec_status("kokoro", device=install_device)
-        available = bool(status.get("valid"))
+        status = optional_deps.require_optional_package_runtime(
+            "kokoro",
+            device=install_device,
+            allow_version_drift=True,
+        )
+        available = bool(status.get("valid") or status.get("runtime_compatible"))
         _kokoro_diag(
             "Kokoro import check "
             f"available={available} optional_dir={str(optional_deps.OPTIONAL_PACKAGES_DIR)!r} "
@@ -498,6 +502,18 @@ def _resolve_kokoro_device(requested: str | None = None) -> str:
     torch_cuda = ""
     cuda_name = ""
     try:
+        # Select and prepare the same dependency layer used by the later Kokoro
+        # import before asking Torch about CUDA. Otherwise a source launch can
+        # miss the managed Torch wheel here, incorrectly build a CPU pipeline,
+        # and only add the package directory afterward.
+        from core import optional_deps
+
+        install_device = "cuda" if optional_deps.kokoro_install_mode_for_device(requested) == "gpu" else "cpu"
+        optional_deps.require_optional_package_runtime(
+            "kokoro",
+            device=install_device,
+            allow_version_drift=True,
+        )
         import torch  # type: ignore
 
         torch_version = str(getattr(torch, "__version__", "unknown"))
@@ -625,7 +641,11 @@ def _import_kokoro_pipeline():
         _set_kokoro_stage("adding optional package path")
         requested = str(getattr(config, "KOKORO_DEVICE", "auto") or "auto")
         install_device = "cuda" if optional_deps.kokoro_install_mode_for_device(requested) == "gpu" else "cpu"
-        optional_deps.require_optional_package_runtime("kokoro", device=install_device)
+        optional_deps.require_optional_package_runtime(
+            "kokoro",
+            device=install_device,
+            allow_version_drift=True,
+        )
         importlib.invalidate_caches()
         _kokoro_diag(f"Kokoro import starting {_kokoro_runtime_context()}")
         _set_kokoro_stage("importing kokoro.KPipeline")

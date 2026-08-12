@@ -7,8 +7,8 @@ from core.llm_clients.chat_tool_loop import (
     ChatLoopModel,
     ChatModelTurn,
     ChatToolRequest,
-    WispObservation,
-    WispToolCall,
+    OpenWandObservation,
+    OpenWandToolCall,
 )
 
 
@@ -39,8 +39,8 @@ class AnthropicChatLoopModel(ChatLoopModel):
     def next_turn(
         self,
         _request: ChatToolRequest,
-        observations: list[WispObservation],
-        _tool_calls: list[WispToolCall],
+        observations: list[OpenWandObservation],
+        _tool_calls: list[OpenWandToolCall],
     ) -> ChatModelTurn:
         """Call Claude Messages and normalize the result into one model turn."""
         from core.llm_clients import client as llm
@@ -75,7 +75,7 @@ class AnthropicChatLoopModel(ChatLoopModel):
         )
         llm._update_route_capabilities(self._provider, self._model, supports_tools=True)
         text_blocks: list[str] = []
-        calls: list[WispToolCall] = []
+        calls: list[OpenWandToolCall] = []
         for block in response.content:
             if getattr(block, "type", "") == "text":
                 text = getattr(block, "text", "")
@@ -85,7 +85,7 @@ class AnthropicChatLoopModel(ChatLoopModel):
             if getattr(block, "type", "") != "tool_use":
                 continue
             calls.append(
-                WispToolCall(
+                OpenWandToolCall(
                     id=str(getattr(block, "id", "")),
                     name=str(getattr(block, "name", "")),
                     arguments=dict(getattr(block, "input", None) or {}),

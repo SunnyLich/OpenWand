@@ -2,7 +2,7 @@
 
 Selection capture's fallback path synthesizes a copy keystroke and does a
 clipboard save->copy->restore dance. Two processes doing that concurrently
-(the Wisp app and the MCP context server, both of which import this code)
+(the OpenWand app and the MCP context server, both of which import this code)
 can restore each other's stale clipboard. This advisory file lock serializes
 those critical sections across processes.
 
@@ -24,9 +24,9 @@ import time
 
 from core.system.paths import USER_DATA_DIR
 
-log = logging.getLogger("wisp.clipboard_lock")
+log = logging.getLogger("openwand.clipboard_lock")
 
-CLIPBOARD_LOCK_FILE = USER_DATA_DIR / "wisp_clipboard.lock"
+CLIPBOARD_LOCK_FILE = USER_DATA_DIR / "openwand_clipboard.lock"
 
 _POLL_SECONDS = 0.02
 

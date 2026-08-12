@@ -352,18 +352,18 @@ def save_projects(projects: list[dict]) -> None:
 
 def project_scope(project: dict) -> str:
     """Return the conversation namespace that owns a project."""
-    scope = str((project or {}).get("conversation_scope") or "wisp").strip().lower()
-    return scope or "wisp"
+    scope = str((project or {}).get("conversation_scope") or "openwand").strip().lower()
+    return scope or "openwand"
 
 
-def add_project(name: str, *, conversation_scope: str = "wisp") -> dict:
+def add_project(name: str, *, conversation_scope: str = "openwand") -> dict:
     """Create and persist a new project; returns the project dict."""
     name = (name or "").strip()
     if not name:
         raise ValueError("project name is required")
     if len(name) > 120 or any(ord(char) < 32 for char in name):
         raise ValueError("project name is invalid")
-    scope = str(conversation_scope or "wisp").strip().lower() or "wisp"
+    scope = str(conversation_scope or "openwand").strip().lower() or "openwand"
     with _lock:
         projects = load_projects()
         existing = next(
@@ -378,7 +378,7 @@ def add_project(name: str, *, conversation_scope: str = "wisp") -> dict:
         if existing is not None:
             return existing
         project = {"id": str(uuid.uuid4()), "name": name, "created_at": _now_iso()}
-        if scope != "wisp":
+        if scope != "openwand":
             project["conversation_scope"] = scope
         projects.append(project)
         save_projects(projects)
@@ -419,7 +419,7 @@ def project_name(project_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 def conversation_scope(conv: dict) -> str:
-    """Return a stable Wisp/Codex/Claude namespace for a conversation.
+    """Return a stable OpenWand/Codex/Claude namespace for a conversation.
 
     Older records predate the explicit field.  A linked external session is the
     strongest signal that such a record belongs to an agent-backed namespace.
@@ -440,7 +440,7 @@ def conversation_scope(conv: dict) -> str:
                 candidates.append((str(raw.get("updated_at") or ""), provider))
     if candidates:
         return max(candidates)[1]
-    return "wisp"
+    return "openwand"
 
 def load_conversations() -> list[dict]:
     """Return persisted conversations (oldest first), each with a project_id."""

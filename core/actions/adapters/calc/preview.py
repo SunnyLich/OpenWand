@@ -243,7 +243,7 @@ def _chart_svg(
     categories, series = _chart_data(display_values, typed_values)
     if not categories or not series:
         return (
-            '<div class="action-chart-empty">Wisp could not find a numeric series in this selection. '
+            '<div class="action-chart-empty">OpenWand could not find a numeric series in this selection. '
             "The final chart may be empty.</div>"
         )
 

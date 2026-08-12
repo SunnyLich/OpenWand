@@ -1,4 +1,4 @@
-"""Conservative, detached Wisp uninstaller for source and packaged builds."""
+"""Conservative, detached OpenWand uninstaller for source and packaged builds."""
 from __future__ import annotations
 
 import os
@@ -18,7 +18,7 @@ class UninstallError(RuntimeError):
     """Raised when a safe uninstall plan cannot be created or launched."""
 
 
-_WISP_MODEL_CACHE_NAMES = {
+_OPENWAND_MODEL_CACHE_NAMES = {
     "models--hexgrad--Kokoro-82M",
     "models--Systran--faster-whisper-tiny",
     "models--Systran--faster-whisper-base",
@@ -29,6 +29,7 @@ _WISP_MODEL_CACHE_NAMES = {
 _KEYRING_SERVICE = "python-ai-overlay"
 _CHATGPT_KEYRING_CHUNKS = tuple(f"chatgpt-oauth-chunk-{index}" for index in range(32))
 _KEYRING_ACCOUNTS = (
+    "__openwand_secrets__",
     "__wisp_secrets__",
     "chatgpt-oauth",
     "github-oauth",
@@ -38,7 +39,7 @@ _KEYRING_ACCOUNTS = (
 
 @dataclass(frozen=True)
 class UninstallPlan:
-    """Validated paths owned by one complete Wisp uninstall."""
+    """Validated paths owned by one complete OpenWand uninstall."""
 
     platform: str
     source_checkout: bool
@@ -74,7 +75,7 @@ def _packaged_root(executable: Path, platform: str) -> Path:
         for parent in executable.parents:
             if parent.suffix == ".app":
                 return parent
-        raise UninstallError(f"Packaged macOS Wisp is not inside an app bundle: {executable}")
+        raise UninstallError(f"Packaged macOS OpenWand is not inside an app bundle: {executable}")
     return executable.parent
 
 
@@ -100,9 +101,9 @@ def _huggingface_hub_root(environ: Mapping[str, str], home: Path) -> Path:
 
 
 def _model_cache_targets(hub_root: Path) -> list[Path]:
-    """Return exact Wisp speech repositories without touching shared cache data."""
+    """Return exact OpenWand speech repositories without touching shared cache data."""
     targets: list[Path] = []
-    for name in sorted(_WISP_MODEL_CACHE_NAMES):
+    for name in sorted(_OPENWAND_MODEL_CACHE_NAMES):
         repo = hub_root / name
         if repo.exists() or repo.is_symlink():
             targets.append(repo)
@@ -114,12 +115,17 @@ def _model_cache_targets(hub_root: Path) -> list[Path]:
 
 def _integration_targets(platform: str, home: Path, environ: Mapping[str, str]) -> list[Path]:
     if platform == "darwin":
-        return [home / "Library" / "LaunchAgents" / "com.wisp.launcher.plist"]
+        return [
+            home / "Library" / "LaunchAgents" / "com.openwand.launcher.plist",
+            home / "Library" / "LaunchAgents" / "com.wisp.launcher.plist",
+        ]
     if platform.startswith("linux"):
         config_home = _absolute(environ.get("XDG_CONFIG_HOME") or home / ".config")
         data_home = _absolute(environ.get("XDG_DATA_HOME") or home / ".local" / "share")
         return [
+            config_home / "autostart" / "openwand.desktop",
             config_home / "autostart" / "wisp.desktop",
+            data_home / "applications" / "openwand.desktop",
             data_home / "applications" / "wisp.desktop",
         ]
     return []
@@ -151,7 +157,7 @@ def build_uninstall_plan(
     home: Path | str | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> UninstallPlan:
-    """Build a deletion plan containing only paths Wisp owns."""
+    """Build a deletion plan containing only paths OpenWand owns."""
     from core import optional_deps, updater
 
     platform = platform or sys.platform
@@ -159,9 +165,9 @@ def build_uninstall_plan(
     executable_path = Path(executable or sys.executable)
     home_path = _absolute(home or Path.home())
     data_root = _absolute(user_data_root or USER_DATA_DIR)
-    _assert_safe_root(data_root, label="Wisp user-data root", home=home_path)
-    if data_root.name.casefold() != "wisp":
-        raise UninstallError(f"Refusing to remove an unexpected Wisp user-data directory: {data_root}")
+    _assert_safe_root(data_root, label="OpenWand user-data root", home=home_path)
+    if data_root.name.casefold() != "openwand":
+        raise UninstallError(f"Refusing to remove an unexpected OpenWand user-data directory: {data_root}")
 
     if frozen:
         app_root = _packaged_root(executable_path, platform)
@@ -171,15 +177,16 @@ def build_uninstall_plan(
     else:
         app_root = _absolute(source_root or updater.source_checkout_root())
         _validate_source_root(app_root)
-    _assert_safe_root(app_root, label="Wisp app root", home=home_path)
+    _assert_safe_root(app_root, label="OpenWand app root", home=home_path)
 
     env = dict(os.environ if environ is None else environ)
     hub_root = _huggingface_hub_root(env, home_path)
     optional_root = _absolute(optional_packages_root or optional_deps.OPTIONAL_PACKAGES_DIR)
-    _assert_safe_root(optional_root, label="Wisp optional-package root", home=home_path)
+    _assert_safe_root(optional_root, label="OpenWand optional-package root", home=home_path)
     if not optional_root.is_relative_to(data_root) and optional_root.name != "python_packages":
         raise UninstallError(f"Refusing to remove an unexpected optional-package directory: {optional_root}")
     targets = [app_root, data_root, optional_root]
+    targets.append(data_root.with_name("Wisp" if platform in {"win32", "darwin"} else "wisp"))
     targets.extend(_model_cache_targets(hub_root))
     targets.extend(_integration_targets(platform, home_path, env))
     if frozen:
@@ -194,8 +201,8 @@ def build_uninstall_plan(
     )
 
 
-def remove_wisp_keychain_entries() -> list[str]:
-    """Delete every keychain account Wisp creates, including legacy API-key items."""
+def remove_openwand_keychain_entries() -> list[str]:
+    """Delete every keychain account OpenWand creates, including legacy API-key items."""
     from core import secret_store
     from core.system.native_locks import keychain_lock
 
@@ -203,7 +210,7 @@ def remove_wisp_keychain_entries() -> list[str]:
     failures: list[str] = []
     try:
         import keyring  # type: ignore
-    except Exception as exc:  # No keyring means Wisp could only have used local fallback files.
+    except Exception as exc:  # No keyring means OpenWand could only have used local fallback files.
         return [f"keyring unavailable: {exc}"] if any(secret_store.configured_marker(name) for name in secret_store.API_KEY_NAMES) else []
 
     with keychain_lock():
@@ -244,8 +251,9 @@ function Write-UninstallLog([string]$Message) {{
 while (Get-Process -Id $waitPid -ErrorAction SilentlyContinue) {{ Start-Sleep -Milliseconds 500 }}
 Start-Sleep -Seconds 1
 try {{
+    Remove-ItemProperty -LiteralPath 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'OpenWand' -ErrorAction SilentlyContinue
     Remove-ItemProperty -LiteralPath 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'Wisp' -ErrorAction SilentlyContinue
-}} catch {{ Write-UninstallLog ("Could not remove Wisp login entry: " + $_.Exception.Message) }}
+}} catch {{ Write-UninstallLog ("Could not remove OpenWand login entry: " + $_.Exception.Message) }}
 foreach ($target in $targets) {{
     $removed = $false
     for ($attempt = 0; $attempt -lt 30; $attempt++) {{
@@ -293,22 +301,22 @@ if [ "$failed" -eq 0 ]; then rmdir -- "$helper_dir" 2>/dev/null || true; fi
 
 
 def launch_uninstaller(plan: UninstallPlan, *, wait_pid: int | None = None) -> UninstallLaunch:
-    """Remove Wisp credentials and launch a native helper that survives self-removal."""
+    """Remove OpenWand credentials and launch a native helper that survives self-removal."""
     from core import updater
 
-    credential_failures = remove_wisp_keychain_entries()
+    credential_failures = remove_openwand_keychain_entries()
     if credential_failures:
-        raise UninstallError("Could not remove Wisp credentials: " + "; ".join(credential_failures))
+        raise UninstallError("Could not remove OpenWand credentials: " + "; ".join(credential_failures))
 
-    helper_root = Path(tempfile.gettempdir()) / f"wisp-uninstall-{uuid.uuid4().hex}"
+    helper_root = Path(tempfile.gettempdir()) / f"openwand-uninstall-{uuid.uuid4().hex}"
     helper_created = False
     try:
         helper_root.mkdir(parents=True, exist_ok=False)
         helper_created = True
         log_path = helper_root / "uninstall-failures.log"
-        pid = updater.wisp_wait_pid(wait_pid)
+        pid = updater.openwand_wait_pid(wait_pid)
         if plan.platform == "win32":
-            script_path = helper_root / "uninstall-wisp.ps1"
+            script_path = helper_root / "uninstall-openwand.ps1"
             script_path.write_text(
                 render_windows_uninstall_script(plan, wait_pid=pid, log_path=log_path),
                 encoding="utf-8",
@@ -322,7 +330,7 @@ def launch_uninstaller(plan: UninstallPlan, *, wait_pid: int | None = None) -> U
                 str(script_path),
             ]
         else:
-            script_path = helper_root / "uninstall-wisp.sh"
+            script_path = helper_root / "uninstall-openwand.sh"
             script_path.write_text(
                 render_posix_uninstall_script(plan, wait_pid=pid, log_path=log_path),
                 encoding="utf-8",

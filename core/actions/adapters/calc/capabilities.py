@@ -1,4 +1,4 @@
-"""Versioned LibreOffice Calc capabilities implemented by Wisp."""
+"""Versioned LibreOffice Calc capabilities implemented by OpenWand."""
 
 from __future__ import annotations
 

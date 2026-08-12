@@ -27,7 +27,7 @@ from ui.shared.window_utils import enable_standard_window_controls, fit_window_t
 
 
 class OptionalInstallDialog(QDialog):
-    """Run an installer subprocess while streaming output inside Wisp."""
+    """Run an installer subprocess while streaming output inside OpenWand."""
 
     install_finished = Signal(int)
 
@@ -130,7 +130,7 @@ class OptionalInstallDialog(QDialog):
         header.setWordWrap(True)
         root.addWidget(header)
 
-        self._subtitle = QLabel(subtitle or t("Wisp is preparing the optional install."))
+        self._subtitle = QLabel(subtitle or t("OpenWand is preparing the optional install."))
         self._subtitle.setObjectName("installerSubtitle")
         self._subtitle.setWordWrap(True)
         root.addWidget(self._subtitle)
@@ -367,7 +367,7 @@ class OptionalInstallDialog(QDialog):
             self._set_progress_percent(100)
             self._elapsed.setText("")
             message = (
-                t("Packages are downloaded and staged. Restart Wisp to apply and verify them.")
+                t("Packages are downloaded and staged. Restart OpenWand to apply and verify them.")
                 if restart_required
                 else t("Installer completed successfully.")
             )

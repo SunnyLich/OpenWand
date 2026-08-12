@@ -1,4 +1,4 @@
-"""Support Wisp core assistant text behavior."""
+"""Support OpenWand core assistant text behavior."""
 
 from __future__ import annotations
 

@@ -218,6 +218,43 @@ def test_github_token_storage_fails_closed_when_keyring_is_unavailable(tmp_path,
     assert not token_file.exists()
 
 
+def test_validate_login_checks_github_user_instead_of_trusting_stored_profile(monkeypatch):
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(
+        github_auth,
+        "get_tokens",
+        lambda: {"access": "live-token", "user": {"login": "stale-name"}},
+    )
+
+    def get_json(url, token, *, timeout_seconds):
+        seen.update(url=url, token=token, timeout=timeout_seconds)
+        return {"login": "current-name"}
+
+    monkeypatch.setattr(github_auth, "_get_json", get_json)
+
+    assert github_auth.validate_login(timeout_seconds=2) == (True, "current-name")
+    assert seen == {
+        "url": github_auth._USER_URL,
+        "token": "live-token",
+        "timeout": 2,
+    }
+
+
+def test_validate_login_rejects_saved_github_token_after_remote_401(monkeypatch):
+    class RejectedToken(RuntimeError):
+        response = SimpleNamespace(status_code=401)
+
+    monkeypatch.setattr(github_auth, "get_tokens", lambda: {"access": "revoked"})
+    monkeypatch.setattr(
+        github_auth,
+        "_get_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RejectedToken("Bad credentials")),
+    )
+
+    with pytest.raises(RuntimeError, match="rejected"):
+        github_auth.validate_login()
+
+
 def test_github_legacy_plaintext_tokens_migrate_and_are_removed(tmp_path, monkeypatch):
     token_file = tmp_path / "private" / "github.json"
     token_file.parent.mkdir(parents=True)

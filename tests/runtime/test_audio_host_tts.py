@@ -23,7 +23,7 @@ def _run_log_dir(monkeypatch, request):
     if root.exists():
         shutil.rmtree(root)
     root.mkdir(parents=True)
-    monkeypatch.setenv("WISP_RUN_LOG_DIR", str(root))
+    monkeypatch.setenv("OPENWAND_RUN_LOG_DIR", str(root))
     yield
     shutil.rmtree(root, ignore_errors=True)
     try:
@@ -438,12 +438,17 @@ def test_play_file_applies_tts_volume(monkeypatch):
     monkeypatch.setitem(sys.modules, "sounddevice", fake_sd)
     monkeypatch.setitem(sys.modules, "soundfile", fake_sf)
     monkeypatch.setattr(config, "TTS_VOLUME", 0.5, raising=False)
+    events: list[tuple[str, dict]] = []
+    audio_host.set_event_sink(lambda name, data, _req_id: events.append((name, data)))
 
     result = audio_host.play_file("voice.wav")
 
     assert result == {"played": True, "stopped": False}
     assert played["stream"].samplerate == 22_050
     assert np.allclose(np.concatenate(played["stream"].writes), np.array([0.4, -0.4], dtype=np.float32))
+    amplitudes = [data["amplitude"] for name, data in events if name == "audio.playback.amplitude"]
+    assert amplitudes[0] == pytest.approx(1.0)
+    assert amplitudes[-1] == 0.0
 
 
 def test_play_file_speed_boost_changes_mid_playback(monkeypatch):

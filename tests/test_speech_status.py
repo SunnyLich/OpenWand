@@ -123,6 +123,74 @@ def test_kokoro_status_requires_package_runtime_torch_and_assets(monkeypatch):
     assert status["state"] == "installed"
 
 
+def test_kokoro_status_accepts_runtime_compatible_version_drift(monkeypatch):
+    monkeypatch.setattr(
+        optional_deps,
+        "optional_package_runtime_status",
+        lambda *_args, **_kwargs: {
+            "installed": True,
+            "valid": False,
+            "message": "version mismatch for transitive dependencies",
+        },
+    )
+    monkeypatch.setattr(
+        optional_deps,
+        "kokoro_runtime_import_status_subprocess",
+        lambda: {"installed": True, "valid": True},
+    )
+    monkeypatch.setattr(
+        optional_deps,
+        "kokoro_torch_status_subprocess",
+        lambda: {"installed": True, "valid": True, "cuda_available": False},
+    )
+    monkeypatch.setattr(
+        tts_assets,
+        "verify",
+        lambda *_args, **_kwargs: tts_assets.AssetStatus(state="ok"),
+    )
+
+    status = speech_status.tts_status(
+        _config(TTS_PROVIDER="kokoro", KOKORO_DEVICE="cpu"),
+        verify_runtime=True,
+    )
+
+    assert status["installed"] is True
+    assert status["usable"] is True
+    assert status["runtime"]["valid"] is True
+
+
+def test_kokoro_lightweight_status_keeps_existing_version_drift_usable(monkeypatch):
+    """Live status must not disable an installed layer before its real import runs."""
+    monkeypatch.setattr(
+        optional_deps,
+        "optional_package_runtime_status",
+        lambda *_args, **_kwargs: {
+            "installed": True,
+            "valid": False,
+            "message": "version mismatch for transitive dependencies",
+        },
+    )
+    monkeypatch.setattr(
+        tts_assets,
+        "verify",
+        lambda *_args, **_kwargs: tts_assets.AssetStatus(state="ok"),
+    )
+    monkeypatch.setattr(
+        optional_deps,
+        "kokoro_runtime_import_status_subprocess",
+        lambda: pytest.fail("lightweight status must not start a cold Kokoro import"),
+    )
+
+    status = speech_status.tts_status(
+        _config(TTS_PROVIDER="kokoro", KOKORO_DEVICE="cpu"),
+        verify_runtime=False,
+    )
+
+    assert status["installed"] is True
+    assert status["usable"] is True
+    assert status["version_drift"] is True
+
+
 def test_elevenlabs_status_reports_broken_sdk_separately(monkeypatch):
     monkeypatch.setattr(
         optional_deps,
@@ -200,7 +268,7 @@ def test_stt_status_reports_staged_restart_before_package_failure(monkeypatch):
         lambda *_args, **_kwargs: {
             "ok": None,
             "restart_apply": True,
-            "message": "STT packages are staged. Restart Wisp to apply them.",
+            "message": "STT packages are staged. Restart OpenWand to apply them.",
         },
     )
 
@@ -208,7 +276,7 @@ def test_stt_status_reports_staged_restart_before_package_failure(monkeypatch):
 
     assert status["state"] == "restart_required"
     assert status["usable"] is False
-    assert "Restart Wisp" in status["summary"]
+    assert "Restart OpenWand" in status["summary"]
 
 
 def test_elevenlabs_status_does_not_call_metadata_only_package_usable_after_failed_repair(monkeypatch):

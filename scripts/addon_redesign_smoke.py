@@ -48,7 +48,7 @@ class Smoke:
         self.install_deps = install_deps
         self.keep_temp = keep_temp
         self.verbose = verbose
-        self.temp_root = Path(tempfile.mkdtemp(prefix="wisp-addon-smoke-"))
+        self.temp_root = Path(tempfile.mkdtemp(prefix="openwand-addon-smoke-"))
         self.sources = self.temp_root / "sources"
         self.addons_dir = self.temp_root / "addons"
         self.envs_dir = self.temp_root / "addon_envs"
@@ -245,7 +245,7 @@ def test_manifest_host_surfaces_and_distribution(smoke: Smoke) -> None:
     folder_result = install_addon_folder(source, folder_addons_dir)
     assert folder_result["id"] == "addon-smoke-core", folder_result
 
-    archive = smoke.temp_root / "core-contract.wisp"
+    archive = smoke.temp_root / "core-contract.openwand"
     with zipfile.ZipFile(archive, "w") as zf:
         for path in source.rglob("*"):
             if path.is_file():
@@ -495,7 +495,7 @@ def test_bad_addon_resilience(smoke: Smoke) -> None:
 def test_permission_gating(smoke: Smoke) -> None:
     """Verify permission gating behavior."""
     import core.plugin_manager as plugin_manager
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     import core.system.paths as paths
     from core.addon_distribution import install_addon_folder
@@ -572,7 +572,7 @@ def test_archive_path_traversal(smoke: Smoke) -> None:
     """Verify archive path traversal behavior."""
     from core.addon_distribution import install_addon_archive
 
-    archive = smoke.temp_root / "bad-traversal.wisp"
+    archive = smoke.temp_root / "bad-traversal.openwand"
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("../evil.txt", "nope")
         zf.writestr("safe/addon.toml", "[addon]\nid = 'addon-smoke-bad-archive'\nname = 'Bad Archive'\n")

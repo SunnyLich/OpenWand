@@ -98,6 +98,14 @@ def translate_agent_activity_text(text: str) -> str:
         "Agent task cancelled.": "Agent Team cancelled.",
         "Agent Team cancelled.": "Agent Team cancelled.",
         "Agent run finished.": "Agent run finished.",
+        "agent run started": "agent run started",
+        "parallel read-only briefing finished": "parallel read-only briefing finished",
+        "LLM call blocked by model route configuration or authentication; stopping agent run": "LLM call blocked by model route configuration or authentication; stopping agent run",
+        "LLM call failed because the selected model route is not configured or authenticated on this machine.": "LLM call failed because the selected model route is not configured or authenticated on this machine.",
+        "agent run stopped: selected model route requires authentication or configuration": "agent run stopped: selected model route requires authentication or configuration",
+        "git diff artifact written": "git diff artifact written",
+        "final report written": "final report written",
+        "agent run finished": "agent run finished",
     }
     if value in exact:
         return t(exact[value])
@@ -113,7 +121,20 @@ def translate_agent_activity_text(text: str) -> str:
         (r"^agent turn (?P<turn>[^:]+): (?P<agent>.+)$", "agent turn {turn}: {agent}"),
         (r"^agent read-only turn: (?P<agent>.+)$", "agent read-only turn: {agent}"),
         (r"^prompt prepared for (?P<agent>.+): (?P<chars>\d+) chars \((?P<mode>.+)\)$", "prompt prepared for {agent}: {chars} chars ({mode})"),
+        (r"^scope: (?P<scope>.+)$", "scope: {scope}"),
+        (r"^sandbox: (?P<sandbox>.+)$", "sandbox: {sandbox}"),
+        (r"^tool (?P<tool>\S+): (?P<count>\d+) file\(s\)$", "tool {tool}: {count} file(s)"),
+        (r"^inventory complete: (?P<count>\d+) file\(s\) visible$", "inventory complete: {count} file(s) visible"),
+        (r"^message seeded: (?P<source>.+?) -> (?P<target>.+)$", "message seeded: {source} -> {target}"),
+        (r"^parallel read-only briefing started: (?P<count>\d+) agents?$", "parallel read-only briefing started: {count} agent(s)"),
+        (r"^Privacy filter hid (?P<count>\d+) private item from the model\.$", "Privacy filter hid {count} private item from the model."),
+        (r"^Privacy filter hid (?P<count>\d+) private items from the model\.$", "Privacy filter hid {count} private items from the model."),
+        (r"^requesting LLM tool response via (?P<route>.+?) \[agent=(?P<agent>[^]]+)\]$", "requesting LLM tool response via {route} [agent={agent}]"),
         (r"^requesting LLM tool response via (?P<route>.+)$", "requesting LLM tool response via {route}"),
+        (r"^LLM call failed: (?P<message>.+)$", "LLM call failed: {message}"),
+        (r"^All query model routes failed\. Tried (?P<routes>.+?): (?P<message>.+)$", "All query model routes failed. Tried {routes}: {message}"),
+        (r"^(?P<route_name>.+?) route uses '(?P<provider>[^']+)', but its API key is not configured\.$", "{route_name} route uses '{provider}', but its API key is not configured."),
+        (r"^(?P<agent>.+) thought: (?P<message>.*)$", "{agent} thought: {message}"),
         (r"^model call still waiting after (?P<elapsed>.+) via (?P<route>.+)$", "model call still waiting after {elapsed} via {route}"),
         (r"^model first token after (?P<elapsed>.+) via (?P<route>.+)$", "model first token after {elapsed} via {route}"),
         (r"^model response received in (?P<elapsed>.+)s \((?P<chars>\d+) chars\)$", "model response received in {elapsed}s ({chars} chars)"),
@@ -122,6 +143,7 @@ def translate_agent_activity_text(text: str) -> str:
         (r"^tool (?P<tool>\S+): exit (?P<code>-?\d+): (?P<message>.*)$", "tool {tool}: exit {code}: {message}"),
         (r"^tool call: (?P<tool>.+)$", "tool call: {tool}"),
         (r"^(?P<agent>.+) tool call: (?P<tool>.+)$", "{agent} tool call: {tool}"),
+        (r"^run artifacts: (?P<path>.+)$", "run artifacts: {path}"),
     )
     for pattern, template in patterns:
         match = re.match(pattern, value)
@@ -135,6 +157,8 @@ def translate_agent_activity_text(text: str) -> str:
             groups["status"] = _translate_status_word(groups["status"])
         if "mode" in groups:
             groups["mode"] = _translate_mode(groups["mode"])
+        if "sandbox" in groups:
+            groups["sandbox"] = t(groups["sandbox"])
         if "message" in groups:
             groups["message"] = translate_agent_activity_text(groups["message"])
         return t(template).format(**groups)

@@ -15,6 +15,10 @@ STT_STATUS_SOURCES = {
     "STT model configured: {model}. faster-whisper is installed.",
     "STT model configured: {model}, but faster-whisper is not installed.",
     "STT model configured: {model}, but STT verification failed: {error}",
+    "STT packages and runtime are verified for {model}; the model loads on first use.",
+    "Windows CUDA runtime is incomplete or unloadable",
+    "Windows CUDA runtime is incomplete or unloadable: {files}",
+    "Health issue: {name}: {message}",
     "Recommendation: STT support is not working. Open Settings > Voice and click Install STT.",
     "Installing STT: {detail}.",
     "Installing STT...",
@@ -30,6 +34,7 @@ STT_STATUS_SOURCES = {
     "removing previous install",
 }
 SPEECH_NOTICE_SOURCES = {
+    "Recording - release to send",
     "Speech warm-up failed.",
     "Speech warm-up finished; one service will retry when needed.",
     "Speech services are ready.",
@@ -95,8 +100,8 @@ WORKSPACE_OPERATION_SOURCES = {
     "Created folder {path}",
     "Workspace started",
     "Workspace stopped",
-    "Wisp paused",
-    "Wisp resumed",
+    "OpenWand paused",
+    "OpenWand resumed",
     "You created file {path}",
     "You created folder {path}",
     "You edited file {path}",
@@ -122,7 +127,7 @@ MOJIBAKE_RE = re.compile(
 
 def _catalog_messages(language: str) -> list[tuple[str, str, bool]]:
     """Return source, translation, and unfinished state for one Qt catalog."""
-    tree = ET.parse(QT_DIR / f"wisp_{language}.ts")
+    tree = ET.parse(QT_DIR / f"openwand_{language}.ts")
     messages: list[tuple[str, str, bool]] = []
     for message in tree.findall(".//message"):
         source = message.findtext("source") or ""

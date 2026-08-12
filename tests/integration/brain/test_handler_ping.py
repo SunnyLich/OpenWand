@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-from wisp_brain import handlers
+from openwand_brain import handlers
 
 
 def test_ping_is_registered_and_not_streaming():

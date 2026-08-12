@@ -56,7 +56,7 @@ from core.system import macos_safety, sdk_clients
 from core.system.native_locks import ssl_init_lock
 from core.system.safe import swallow
 
-_log = logging.getLogger("wisp.context_fetcher")
+_log = logging.getLogger("openwand.context_fetcher")
 _IS_WIN = sys.platform == "win32"
 _IS_MAC = sys.platform == "darwin"
 
@@ -507,7 +507,7 @@ def _search_duckduckgo_html(query: str, max_results: int = 5) -> list[dict]:
     req = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "Mozilla/5.0 (compatible; Wisp/1.0; +https://github.com/SunnyLich/Python-AI-assistant-overlay)",
+            "User-Agent": "Mozilla/5.0 (compatible; OpenWand/1.0; +https://github.com/SunnyLich/Python-AI-assistant-overlay)",
             "Accept": "text/html,application/xhtml+xml",
         },
     )

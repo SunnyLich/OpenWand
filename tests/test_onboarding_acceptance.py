@@ -53,7 +53,7 @@ def onboarding_harness(tmp_path, monkeypatch):
     from ui.settings_panel import env as settings_env
     from ui.shared import theme
 
-    app = QApplication.instance() or QApplication(["wisp-onboarding-acceptance"])
+    app = QApplication.instance() or QApplication(["openwand-onboarding-acceptance"])
     env_path = tmp_path / "first-run.env"
     secrets: list[tuple[str, str]] = []
     installers: list[dict[str, object]] = []
@@ -237,7 +237,7 @@ def test_first_overlay_launch_runs_real_wizard_applies_profile_and_opens_chat(
         harness.driver.wait(lambda: chats == [True], "first chat after onboarding")
 
         saved = harness.saved()
-        assert saved["WISP_ONBOARDING_COMPLETE"] == "True"
+        assert saved["OPENWAND_ONBOARDING_COMPLETE"] == "True"
         assert saved["APP_LANGUAGE"] == "fr"
         assert saved["ASSISTANT_LANGUAGE"] == "French"
         assert saved["THEME_MODE"] == "dark"
@@ -483,8 +483,8 @@ def test_onboarding_tts_by_stt_full_choice_matrix(
             open_chat=False,
         )
         saved = harness.saved()
-        assert saved["WISP_TTS_PREFERENCE"] == tts
-        assert saved["WISP_STT_PREFERENCE"] == stt
+        assert saved["OPENWAND_TTS_PREFERENCE"] == tts
+        assert saved["OPENWAND_STT_PREFERENCE"] == stt
         assert completed == [False]
 
         local_tts = tts == "local"

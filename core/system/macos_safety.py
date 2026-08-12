@@ -30,12 +30,12 @@ def is_macos() -> bool:
 
 def safe_mode_enabled() -> bool:
     """Return True when macOS crash-prone paths should use conservative defaults."""
-    return is_macos() and not _env_false("WISP_MACOS_SAFE_MODE")
+    return is_macos() and not _env_false("OPENWAND_MACOS_SAFE_MODE")
 
 
 def audio_enabled() -> bool:
     """Allow in-process CoreAudio/PortAudio only after an explicit macOS opt-in."""
-    return (not safe_mode_enabled()) or _env_true("WISP_MACOS_ENABLE_AUDIO")
+    return (not safe_mode_enabled()) or _env_true("OPENWAND_MACOS_ENABLE_AUDIO")
 
 
 def tts_prewarm_enabled() -> bool:
@@ -47,19 +47,19 @@ def stt_prewarm_enabled() -> bool:
     """Handle STT prewarm enabled for system macos safety."""
     return (
         not safe_mode_enabled()
-        or _env_true("WISP_MACOS_ENABLE_AUDIO")
-        or _env_true("WISP_MACOS_ENABLE_STT_PREWARM")
+        or _env_true("OPENWAND_MACOS_ENABLE_AUDIO")
+        or _env_true("OPENWAND_MACOS_ENABLE_STT_PREWARM")
     )
 
 
 def fs_watcher_enabled() -> bool:
     """File watching is optional ambient context, so keep it out of macOS safe mode."""
-    return (not safe_mode_enabled()) or _env_true("WISP_MACOS_ENABLE_FS_WATCHER")
+    return (not safe_mode_enabled()) or _env_true("OPENWAND_MACOS_ENABLE_FS_WATCHER")
 
 
 def memory_background_llm_enabled() -> bool:
     """Background memory summarization is useful, but not needed for prompt flow."""
-    return (not is_macos()) or _env_true("WISP_MACOS_ENABLE_MEMORY_BACKGROUND_LLM")
+    return (not is_macos()) or _env_true("OPENWAND_MACOS_ENABLE_MEMORY_BACKGROUND_LLM")
 
 
 def openai_compat_streaming_enabled(provider: str = "") -> bool:
@@ -71,11 +71,11 @@ def openai_compat_streaming_enabled(provider: str = "") -> bool:
     provider = (provider or "").strip().lower()
     if not safe_mode_enabled():
         return True
-    if _env_true("WISP_MACOS_OPENAI_COMPAT_STREAMING"):
+    if _env_true("OPENWAND_MACOS_OPENAI_COMPAT_STREAMING"):
         return True
-    return provider == "google" and _env_true("WISP_MACOS_GOOGLE_STREAMING")
+    return provider == "google" and _env_true("OPENWAND_MACOS_GOOGLE_STREAMING")
 
 
 def openai_compat_tools_enabled() -> bool:
     """Live OpenAI-compatible tool loops are opt-in while safe mode is active."""
-    return (not safe_mode_enabled()) or _env_true("WISP_MACOS_ENABLE_OPENAI_TOOLS")
+    return (not safe_mode_enabled()) or _env_true("OPENWAND_MACOS_ENABLE_OPENAI_TOOLS")

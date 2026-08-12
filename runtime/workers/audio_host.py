@@ -1,4 +1,4 @@
-"""wisp-audio worker: microphone, STT, TTS synthesis, and playback."""
+"""openwand-audio worker: microphone, STT, TTS synthesis, and playback."""
 
 from __future__ import annotations
 
@@ -308,13 +308,13 @@ def _event(name: str, data: Any = None) -> None:
 
 def _output_dir() -> Path:
     """Handle output dir for runtime workers audio host."""
-    root = os.environ.get("WISP_RUN_LOG_DIR")
+    root = os.environ.get("OPENWAND_RUN_LOG_DIR")
     if root:
         out = Path(root).expanduser() / "audio"
     else:
         import tempfile
 
-        out = Path(tempfile.gettempdir()) / "wisp-audio"
+        out = Path(tempfile.gettempdir()) / "openwand-audio"
     out.mkdir(parents=True, exist_ok=True)
     return out
 
@@ -556,7 +556,7 @@ def tts_synthesize(text: str = "", voice: str | None = None) -> dict[str, Any]:
     """Synthesize text into a WAV file and return its path."""
     if not text.strip():
         raise ValueError("text is required")
-    if os.environ.get("WISP_BRAIN_FAKE_LLM"):
+    if os.environ.get("OPENWAND_BRAIN_FAKE_LLM"):
         path = _output_dir() / f"tts-{int(time.time() * 1000)}.wav"
         with wave.open(str(path), "wb") as wf:
             wf.setnchannels(1)
@@ -677,11 +677,18 @@ def play_file(path: str = "") -> dict[str, Any]:
                 end = min(total_frames, offset + _PLAYBACK_CHUNK_FRAMES)
                 chunk = data[offset:end]
                 offset = end
-                stream.write(_speed_adjust_float_audio(chunk, _current_tts_rate()))
+                played_chunk = _speed_adjust_float_audio(chunk, _current_tts_rate())
+                stream.write(played_chunk)
+                if played_chunk.size:
+                    rms = float(np.sqrt(np.mean(np.square(played_chunk, dtype=np.float32))))
+                    # Speech RMS is normally well below 1.0. Expand that useful
+                    # range before sending a normalized visual meter value.
+                    _event("audio.playback.amplitude", {"amplitude": min(1.0, rms * 4.0)})
     except KeyboardInterrupt:
         _playback_stop.set()
     if _playback_stop.is_set():
         sd.stop()
+    _event("audio.playback.amplitude", {"amplitude": 0.0})
     _event("audio.playback.done", {"path": path, "stopped": _playback_stop.is_set()})
     return {"played": True, "stopped": _playback_stop.is_set()}
 

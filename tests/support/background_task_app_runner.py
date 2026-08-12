@@ -1,8 +1,8 @@
 """Isolated end-to-end acceptance runner for chat-delegated background work.
 
-This is launched in a fresh Python process so every Wisp path resolves beneath
+This is launched in a fresh Python process so every OpenWand path resolves beneath
 the supplied temporary directory. A tiny local OpenAI-compatible endpoint
-drives a real chat tool call; the detached worker uses Wisp's existing scripted
+drives a real chat tool call; the detached worker uses OpenWand's existing scripted
 Agent Team seam to make the filesystem result deterministic.
 """
 from __future__ import annotations
@@ -48,7 +48,7 @@ def _agent_script(output_name: str) -> list[dict[str, Any]]:
                         "path": output_name,
                         "content": (
                             "def acceptance_marker() -> str:\n"
-                            "    return \"wisp-background-task-e2e\"\n"
+                            "    return \"openwand-background-task-e2e\"\n"
                         ),
                     },
                 },
@@ -89,7 +89,7 @@ def _agent_script(output_name: str) -> list[dict[str, Any]]:
             "reason": "The requested file exists and compilation passed.",
             "tool_calls": [],
             "final": (
-                f"Created {output_name}; verified wisp-background-task-e2e "
+                f"Created {output_name}; verified openwand-background-task-e2e "
                 "with Python bytecode compilation."
             ),
         },
@@ -131,7 +131,7 @@ class _ChatModelServer:
                         "id": "chatcmpl-background-e2e",
                         "object": "chat.completion.chunk",
                         "created": int(time.time()),
-                        "model": str(body.get("model") or "wisp-test-model"),
+                        "model": str(body.get("model") or "openwand-test-model"),
                         "choices": [
                             {
                                 "index": 0,
@@ -157,7 +157,7 @@ class _ChatModelServer:
                         "id": "chatcmpl-background-e2e",
                         "object": "chat.completion.chunk",
                         "created": int(time.time()),
-                        "model": str(body.get("model") or "wisp-test-model"),
+                        "model": str(body.get("model") or "openwand-test-model"),
                         "choices": [
                             {
                                 "index": 0,
@@ -181,7 +181,7 @@ class _ChatModelServer:
                     "id": "chatcmpl-background-e2e-final",
                     "object": "chat.completion",
                     "created": int(time.time()),
-                    "model": str(body.get("model") or "wisp-test-model"),
+                    "model": str(body.get("model") or "openwand-test-model"),
                     "choices": [
                         {
                             "index": 0,
@@ -232,27 +232,27 @@ def _configure_environment(root: Path, workspace: Path, script_path: Path, base_
         if str(path) not in sys.path:
             sys.path.insert(0, str(path))
     values = {
-        "WISP_DATA_ROOT": str(root / "data"),
-        "WISP_USER_DATA_DIR": str(root / "user-data"),
-        "WISP_RUN_LOG_DIR": str(root / "logs"),
-        "WISP_ADDONS_DIR": str(root / "addons"),
-        "WISP_BRAIN_AGENT_TEST_SCRIPT": str(script_path),
+        "OPENWAND_DATA_ROOT": str(root / "data"),
+        "OPENWAND_USER_DATA_DIR": str(root / "user-data"),
+        "OPENWAND_RUN_LOG_DIR": str(root / "logs"),
+        "OPENWAND_ADDONS_DIR": str(root / "addons"),
+        "OPENWAND_BRAIN_AGENT_TEST_SCRIPT": str(script_path),
         "LLM_PROVIDER": "custom",
-        "LLM_MODEL": "wisp-test-model",
+        "LLM_MODEL": "openwand-test-model",
         "CHAT_LLM_PROVIDER": "custom",
-        "CHAT_LLM_MODEL": "wisp-test-model",
+        "CHAT_LLM_MODEL": "openwand-test-model",
         "CUSTOM_API_KEY": "local-acceptance-key",
         "CUSTOM_BASE_URL": base_url,
         "PROFILE_COUNT": "0",
         "SETTINGS_PROFILE": "default",
         "ACTIVE_PROFILE": "default",
         "TOOL_FILE_ROOTS": str(workspace),
-        "CHAT_EXECUTION_MODE": "wisp",
-        "CHAT_CONVERSATION_OWNER": "wisp",
+        "CHAT_EXECUTION_MODE": "openwand",
+        "CHAT_CONVERSATION_OWNER": "openwand",
         "PRIVACY_MODE": "builtin",
         "MEMORY_AUTO_CONSOLIDATE": "0",
         "QT_QPA_PLATFORM": "offscreen",
-        "WISP_UI_DEBUG_METHODS": "1",
+        "OPENWAND_UI_DEBUG_METHODS": "1",
         "PYTHONPATH": python_path,
     }
     os.environ.update(values)
@@ -339,7 +339,7 @@ def run(root: Path) -> dict[str, Any]:
 
         output_path = workspace / output_name
         content = output_path.read_text(encoding="utf-8")
-        if "wisp-background-task-e2e" not in content:
+        if "openwand-background-task-e2e" not in content:
             raise AssertionError(f"detached worker wrote unexpected content: {content!r}")
         jobs = sorted(
             path

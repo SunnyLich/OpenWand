@@ -27,7 +27,7 @@ class TextPopup(QWidget):
     def __init__(self, text: str, parent=None):
         """Initialize the text popup instance."""
         super().__init__(parent)
-        self.setWindowTitle(t("Wisp Reply"))
+        self.setWindowTitle(t("OpenWand Reply"))
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
         self.setFixedWidth(POPUP_WIDTH)
         enable_standard_window_controls(self)
@@ -43,6 +43,9 @@ class TextPopup(QWidget):
 
     def _build_ui(self, text: str):
         """Build ui."""
+        from ui.shared.theme import theme_colors
+
+        colors = theme_colors()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
 
@@ -51,8 +54,9 @@ class TextPopup(QWidget):
         label.setWordWrap(True)
         label.setFont(QFont("Segoe UI", 10))
         label.setStyleSheet(
-            "color: #1a1a1a;"
-            "background: #ffffff;"
+            f"color: {colors['text']};"
+            f"background: {colors['surface']};"
+            f"border: 1px solid {colors['border']};"
             "border-radius: 10px;"
             "padding: 8px;"
         )

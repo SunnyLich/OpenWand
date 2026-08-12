@@ -1,6 +1,6 @@
-"""Reusable runtime-safety helpers for Wisp workflow tests.
+"""Reusable runtime-safety helpers for OpenWand workflow tests.
 
-The workflow suite deliberately keeps Wisp code real and fakes only external
+The workflow suite deliberately keeps OpenWand code real and fakes only external
 boundaries.  This module supplies the cross-cutting checks that should not be
 reimplemented by each UI, controller, or worker test.
 """
@@ -259,7 +259,7 @@ class RuntimeStateInspector:
         self._json_roots.append(Path(path))
 
     def require_removed(self, path: str | Path) -> None:
-        """Require a Wisp-owned temporary path to be absent at teardown."""
+        """Require a OpenWand-owned temporary path to be absent at teardown."""
 
         self._cleanup_paths.append(Path(path))
 

@@ -115,6 +115,8 @@ keyboard==0.13.5
     # via -r requirements/requirements.txt
 keyring==25.7.0
     # via -r requirements/requirements.txt
+latex2mathml==3.81.0
+    # via ziamath
 liteparse==2.3.0
     # via -r requirements/requirements.txt
 lxml==6.1.1
@@ -298,3 +300,7 @@ websockets==15.0.1
     #   elevenlabs
 xlsxwriter==3.2.9
     # via python-pptx
+ziafont==0.11
+    # via ziamath
+ziamath==0.13
+    # via -r requirements/requirements.txt

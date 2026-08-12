@@ -126,7 +126,7 @@ def profile_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Profile
     from ui.shared import theme
 
     env_path = tmp_path / "profile-workflow.env"
-    app = QApplication.instance() or QApplication(["wisp-profile-workflows"])
+    app = QApplication.instance() or QApplication(["openwand-profile-workflows"])
 
     config_snapshot: dict[str, object] = {}
     for name, value in vars(config).items():
@@ -220,7 +220,7 @@ def test_first_run_wizard_profile_is_active_in_runtime_and_visible_in_settings(p
         open_chat=True,
     )
 
-    assert saved["WISP_ONBOARDING_COMPLETE"] == "True"
+    assert saved["OPENWAND_ONBOARDING_COMPLETE"] == "True"
     assert saved["PROFILE_COUNT"] == "1"
     assert saved["PROFILE_1_ID"] == "ada-lovelace"
     assert saved["PROFILE_1_LABEL"] == "Ada Lovelace"
@@ -330,7 +330,7 @@ def test_low_setup_switch_survives_save_reopen_and_switch_back(profile_workflow:
     saved = profile_workflow.saved()
     assert saved["ACTIVE_PROFILE"] == "low_setup"
     assert saved["SETTINGS_PROFILE"] == "low_setup"
-    assert "WISP_SETTINGS_PRESET" not in saved
+    assert "OPENWAND_SETTINGS_PRESET" not in saved
     assert profile_workflow.config.ACTIVE_PROFILE == "low_setup"
     assert profile_workflow.config.LLM_PROVIDER == "chatgpt"
     assert profile_workflow.config.LLM_MODEL == "gpt-5.5"
@@ -357,7 +357,7 @@ def test_low_setup_switch_survives_save_reopen_and_switch_back(profile_workflow:
     saved = profile_workflow.saved()
     assert saved["ACTIVE_PROFILE"] == "work"
     assert saved["SETTINGS_PROFILE"] == "work"
-    assert "WISP_SETTINGS_PRESET" not in saved
+    assert "OPENWAND_SETTINGS_PRESET" not in saved
     assert profile_workflow.config.ACTIVE_PROFILE == "work"
     assert profile_workflow.config.LLM_MODEL == "claude-work"
 

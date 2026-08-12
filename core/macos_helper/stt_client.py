@@ -16,7 +16,7 @@ import logging
 
 from core.macos_helper.client import HelperError, get_client
 
-log = logging.getLogger("wisp.macos_helper")
+log = logging.getLogger("openwand.macos_helper")
 
 
 def prewarm() -> None:

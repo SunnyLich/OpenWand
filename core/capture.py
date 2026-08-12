@@ -23,7 +23,7 @@ from core.system.main_thread import run_on_main
 
 _IS_LINUX = sys.platform.startswith("linux")
 _IS_MAC = sys.platform == "darwin"
-_log = logging.getLogger("wisp.capture")
+_log = logging.getLogger("openwand.capture")
 
 _PORTAL_BUS_NAME = "org.freedesktop.portal.Desktop"
 _PORTAL_PATH = "/org/freedesktop/portal/desktop"
@@ -117,7 +117,7 @@ def _get_selected_text_clipboard() -> str | None:
 
     from core.system import clipboard_lock
 
-    # Serialize the save->copy->restore dance with any other Wisp-derived
+    # Serialize the save->copy->restore dance with any other OpenWand-derived
     # process (e.g. the MCP context server) doing the same thing.
     with clipboard_lock.held():
         previous = _safe_get_clipboard()
@@ -255,7 +255,7 @@ def _linux_x11_primary_selection_identity(timeout: float = 0.25) -> tuple[int, i
         if owner_id == 0:
             return None
         timestamp_atom = display.intern_atom("TIMESTAMP")
-        property_atom = display.intern_atom("WISP_SELECTION_TIMESTAMP")
+        property_atom = display.intern_atom("OPENWAND_SELECTION_TIMESTAMP")
         screen = display.screen()
         window = screen.root.create_window(0, 0, 1, 1, 0, screen.root_depth)
         try:
@@ -358,7 +358,11 @@ def _get_primary_selection_linux(
     return None
 
 
-def get_selected_text(*, allow_synthetic_copy: bool = True) -> str | None:
+def get_selected_text(
+    *,
+    allow_synthetic_copy: bool = True,
+    allow_copy_after_empty_uia: bool = False,
+) -> str | None:
     """
     Returns the currently highlighted text.
 
@@ -370,6 +374,10 @@ def get_selected_text(*, allow_synthetic_copy: bool = True) -> str | None:
     callers that can't guarantee the target app has focus (e.g. the MCP
     context server, whose caller's own window is focused) use it so the copy
     keystroke never lands in the wrong window.
+
+    Set allow_copy_after_empty_uia for Electron editors that expose a text
+    pattern but sometimes report a collapsed accessibility selection while
+    text is visibly highlighted.
     """
     _uia_probe_state.selection_supported = False
     try:
@@ -394,6 +402,7 @@ def get_selected_text(*, allow_synthetic_copy: bool = True) -> str | None:
     uia_definitively_empty = bool(
         sys.platform == "win32"
         and getattr(_uia_probe_state, "selection_supported", False)
+        and not allow_copy_after_empty_uia
     )
     if (
         not text
@@ -426,7 +435,7 @@ def get_screen_snippet(region: dict | None = None) -> Image.Image:
 
         from core.platform import macos_native
 
-        out_path = Path(gettempdir()) / "wisp_screen_snippet.png"
+        out_path = Path(gettempdir()) / "openwand_screen_snippet.png"
         if macos_native.capture_screen_to_file(out_path, region=region):
             with Image.open(out_path) as img:
                 return img.convert("RGB")
@@ -474,7 +483,7 @@ def _get_screen_snippet_wayland(region: dict | None = None) -> Image.Image:
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
     kde_session = "kde" in desktop or "plasma" in desktop or os.environ.get("KDE_FULL_SESSION") == "true"
     if spectacle and kde_session:
-        output = Path(tempfile.gettempdir()) / f"wisp-wayland-{secrets.token_hex(8)}.png"
+        output = Path(tempfile.gettempdir()) / f"openwand-wayland-{secrets.token_hex(8)}.png"
         try:
             result = subprocess.run(
                 [spectacle, "--background", "--nonotify", "--fullscreen", "--output", str(output)],
@@ -506,7 +515,7 @@ def _get_screen_snippet_wayland(region: dict | None = None) -> Image.Image:
     except Exception as exc:
         raise RuntimeError("Wayland screenshot support requires Jeepney") from exc
 
-    token = f"wisp_{secrets.token_hex(12)}"
+    token = f"openwand_{secrets.token_hex(12)}"
     address = DBusAddress(
         _PORTAL_PATH,
         bus_name=_PORTAL_BUS_NAME,

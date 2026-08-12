@@ -1,8 +1,8 @@
-"""Live integration tests for Wisp's Codex and Claude conversation harnesses.
+"""Live integration tests for OpenWand's Codex and Claude conversation harnesses.
 
 These tests intentionally spend provider tokens and invoke the production
 adapters without mocks. They are disabled during the ordinary test suite and
-run only when WISP_RUN_REAL_HARNESS_TESTS=1 is set explicitly. No CI job sets
+run only when OPENWAND_RUN_REAL_HARNESS_TESTS=1 is set explicitly. No CI job sets
 that variable; run this file manually (e.g. before a release).
 """
 from __future__ import annotations
@@ -14,7 +14,7 @@ import pytest
 
 from core.harness_clients.base import HarnessEvent, run_harness
 
-_RUN_ENV = "WISP_RUN_REAL_HARNESS_TESTS"
+_RUN_ENV = "OPENWAND_RUN_REAL_HARNESS_TESTS"
 
 pytestmark = [
     pytest.mark.workflow,
@@ -35,20 +35,20 @@ def _safe_live_harness_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         "You are answering a minimal automated integration test. Do not use any tools, "
         "read files, or modify the workspace. Follow the requested reply format exactly."
     )
-    monkeypatch.setattr(config, "WISP_CODEX_APPROVAL_MODE", "read_only", raising=False)
-    monkeypatch.setattr(config, "WISP_CODEX_FAST_MODE", False, raising=False)
-    monkeypatch.setattr(config, "WISP_CODEX_REASONING_EFFORT", "low", raising=False)
-    monkeypatch.setattr(config, "WISP_CODEX_REASONING_SUMMARY", "none", raising=False)
-    monkeypatch.setattr(config, "WISP_CODEX_SYSTEM_PROMPT", instructions, raising=False)
-    monkeypatch.setattr(config, "WISP_CLAUDE_APPROVAL_MODE", "read_only", raising=False)
-    monkeypatch.setattr(config, "WISP_CLAUDE_FAST_MODE", False, raising=False)
-    monkeypatch.setattr(config, "WISP_CLAUDE_REASONING_EFFORT", "low", raising=False)
-    monkeypatch.setattr(config, "WISP_CLAUDE_REASONING_SUMMARY", "none", raising=False)
-    monkeypatch.setattr(config, "WISP_CLAUDE_SYSTEM_PROMPT", instructions, raising=False)
+    monkeypatch.setattr(config, "OPENWAND_CODEX_APPROVAL_MODE", "read_only", raising=False)
+    monkeypatch.setattr(config, "OPENWAND_CODEX_FAST_MODE", False, raising=False)
+    monkeypatch.setattr(config, "OPENWAND_CODEX_REASONING_EFFORT", "low", raising=False)
+    monkeypatch.setattr(config, "OPENWAND_CODEX_REASONING_SUMMARY", "none", raising=False)
+    monkeypatch.setattr(config, "OPENWAND_CODEX_SYSTEM_PROMPT", instructions, raising=False)
+    monkeypatch.setattr(config, "OPENWAND_CLAUDE_APPROVAL_MODE", "read_only", raising=False)
+    monkeypatch.setattr(config, "OPENWAND_CLAUDE_FAST_MODE", False, raising=False)
+    monkeypatch.setattr(config, "OPENWAND_CLAUDE_REASONING_EFFORT", "low", raising=False)
+    monkeypatch.setattr(config, "OPENWAND_CLAUDE_REASONING_SUMMARY", "none", raising=False)
+    monkeypatch.setattr(config, "OPENWAND_CLAUDE_SYSTEM_PROMPT", instructions, raising=False)
 
 
 def _assert_real_resumable_conversation(provider: str, workspace: Path) -> None:
-    marker = f"wisp-live-{provider}-saffron-7319"
+    marker = f"openwand-live-{provider}-saffron-7319"
     first_events: list[HarnessEvent] = []
     first = run_harness(
         provider,

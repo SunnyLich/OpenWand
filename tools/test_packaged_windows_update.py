@@ -1,9 +1,9 @@
-"""Exercise the Windows updater helper against a real packaged Wisp folder.
+"""Exercise the Windows updater helper against a real packaged OpenWand folder.
 
-The test uses the already-built ``dist/Wisp`` folder as the update payload,
+The test uses the already-built ``dist/OpenWand`` folder as the update payload,
 creates a controlled install copy under ``build_logs/updater_rehearsals``, and
 then asks ``core.updater`` to replace that copy. It never targets the user's
-actual installed Wisp folder.
+actual installed OpenWand folder.
 """
 from __future__ import annotations
 
@@ -50,8 +50,8 @@ def main() -> int:
         print("This packaged updater rehearsal only runs on Windows.", file=sys.stderr)
         return 2
 
-    dist = ROOT / "dist" / "Wisp"
-    dist_exe = dist / "Wisp.exe"
+    dist = ROOT / "dist" / "OpenWand"
+    dist_exe = dist / "OpenWand.exe"
     if not dist_exe.exists():
         print(f"Build output is missing: {dist_exe}", file=sys.stderr)
         return 2
@@ -66,9 +66,9 @@ def main() -> int:
             / f"packaged-update-test-{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
         )
     )
-    install_root = temp_root / "CurrentWisp"
+    install_root = temp_root / "CurrentOpenWand"
     updates_dir = temp_root / "updates"
-    archive_path = temp_root / "Wisp-0.6.4-windows-x64.zip"
+    archive_path = temp_root / "OpenWand-0.6.4-windows-x64.zip"
     sentinel = install_root / "old-install-sentinel.txt"
 
     if temp_root.exists():
@@ -86,9 +86,9 @@ def main() -> int:
         old_lock = updater.SINGLE_INSTANCE_LOCK
         try:
             sys.frozen = True
-            sys.executable = str(install_root / "Wisp.exe")
+            sys.executable = str(install_root / "OpenWand.exe")
             updater.UPDATE_DOWNLOAD_DIR = updates_dir
-            updater.SINGLE_INSTANCE_LOCK = temp_root / "wisp.lock"
+            updater.SINGLE_INSTANCE_LOCK = temp_root / "openwand.lock"
             script_path = updater.apply_update(archive_path, pid=999999)
         finally:
             sys.executable = old_executable
@@ -106,7 +106,7 @@ def main() -> int:
         print(f"Generated helper: {script_path}")
 
         def replaced() -> bool:
-            return (install_root / "Wisp.exe").exists() and not sentinel.exists()
+            return (install_root / "OpenWand.exe").exists() and not sentinel.exists()
 
         if not _wait_for(replaced, args.timeout):
             error_log = updates_dir / "apply-update-error.log"

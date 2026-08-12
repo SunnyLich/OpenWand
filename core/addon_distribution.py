@@ -13,14 +13,14 @@ from core.system.paths import ADDONS_DIR
 def install_addon_archive(archive_path: Path, addons_dir: Path | None = None, *, replace: bool = False) -> dict[str, Any]:
     """Install addon archive."""
     archive_path = Path(archive_path)
-    if archive_path.suffix.lower() not in {".zip", ".wisp"}:
-        raise ValueError("addon archive must be a .zip or .wisp file")
+    if archive_path.suffix.lower() not in {".zip", ".openwand", ".wisp"}:
+        raise ValueError("addon archive must be a .zip, .openwand, or legacy .wisp file")
     if not archive_path.exists():
         raise FileNotFoundError(str(archive_path))
 
     target_root = addons_dir or ADDONS_DIR
     target_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="wisp-addon-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="openwand-addon-") as tmp:
         tmp_root = Path(tmp)
         with zipfile.ZipFile(archive_path) as zf:
             _safe_extract(zf, tmp_root)

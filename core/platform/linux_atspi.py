@@ -18,7 +18,7 @@ import logging
 import sys
 import time
 
-_log = logging.getLogger("wisp.linux_atspi")
+_log = logging.getLogger("openwand.linux_atspi")
 
 _IS_LINUX = sys.platform.startswith("linux")
 

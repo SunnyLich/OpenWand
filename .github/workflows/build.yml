@@ -1,4 +1,4 @@
-# Builds tagged release artifacts for packaged Wisp distributions.
+# Builds tagged release artifacts for packaged OpenWand distributions.
 name: Build Artifacts
 
 on:
@@ -38,7 +38,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
-            || gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME" --notes "Draft Wisp release."
+            || gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME" --notes "Draft OpenWand release."
 
   build-windows:
     name: Windows build
@@ -81,38 +81,38 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Sign Wisp executable
+      - name: Sign OpenWand executable
         uses: azure/artifact-signing-action@v2
         with:
           endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
           signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\dist\Wisp\Wisp.exe
+          files: ${{ github.workspace }}\dist\OpenWand\OpenWand.exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
-          description: Wisp
-          description-url: https://github.com/SunnyLich/Wisp-AI-Assistant
+          description: OpenWand
+          description-url: https://github.com/SunnyLich/OpenWand
 
       - name: Package Windows artifact
         shell: pwsh
         run: |
           $safeRef = $env:GITHUB_REF_NAME -replace '[\\/]', '-'
-          Compress-Archive -Path dist\Wisp -DestinationPath "dist\Wisp-$safeRef-windows-x64.zip" -Force
+          Compress-Archive -Path dist\OpenWand -DestinationPath "dist\OpenWand-$safeRef-windows-x64.zip" -Force
 
       - name: Upload Windows release asset
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload $env:GITHUB_REF_NAME (Get-Item dist\Wisp-*-windows-x64.zip).FullName --clobber
+        run: gh release upload $env:GITHUB_REF_NAME (Get-Item dist\OpenWand-*-windows-x64.zip).FullName --clobber
 
       - name: Upload Windows artifact for manual run
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4
         with:
-          name: wisp-windows
-          path: dist/Wisp-*-windows-x64.zip
+          name: openwand-windows
+          path: dist/OpenWand-*-windows-x64.zip
           if-no-files-found: error
           # Manual debug builds still use Actions artifact storage; release builds
           # publish directly to GitHub Releases to avoid Actions storage quota.
@@ -162,20 +162,20 @@ jobs:
       - name: Package Linux artifact
         run: |
           safe_ref="${GITHUB_REF_NAME//\//-}"
-          tar -czf "dist/Wisp-${safe_ref}-linux-x64.tar.gz" -C dist Wisp
+          tar -czf "dist/OpenWand-${safe_ref}-linux-x64.tar.gz" -C dist OpenWand
 
       - name: Upload Linux release asset
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/Wisp-*-linux-x64.tar.gz --clobber
+        run: gh release upload "$GITHUB_REF_NAME" dist/OpenWand-*-linux-x64.tar.gz --clobber
 
       - name: Upload Linux artifact for manual run
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4
         with:
-          name: wisp-linux
-          path: dist/Wisp-*-linux-x64.tar.gz
+          name: openwand-linux
+          path: dist/OpenWand-*-linux-x64.tar.gz
           if-no-files-found: error
           # See the Windows job: keep manual debug artifacts short-lived.
           retention-days: 1
@@ -212,20 +212,20 @@ jobs:
           arch="$(uname -m)"
           if [ "$arch" = "x86_64" ]; then arch="x64"; fi
           safe_ref="${GITHUB_REF_NAME//\//-}"
-          ditto -c -k --keepParent dist/Wisp.app "dist/Wisp-${safe_ref}-macos-${arch}.zip"
+          ditto -c -k --keepParent dist/OpenWand.app "dist/OpenWand-${safe_ref}-macos-${arch}.zip"
 
       - name: Upload macOS release asset
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/Wisp-*-macos-*.zip --clobber
+        run: gh release upload "$GITHUB_REF_NAME" dist/OpenWand-*-macos-*.zip --clobber
 
       - name: Upload macOS artifact for manual run
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4
         with:
-          name: wisp-macos
-          path: dist/Wisp-*-macos-*.zip
+          name: openwand-macos
+          path: dist/OpenWand-*-macos-*.zip
           if-no-files-found: error
           retention-days: 1
           compression-level: 9
@@ -255,21 +255,21 @@ jobs:
           mkdir -p release-assets
           gh release download "$GITHUB_REF_NAME" \
             --dir release-assets \
-            --pattern "Wisp-${GITHUB_REF_NAME}-*"
+            --pattern "OpenWand-${GITHUB_REF_NAME}-*"
 
       - name: Generate update manifest
         run: |
           mapfile -d '' -t release_files < <(
-            find release-assets -type f ! -name "wisp-release-manifest.json" -print0
+            find release-assets -type f ! -name "openwand-release-manifest.json" -print0
           )
           python scripts/make_release_manifest.py \
             --repo "$GITHUB_REPOSITORY" \
             --tag "$GITHUB_REF_NAME" \
-            --out release-assets/wisp-release-manifest.json \
+            --out release-assets/openwand-release-manifest.json \
             --checksums-out release-assets/SHA256SUMS.txt \
             "${release_files[@]}"
 
       - name: Upload release manifest
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" release-assets/wisp-release-manifest.json release-assets/SHA256SUMS.txt --clobber
+        run: gh release upload "$GITHUB_REF_NAME" release-assets/openwand-release-manifest.json release-assets/SHA256SUMS.txt --clobber

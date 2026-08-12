@@ -703,7 +703,7 @@ class _CarbonImpl:
         self._on_voice_stop = on_voice_stop
         self._voice_ids: set[int] = set()
         self._handler_upp = None  # keep the CFUNCTYPE alive while installed
-        self._signature = _four_char_code("Wisp")
+        self._signature = _four_char_code("OpenWand")
 
     def start(self) -> bool:
         """Register the global hotkeys via Carbon RegisterEventHotKey (macOS)."""

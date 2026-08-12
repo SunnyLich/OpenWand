@@ -27,7 +27,7 @@ class HarnessItem:
     reject_completion_gate_miss: bool = True
 
 
-def harness_spec(items: list[HarnessItem], *, name: str = "Wisp Unified Chat Tool Flow") -> dict[str, Any]:
+def harness_spec(items: list[HarnessItem], *, name: str = "OpenWand Unified Chat Tool Flow") -> dict[str, Any]:
     """Return a JSON-friendly local harness spec."""
     return {
         "name": name,
@@ -53,7 +53,7 @@ def harness_spec(items: list[HarnessItem], *, name: str = "Wisp Unified Chat Too
 
 
 def sample_from_trace(trace) -> dict[str, Any]:
-    """Convert a Wisp trace into local grading sample fields."""
+    """Convert a OpenWand trace into local grading sample fields."""
     output_tools = []
     for call in trace.tool_calls:
         output_tools.append({

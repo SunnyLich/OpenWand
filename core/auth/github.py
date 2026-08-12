@@ -80,7 +80,7 @@ def get_tokens() -> dict | None:
     """Return tokens."""
     raw = _keyring_get()
     if not raw and _TOKEN_FILE.exists():
-        # Migrate the plaintext fallback used by older Wisp versions. Always
+        # Migrate the plaintext fallback used by older OpenWand versions. Always
         # remove the file afterwards so keychain failure cannot preserve a
         # reusable OAuth credential on disk.
         try:
@@ -195,7 +195,7 @@ def _oauth_error_message(data: dict) -> str:
     return " ".join(parts)
 
 
-def _get_json(url: str, token: str) -> dict:
+def _get_json(url: str, token: str, *, timeout_seconds: float = 30.0) -> dict:
     """Return json."""
     import requests  # type: ignore
 
@@ -207,10 +207,33 @@ def _get_json(url: str, token: str) -> dict:
             "User-Agent": "python-ai-overlay",
             "X-GitHub-Api-Version": "2022-11-28",
         },
-        timeout=30,
+        timeout=max(0.5, float(timeout_seconds)),
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def validate_login(*, timeout_seconds: float = 5.0) -> tuple[bool, str]:
+    """Verify the saved token with GitHub and return its current login name."""
+    tokens = get_tokens()
+    if not tokens:
+        return False, ""
+    access_token = str(tokens.get("access") or "").strip()
+    if not access_token:
+        raise RuntimeError("Saved GitHub sign-in is incomplete. Sign in again.")
+    try:
+        user = _get_json(_USER_URL, access_token, timeout_seconds=timeout_seconds)
+    except Exception as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        if status in {401, 403}:
+            raise RuntimeError("Saved GitHub sign-in was rejected. Sign in again.") from None
+        if status:
+            raise RuntimeError(f"GitHub sign-in check failed (HTTP {status}).") from None
+        raise RuntimeError(f"Could not reach GitHub to verify sign-in: {exc}") from None
+    login = str(user.get("login") or "").strip() if isinstance(user, dict) else ""
+    if not login:
+        raise RuntimeError("GitHub sign-in check returned no account. Sign in again.")
+    return True, login
 
 
 def _tokens_from_raw(raw: dict) -> dict:
@@ -253,7 +276,7 @@ def start_device_login(
         if not client_id:
             on_error(
                 "This build does not include a GitHub OAuth app client ID yet. "
-                "Register one once for Wisp and bundle its public client ID."
+                "Register one once for OpenWand and bundle its public client ID."
             )
             return
 

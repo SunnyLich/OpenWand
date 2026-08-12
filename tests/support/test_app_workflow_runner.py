@@ -51,7 +51,7 @@ def test_strict_log_scan_allows_expected_workflow_noise(tmp_path):
     """Intentional workflow logs, such as crash-log tests, do not fail the run."""
     log = tmp_path / "pytest.log"
     log.write_text(
-        "Wrote Wisp crash log: /tmp/build_logs/wisp_crash_20260621\n"
+        "Wrote OpenWand crash log: /tmp/build_logs/openwand_crash_20260621\n"
         "This plugin does not support raise()\n"
         "27 passed\n",
         encoding="utf-8",

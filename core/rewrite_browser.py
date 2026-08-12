@@ -1,4 +1,4 @@
-"""Exact selected-text Rewrite for Wisp-managed Chromium tabs."""
+"""Exact selected-text Rewrite for OpenWand-managed Chromium tabs."""
 
 from __future__ import annotations
 

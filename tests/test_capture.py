@@ -70,6 +70,30 @@ class CaptureTests(unittest.TestCase):
 
         clipboard_fallback.assert_not_called()
 
+    def test_electron_editor_can_copy_after_empty_uia_selection(self):
+        """VS Code may expose UIA support while hiding its visual selection."""
+        def no_accessible_selection():
+            self.capture._uia_probe_state.selection_supported = True
+            return None
+
+        with mock.patch.object(
+            self.capture,
+            "_get_selected_text_uia",
+            side_effect=no_accessible_selection,
+        ), mock.patch.object(self.capture, "_IS_LINUX", False), mock.patch.object(
+            self.capture.sys,
+            "platform",
+            "win32",
+        ), mock.patch.object(
+            self.capture,
+            "_get_selected_text_clipboard",
+            return_value="selected VS Code text",
+        ) as clipboard_fallback:
+            selected = self.capture.get_selected_text(allow_copy_after_empty_uia=True)
+
+        self.assertEqual(selected, "selected VS Code text")
+        clipboard_fallback.assert_called_once_with()
+
     def test_clipboard_selection_fallback_restores_original_clipboard(self):
         """Verify Ctrl+C selection fallback preserves the user's next paste."""
         restored: list[str] = []
@@ -338,7 +362,7 @@ class CaptureTests(unittest.TestCase):
 
         class FakeDisplay:
             def intern_atom(self, name):
-                return {"PRIMARY": 1, "TIMESTAMP": 2, "WISP_SELECTION_TIMESTAMP": 99}[name]
+                return {"PRIMARY": 1, "TIMESTAMP": 2, "OPENWAND_SELECTION_TIMESTAMP": 99}[name]
 
             def get_selection_owner(self, _selection):
                 return types.SimpleNamespace(id=777)

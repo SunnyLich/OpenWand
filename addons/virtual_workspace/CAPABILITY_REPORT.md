@@ -1,4 +1,4 @@
-# Wisp Shared Workspace capability report
+# OpenWand Shared Workspace capability report
 
 Last verified: 2026-08-03
 
@@ -18,7 +18,7 @@ run, exact files, structured results, preview verification, and a production
 window capture.
 
 The provider took about 101 seconds to emit its first token and 143 seconds to
-finish the seven-file response. Wisp records waiting and streaming progress in
+finish the seven-file response. OpenWand records waiting and streaming progress in
 Activity, but file writes cannot become visible until their complete JSON tool
 calls arrive from the provider.
 
@@ -26,7 +26,7 @@ calls arrive from the provider.
 
 | Capability | Result | Notes |
 |---|---|---|
-| Plain text and source code | Working | Editable shared view with optimistic saving, persistent changed-line colors, and the `Wisp agent` collaborative caret during writes. |
+| Plain text and source code | Working | Editable shared view with optimistic saving, persistent changed-line colors, and the `OpenWand agent` collaborative caret during writes. |
 | Markdown | Working | Raw Markdown is editable; Preview renders it natively without changing the file. |
 | HTML | Working with intentional limits | Rendered by a non-scriptable native Qt document view. Links, navigation, scripts, local-file resources, and network resources are blocked. |
 | CSV and TSV | Working | Rendered as bounded tables rather than raw comma/tab text. |
@@ -63,7 +63,7 @@ calls arrive from the provider.
   this window.
 - JavaScript-powered webpages or webpages that fetch external resources.
 - Character-level simultaneous merging. User saves are revision-checked; a
-  concurrent Wisp change preserves the user's unsaved editor text and rejects
+  concurrent OpenWand change preserves the user's unsaved editor text and rejects
   a stale overwrite.
 - Editing spreadsheets, PDFs, or images as native structured documents. They
   can currently be previewed, while their source files are created or replaced

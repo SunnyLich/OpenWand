@@ -249,7 +249,7 @@ def test_calendar_create_and_reschedule_use_api_etags_without_notifications() ->
     preview = adapter.render_preview(create, calendar)
     assert "action-focus-preview" in preview.html
     assert "Attendee notifications" in preview.html
-    assert all(text not in preview.html for text in ("Ready to review", "Nothing has changed", "Apply rechecks", "Wisp will"))
+    assert all(text not in preview.html for text in ("Ready to review", "Nothing has changed", "Apply rechecks", "OpenWand will"))
     assert sanitize_presentation_html(preview.html) == preview.html
     created = adapter.execute(create, confirmed=True, idempotency_key="event-1")
     event_id = created.created[0]["name"]

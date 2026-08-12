@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>OpenWand Overlay Scroll Smoke</title>
+  <style>
+    body { margin: 0; background: #f2efe6; color: #1f1f1f; font: 22px/1.55 system-ui, sans-serif; }
+    main { width: 860px; margin: 0 auto; padding: 52px 64px 120px; }
+    h1 { color: #a06c10; margin: 0 0 28px; }
+    p { margin: 0 0 22px; }
+    #target { box-sizing: border-box; width: 100%; min-height: 88px; resize: none; background: #fff7dc; color: #1f1f1f; border: 0; border-left: 5px solid #d99b2b; padding: 18px 22px; font: inherit; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>OpenWand browser overlay anchoring</h1>
+    <p>Context line 01. Scroll testing keeps the page deterministic.</p>
+    <p>Context line 02. The selected phrase is farther down the document.</p>
+    <p>Context line 03. The overlay must stay beside its source text.</p>
+    <p>Context line 04. It must not float over unrelated content.</p>
+    <p>Context line 05. Leaving the source window hides the overlay.</p>
+    <textarea id="target">A rough sentence is selected for the live browser Rewrite test.</textarea>
+    <p>Context line 07. More content follows the selected phrase.</p>
+    <p>Context line 08. Page scrolling can move the phrase offscreen.</p>
+    <p>Context line 09. The popup and its text must disappear together.</p>
+    <p>Context line 10. Returning to the phrase restores both.</p>
+    <p>Context line 11. No stale proposal may remain elsewhere.</p>
+    <p>Context line 12. The anchor must remain bound to the original selection.</p>
+    <p>Context line 13. This is ordinary filler for the scroll test.</p>
+    <p>Context line 14. This is ordinary filler for the scroll test.</p>
+    <p>Context line 15. This is ordinary filler for the scroll test.</p>
+    <p>Context line 16. This is ordinary filler for the scroll test.</p>
+    <p>Context line 17. This is ordinary filler for the scroll test.</p>
+    <p>Context line 18. This is ordinary filler for the scroll test.</p>
+    <p>Context line 19. This is ordinary filler for the scroll test.</p>
+    <p>Context line 20. This is ordinary filler for the scroll test.</p>
+  </main>
+  <script>
+    addEventListener("load", () => {
+      const target = document.querySelector("#target");
+      const start = target.value.indexOf("rough sentence");
+      target.focus({preventScroll: true});
+      target.setSelectionRange(start, start + "rough sentence".length);
+      target.scrollIntoView({block: "center"});
+    });
+  </script>
+</body>
+</html>

@@ -26,7 +26,7 @@ function Restore-Backup {
 
 try {
     if (-not (Test-Path -LiteralPath $Candidate)) {
-        throw "Could not find the extracted Wisp app folder."
+        throw "Could not find the extracted OpenWand app folder."
     }
     if (Test-Path -LiteralPath $BackupRoot) {
         Remove-Item -LiteralPath $BackupRoot -Recurse -Force

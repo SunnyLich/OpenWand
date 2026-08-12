@@ -1,4 +1,4 @@
-"""Safe, seamless rich presentations returned by Wisp addons."""
+"""Safe, seamless rich presentations returned by OpenWand addons."""
 
 from __future__ import annotations
 
@@ -192,7 +192,7 @@ ul,ol{margin:9px 0 15px;padding-left:23px}li{margin:5px 0}dl{margin:12px 0}dt{fo
 .quote,blockquote{color:var(--muted)}blockquote{position:relative;margin:17px 0;padding:0;border:0}.caution{position:relative;width:calc(100% + var(--gutter));margin:0 0 19px calc(-1 * var(--gutter));padding:15px 0 15px var(--gutter);border-block:1px solid var(--warm);background:var(--warm-soft)}
 .caution:before{content:"!";position:absolute;left:7px;color:var(--warm);font-weight:850}.two-column,.three-column,.metric-grid{display:grid;gap:14px}.two-column{grid-template-columns:repeat(2,minmax(0,1fr))}.three-column,.metric-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 .metric{padding:10px 0;border-bottom:1px solid var(--line)}.metric-value{display:block;color:var(--accent);font-size:1.35em;font-weight:750}.metric-label{color:var(--muted);font-size:.78em}
-.steps{display:block;margin:13px 0 22px}.step{position:relative;padding:0 0 18px}.step-number{position:absolute;left:calc(-1 * var(--gutter));display:grid;place-items:center;width:20px;height:20px;border:1px solid var(--accent);border-radius:50%;color:var(--accent);font-size:.68em}.step:not(:last-child):after{content:"";position:absolute;top:24px;bottom:4px;left:calc(-1 * var(--gutter) + 9px);width:1px;background:var(--line)}
+.steps{display:block;margin:13px 0 0;padding:0;list-style:none;counter-reset:reply-step}.step{position:relative;min-height:20px;padding:0 0 18px;list-style:none;counter-increment:reply-step}.step:last-child{padding-bottom:0}.step-number{position:absolute;left:0;display:grid;place-items:center;width:22px;height:22px;border:1px solid var(--accent);border-radius:50%;color:var(--accent);font-size:.68em}.step-number:empty:before{content:counter(reply-step)}.step-copy{display:block;padding-left:32px}.step:not(:last-child):after{content:"";position:absolute;top:25px;bottom:3px;left:10px;width:1px;background:var(--line)}
 .tag-row{display:flex;flex-wrap:wrap;gap:7px}.tag{padding:4px 8px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:.76em}
 .table-wrap{width:calc(100% + var(--gutter));margin:15px 0 18px calc(-1 * var(--gutter));overflow-x:auto;border-top:2px solid var(--text);border-bottom:1px solid var(--text)}table{width:100%;border-collapse:collapse;font-size:.84em;line-height:1.4}th,td{min-width:96px;padding:9px 11px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--accent);font-size:.78em;text-transform:uppercase}th:first-child,td:first-child{padding-left:var(--gutter)}tbody tr:last-child td{border-bottom:0}
 pre{max-width:calc(100% + var(--gutter));margin:14px 0 18px calc(-1 * var(--gutter));padding:14px 16px 15px calc(16px + var(--gutter));overflow-x:auto;border-radius:0 12px 12px 0;background:var(--code);color:var(--code-text)}code{font:.82em/1.5 "Cascadia Mono",Consolas,monospace}p code,li code{padding:2px 5px;border-radius:4px;background:var(--soft)}
@@ -205,7 +205,7 @@ details{margin:16px 0;border-top:1px solid var(--line);padding-top:11px}summary{
 .decision-spotlight{margin:15px 0;padding:11px 0}.decision-spotlight mark{background:linear-gradient(transparent 30%,color-mix(in srgb,var(--accent) 24%,transparent) 30%)}.spotlight-reason{padding-top:11px;border-top:1px solid var(--line)}
 .decision-threshold{display:grid;grid-template-columns:1fr 28px 1fr;align-items:stretch;margin:16px 0}.threshold-side{padding:13px;border-block:1px solid var(--line)}.threshold-side.is-after{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}.threshold-arrow{position:relative}.threshold-arrow:before{content:"→";position:absolute;inset:0;display:grid;place-items:center;color:var(--accent);font-size:1.2em}
 .action-preview .reply-title{max-width:760px}.action-chart{min-height:232px;margin-bottom:4px;border-radius:0;background:transparent}.action-bar{fill:var(--accent);opacity:.9}.action-grid{stroke:var(--line);stroke-width:1}.action-axis{stroke:var(--text);stroke-width:1.5}.action-axis-label{fill:var(--muted);font-size:11px}.action-series-1{background:var(--accent);fill:var(--accent);opacity:.95}.action-series-2{background:var(--warm);fill:var(--warm);opacity:.86}.action-series-3{background:var(--text);fill:var(--text);opacity:.62}.action-series-4{background:var(--muted);fill:var(--muted);opacity:.62}.action-chart-legend{display:flex;flex-wrap:wrap;gap:7px 16px;margin:0 0 15px;color:var(--muted);font-size:.76em}.action-legend-item{display:inline-flex;align-items:center;gap:6px}.action-legend-swatch{display:inline-block;width:10px;height:10px;border-radius:0}.action-chart-empty{margin:15px 0;padding:20px 0;border-block:1px solid var(--warm);border-radius:0;color:var(--muted);background:transparent}.action-note{margin-bottom:4px}
-.action-formatted-table thead{background:#2f6f7e}.action-formatted-table th{color:#fff;font-weight:750;letter-spacing:.03em}.action-formatted-table td{padding-block:11px}
+.action-formatted-table thead{background:var(--accent)}.action-formatted-table th{color:var(--bg);font-weight:750;letter-spacing:.03em}.action-formatted-table td{padding-block:11px}
 .action-canvas-preview,.action-focus-preview{--gutter:0;padding:0;overflow:visible;border:0;border-radius:0;background:transparent;box-shadow:none}
 .action-app-header{display:flex;align-items:baseline;gap:8px;min-width:0;margin:0 0 21px;padding:9px 0 10px;border-top:3px solid var(--accent);border-bottom:1px solid var(--text);background:transparent}.action-app-name{flex:0 0 auto;color:var(--accent);font-size:.75em;font-weight:800;letter-spacing:.06em;text-transform:uppercase}.action-app-target{min-width:0;overflow:hidden;color:var(--muted);font-size:.78em;text-overflow:ellipsis;white-space:nowrap}.action-app-target:before{content:"/";margin-right:8px;color:var(--line)}.action-app-badge,.action-app-copy{display:none}
 .action-canvas-body,.action-focus-body{padding:0}.action-preview-title{max-width:760px;margin:0 0 21px;font-size:1.55em}.action-canvas-hero{position:relative;overflow:visible;margin:0 0 18px;padding:0;border:0;border-radius:0;background:transparent}.action-canvas-hero>.table-wrap{width:100%;margin:0}.action-canvas-hero pre{max-width:100%;margin:0;padding:16px;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:0}.action-canvas-hero .action-chart{background:transparent}.action-preview th{color:var(--text)}.action-preview th:first-child,.action-preview td:first-child{padding-left:11px}.action-new-value{color:var(--accent);font-weight:700}
@@ -225,7 +225,7 @@ def presentation_document(fragment: str, palette: dict[str, str], font_px: int =
     variables = {
         "bg": palette.get("bg", "#212121"), "text": palette.get("text", "#eeeeee"),
         "muted": palette.get("muted", "#aaaaaa"), "line": palette.get("line", "#3c3c3c"),
-        "accent": palette.get("accent", "#9b8cff"), "warm": palette.get("warm", "#f0ae72"),
+        "accent": palette.get("accent", "#d8a145"), "warm": palette.get("warm", "#f0ae72"),
         "warm_soft": palette.get("warm_soft", "#3c2b25"),
         "soft": palette.get("soft", "#2e2e2e"), "code": palette.get("code", "#15171c"),
         "code_text": palette.get("code_text", "#eff6ff"), "size": f"{max(13, min(int(font_px), 22))}px",
@@ -244,7 +244,7 @@ def _text_browser_document(document: str, palette: dict[str, str], font_px: int)
     variables = {
         "bg": palette.get("bg", "#212121"), "text": palette.get("text", "#eeeeee"),
         "muted": palette.get("muted", "#aaaaaa"), "line": palette.get("line", "#3c3c3c"),
-        "accent": palette.get("accent", "#9b8cff"), "warm": palette.get("warm", "#f0ae72"),
+        "accent": palette.get("accent", "#d8a145"), "warm": palette.get("warm", "#f0ae72"),
         "warm-soft": palette.get("warm_soft", "#3c2b25"),
         "soft": palette.get("soft", "#2e2e2e"), "code": palette.get("code", "#15171c"),
         "code-text": palette.get("code_text", "#eff6ff"), "size": f"{max(13, min(int(font_px), 22))}px",
@@ -385,9 +385,28 @@ class RichPresentationView(QTextBrowser if QWebEngineView is None else QWebEngin
         self._height_fallback_timer.stop()
 
     def _measure_native_height(self) -> None:
-        """Measure once at a short viewport so content height cannot feed back."""
+        """Measure the document itself, not WebEngine's stale viewport height."""
         if not getattr(self, "_web_loaded", False):
             return
+        # Measure the actual article rather than documentElement.scrollHeight.
+        # The latter is at least as tall as Chromium's viewport, so an oversized
+        # reply could keep reporting its own blank viewport as content forever.
+        try:
+            self.page().runJavaScript(
+                "(() => {"
+                "const article=document.querySelector('article');"
+                "return article ? Math.ceil(article.getBoundingClientRect().bottom + 5) : 0;"
+                "})()",
+                self._apply_web_height,
+            )
+            self._height_fallback_timer.start()
+            return
+        except (AttributeError, RuntimeError, TypeError):
+            pass
+        self._measure_contents_height()
+
+    def _measure_contents_height(self) -> None:
+        """Fall back to Qt's page size when an injected measurement is unavailable."""
         try:
             height = int(round(float(self.page().contentsSize().height())))
         except (AttributeError, TypeError, ValueError):
@@ -399,7 +418,7 @@ class RichPresentationView(QTextBrowser if QWebEngineView is None else QWebEngin
             return
         if height <= 48:
             height = self._estimated_web_height()
-        height = max(48, min(height or 160, 30_000))
+        height = self._safe_web_height(height or 160)
         self._last_measure_width = self.width()
         if abs(height - self.height()) > 1:
             self.setFixedHeight(height)
@@ -421,6 +440,31 @@ class RichPresentationView(QTextBrowser if QWebEngineView is None else QWebEngin
         factor = 0.82 if parallel_layout else 0.92
         return int(document.size().height() * factor) + 18
 
+    def _fallback_content_height(self) -> int:
+        """Return a semantic text-layout floor that cannot omit trailing prose."""
+        fallback = getattr(self, "_web_fallback_view", None)
+        if fallback is None:
+            return self._estimated_web_height()
+        fallback.document().setTextWidth(max(260, self.width()))
+        return int(fallback.document().size().height()) + 8
+
+    def _safe_web_height(self, measured_height: int) -> int:
+        """Reject stale Chromium heights that would clip sequential reply text."""
+        height = int(measured_height or 0)
+        parallel_layout = bool(re.search(
+            r'class="[^"]*(?:decision-ticket|two-column|three-column|metric-grid|fork-options|decision-threshold)',
+            self._presentation_fragment,
+        ))
+        # QTextBrowser does not reproduce CSS grid widths, so its full height can
+        # legitimately exceed Chromium's for parallel layouts. For ordinary
+        # prose, however, it is a reliable lower bound: every semantic block is
+        # laid out in source order, including the final paragraphs.
+        # A successful article measurement already includes every visible grid
+        # row. QTextDocument lays grid children sequentially and substantially
+        # overestimates these presentations, which created a large empty tail.
+        floor = 48 if parallel_layout else self._fallback_content_height()
+        return max(48, min(max(height, floor), 30_000))
+
     def _ensure_estimated_height(self) -> None:
         """Guarantee that a failed WebEngine measurement never clips the reply."""
         if QWebEngineView is not None and not getattr(self, "_web_loaded", False):
@@ -430,14 +474,23 @@ class RichPresentationView(QTextBrowser if QWebEngineView is None else QWebEngin
             self.setFixedHeight(max(48, min(self._estimated_web_height(), 30_000)))
 
     def _apply_web_height(self, value) -> None:
-        """Compatibility callback retained for callers that provide a numeric height."""
+        """Apply a document measurement returned by the isolated web page."""
         try:
             height = int(float(value)) + 4
         except (TypeError, ValueError):
-            height = 160
-        height = max(48, min(height, 30_000))
+            self._measure_contents_height()
+            return
+        if height <= 48 and self._measure_attempt < 4:
+            self._measure_attempt += 1
+            self._measure_timer.start(80)
+            return
+        if height <= 48:
+            height = self._estimated_web_height()
+        height = self._safe_web_height(height)
+        self._last_measure_width = self.width()
         if abs(height - self.height()) > 1:
             self.setFixedHeight(height)
+        self._height_fallback_timer.stop()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)

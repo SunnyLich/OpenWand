@@ -2,7 +2,7 @@
 
 Spawns ``runtime.workers.native_host`` and calls ``native.hotkeys.start`` with
 the user's configured hotkeys - the same call the supervisor makes at boot.
-If registration fails while a Wisp instance is running, the combos are simply
+If registration fails while a OpenWand instance is running, the combos are simply
 held by that instance and the check skips; without one, a failure is real.
 
 On a headless/remote macOS session RegisterEventHotKey never fires
@@ -20,8 +20,8 @@ import _lab
 _lab.bootstrap()
 
 
-def _wisp_is_running() -> bool:
-    """True when another Wisp holds the single-instance lock."""
+def _openwand_is_running() -> bool:
+    """True when another OpenWand holds the single-instance lock."""
     from core.system import single_instance
 
     if not single_instance.acquire():
@@ -58,11 +58,11 @@ def main() -> int:
                 f"all {registered} global hotkeys registered by the real native worker",
                 result=result,
             )
-        if _wisp_is_running():
+        if _openwand_is_running():
             return _lab.finish(
                 _lab.SKIP,
                 f"only {registered}/{requested} hotkeys registered - the rest are held by the "
-                "running Wisp instance; quit Wisp for a conclusive run",
+                "running OpenWand instance; quit OpenWand for a conclusive run",
             )
         if os.environ.get("CI"):
             # Headless CI runners have no console session / display server, so
@@ -74,9 +74,9 @@ def main() -> int:
         if started and registered:
             return _lab.finish(
                 _lab.FAIL,
-                f"partial registration with no Wisp running: {registered}/{requested} ({reason})",
+                f"partial registration with no OpenWand running: {registered}/{requested} ({reason})",
             )
-        return _lab.finish(_lab.FAIL, f"hotkey registration failed with no Wisp running: {reason}")
+        return _lab.finish(_lab.FAIL, f"hotkey registration failed with no OpenWand running: {reason}")
     finally:
         worker.shutdown()
         _lab.log("native worker shut down (hotkeys released)")

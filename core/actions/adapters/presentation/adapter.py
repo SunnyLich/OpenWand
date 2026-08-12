@@ -105,7 +105,7 @@ class PresentationActionAdapter:
             if not isinstance(body, str) or len(body) > 8_000:
                 issues.append(ValidationIssue("invalid_body", "Slide bodies are limited to 8,000 characters.", operation.id))
             if layout not in LAYOUT_PRESETS:
-                issues.append(ValidationIssue("invalid_layout", "The requested slide layout is not a Wisp preset.", operation.id))
+                issues.append(ValidationIssue("invalid_layout", "The requested slide layout is not a OpenWand preset.", operation.id))
             if position == "after_selected" and not snapshot.selected_slide_id:
                 issues.append(ValidationIssue("selection_required", "Select a slide or create the new slide at the end.", operation.id))
         elif operation.type == RESTYLE_SLIDE:
@@ -115,7 +115,7 @@ class PresentationActionAdapter:
             if snapshot.slide(slide_id) is None:
                 issues.append(ValidationIssue("slide_missing", "The selected slide no longer exists.", operation.id))
             if args.get("preset") not in STYLE_PRESETS:
-                issues.append(ValidationIssue("invalid_style", "The requested style is not a bounded Wisp preset.", operation.id))
+                issues.append(ValidationIssue("invalid_style", "The requested style is not a bounded OpenWand preset.", operation.id))
             if args.get("preserve_content") is not True:
                 issues.append(ValidationIssue("content_preservation_required", "Restyling must preserve all slide content.", operation.id))
         elif operation.type == UPSERT_SPEAKER_NOTES:

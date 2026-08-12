@@ -79,7 +79,7 @@ class AddonManagerDialog(QDialog):
 
         subtitle = QLabel(
             t("Addons are Python packages in the add-ons folder. "
-              "Portable builds create this folder next to Wisp.exe when possible.")
+              "Portable builds create this folder next to OpenWand.exe when possible.")
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet("font-size: 9pt; opacity: 0.7;")
@@ -151,7 +151,7 @@ class AddonManagerDialog(QDialog):
         layout.setSpacing(6)
 
         name_row = QHBoxLayout()
-        name = str(addon.get("name") or addon.get("id") or t("Addon"))
+        name = t(str(addon.get("name") or addon.get("id") or "Addon"))
         addon_id = str(addon.get("id") or name)
         name_lbl = QLabel(name)
         name_lbl.setStyleSheet("font-size: 11pt; font-weight: 600;")
@@ -199,7 +199,7 @@ class AddonManagerDialog(QDialog):
         name_row.addWidget(enable)
         layout.addLayout(name_row)
 
-        description = str(addon.get("description") or "")
+        description = t(str(addon.get("description") or ""))
         if description:
             desc_lbl = QLabel(description)
             desc_lbl.setWordWrap(True)
@@ -227,11 +227,14 @@ class AddonManagerDialog(QDialog):
         actions = [item for item in (addon.get("actions") or []) if isinstance(item, dict)]
         for action in actions:
             action_row = QHBoxLayout()
-            action_label = str(action.get("label") or action.get("id") or t("Action"))
-            access = ", ".join(str(item).title() for item in (action.get("access") or []))
-            descriptor = QLabel(f"{action_label} · {str(action.get('kind') or 'action').replace('_', ' ')}" + (f" · {access}" if access else ""))
+            action_label = t(str(action.get("label") or action.get("id") or "Action"))
+            access = ", ".join(t(str(item).title()) for item in (action.get("access") or []))
+            action_kind = t(str(action.get("kind") or "action").replace("_", " "))
+            descriptor = QLabel(f"{action_label} · {action_kind}" + (f" · {access}" if access else ""))
             descriptor.setStyleSheet("font-size: 8pt; opacity: 0.65;")
-            descriptor.setToolTip(str(action.get("path") or action.get("hint") or ""))
+            action_path = str(action.get("path") or "")
+            action_hint = t(str(action.get("hint") or ""))
+            descriptor.setToolTip(action_path or action_hint)
             action_row.addWidget(descriptor, 1)
             toggle = QCheckBox(t("Enabled"))
             toggle.setChecked(bool(action.get("enabled", True)))
@@ -326,7 +329,7 @@ class AddonManagerDialog(QDialog):
             self,
             t("Install Addon Archive"),
             "",
-            t("Wisp Addons (*.wisp *.zip)"),
+            t("OpenWand Addons (*.openwand *.wisp *.zip)"),
         )
         if not archive:
             return
@@ -494,13 +497,13 @@ class AddonSettingsDialog(QDialog):
             key = str(s.get("key", "")).strip()
             if not key:
                 continue
-            label = str(s.get("label") or key)
+            label = t(str(s.get("label") or key))
             stype = str(s.get("type") or "text").lower()
             value = s.get("value")
             widget = self._setting_widget(key, stype, value, s.get("options") or [])
             if widget is None:
                 continue
-            help_text = str(s.get("help") or "")
+            help_text = t(str(s.get("help") or ""))
             if help_text:
                 widget.setToolTip(help_text)
             form.addRow(label, widget)
@@ -526,10 +529,13 @@ class AddonSettingsDialog(QDialog):
             combo.setMinimumContentsLength(18)
             combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             opts = [str(o) for o in options]
-            combo.addItems(opts)
+            for option in opts:
+                combo.addItem(t(option), option)
             if str(value) in opts:
-                combo.setCurrentText(str(value))
-            combo.currentTextChanged.connect(_save)
+                combo.setCurrentIndex(opts.index(str(value)))
+            combo.currentIndexChanged.connect(
+                lambda index, control=combo: _save(control.itemData(index))
+            )
             return combo
         # text / number → line edit, persisted on edit-finished
         edit = QLineEdit("" if value is None else str(value))

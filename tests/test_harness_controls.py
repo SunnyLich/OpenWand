@@ -31,17 +31,17 @@ def test_harness_permission_and_alternate_option_translations(
 
     app = QApplication.instance() or QApplication(sys.argv)
     translator = QTranslator()
-    catalog = Path(__file__).parents[1] / "ui" / "locales" / "qt" / f"wisp_{language}.qm"
+    catalog = Path(__file__).parents[1] / "ui" / "locales" / "qt" / f"openwand_{language}.qm"
     assert translator.load(str(catalog))
     app.installTranslator(translator)
     try:
-        assert QCoreApplication.translate("Wisp", "Alternate option") == alternate
-        assert QCoreApplication.translate("Wisp", "Send alternate option") == send_alternate
+        assert QCoreApplication.translate("OpenWand", "Alternate option") == alternate
+        assert QCoreApplication.translate("OpenWand", "Send alternate option") == send_alternate
         assert (
-            QCoreApplication.translate("Wisp", "Allow within project")
+            QCoreApplication.translate("OpenWand", "Allow within project")
             == project_permission
         )
-        assert QCoreApplication.translate("Wisp", "Full access") == full_access
+        assert QCoreApplication.translate("OpenWand", "Full access") == full_access
     finally:
         app.removeTranslator(translator)
 
@@ -51,25 +51,25 @@ def test_harness_permission_and_alternate_option_translations(
     [
         (
             "es",
-            "Espacio de trabajo compartido de Wisp",
+            "Espacio de trabajo compartido de OpenWand",
             "Iniciar tarea",
             "Esperando la respuesta del modelo… 5s transcurridos",
         ),
         (
             "fr",
-            "Espace de travail partagé de Wisp",
+            "Espace de travail partagé de OpenWand",
             "Démarrer la tâche",
             "Attente de la réponse du modèle… 5s écoulées",
         ),
         (
             "zh",
-            "Wisp 共享工作区",
+            "OpenWand 共享工作区",
             "开始任务",
             "正在等待模型响应… 已用 5 秒",
         ),
         (
             "zh-Hant",
-            "Wisp 共享工作區",
+            "OpenWand 共享工作區",
             "開始工作",
             "正在等待模型回應… 已經過 5 秒",
         ),
@@ -88,14 +88,14 @@ def test_shared_workspace_runtime_catalogs_are_compiled(
 
     app = QApplication.instance() or QApplication(sys.argv)
     translator = QTranslator()
-    catalog = Path(__file__).parents[1] / "ui" / "locales" / "qt" / f"wisp_{language}.qm"
+    catalog = Path(__file__).parents[1] / "ui" / "locales" / "qt" / f"openwand_{language}.qm"
     assert translator.load(str(catalog))
     app.installTranslator(translator)
     try:
-        assert QCoreApplication.translate("Wisp", "Wisp Shared Workspace") == title
-        assert QCoreApplication.translate("Wisp", "Start task") == start
+        assert QCoreApplication.translate("OpenWand", "OpenWand Shared Workspace") == title
+        assert QCoreApplication.translate("OpenWand", "Start task") == start
         template = QCoreApplication.translate(
-            "Wisp",
+            "OpenWand",
             "Waiting for the model response… {seconds}s elapsed",
         )
         assert template.format(seconds=5) == waiting
@@ -146,11 +146,11 @@ def test_codex_controls_save_provider_specific_values(monkeypatch) -> None:
         dialog._save()
 
         values = writes[0][1]
-        assert values["WISP_CODEX_MODEL"] == "gpt-test"
-        assert values["WISP_CODEX_WORKSPACE"] == "C:/work/project"
-        assert values["WISP_CODEX_FAST_MODE"] == "true"
-        assert values["WISP_CODEX_APPROVAL_MODE"] == "auto_edits"
-        assert values["WISP_CODEX_REASONING_SUMMARY"] == "detailed"
+        assert values["OPENWAND_CODEX_MODEL"] == "gpt-test"
+        assert values["OPENWAND_CODEX_WORKSPACE"] == "C:/work/project"
+        assert values["OPENWAND_CODEX_FAST_MODE"] == "true"
+        assert values["OPENWAND_CODEX_APPROVAL_MODE"] == "auto_edits"
+        assert values["OPENWAND_CODEX_REASONING_SUMMARY"] == "detailed"
         assert reloads == [True]
         assert applied_while_visible == [False]
         assert dialog.result() == dialog.DialogCode.Accepted
@@ -223,7 +223,7 @@ def test_claude_controls_offer_and_save_full_model_ids(monkeypatch) -> None:
         assert dialog.model.currentText() == "claude-sonnet-5"
         assert dialog._model_value() == "claude-sonnet-5"
         dialog._save()
-        assert writes[0][1]["WISP_CLAUDE_MODEL"] == "claude-sonnet-5"
+        assert writes[0][1]["OPENWAND_CLAUDE_MODEL"] == "claude-sonnet-5"
     finally:
         dialog.deleteLater()
         app.processEvents()

@@ -1,12 +1,12 @@
 <div align="center">
 
-<img src="../assets/doll/idle.png" width="112" alt="Icono de Wisp" />
+<img src="../assets/doll/idle.png" width="112" alt="Icono de OpenWand" />
 
-# Wisp
+# OpenWand
 
-**Muchas tareas se resuelven mejor con asistencia de IA que con delegación completa. Wisp hace que esa colaboración sea más rápida, fácil de usar y personalizable como plataforma abierta de co-trabajo.**
+**Muchas tareas se resuelven mejor con asistencia de IA que con delegación completa. OpenWand hace que esa colaboración sea más rápida, fácil de usar y personalizable como plataforma abierta de co-trabajo.**
 
-Wisp te da IA controlada por atajos de teclado que puede leer tu selección, portapapeles, aplicación, navegador, documentos o captura de pantalla mientras te quedas donde estás. Presiona un atajo, elige una acción y transmite la respuesta en una pequeña superposición o en el cursor de entrada. Es completamente open-source, multiplataforma, extensible, con licencia permisiva y 100% Python, así que sigue siendo fácil de modificar: el tipo de apertura que incluso productos de miles de millones de dólares como Microsoft Copilot todavía no ofrecen.
+OpenWand te da IA controlada por atajos de teclado que puede leer tu selección, portapapeles, aplicación, navegador, documentos o captura de pantalla mientras te quedas donde estás. Presiona un atajo, elige una acción y transmite la respuesta en una pequeña superposición o en el cursor de entrada. Es completamente open-source, multiplataforma, extensible, con licencia permisiva y principalmente escrito en Python, así que sigue siendo fácil de modificar: el tipo de apertura que incluso productos de miles de millones de dólares como Microsoft Copilot todavía no ofrecen.
 
 [![Plataforma](https://img.shields.io/badge/plataforma-Windows%20%7C%20macOS%20%7C%20Linux-333333?style=flat-square)](#estado-de-plataformas)
 [![Python](https://img.shields.io/badge/python-3.12-3572A5?style=flat-square)](#inicio-rápido)
@@ -15,11 +15,11 @@ Wisp te da IA controlada por atajos de teclado que puede leer tu selección, por
 
 **Idiomas:** [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [Français](README.fr.md) | Español
 
-**Sitio web:** [Documentación de Wisp](https://sunnylich.github.io/Wisp-AI-Assistant/)
+**Sitio web:** [Documentación de OpenWand](https://sunnylich.github.io/OpenWand/)
 
-[Inicio rápido](#inicio-rápido) | [Qué hace](#qué-hace-wisp) | [Demos](#demos) | [Configuración](#configuración) | [APIs gratuitas](#fuentes-de-api-de-modelos-gratuitas) | [Privacidad](#privacidad-y-control)
+[Inicio rápido](#inicio-rápido) | [Qué hace](#qué-hace-openwand) | [Demos](#demos) | [Configuración](#configuración) | [APIs gratuitas](#fuentes-de-api-de-modelos-gratuitas) | [Privacidad](#privacidad-y-control)
 
-![Demo Wisp Ctrl+Q](readme-assets/readme-1st-demo.gif)
+![Demo OpenWand Ctrl+Q](readme-assets/readme-1st-demo.gif)
 
 **Consulta en superposición:** Presiona un atajo, elige una acción y obtén una respuesta transmitida sin salir de la aplicación que ya estás usando.
 </div>
@@ -28,15 +28,15 @@ Wisp te da IA controlada por atajos de teclado que puede leer tu selección, por
 
 ## Problemas conocidos
 
-[Problemas conocidos](https://sunnylich.github.io/Wisp-AI-Assistant/#known-issues)
+[Problemas conocidos](https://sunnylich.github.io/OpenWand/#known-issues)
 
-## Qué hace Wisp
+## Qué hace OpenWand
 
-Wisp es para los momentos en que abrir una aplicación de chat interrumpiría tu flujo de trabajo.
+OpenWand es para los momentos en que abrir una aplicación de chat interrumpiría tu flujo de trabajo.
 
-Selecciona texto, presiona el atajo general, pulsa una tecla de acción, y Wisp consulta tu modelo configurado solo con las fuentes de contexto que habilitaste. Las respuestas se transmiten en una burbuja compacta junto al ícono flotante. Si el TTS está habilitado, la respuesta se habla a medida que llega.
+Selecciona texto, presiona el atajo general, pulsa una tecla de acción, y OpenWand consulta tu modelo configurado solo con las fuentes de contexto que habilitaste. Las respuestas se transmiten en una burbuja compacta junto al ícono flotante. Si el TTS está habilitado, la respuesta se habla a medida que llega.
 
-| En lugar de... | Wisp te permite... |
+| En lugar de... | OpenWand te permite... |
 | --- | --- |
 | Copiar texto en una ventana de chat separada | Preguntar desde la aplicación que ya estás usando |
 | Volver a escribir las instrucciones para tareas recurrentes cada vez | Guardar acciones reutilizables con las fuentes de contexto que quieras |
@@ -48,37 +48,39 @@ Selecciona texto, presiona el atajo general, pulsa una tecla de acción, y Wisp 
 ## Destacados
 
 - **Superposición primero** — un ícono flotante, selector de acción y burbuja de respuesta se mantienen al frente sin tomar el control de tu escritorio.
-- **Agentes ChatGPT/Codex y Claude en vivo** — elige Wisp, ChatGPT o Claude Agent al principio de Configuración y decide si la continuidad permanece en Wisp o se transfiere al agente. El app-server de la CLI de Codex y el SDK de Claude Agent se ejecutan detrás de Wisp con resúmenes de razonamiento, respuestas, progreso de herramientas, aprobaciones y sesiones reanudables opcionales. La importación, devolución y exportación de transcripciones siguen disponibles como alternativa sin conexión.
-- **Privacidad por defecto** — Wisp no tiene capa de almacenamiento alojada; los datos se quedan en tu máquina, y el modo privacidad puede advertir o redigir antes de que el contexto sensible salga.
+- **Ventana de chat completa** — haz clic en el ícono flotante para abrir un chat persistente y con búsqueda, organizado por proyectos, con el contexto capturado, representación Markdown nativa y segura, e importación de conversaciones locales de ChatGPT/Codex y Claude. La rueda, el desplazamiento automático con el botón central y una barra de desplazamiento más ancha facilitan las respuestas largas.
+- **Presentación de respuestas** — las respuestas normales muestran títulos, listas, tablas, código, citas y texto multilingüe sin otra llamada al modelo. El complemento opcional de formato conserva el original, muestra el modelo de formato antes de ejecutarse y comprueba que el contenido fuente visible se mantenga.
+- **Agentes ChatGPT/Codex y Claude en vivo** — elige OpenWand, ChatGPT o Claude Agent al principio de Configuración y decide si la continuidad permanece en OpenWand o se transfiere al agente. El app-server de la CLI de Codex y el SDK de Claude Agent se ejecutan detrás de OpenWand con resúmenes de razonamiento, respuestas, progreso de herramientas, aprobaciones y sesiones reanudables opcionales. La importación local, la sincronización opcional desde su activación y la exportación como conversación nueva siguen disponibles sin contactar con los proveedores.
+- **Privacidad por defecto** — OpenWand no tiene capa de almacenamiento alojada; los datos se quedan en tu máquina, y el modo privacidad puede advertir o redigir antes de que el contexto sensible salga.
 - **Altamente personalizable** — cada atajo, tecla de acción, prompt, fuente de contexto, comportamiento de pegado, ruta del modelo, configuración de voz y dimensión de burbuja se puede cambiar.
 - **Interfaz accesible** — la configuración, las verificaciones de configuración, los informes de privacidad, las herramientas de memoria y las advertencias del modelo explican qué está pasando sin necesidad de leer el código.
-- **Captura de contexto** — Wisp puede leer texto seleccionado, texto del portapapeles, UI enfocada, documentos abiertos, contenido del navegador, archivos recientes y capturas de pantalla opcionales.
+- **Captura de contexto** — OpenWand puede leer texto seleccionado, texto del portapapeles, UI enfocada, documentos abiertos, contenido del navegador, archivos recientes y capturas de pantalla opcionales.
 - **Voz de entrada y salida** — STT local mediante faster-whisper, más TTS neuronal en el dispositivo (Kokoro y clonación de voz GPT-SoVITS) o voces en la nube/compatibles (Cartesia, ElevenLabs, OpenAI, cualquier servidor compatible con OpenAI), con TTS deshabilitado por defecto.
 - **Capturas visuales** — dibuja una región con `Ctrl+Alt+Q` y envía la captura de pantalla a un modelo de visión.
 - **Reescribir y pegar** — usa el atajo de reescritura para reescribir el texto seleccionado con el contexto capturado y pegar el resultado de vuelta en el campo activo.
 - **Trae tu propio proveedor** — Groq, Anthropic, OpenAI, Google, DeepSeek, OpenRouter, Mistral, XAI, Together, Cerebras, servidores compatibles con OpenAI personalizados, GitHub Copilot, y más.
 - **Memoria local** — la memoria a corto y largo plazo opcional se almacena localmente, con un visor para editar o eliminar hechos.
-- **Complementos** — extiende Wisp con hooks, acciones de bandeja, configuraciones, herramientas llamables por el modelo, acciones configurables y atajos.
+- **Complementos** — extiende OpenWand con hooks, acciones de bandeja, configuraciones, herramientas llamables por el modelo, acciones configurables y atajos.
 - **Tareas en segundo plano desde el chat** — con la escritura local habilitada, el modelo del chat puede delegar trabajo de programación importante, responder de inmediato y añadir el informe final a la misma conversación.
 - **Equipo de agentes** — configura directamente el proyecto, objetivo, agentes, modelos y permisos para una ejecución visible con progreso en vivo y artefactos revisables.
 
 ## Demos
 
-![Demo de captura de pantalla Wisp Ctrl+Alt+Q](readme-assets/readme-2nd-demo.gif)
+![Demo de captura de pantalla OpenWand Ctrl+Alt+Q](readme-assets/readme-2nd-demo.gif)
 
 **Captura visual:** El flujo de captura es para casos donde el contexto visual importa. `Ctrl+Alt+Q` te permite dibujar una región, enviar solo ese recorte a un modelo de visión, y mantener la respuesta en la superposición en lugar de cambiar de aplicación.
 
-![Demo de reescritura contextual de Wisp](readme-assets/readme-3rd-demo.gif)
+![Demo de reescritura contextual de OpenWand](readme-assets/readme-3rd-demo.gif)
 
-**Reescritura contextual:** Wisp puede recopilar contexto útil de la aplicación sin tomar una captura de pantalla, para que el modelo sepa en qué estás trabajando. Luego el atajo de reescritura reescribe solo el texto seleccionado y dirige el pegado de vuelta al campo original capturado cuando presionaste el atajo.
+**Reescritura contextual:** OpenWand puede recopilar contexto útil de la aplicación sin tomar una captura de pantalla, para que el modelo sepa en qué estás trabajando. Luego el atajo de reescritura reescribe solo el texto seleccionado y dirige el pegado de vuelta al campo original capturado cuando presionaste el atajo.
 
-![Demo del equipo de agentes de Wisp](readme-assets/readme-4th-demo.gif)
+![Demo del equipo de agentes de OpenWand](readme-assets/readme-4th-demo.gif)
 
-**Equipo de agentes:** Delega un trabajo más largo a los roles de coordinador, constructor y revisor. El equipo puede inspeccionar archivos del proyecto, hacer un cambio enfocado, ejecutar verificaciones y dejar un informe final y artefactos revisables mientras sigues usando Wisp.
+**Equipo de agentes:** Delega un trabajo más largo a los roles de coordinador, constructor y revisor. El equipo puede inspeccionar archivos del proyecto, hacer un cambio enfocado, ejecutar verificaciones y dejar un informe final y artefactos revisables mientras sigues usando OpenWand.
 
 ## Flujo de trabajo
 
-| Tu lado | Lo que hace Wisp |
+| Tu lado | Lo que hace OpenWand |
 | --- | --- |
 | Selecciona texto, elige contexto o dibuja una captura | Captura solo el contexto seleccionado o habilitado |
 | Presiona el atajo de llamada y elige una acción o prompt personalizado | Construye la solicitud del modelo con tu prompt y el contexto elegido |
@@ -88,7 +90,7 @@ Selecciona texto, presiona el atajo general, pulsa una tecla de acción, y Wisp 
 
 Flujos de ejemplo:
 
-| Lo que quieres | Lo que hace Wisp |
+| Lo que quieres | Lo que hace OpenWand |
 | --- | --- |
 | Quieres una explicación del texto seleccionado | Lee la selección después de que presionas el atajo general y eliges `W` (¿Qué es esto?) o `A` (Explicar simplemente), y luego la explica en la superposición |
 | Quieres reescribir una oración | Lee la oración seleccionada, aplica la acción de reescritura que eliges y puede pegar el resultado de vuelta |
@@ -98,40 +100,40 @@ Flujos de ejemplo:
 | Quieres dictar en otra aplicación | Transcribe tu voz con `F8` directamente en el campo de texto enfocado |
 ## Inicio rápido
 
-Hay dos formas compatibles de iniciar Wisp.
+Hay dos formas compatibles de iniciar OpenWand.
 
 ### Opción 1: Aplicación empaquetada
 
 Usa esto si quieres la aplicación sin clonar el repositorio o gestionar dependencias de Python.
 
-1. Descarga el último artefacto para tu plataforma desde [GitHub Releases](https://github.com/SunnyLich/Wisp-AI-Assistant/releases).
+1. Descarga el último artefacto para tu plataforma desde [GitHub Releases](https://github.com/SunnyLich/OpenWand/releases).
 2. Descomprime el archivo y inicia la aplicación empaquetada.
 3. Abre Configuración para agregar tus claves de proveedor de modelo, configuración de voz y atajos preferidos.
 
 | SO | Artefacto de versión | Iniciar con |
 | --- | --- | --- |
-| Windows | `Wisp-<tag>-windows-x64.zip` | `Wisp.exe` |
-| macOS | `Wisp-<tag>-macos-<arch>.zip` | `Wisp.app` |
-| Linux | `Wisp-<tag>-linux-x64.tar.gz` | `Wisp` |
+| Windows | `OpenWand-<tag>-windows-x64.zip` | `OpenWand.exe` |
+| macOS | `OpenWand-<tag>-macos-<arch>.zip` | `OpenWand.app` |
+| Linux | `OpenWand-<tag>-linux-x64.tar.gz` | `OpenWand` |
 
 ### Opción 2: Lanzador de repositorio
 
-Usa esto si quieres ejecutar desde la fuente, desarrollar Wisp, o probar el último checkout.
+Usa esto si quieres ejecutar desde la fuente, desarrollar OpenWand, o probar el último checkout.
 
 Clona el repositorio:
 
 ```bash
-git clone https://github.com/SunnyLich/Wisp-AI-Assistant.git
-cd Wisp-AI-Assistant
+git clone https://github.com/SunnyLich/OpenWand.git
+cd OpenWand
 ```
 
-Luego inicia Wisp con el lanzador de repositorio para tu plataforma:
+Luego inicia OpenWand con el lanzador de repositorio para tu plataforma:
 
 | SO | Iniciar con | Fuente de dependencias |
 | --- | --- | --- |
-| Windows | `Start Wisp.bat` | `requirements/requirements-windows.lock` |
-| macOS | `Start Wisp.command` | `requirements/requirements-macos.lock` |
-| Linux | `Start Wisp.sh` | `requirements/requirements-linux.lock` |
+| Windows | `Start OpenWand.bat` | `requirements/requirements-windows.lock` |
+| macOS | `Start OpenWand.command` | `requirements/requirements-macos.lock` |
+| Linux | `Start OpenWand.sh` | `requirements/requirements-linux.lock` |
 
 El primer lanzamiento aprovisiona el entorno Python e instala las dependencias. Los lanzamientos posteriores van directamente a la aplicación.
 
@@ -146,9 +148,9 @@ Requisitos:
 Para registros de ejecución completos, usa el lanzador de depuración correspondiente:
 
 ```text
-Start Wisp Debug.bat
-Start Wisp Debug.command
-Start Wisp Debug.sh
+Start OpenWand Debug.bat
+Start OpenWand Debug.command
+Start OpenWand Debug.sh
 ```
 
 ## Configuración
@@ -161,19 +163,19 @@ El primer ajuste de Aplicación, **Ejecutar conversaciones con**, elige el motor
 
 | Motor | Comportamiento |
 | --- | --- |
-| **Wisp** | Usa el proveedor LLM y el modelo configurados en Wisp. |
+| **OpenWand** | Usa el proveedor LLM y el modelo configurados en OpenWand. |
 | **ChatGPT** | Ejecuta la CLI de Codex instalada en modo app-server y usa tu cuenta de ChatGPT/Codex. |
 | **Claude Agent** | Ejecuta el SDK de Claude Agent con la autenticación de la CLI de Claude Code y usa tu cuenta de Claude. |
 
-Selecciona ChatGPT o Claude Agent para ver su estado de inicio de sesión y las acciones **Iniciar sesión**, **Cerrar sesión** y **Actualizar**. El modo ChatGPT requiere la CLI de Codex; Wisp guarda el inicio de sesión de Codex y las sesiones reanudables en un perfil local aislado para que no aparezcan en tu historial personal de Codex. Claude Agent usa el SDK incluido cuando está disponible y se autentica mediante la CLI de Claude Code.
+Selecciona ChatGPT o Claude Agent para ver su estado de inicio de sesión y las acciones **Iniciar sesión**, **Cerrar sesión** y **Actualizar**. El modo ChatGPT requiere la CLI de Codex; OpenWand guarda el inicio de sesión de Codex y las sesiones reanudables en un perfil local aislado para que no aparezcan en tu historial personal de Codex. Claude Agent usa el SDK incluido cuando está disponible y se autentica mediante la CLI de Claude Code.
 
-**La conversación va a** controla la continuidad. Elige **Wisp** para enviar todo el historial local de Wisp en cada solicitud sin conservar un enlace de continuación del proveedor. Elige **ChatGPT** o **Claude Agent** para transferir el historial una vez, guardar el ID de sesión devuelto y reanudar esa sesión del proveedor en los prompts posteriores. Wisp siempre conserva una copia local visible y mantiene los historiales de Wisp, ChatGPT/Codex y Claude en espacios separados, por lo que cambiar de motor no puede añadir mensajes a la conversación equivocada.
+**La conversación va a** controla la continuidad. Elige **OpenWand** para enviar todo el historial local de OpenWand en cada solicitud sin conservar un enlace de continuación del proveedor. Elige **ChatGPT** o **Claude Agent** para transferir el historial una vez, guardar el ID de sesión devuelto y reanudar esa sesión del proveedor en los prompts posteriores. OpenWand siempre conserva una copia local visible y mantiene los historiales de OpenWand, ChatGPT/Codex y Claude en espacios separados, por lo que cambiar de motor no puede añadir mensajes a la conversación equivocada.
 
-Mientras trabaja un agente, Wisp transmite su respuesta junto con cada resumen de razonamiento visible, plan, inicio de herramienta, estado de comando o archivo y solicitud de aprobación que expone el proveedor. La cadena de pensamiento privada y oculta no está disponible. Una insignia del proveedor bajo el icono flotante abre los controles en vivo del siguiente turno: modelo, proyecto, modo rápido, esfuerzo de razonamiento, resúmenes visibles y uno de tres modos de permiso: preguntar, permitir cambios dentro del proyecto o solo planificar en modo de lectura.
+Mientras trabaja un agente, OpenWand transmite su respuesta junto con cada resumen de razonamiento visible, plan, inicio de herramienta, estado de comando o archivo y solicitud de aprobación que expone el proveedor. La cadena de pensamiento privada y oculta no está disponible. Una insignia del proveedor bajo el icono flotante abre los controles en vivo del siguiente turno: modelo, proyecto, modo rápido, esfuerzo de razonamiento, resúmenes visibles y uno de tres modos de permiso: preguntar, permitir cambios dentro del proyecto o solo planificar en modo de lectura.
 
-El proyecto se selecciona explícitamente o se deduce de la sesión reanudada, los archivos adjuntos y el contexto de archivos; en último caso se usa el directorio actual de Wisp. Cambiar el proyecto inicia una sesión nueva del proveedor. El acceso de escritura del agente queda limitado a ese proyecto; Codex también se ejecuta sin acceso a la red en el entorno aislado del espacio de trabajo.
+El proyecto se selecciona explícitamente o se deduce de la sesión reanudada, los archivos adjuntos y el contexto de archivos; en último caso se usa el directorio actual de OpenWand. Cambiar el proyecto inicia una sesión nueva del proveedor. El acceso de escritura del agente queda limitado a ese proyecto; Codex también se ejecuta sin acceso a la red en el entorno aislado del espacio de trabajo.
 
-Las sesiones de agente en vivo son la ruta compatible. La importación, devolución y exportación experimentales de transcripciones son una alternativa local de compatibilidad: la importación lee historiales JSONL de Codex y Claude sin contactar con los proveedores; la devolución requiere confirmación, crea una copia de seguridad completa y añade solo los turnos exclusivos de Wisp; la exportación requiere confirmación y crea una transcripción nueva sin sobrescribir el historial del proveedor. Consulta la [guía completa de agentes en vivo](../Wisp%20Website/Wisp%20Docs.html#live-agents).
+Las sesiones de agente en vivo son la ruta compatible. OpenWand también puede importar conversaciones locales seleccionadas de ChatGPT/Codex y Claude sin contactar con los proveedores, sincronizar opcionalmente los cambios desde el momento en que se activa la sincronización automática y exportar un chat de OpenWand como conversación nueva del proveedor sin sobrescribir el historial existente. Consulta la [guía completa de agentes en vivo](../OpenWand%20Website/OpenWand%20Docs.html#live-agents).
 
 Para builds de fuente y configuraciones avanzadas, `.env.example` documenta las claves de configuración disponibles. Por lo general, no necesitas editarlas manualmente.
 
@@ -199,9 +201,9 @@ Cada llamador, atajo, etiqueta, prompt, fuente de contexto, configuración de pe
 
 ## Complementos
 
-Profundamente extensible, Wisp se transforma con complementos: nuevas funciones, nuevos flujos de trabajo, nuevas posibilidades. Cada complemento vive en su propia carpeta bajo `addons/` con un manifiesto `addon.toml`, y se ejecuta en su propio **proceso de host Python aislado**, por lo que un fallo, un hook lento o una dependencia incorrecta en un complemento no pueden derribar el worker cerebro ni ningún otro complemento. **Las capacidades son opcionales:** un complemento solo obtiene lo que su manifiesto declara, y los permisos faltantes son denegados. Los complementos que necesitan paquetes de terceros obtienen un entorno virtual dedicado que apruebas antes de que se ejecute.
+Profundamente extensible, OpenWand se transforma con complementos: nuevas funciones, nuevos flujos de trabajo, nuevas posibilidades. Cada complemento vive en su propia carpeta bajo `addons/` con un manifiesto `addon.toml`, y se ejecuta en su propio **proceso de host Python aislado**, por lo que un fallo, un hook lento o una dependencia incorrecta en un complemento no pueden derribar el worker cerebro ni ningún otro complemento. **Las capacidades son opcionales:** un complemento solo obtiene lo que su manifiesto declara, y los permisos faltantes son denegados. Los complementos que necesitan paquetes de terceros obtienen un entorno virtual dedicado que apruebas antes de que se ejecute.
 
-Un complemento puede engancharse a Wisp en varios puntos:
+Un complemento puede engancharse a OpenWand en varios puntos:
 
 - **Contexto** — leer o reescribir el prompt y el contexto antes de que se envíe una consulta.
 - **Herramientas** — registrar herramientas llamables por el modelo que el modelo puede invocar durante la respuesta.
@@ -224,13 +226,13 @@ Si puedes escribirlo en Python y encaja en uno de los puntos de hook anteriores,
 
 ## Cliente y servidor MCP
 
-### Cliente MCP: usar servidores externos dentro de Wisp
+### Cliente MCP: usar servidores externos dentro de OpenWand
 
-Wisp incluye un complemento **puente MCP** (`addons/mcp_bridge`) que actúa como cliente MCP: indica cualquier servidor de [Model Context Protocol](https://modelcontextprotocol.io) en su `servers.json` y Wisp expone todo su conjunto de herramientas al modelo como herramientas de Wisp. Esto permite que la superposición use capacidades MCP externas sin abandonar el flujo de trabajo de escritorio. Consulta la [Guía de complementos](../addons/README.md) para el contrato completo de manifiesto y hook, o la página **Complementos** en el [sitio de documentación de Wisp](../Wisp%20Website/Wisp%20Docs.html).
+OpenWand incluye un complemento **puente MCP** (`addons/mcp_bridge`) que actúa como cliente MCP: indica cualquier servidor de [Model Context Protocol](https://modelcontextprotocol.io) en su `servers.json` y OpenWand expone todo su conjunto de herramientas al modelo como herramientas de OpenWand. Esto permite que la superposición use capacidades MCP externas sin abandonar el flujo de trabajo de escritorio. Consulta la [Guía de complementos](../addons/README.md) para el contrato completo de manifiesto y hook, o la página **Complementos** en el [sitio de documentación de OpenWand](../OpenWand%20Website/OpenWand%20Docs.html).
 
-### Servidor MCP: servidor de contexto de Wisp
+### Servidor MCP: servidor de contexto de OpenWand
 
-Wisp también incluye un **servidor MCP local por stdio** llamado **Wisp Context Server**. Clientes MCP de confianza, como Claude Desktop, Cursor y Codex, pueden iniciarlo para leer contexto activo del escritorio; la aplicación Wisp no necesita permanecer abierta.
+OpenWand también incluye un **servidor MCP local por stdio** llamado **OpenWand Context Server**. Clientes MCP de confianza, como Claude Desktop, Cursor y Codex, pueden iniciarlo para leer contexto activo del escritorio; la aplicación OpenWand no necesita permanecer abierta.
 
 Ofrece cinco herramientas de solo lectura:
 
@@ -242,20 +244,20 @@ Ofrece cinco herramientas de solo lectura:
 
 ### Conectar un cliente
 
-Inicia Wisp una vez y copia la entrada `mcpServers` de `addons/mcp_bridge/claude_config_snippet.json` en la configuración de tu cliente MCP. Wisp genera este fragmento con la ruta local correcta a su propio intérprete de Python y a `addons/mcp_bridge/context_server.py`; no lo sustituyas por Python del sistema. Consulta la [guía de configuración del servidor MCP Bridge](../addons/mcp_bridge/README.md) para notas por plataforma y solución de problemas.
+Inicia OpenWand una vez y copia la entrada `mcpServers` de `addons/mcp_bridge/claude_config_snippet.json` en la configuración de tu cliente MCP. OpenWand genera este fragmento con la ruta local correcta a su propio intérprete de Python y a `addons/mcp_bridge/context_server.py`; no lo sustituyas por Python del sistema. Consulta la [guía de configuración del servidor MCP Bridge](../addons/mcp_bridge/README.md) para notas por plataforma y solución de problemas.
 
 Registra el servidor solo en clientes de confianza: los resultados de las herramientas pueden contener texto seleccionado, contenido del portapapeles, contenido del navegador y capturas de tu escritorio.
 
 ## Privacidad y control
 
-Wisp está diseñado como un asistente de escritorio local. **El almacenamiento permanece en tu máquina**, y las solicitudes van directamente al proveedor de modelo o servidor local que configuras.
+OpenWand está diseñado como un asistente de escritorio local. **El almacenamiento permanece en tu máquina**, y las solicitudes van directamente al proveedor de modelo o servidor local que configuras.
 
 - **Los datos locales se mantienen locales:** la configuración, los chats, la memoria, los informes de privacidad y la configuración se almacenan en tu máquina.
 - **Claves en el llavero del sistema:** las claves de proveedor y los tokens OAuth se guardan en el almacén seguro de contraseñas integrado en Windows, macOS o tu escritorio Linux.
 - **Solicitudes directas:** las solicitudes del modelo van directamente desde tu máquina al proveedor o servidor local que configuraste.
 - **Tú eliges qué se envía:** tu proveedor de modelo configurado solo recibe el prompt que envías y las fuentes de contexto seleccionadas o habilitadas para ese llamador.
-- **Las vistas previas son locales:** Wisp puede inspeccionar el contexto disponible localmente para mostrar estimaciones de tokens, disponibilidad y recuentos de redacción de privacidad antes de que envíes. Previsualizar una fuente no la envía al proveedor de modelo ni la guarda como chat/memoria.
-- **La sincronización de chats externos permanece local:** las importaciones son de solo lectura y nunca contactan con los proveedores. Las acciones experimentales de devolución y exportación requieren confirmación; la devolución crea una copia de seguridad y añade contenido a una transcripción existente, mientras que la exportación crea una transcripción nueva sin sobrescribir el historial del proveedor.
+- **Las vistas previas son locales:** OpenWand puede inspeccionar el contexto disponible localmente para mostrar estimaciones de tokens, disponibilidad y recuentos de redacción de privacidad antes de que envíes. Previsualizar una fuente no la envía al proveedor de modelo ni la guarda como chat/memoria.
+- **Las herramientas de conversación externa permanecen locales:** la importación y la sincronización posterior leen historiales locales sin contactar con los servicios de los proveedores. La exportación crea una conversación nueva del proveedor sin sobrescribir el historial existente.
 - **Contexto controlado por atajo:** el contexto de aplicación ambiental, el portapapeles, los documentos, las páginas del navegador, el contexto de GitHub, la memoria, las herramientas y las capturas de pantalla pueden habilitarse, deshabilitarse o enrutarse según demanda.
 - **Modo privacidad:** las verificaciones de configuración y el comportamiento de advertencia orientados a la privacidad se mantienen habilitados, incluyendo el estado de redacción antes de que se envíe el contexto sensible.
 - **Inactivo hasta que lo configures:** la voz opcional, la lectura de documentos, el contenido del navegador, las capturas de pantalla, GitHub Copilot y los complementos permanecen inactivos hasta que se configuren.
@@ -267,7 +269,7 @@ Wisp está diseñado como un asistente de escritorio local. **El almacenamiento 
 
 En **Configuración → Aplicación → Modo de privacidad**, elige uno de los tres modos mutuamente excluyentes: **Desactivado**, **Integrado** (predeterminado) o **Avanzado**. El modo integrado usa patrones locales para detectar credenciales, tokens, datos de pago y otros secretos estructurados. El modo avanzado conserva esas reglas y añade el modelo opcional [OpenAI Privacy Filter](https://openai.com/index/introducing-openai-privacy-filter/), que se ejecuta por completo en tu ordenador para detectar según el contexto nombres, direcciones, direcciones de correo electrónico, números de teléfono, URL y fechas privadas, números de cuenta y secretos.
 
-El modelo avanzado es una descarga opcional de unos 2,8 GB, además de su entorno de ejecución local dedicado. Wisp lo carga en memoria y lo calienta en segundo plano al iniciarse o después de activar el modo avanzado. El calentamiento puede tardar decenas de segundos en una CPU. Si envías una solicitud antes de que termine, esa solicitud espera; los análisis posteriores reutilizan el modelo cargado y son más rápidos. Wisp sustituye los fragmentos detectados por marcadores estables como `[PERSON_1]`, puede mostrar una revisión antes del envío y vuelve a comprobar el texto redactado. Si el modelo avanzado no está disponible, la detección falla o queda texto sensible, Wisp bloquea el envío a la nube.
+El modelo avanzado es una descarga opcional de unos 2,8 GB, además de su entorno de ejecución local dedicado. OpenWand lo carga en memoria y lo calienta en segundo plano al iniciarse o después de activar el modo avanzado. El calentamiento puede tardar decenas de segundos en una CPU. Si envías una solicitud antes de que termine, esa solicitud espera; los análisis posteriores reutilizan el modelo cargado y son más rápidos. OpenWand sustituye los fragmentos detectados por marcadores estables como `[PERSON_1]`, puede mostrar una revisión antes del envío y vuelve a comprobar el texto redactado. Si el modelo avanzado no está disponible, la detección falla o queda texto sensible, OpenWand bloquea el envío a la nube.
 
 El filtrado de privacidad reduce la divulgación accidental; no garantiza la anonimización ni el cumplimiento normativo.
 
@@ -288,7 +290,7 @@ Los informes de bugs son bienvenidos, especialmente para comportamientos de escr
 
 Los registros se encuentran en la carpeta `build_logs/`.
 
-Estamos trabajando actualmente en el soporte de Linux Wayland, y la ayuda para probarlo o mejorarlo es especialmente útil. Las pruebas de soporte en macOS también son bienvenidas; estas plataformas tienen la mayoría de los casos límite de integración nativa, por lo que los informes del mundo real de diferentes máquinas, entornos de escritorio y estados de permisos hacen que Wisp sea mejor para todos.
+Estamos trabajando actualmente en el soporte de Linux Wayland, y la ayuda para probarlo o mejorarlo es especialmente útil. Las pruebas de soporte en macOS también son bienvenidas; estas plataformas tienen la mayoría de los casos límite de integración nativa, por lo que los informes del mundo real de diferentes máquinas, entornos de escritorio y estados de permisos hacen que OpenWand sea mejor para todos.
 
 Si quieres apoyar este proyecto y la misión más amplia, puedes contribuir directamente al desarrollo o hacer una donación [aquí](https://buymeacoffee.com/sunnylich).
 
@@ -306,7 +308,7 @@ Si quieres apoyar este proyecto y la misión más amplia, puedes contribuir dire
 
 ## Fuentes de API de modelos gratuitas
 
-Wisp es gratuito, y también puedes mantener los costos del modelo en cero. Varios proveedores ofrecen un nivel verdaderamente gratuito, créditos mensuales gratuitos o acceso limitado en velocidad sin costo. Wisp llega a la mayoría de ellos a través de su cliente compatible con OpenAI — algunos tienen un valor `LLM_PROVIDER` dedicado, y el resto funciona a través del endpoint `custom` apuntando `CUSTOM_BASE_URL` a la URL compatible con OpenAI del proveedor. Agrega la clave en **Configuración → LLM**.
+OpenWand es gratuito, y también puedes mantener los costos del modelo en cero. Varios proveedores ofrecen un nivel verdaderamente gratuito, créditos mensuales gratuitos o acceso limitado en velocidad sin costo. OpenWand llega a la mayoría mediante su cliente compatible con OpenAI: algunos tienen una ruta de proveedor dedicada y el resto funciona mediante conexiones personalizadas con nombre. Añade las credenciales en **Configuración → Conexiones** y elige la ruta del modelo en **Configuración → LLM**.
 
 | Proveedor | Qué es gratuito | Bueno para |
 | --- | --- | --- |
@@ -321,11 +323,11 @@ Wisp es gratuito, y también puedes mantener los costos del modelo en cero. Vari
 | Cloudflare Workers AI | Plan gratuito de Workers con una asignación diaria gratuita | Aplicaciones ya en Cloudflare; endpoints de IA sin servidor |
 | Vercel AI Gateway | Nivel gratuito con $5/mes de crédito de gateway para modelos elegibles | Proyectos Next.js/Vercel; acceso compatible con OpenAI unificado |
 | SambaNova Cloud | $5 de crédito de API gratuito, sin tarjeta de crédito requerida | Inferencia rápida de modelos abiertos alojados |
-| Puter.js | Acceso JS front-end a muchos modelos sin tu propia clave de API | Aplicaciones de navegador y demos; no es un proveedor backend de Wisp |
-| [OmniRoute](https://github.com/diegosouzapw/OmniRoute) (pasarela local) | Enrutador de código abierto que ejecutas localmente; agrupa varias cuentas de proveedores y niveles gratuitos detrás de un endpoint compatible con OpenAI, con enrutamiento, conmutación por error y compresión opcional | Enruta Wisp mediante OmniRoute con el endpoint personalizado: `LLM_PROVIDER=custom`, `CUSTOM_BASE_URL=http://localhost:20128/v1`, un modelo como `auto` y la clave API del panel de OmniRoute |
+| Puter.js | Acceso JS front-end a muchos modelos sin tu propia clave de API | Aplicaciones de navegador y demos; no es un proveedor backend de OpenWand |
+| [OmniRoute](https://github.com/diegosouzapw/OmniRoute) (pasarela local) | Enrutador de código abierto que ejecutas localmente; agrupa varias cuentas de proveedores y niveles gratuitos detrás de un endpoint compatible con OpenAI, con enrutamiento, conmutación por error y compresión opcional | Enruta OpenWand mediante OmniRoute con el endpoint personalizado: `LLM_PROVIDER=custom`, `CUSTOM_BASE_URL=http://localhost:20128/v1`, un modelo como `auto` y la clave API del panel de OmniRoute |
 | Local — Ollama / LM Studio / vLLM | Gratuito cuando ejecutas el modelo tú mismo | Privacidad, sin facturación por token, endpoints locales compatibles con OpenAI |
 
-Los niveles gratuitos tienen límites de velocidad y cambian con frecuencia, así que agrega al menos una ruta de respaldo y evita enviar contexto sensible a proveedores que puedan entrenar con tus prompts (la redacción de Wisp sigue aplicando). Para la guía completa de cómo conectar y advertencias, consulta la página **Fuentes de API gratuitas** en el [sitio de documentación de Wisp](../Wisp%20Website/Wisp%20Docs.html).
+Los niveles gratuitos tienen límites de velocidad y cambian con frecuencia, así que agrega al menos una ruta de respaldo y evita enviar contexto sensible a proveedores que puedan entrenar con tus prompts (la redacción de OpenWand sigue aplicando). Para la guía completa de cómo conectar y advertencias, consulta la página **Fuentes de API gratuitas** en el [sitio de documentación de OpenWand](../OpenWand%20Website/OpenWand%20Docs.html).
 
 ## Licencia
 

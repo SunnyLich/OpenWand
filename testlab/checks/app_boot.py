@@ -9,7 +9,7 @@ Rung 2: launch the REAL app entrypoint (``python -m runtime.supervisor.app``)
 with an offscreen UI and an isolated data root, watch its supervisor log until
 all workers are up, keep it alive a few seconds, scan for tracebacks/crash
 logs, then stop it (SIGTERM on POSIX asserts a clean exit 0; on Windows the
-tree is killed after the health checks pass). If another Wisp instance holds
+tree is killed after the health checks pass). If another OpenWand instance holds
 the single-instance lock the rung is skipped with a note.
 """
 from __future__ import annotations
@@ -25,14 +25,14 @@ import _lab
 
 _lab.bootstrap()
 
-BOOT_MARKERS = ("starting wisp-native", "starting wisp-ui", "starting wisp-brain", "starting wisp-audio")
-WORKER_LOGS = ("wisp-native.stderr.log", "wisp-ui.stderr.log", "wisp-brain.stderr.log", "wisp-audio.stderr.log")
+BOOT_MARKERS = ("starting openwand-native", "starting openwand-ui", "starting openwand-brain", "starting openwand-audio")
+WORKER_LOGS = ("openwand-native.stderr.log", "openwand-ui.stderr.log", "openwand-brain.stderr.log", "openwand-audio.stderr.log")
 BOOT_TIMEOUT = 120.0
 STEADY_SECONDS = 8.0
 
 
 def _rung1_worker_stack() -> tuple[bool, str]:
-    from runtime.supervisor.ipc import WispSupervisor, default_specs
+    from runtime.supervisor.ipc import OpenWandSupervisor, default_specs
 
     isolated_root = _lab.isolated_repo_root("app_boot_workers")
     specs = default_specs()
@@ -44,7 +44,7 @@ def _rung1_worker_stack() -> tuple[bool, str]:
                 extra=dict(spec.env),
             )
         )
-    supervisor = WispSupervisor(specs)
+    supervisor = OpenWandSupervisor(specs)
     exit_codes: dict[str, int | None] = {}
     watch = _lab.Stopwatch()
     try:
@@ -86,19 +86,19 @@ def _read_text(path: Path) -> str:
 
 def _isolate_single_instance(env: dict[str, str]) -> str:
     """Sandbox the user-data dir (single-instance lock) so the lab app can boot
-    beside a running Wisp. The real optional-packages dir is pinned so STT/TTS
+    beside a running OpenWand. The real optional-packages dir is pinned so STT/TTS
     still count as installed inside the sandbox.
     """
     from core import optional_deps
 
-    env["WISP_OPTIONAL_PACKAGES_DIR"] = str(optional_deps.OPTIONAL_PACKAGES_DIR)
+    env["OPENWAND_OPTIONAL_PACKAGES_DIR"] = str(optional_deps.OPTIONAL_PACKAGES_DIR)
     sandbox = _lab.scratch_dir("app_boot_userdata")
     if sys.platform == "win32":
         env["APPDATA"] = str(sandbox)
         return "sandboxed APPDATA"
     elif sys.platform == "darwin":
         # HOME redirection would move the keychain/HF-cache world; not worth it.
-        return "no lock sandbox on macOS (skips if Wisp is running)"
+        return "no lock sandbox on macOS (skips if OpenWand is running)"
     else:
         env["XDG_CONFIG_HOME"] = str(sandbox)
         return "sandboxed XDG_CONFIG_HOME"
@@ -111,8 +111,8 @@ def _rung2_real_app() -> tuple[bool, str]:
         isolated_root=isolated_root,
         offscreen_ui=True,
         extra={
-            "WISP_RUN_LOG_DIR": str(log_dir),
-            "WISP_RUNTIME_LOG_MODE": "debug",
+            "OPENWAND_RUN_LOG_DIR": str(log_dir),
+            "OPENWAND_RUNTIME_LOG_MODE": "debug",
         },
     )
     _lab.log(f"single-instance isolation: {_isolate_single_instance(env)}")
@@ -148,7 +148,7 @@ def _rung2_real_app() -> tuple[bool, str]:
                 for line in text.splitlines()[-30:]:
                     _lab.log(f"    {line}")
         crash_root = isolated_root / "build_logs"
-        crashes = sorted(crash_root.glob("wisp_crash_*")) if crash_root.exists() else []
+        crashes = sorted(crash_root.glob("openwand_crash_*")) if crash_root.exists() else []
         for crash in crashes:
             for crash_file in sorted(crash.glob("*")):
                 _lab.log(f"--- crash log {crash_file.name} (tail) ---")
@@ -179,7 +179,7 @@ def _rung2_real_app() -> tuple[bool, str]:
         while time.monotonic() < deadline:
             if proc.poll() is not None:
                 if proc.returncode == 2:
-                    return True, "skipped: another Wisp instance is running (single-instance lock)"
+                    return True, "skipped: another OpenWand instance is running (single-instance lock)"
                 return False, _diagnostics(f"app exited during boot with code {proc.returncode}")
             text = _read_text(supervisor_log)
             if all(marker in text for marker in BOOT_MARKERS) and all(
@@ -198,12 +198,12 @@ def _rung2_real_app() -> tuple[bool, str]:
         if "Traceback" in text:
             snippet = text[text.index("Traceback"):][:400]
             return False, _diagnostics(f"supervisor log has a traceback: {snippet}")
-        crash_dirs = list((isolated_root / "build_logs").glob("wisp_crash_*")) if (isolated_root / "build_logs").exists() else []
+        crash_dirs = list((isolated_root / "build_logs").glob("openwand_crash_*")) if (isolated_root / "build_logs").exists() else []
         if crash_dirs:
             return False, f"crash logs were written during boot: {[d.name for d in crash_dirs]}"
         hotkeys_note = "hotkeys registered"
         if "native hotkeys did not start" in text:
-            hotkeys_note = "hotkeys unavailable (likely held by a running Wisp/other app) - non-fatal"
+            hotkeys_note = "hotkeys unavailable (likely held by a running OpenWand/other app) - non-fatal"
             _lab.log(hotkeys_note)
 
         if sys.platform == "win32":

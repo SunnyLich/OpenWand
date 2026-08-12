@@ -22,15 +22,17 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import logging
+import math
 import threading
 import time
+from array import array
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 from core import optional_deps
 
-log = logging.getLogger("wisp.live_voice")
+log = logging.getLogger("openwand.live_voice")
 
 # Live API audio contract (validated by prototypes/voice_live).
 SEND_RATE = 16000       # input:  16 kHz PCM16 mono
@@ -63,7 +65,7 @@ class Playback:
     """Thread-safe PCM buffer drained by the speaker callback.
 
     ``clear()`` is the barge-in: dropping queued audio the instant the server
-    reports an interruption is what makes talking over Wisp feel responsive.
+    reports an interruption is what makes talking over OpenWand feel responsive.
     """
 
     def __init__(self) -> None:
@@ -321,7 +323,13 @@ class LiveVoiceSession:
         playback = self._playback
 
         def on_speaker(outdata, frames, time_info, status) -> None:
-            outdata[:] = playback.pull(len(outdata))
+            pcm = playback.pull(len(outdata))
+            outdata[:] = pcm
+            samples = array("h")
+            samples.frombytes(pcm)
+            if samples:
+                rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples)) / 32768.0
+                self._emit("amplitude", {"amplitude": min(1.0, rms * 4.0)})
 
         return on_speaker
 
@@ -332,7 +340,7 @@ class LiveVoiceSession:
         while True:
             chunk = await mic_queue.get()
             if half_duplex and playback.active():
-                continue  # mic is "muted" while Wisp is talking
+                continue  # mic is "muted" while OpenWand is talking
             # Plain dict is a valid BlobDict for the real SDK and keeps this
             # module import-free of google-genai for injected fake sessions.
             await session.send_realtime_input(

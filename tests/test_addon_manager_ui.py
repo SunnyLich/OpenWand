@@ -40,7 +40,7 @@ from ui.addon_manager import (
 
 @pytest.fixture
 def qapp():
-    return QApplication.instance() or QApplication(["wisp-addon-ui-tests"])
+    return QApplication.instance() or QApplication(["openwand-addon-ui-tests"])
 
 
 class FakeAddonManager:
@@ -291,7 +291,7 @@ def test_settings_window_widgets_save_through_manager(qapp, fake_manager):
     fake_manager.settings["demo.tools"] = [
         {"key": "notify", "label": "Notify", "type": "bool", "value": "true"},
         {"key": "mode", "label": "Mode", "type": "choice", "value": "b", "options": ["a", "b", "c"]},
-        {"key": "prefix", "label": "Prefix", "type": "text", "value": "wisp"},
+        {"key": "prefix", "label": "Prefix", "type": "text", "value": "openwand"},
         {"key": "limit", "label": "Limit", "type": "number", "value": 5, "help": "Max rows"},
     ]
     dialog = _dialog(fake_manager)
@@ -309,17 +309,17 @@ def test_settings_window_widgets_save_through_manager(qapp, fake_manager):
         combo.setCurrentText("c")
 
         prefix_edit, limit_edit = settings_dialog.findChildren(QLineEdit)
-        assert prefix_edit.text() == "wisp"
+        assert prefix_edit.text() == "openwand"
         assert limit_edit.text() == "5"
         assert limit_edit.placeholderText() == "number"
         assert limit_edit.toolTip() == "Max rows"
-        prefix_edit.setText("wisp2")
+        prefix_edit.setText("openwand2")
         prefix_edit.editingFinished.emit()
 
         assert fake_manager.setting_calls == [
             ("demo.tools", "notify", "false"),
             ("demo.tools", "mode", "c"),
-            ("demo.tools", "prefix", "wisp2"),
+            ("demo.tools", "prefix", "openwand2"),
         ]
     finally:
         dialog.close()
@@ -433,7 +433,7 @@ def test_install_archive_reloads_and_shows_new_addon(qapp, fake_manager, monkeyp
     dialog = _dialog(fake_manager)
     boxes = _FakeMessageBox()
     boxes.install(monkeypatch)
-    archive = tmp_path / "extra.wisp"
+    archive = tmp_path / "extra.openwand"
     archive.write_bytes(b"zip-bytes")
     installed: list = []
 
@@ -498,7 +498,7 @@ def test_addon_archive_install_failure_matrix_is_in_band(qapp, fake_manager, mon
     dialog = _dialog(fake_manager)
     boxes = _FakeMessageBox()
     boxes.install(monkeypatch)
-    archive = tmp_path / "addon.wisp"
+    archive = tmp_path / "addon.openwand"
     archive.write_bytes(b"fixture")
     monkeypatch.setattr(
         addon_manager_ui,

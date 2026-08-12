@@ -63,13 +63,13 @@ def pytest_collection_modifyitems(
     """Apply exactly two required axes and enforce safe execution routing."""
 
     del config
-    if os.environ.get("WISP_TEST_MAP_GENERATING") == "1":
+    if os.environ.get("OPENWAND_TEST_MAP_GENERATING") == "1":
         return
 
     entries = _catalogue()
     errors: list[str] = []
     platform = _current_platform()
-    isolated = os.environ.get("WISP_ISOLATED_TEST_HOST") == "1"
+    isolated = os.environ.get("OPENWAND_ISOLATED_TEST_HOST") == "1"
 
     for item in items:
         try:
@@ -127,7 +127,7 @@ def pytest_collection_modifyitems(
                 pytest.mark.skip(
                     reason=(
                         "isolated-host safety guard: run only on a disposable VM or "
-                        "dedicated host with WISP_ISOLATED_TEST_HOST=1"
+                        "dedicated host with OPENWAND_ISOLATED_TEST_HOST=1"
                     )
                 )
             )

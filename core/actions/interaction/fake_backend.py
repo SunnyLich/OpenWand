@@ -116,7 +116,7 @@ class FakeAccessibilityBackend:
         if not matches:
             raise ElementNotFoundError("The recorded semantic element no longer exists.")
         if len(matches) > 1:
-            raise AmbiguousElementError("The semantic locator matched more than one element; Wisp refused to guess.")
+            raise AmbiguousElementError("The semantic locator matched more than one element; OpenWand refused to guess.")
         element = matches[0]
         if element.fingerprint != locator.snapshot_fingerprint:
             raise StaleElementError("The semantic element identity changed after the preview.")

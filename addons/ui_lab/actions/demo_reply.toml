@@ -2,7 +2,7 @@ id = "ui-lab-demo-reply"
 kind = "intent"
 label = "UI lab"
 hint = "Ask for a reply with repeated words you can label."
-prompt = "Reply with one short paragraph that repeats the words Wisp and label so selected text labels can be tested."
+prompt = "Reply with one short paragraph that repeats the words OpenWand and label so selected text labels can be tested."
 key = "u"
 access = ["text"]
 

@@ -21,16 +21,23 @@ import psutil
 from runtime import protocol
 from runtime.bootstrap import data_root, repo_root
 
-log = logging.getLogger("wisp.runtime.supervisor")
+log = logging.getLogger("openwand.runtime.supervisor")
 # Worker stderr echoed into supervisor logging. Kept on its own logger so the
 # runtime event log can skip it — stderr lines already reach the event log via
 # on_stderr_line listeners, and double-ingesting them would duplicate entries.
-stderr_echo_log = logging.getLogger("wisp.worker_stderr")
+stderr_echo_log = logging.getLogger("openwand.worker_stderr")
 
 _STREAM_TOTAL_TIMEOUT_MULTIPLIER = 6.0
 
 _MANAGED_CHILD_MODULES = frozenset(
     {
+        # uv-managed Windows virtual environments can launch the real Python
+        # interpreter as a child of the venv executable. Track that second
+        # process node as part of the same logical worker.
+        "runtime.workers.native_host",
+        "runtime.workers.ui_host",
+        "runtime.workers.brain_host",
+        "runtime.workers.audio_host",
         "runtime.workers.hotkey_helper",
         "core.macos_helper.host",
         "core.addon_host",
@@ -39,7 +46,7 @@ _MANAGED_CHILD_MODULES = frozenset(
 
 
 def _is_managed_child_process(process: psutil.Process) -> bool:
-    """Return whether a worker child is an internal process that must die with Wisp.
+    """Return whether a worker child is an internal process that must die with OpenWand.
 
     Runtime installers, updater helpers, Ollama, and arbitrary addon-launched
     commands are intentionally absent: some of those are designed to survive an
@@ -106,7 +113,7 @@ def _force_stop_managed_processes(
         except (psutil.NoSuchProcess, psutil.ZombieProcess):
             continue
         except (psutil.AccessDenied, OSError) as exc:
-            log.warning("Could not terminate managed Wisp process %s: %s", process.pid, exc)
+            log.warning("Could not terminate managed OpenWand process %s: %s", process.pid, exc)
             candidates.append(process)
     if not candidates:
         return []
@@ -117,7 +124,7 @@ def _force_stop_managed_processes(
         except (psutil.NoSuchProcess, psutil.ZombieProcess):
             continue
         except (psutil.AccessDenied, OSError) as exc:
-            log.error("Could not kill managed Wisp process %s: %s", process.pid, exc)
+            log.error("Could not kill managed OpenWand process %s: %s", process.pid, exc)
     _gone, survivors = psutil.wait_procs(alive, timeout=kill_timeout)
     return [process.pid for process in survivors if process.is_running()]
 
@@ -178,7 +185,7 @@ class WorkerClient:
         """Prevent every future call from spawning or restarting this worker.
 
         This is deliberately a fast state change rather than a process wait.
-        The supervisor uses it as an immediate barrier when the UI asks Wisp to
+        The supervisor uses it as an immediate barrier when the UI asks OpenWand to
         quit; the slower graceful termination still happens in ``shutdown``.
         """
         self._shutting_down = True
@@ -199,9 +206,13 @@ class WorkerClient:
         env = os.environ.copy()
         env.update(self.spec.env)
         env.setdefault("PYTHONUNBUFFERED", "1")
-        if "WISP_DATA_ROOT" not in env and "WISP_REPO_ROOT" not in env:
-            env["WISP_DATA_ROOT"] = str(data_root())
-        env.setdefault("WISP_SUPERVISOR_PID", str(os.getpid()))
+        if "OPENWAND_DATA_ROOT" not in env and "OPENWAND_REPO_ROOT" not in env:
+            env["OPENWAND_DATA_ROOT"] = str(data_root())
+        env.setdefault("OPENWAND_SUPERVISOR_PID", str(os.getpid()))
+        env.setdefault(
+            "OPENWAND_SUPERVISOR_CREATE_TIME",
+            str(psutil.Process(os.getpid()).create_time()),
+        )
         self._stderr_log_path = self._worker_log_path(env)
         log.info("starting %s: %s", self.spec.name, self.spec.module)
         if self._stderr_log_path is not None:
@@ -299,7 +310,7 @@ class WorkerClient:
 
     def _worker_log_path(self, env: dict[str, str]) -> Path | None:
         """Handle worker log path for worker client."""
-        root = env.get("WISP_RUN_LOG_DIR")
+        root = env.get("OPENWAND_RUN_LOG_DIR")
         if not root:
             return None
         safe_name = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in self.spec.name)
@@ -597,7 +608,7 @@ class WorkerClient:
             if progress is not None:
                 progress("kill complete")
         except Exception:  # noqa: BLE001
-            # Do not abort shutdown of the remaining workers. WispSupervisor's
+            # Do not abort shutdown of the remaining workers. OpenWandSupervisor's
             # cross-platform psutil audit gets one final chance to stop this pid.
             log.error("Could not kill %s pid=%s", self.spec.name, proc.pid, exc_info=True)
 
@@ -605,9 +616,9 @@ class WorkerClient:
 def default_specs() -> dict[str, WorkerSpec]:
     """Handle default specs for runtime supervisor ipc."""
     return {
-        "native": WorkerSpec("wisp-native", "runtime.workers.native_host", "native"),
-        "ui": WorkerSpec("wisp-ui", "runtime.workers.ui_host", "ui"),
-        "brain": WorkerSpec("wisp-brain", "runtime.workers.brain_host", "brain"),
+        "native": WorkerSpec("openwand-native", "runtime.workers.native_host", "native"),
+        "ui": WorkerSpec("openwand-ui", "runtime.workers.ui_host", "ui"),
+        "brain": WorkerSpec("openwand-brain", "runtime.workers.brain_host", "brain"),
         # The audio worker is the isolated subprocess whose whole purpose is to run
         # native CoreAudio/PortAudio off the Qt UI process, so audio must be enabled
         # here regardless of the global macOS safe-mode default — otherwise
@@ -615,24 +626,27 @@ def default_specs() -> dict[str, WorkerSpec]:
         # the brain's "Test TTS" (no device gate) reports OK. A crash in this worker
         # only restarts the worker, which is the point of the isolation.
         "audio": WorkerSpec(
-            "wisp-audio",
+            "openwand-audio",
             "runtime.workers.audio_host",
             "audio",
-            env={"WISP_MACOS_ENABLE_AUDIO": "1"},
+            env={"OPENWAND_MACOS_ENABLE_AUDIO": "1"},
             shutdown_timeout=40.0,
         ),
     }
 
 
-class WispSupervisor:
+class OpenWandSupervisor:
     """Owns all pure-Python workers."""
 
     def __init__(self, specs: dict[str, WorkerSpec] | None = None) -> None:
-        """Initialize the wisp supervisor instance."""
+        """Initialize the openwand supervisor instance."""
         self.workers = {
             name: WorkerClient(spec)
             for name, spec in (specs or default_specs()).items()
         }
+        self._managed_snapshot_lock = threading.Lock()
+        self._managed_process_snapshot: list[psutil.Process] = []
+        self._managed_snapshot_taken = False
 
     def start_all(self) -> dict[str, Any]:
         """Start all."""
@@ -662,37 +676,45 @@ class WispSupervisor:
         """Call a method on the named worker and return its result."""
         return self.workers[worker].call(method, params, timeout=timeout)
 
-    def begin_shutdown(self) -> None:
-        """Immediately close every worker-spawn gate before graceful teardown."""
+    def begin_shutdown(self, *, capture_managed_processes: bool = True) -> None:
+        """Close spawn gates and remember the live owned tree before it can orphan."""
         for worker in self.workers.values():
             begin = getattr(worker, "begin_shutdown", None)
             if callable(begin):
                 begin()
+        if not capture_managed_processes:
+            return
+        lock = getattr(self, "_managed_snapshot_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._managed_snapshot_lock = lock
+        with lock:
+            if getattr(self, "_managed_snapshot_taken", False):
+                return
+            worker_pids = [
+                pid
+                for worker in self.workers.values()
+                if worker.alive() and (pid := worker.pid) is not None
+            ]
+            try:
+                self._managed_process_snapshot = _snapshot_managed_processes(worker_pids)
+            except Exception:  # noqa: BLE001 - worker shutdown must still proceed
+                log.exception("Could not snapshot the managed OpenWand process tree during shutdown")
+                return
+            self._managed_snapshot_taken = True
 
     def shutdown(
         self,
         *,
         audit_managed_processes: bool = True,
         progress: Callable[[str], None] | None = None,
-    ) -> None:
+    ) -> list[int]:
         """Gracefully stop every worker, then optionally audit managed survivors."""
-        self.begin_shutdown()
-        # A worker may already have exited itself (for example, the UI worker
-        # after the user chooses Quit). Never resolve that stale PID through
-        # psutil: Windows can retain or reuse it while native process discovery
-        # is running. Live workers are still snapshotted before teardown so
-        # their owned helper processes remain discoverable on every platform.
-        worker_pids = (
-            [
-                pid
-                for worker in self.workers.values()
-                if worker.alive() and (pid := worker.pid) is not None
-            ]
+        self.begin_shutdown(capture_managed_processes=audit_managed_processes)
+        managed_processes = (
+            list(getattr(self, "_managed_process_snapshot", []))
             if audit_managed_processes
             else []
-        )
-        managed_processes = (
-            _snapshot_managed_processes(worker_pids) if audit_managed_processes else []
         )
         for name, worker in self.workers.items():
             try:
@@ -712,6 +734,7 @@ class WispSupervisor:
             else []
         )
         if survivors:
-            log.error("Managed Wisp processes survived shutdown: %s", ", ".join(map(str, survivors)))
+            log.error("Managed OpenWand processes survived shutdown: %s", ", ".join(map(str, survivors)))
         elif managed_processes:
-            log.info("All managed Wisp worker processes exited")
+            log.info("All managed OpenWand worker processes exited")
+        return survivors

@@ -9,9 +9,9 @@
   "records": [
     {
       "function_id": "F001",
-      "function": "Launch the packaged Wisp app.",
+      "function": "Launch the packaged OpenWand app.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "fresh PyInstaller artifact -> Wisp executable -> frozen supervisor dispatch -> real UI/native/brain/audio workers",
+      "production_entry_point": "fresh PyInstaller artifact -> OpenWand executable -> frozen supervisor dispatch -> real UI/native/brain/audio workers",
       "test_node_ids": [
         "tests/test_launcher_acceptance.py::test_packaged_launcher_starts_real_ui_workers_and_cleans_up"
       ],
@@ -27,9 +27,9 @@
     },
     {
       "function_id": "F002",
-      "function": "Launch Wisp from the source checkout and development launchers.",
+      "function": "Launch OpenWand from the source checkout and development launchers.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "platform Start Wisp development launcher -> runtime.supervisor.app -> real UI/native/brain/audio workers",
+      "production_entry_point": "platform Start OpenWand development launcher -> runtime.supervisor.app -> real UI/native/brain/audio workers",
       "test_node_ids": [
         "tests/test_launcher_acceptance.py::test_source_development_launcher_starts_real_ui_workers_and_cleans_up"
       ],
@@ -46,7 +46,7 @@
     },
     {
       "function_id": "F003",
-      "function": "Prevent a second Wisp instance from running at the same time.",
+      "function": "Prevent a second OpenWand instance from running at the same time.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "runtime.supervisor.app.main -> core.system.single_instance.acquire",
       "test_node_ids": [
@@ -119,7 +119,7 @@
       "function_id": "F007",
       "function": "Choose the app display language during setup.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Onboarding Wisp interface language combo -> live preview -> Finish setup persistence",
+      "production_entry_point": "Onboarding OpenWand interface language combo -> live preview -> Finish setup persistence",
       "test_node_ids": [
         "tests/test_onboarding_acceptance.py::test_onboarding_language_assistant_and_theme_choice_matrix"
       ],
@@ -275,9 +275,9 @@
       "function_id": "F016",
       "function": "Start the UI, brain/model, audio, and platform workers.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "WispSupervisor.start_all",
+      "production_entry_point": "OpenWandSupervisor.start_all",
       "test_node_ids": [
-        "tests/runtime/test_supervisor_ipc.py::test_wisp_supervisor_starts_real_app_worker_process_set"
+        "tests/runtime/test_supervisor_ipc.py::test_openwand_supervisor_starts_real_app_worker_process_set"
       ],
       "success_assertions": [
         "UI, native, brain, and audio workers start, answer ping, and remain isolated."
@@ -290,7 +290,7 @@
     },
     {
       "function_id": "F017",
-      "function": "Display a floating always-on-top Wisp icon.",
+      "function": "Display a floating always-on-top OpenWand icon.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "IconOverlay construction and show-icon runtime signal",
       "test_node_ids": [
@@ -343,7 +343,7 @@
     },
     {
       "function_id": "F020",
-      "function": "Auto-hide the icon when Wisp is inactive.",
+      "function": "Auto-hide the icon when OpenWand is inactive.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "OverlaySignals.hide_icon -> icon backstop timer -> guarded auto-hide slot",
       "test_node_ids": [
@@ -481,7 +481,7 @@
     },
     {
       "function_id": "F028",
-      "function": "Quit Wisp from the tray menu.",
+      "function": "Quit OpenWand from the tray menu.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "real UI-worker Quit tray QAction -> QApplication.quit -> UI worker exit",
       "test_node_ids": [
@@ -498,7 +498,7 @@
     },
     {
       "function_id": "F029",
-      "function": "Start Wisp automatically when the user signs in.",
+      "function": "Start OpenWand automatically when the user signs in.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "sync_start_on_login -> Windows HKCU Run / macOS LaunchAgent / Linux XDG autostart entry",
       "test_node_ids": [
@@ -508,7 +508,7 @@
         "tests/test_autostart.py::test_start_on_login_selects_the_real_source_or_packaged_entry"
       ],
       "success_assertions": [
-        "Every supported OS writes an enabled login entry with the Wisp launch command and removes it when disabled; source and packaged modes select their proven launch entries."
+        "Every supported OS writes an enabled login entry with the OpenWand launch command and removes it when disabled; source and packaged modes select their proven launch entries."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -518,11 +518,11 @@
     },
     {
       "function_id": "F030",
-      "function": "Shut workers down cleanly when Wisp exits.",
+      "function": "Shut workers down cleanly when OpenWand exits.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "WispSupervisor.shutdown",
+      "production_entry_point": "OpenWandSupervisor.shutdown",
       "test_node_ids": [
-        "tests/runtime/test_supervisor_ipc.py::test_wisp_supervisor_starts_real_app_worker_process_set"
+        "tests/runtime/test_supervisor_ipc.py::test_openwand_supervisor_starts_real_app_worker_process_set"
       ],
       "success_assertions": [
         "Every worker process has exited after normal app shutdown."
@@ -550,7 +550,7 @@
       "interaction_ids": [
         "I171"
       ],
-      "audit_note": "The external OS selection adapter is fake; the Wisp flow and event transitions are real."
+      "audit_note": "The external OS selection adapter is fake; the OpenWand flow and event transitions are real."
     },
     {
       "function_id": "F032",
@@ -810,7 +810,7 @@
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "real IntentOverlay typing -> ui.intent.chosen -> FlowController.brain.rewrite -> native.paste_text",
       "test_node_ids": [
-        "tests/runtime/test_supervisor_ipc.py::test_real_intent_ui_routes_keep_in_wisp_and_rewrite_paste_back",
+        "tests/runtime/test_supervisor_ipc.py::test_real_intent_ui_routes_keep_in_openwand_and_rewrite_paste_back",
         "tests/test_native_platform_acceptance.py::test_native_paste_method_by_clipboard_restore_matrix"
       ],
       "success_assertions": [
@@ -829,14 +829,14 @@
     },
     {
       "function_id": "F047",
-      "function": "Keep an answer in Wisp without pasting it back.",
+      "function": "Keep an answer in OpenWand without pasting it back.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "real IntentOverlay typing -> ui.intent.chosen -> FlowController.brain.query -> real reply bubble",
       "test_node_ids": [
-        "tests/runtime/test_supervisor_ipc.py::test_real_intent_ui_routes_keep_in_wisp_and_rewrite_paste_back"
+        "tests/runtime/test_supervisor_ipc.py::test_real_intent_ui_routes_keep_in_openwand_and_rewrite_paste_back"
       ],
       "success_assertions": [
-        "The answer remains visible in Wisp and native.paste_text is never called."
+        "The answer remains visible in OpenWand and native.paste_text is never called."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -969,7 +969,7 @@
       "test_node_ids": [
         "tests/test_config_env.py::ConfigEnvTests::test_default_caller_hotkeys_are_platform_specific",
         "tests/runtime/test_flows.py::test_default_discrete_shortcuts_use_production_callbacks_and_runtime_event_path",
-        "tests/runtime/test_supervisor_ipc.py::test_real_intent_ui_routes_keep_in_wisp_and_rewrite_paste_back"
+        "tests/runtime/test_supervisor_ipc.py::test_real_intent_ui_routes_keep_in_openwand_and_rewrite_paste_back"
       ],
       "success_assertions": [
         "The platform default rewrite chord opens caller 1 and a real picker submission completes through rewrite and native paste-back."
@@ -1277,7 +1277,7 @@
       "function_id": "F070",
       "function": "Remove an intent shortcut.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "new caller Customize -> Remove intent shortcut button -> caller and search-index removal",
+      "production_entry_point": "intent shortcut row -> red remove button in final column -> caller and search-index removal",
       "test_node_ids": [
         "tests/test_feature_acceptance_workflows.py::test_intent_shortcut_editor_mutations_policies_tools_and_reopen_are_one_real_workflow"
       ],
@@ -1382,10 +1382,10 @@
       "production_entry_point": "caller Paste final answer checkbox -> persisted paste_back -> query or rewrite/paste runtime branch",
       "test_node_ids": [
         "tests/test_feature_acceptance_workflows.py::test_intent_shortcut_editor_mutations_policies_tools_and_reopen_are_one_real_workflow",
-        "tests/runtime/test_supervisor_ipc.py::test_real_intent_ui_routes_keep_in_wisp_and_rewrite_paste_back"
+        "tests/runtime/test_supervisor_ipc.py::test_real_intent_ui_routes_keep_in_openwand_and_rewrite_paste_back"
       ],
       "success_assertions": [
-        "The checkbox persists on; off keeps the answer in Wisp, while on sends the completed rewrite to native paste-back."
+        "The checkbox persists on; off keeps the answer in OpenWand, while on sends the completed rewrite to native paste-back."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -1578,7 +1578,7 @@
     },
     {
       "function_id": "F087",
-      "function": "Drop files or images onto Wisp as context.",
+      "function": "Drop files or images onto OpenWand as context.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "real Qt drag-enter/drop events on the floating icon -> MIME extraction -> badges and context_items_dropped signal",
       "test_node_ids": [
@@ -3388,7 +3388,7 @@
     },
     {
       "function_id": "F186",
-      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into Wisp.",
+      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into OpenWand.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "Chat Pull ChatGPT + Claude button -> background local discovery/parsers -> conversation merge/sidebar rebuild",
       "test_node_ids": [
@@ -3424,15 +3424,15 @@
     },
     {
       "function_id": "F188",
-      "function": "Keep Wisp, ChatGPT, and Claude conversation namespaces distinct.",
+      "function": "Keep OpenWand, ChatGPT, and Claude conversation namespaces distinct.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "provider plus external session identity -> Wisp conversation id/title/sidebar namespace",
+      "production_entry_point": "provider plus external session identity -> OpenWand conversation id/title/sidebar namespace",
       "test_node_ids": [
         "tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix",
-        "tests/test_external_conversation_sync.py::test_sync_updates_in_place_and_preserves_wisp_tail"
+        "tests/test_external_conversation_sync.py::test_sync_updates_in_place_and_preserves_openwand_tail"
       ],
       "success_assertions": [
-        "Codex and Claude transcripts with the same external session id remain two distinct Wisp conversations with provider-prefixed rows and update only their own namespace."
+        "Codex and Claude transcripts with the same external session id remain two distinct OpenWand conversations with provider-prefixed rows and update only their own namespace."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -3444,15 +3444,15 @@
     },
     {
       "function_id": "F189",
-      "function": "Continue a conversation using Wisp's own model engine.",
+      "function": "Continue a conversation using OpenWand's own model engine.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Wisp execution selection -> brain.chat -> Wisp model stream with full local conversation",
+      "production_entry_point": "OpenWand execution selection -> brain.chat -> OpenWand model stream with full local conversation",
       "test_node_ids": [
         "tests/integration/brain/test_handler_chat.py::test_chat_execution_provider_by_conversation_owner_matrix",
         "tests/test_settings_dialog_controls.py::test_app_settings_starts_with_conversation_harness_selector"
       ],
       "success_assertions": [
-        "Wisp mode uses the Wisp engine for both owner inputs and never invokes an external harness."
+        "OpenWand mode uses the OpenWand engine for both owner inputs and never invokes an external harness."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -3487,16 +3487,16 @@
     },
     {
       "function_id": "F191",
-      "function": "Choose whether continued messages belong to Wisp or the selected agent.",
+      "function": "Choose whether continued messages belong to OpenWand or the selected agent.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "App conversation-owner combo -> brain.chat conversation_owner -> history transfer/resume metadata",
       "test_node_ids": [
         "tests/test_settings_dialog_controls.py::test_app_settings_starts_with_conversation_harness_selector",
         "tests/integration/brain/test_handler_chat.py::test_chat_execution_provider_by_conversation_owner_matrix",
-        "tests/integration/brain/test_handler_chat.py::test_wisp_owned_harness_turn_sends_full_history_without_resuming"
+        "tests/integration/brain/test_handler_chat.py::test_openwand_owned_harness_turn_sends_full_history_without_resuming"
       ],
       "success_assertions": [
-        "For both agents, Wisp ownership sends full history and clears provider linkage; agent ownership resumes the provider session and avoids replaying prior turns."
+        "For both agents, OpenWand ownership sends full history and clears provider linkage; agent ownership resumes the provider session and avoids replaying prior turns."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -3506,7 +3506,7 @@
     },
     {
       "function_id": "F192",
-      "function": "Push new Wisp turns back into their source transcript after confirmation.",
+      "function": "Push new OpenWand turns back into their source transcript after confirmation.",
       "acceptance_status": "untested",
       "production_entry_point": "",
       "test_node_ids": [
@@ -3538,15 +3538,15 @@
     },
     {
       "function_id": "F194",
-      "function": "Export a Wisp conversation as a new ChatGPT conversation.",
+      "function": "Export a OpenWand conversation as a new ChatGPT conversation.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Wisp-native conversation options Export as new conversation > ChatGPT -> confirmation -> new Codex JSONL",
+      "production_entry_point": "OpenWand-native conversation options Export as new conversation > ChatGPT -> confirmation -> new Codex JSONL",
       "test_node_ids": [
         "tests/test_app_user_workflows.py::test_chat_real_external_export_provider_by_confirmation_matrix",
-        "tests/test_external_conversation_sync.py::test_export_wisp_native_conversation_as_new_codex_session"
+        "tests/test_external_conversation_sync.py::test_export_openwand_native_conversation_as_new_codex_session"
       ],
       "success_assertions": [
-        "Decline writes nothing; confirm creates one new parseable Codex session, links the Wisp conversation, and never overwrites an existing session."
+        "Decline writes nothing; confirm creates one new parseable Codex session, links the OpenWand conversation, and never overwrites an existing session."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -3556,15 +3556,15 @@
     },
     {
       "function_id": "F195",
-      "function": "Export a Wisp conversation as a new Claude conversation.",
+      "function": "Export a OpenWand conversation as a new Claude conversation.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Wisp-native conversation options Export as new conversation > Claude -> confirmation -> new Claude JSONL",
+      "production_entry_point": "OpenWand-native conversation options Export as new conversation > Claude -> confirmation -> new Claude JSONL",
       "test_node_ids": [
         "tests/test_app_user_workflows.py::test_chat_real_external_export_provider_by_confirmation_matrix",
-        "tests/test_external_conversation_sync.py::test_export_wisp_native_conversation_as_new_claude_session"
+        "tests/test_external_conversation_sync.py::test_export_openwand_native_conversation_as_new_claude_session"
       ],
       "success_assertions": [
-        "Decline writes nothing; confirm creates one new parseable Claude session with title/history and links the Wisp conversation."
+        "Decline writes nothing; confirm creates one new parseable Claude session with title/history and links the OpenWand conversation."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -3901,16 +3901,16 @@
     },
     {
       "function_id": "F213",
-      "function": "Connect and clear GitHub Copilot credentials.",
+      "function": "Store and clear GitHub Copilot provider credentials.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Connections > Copilot row token -> visible Connect token/Clear token buttons -> OS credential module",
+      "production_entry_point": "Connections > Provider connections > Copilot PAT field -> Settings Save -> OS credential module",
       "test_node_ids": [
-        "tests/test_provider_auth_acceptance.py::test_copilot_settings_connect_test_and_clear_real_button_workflow",
+        "tests/test_provider_auth_acceptance.py::test_copilot_token_is_a_provider_credential_not_a_separate_oauth_login",
         "tests/integration/brain/test_handler_config.py::test_auth_copilot_set_and_test_call_shared_modules",
         "tests/integration/brain/test_handler_config.py::test_auth_clear_failure_matrix_is_controlled_and_verified"
       ],
       "success_assertions": [
-        "Connect stores and clears the typed token field with a secure-store status; Clear removes and verifies it, leaving the visible no-token state."
+        "The normal Copilot provider row stores its PAT in the OS keychain; no separate OAuth row or misleading Connect/Test/Clear button set is presented."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -3918,31 +3918,30 @@
         "I112",
         "I173"
       ],
-      "audit_note": "The audit found and fixed previously unwired Copilot controls; the OS keychain boundary is isolated."
+      "audit_note": "Copilot uses the shared provider-credential workflow; the OS keychain boundary is isolated."
     },
     {
       "function_id": "F214",
-      "function": "Test the GitHub Copilot connection.",
+      "function": "Check GitHub Copilot credential readiness through the app API.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Connections > visible Copilot Test connection button -> production Copilot client probe -> status label",
+      "production_entry_point": "App configuration action brain.auth.copilot.test -> shared Copilot credential-readiness check",
       "test_node_ids": [
-        "tests/test_provider_auth_acceptance.py::test_copilot_settings_connect_test_and_clear_real_button_workflow",
         "tests/integration/brain/test_handler_config.py::test_auth_copilot_set_and_test_call_shared_modules"
       ],
       "success_assertions": [
-        "A valid token shows success; provider rejection and cleared/no credential show failure through the same visible test button."
+        "The app API returns the shared readiness result without exposing a unique Settings button or claiming that a provider request succeeded."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
         "I097"
       ],
-      "audit_note": "The live provider request is a deterministic boundary; UI state and production client dispatch are real."
+      "audit_note": "This check covers local credential shape and SDK availability only; real provider authorization is tested by the normal model-route probe."
     },
     {
       "function_id": "F215",
       "function": "Add a provider connection.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Connections + Add connection button -> searchable provider catalog -> selected provider row",
+      "production_entry_point": "Connections + Add connection button -> inline provider row -> provider-specific fields",
       "test_node_ids": [
         "tests/test_connection_management_acceptance.py::test_add_alias_search_filter_and_expand_every_connection_provider"
       ],
@@ -4072,7 +4071,7 @@
       "function_id": "F222",
       "function": "Configure a custom OpenAI-compatible base URL and API key.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Custom Base URL/API key fields -> Save/model refresh/Test Chat model -> production OpenAI-compatible client",
+      "production_entry_point": "Custom endpoint selector/address/API key fields -> Save/model refresh/Test Chat model -> production OpenAI-compatible client",
       "test_node_ids": [
         "tests/test_connection_management_acceptance.py::test_connection_save_keychain_remove_last_and_cancel_matrix",
         "tests/test_connection_management_acceptance.py::test_model_refresh_and_manual_name_every_provider_matrix",
@@ -4090,20 +4089,21 @@
     },
     {
       "function_id": "F223",
-      "function": "Pick a saved custom endpoint from the Endpoints menu.",
+      "function": "Choose a preset or custom provider endpoint.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Connections Endpoints button -> real QMenu action -> Custom URL/model/key fields",
+      "production_entry_point": "Connections > Custom provider endpoint selector -> preset URL or revealed Custom address field",
       "test_node_ids": [
-        "tests/test_connection_management_acceptance.py::test_every_custom_endpoint_menu_action_updates_real_fields"
+        "tests/test_connection_management_acceptance.py::test_custom_endpoint_selector_lists_presets_and_reveals_custom_address",
+        "tests/test_connection_management_acceptance.py::test_saved_unknown_endpoint_reopens_as_custom_without_losing_its_address"
       ],
       "success_assertions": [
-        "Every one of the 21 production endpoint actions applies its exact URL, model hint, and optional API-key hint."
+        "All 20 presets are displayed as Name [URL] and apply their exact URL and model hint; the final Custom endpoint choice reveals an address field and preserves an unknown saved URL."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
         "I103"
       ],
-      "audit_note": "The native popup event loop is opened and its actual QAction is triggered for every menu entry."
+      "audit_note": "The real selector, every preset, conditional address-field visibility, and saved custom-value restoration are exercised."
     },
     {
       "function_id": "F224",
@@ -4131,9 +4131,9 @@
       "function_id": "F225",
       "function": "Use an LM Studio or other OpenAI-compatible endpoint through Custom.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "LM Studio/remote endpoint QAction -> Custom route/manual model -> Test Chat model -> OpenAI-compatible SDK probe",
+      "production_entry_point": "LM Studio/remote endpoint selector choice -> Custom route/manual model -> Test Chat model -> OpenAI-compatible SDK probe",
       "test_node_ids": [
-        "tests/test_connection_management_acceptance.py::test_every_custom_endpoint_menu_action_updates_real_fields",
+        "tests/test_connection_management_acceptance.py::test_custom_endpoint_selector_lists_presets_and_reveals_custom_address",
         "tests/test_connection_management_acceptance.py::test_custom_endpoint_and_exact_manual_model_reach_real_test_button"
       ],
       "success_assertions": [
@@ -4143,7 +4143,7 @@
       "interaction_ids": [
         "I107"
       ],
-      "audit_note": "The SDK transport is a deterministic boundary; the menu, custom configuration, asynchronous test worker, route validation, client factory, probe arguments, and UI result are real."
+      "audit_note": "The SDK transport is a deterministic boundary; the selector, custom configuration, asynchronous test worker, route validation, client factory, probe arguments, and UI result are real."
     },
     {
       "function_id": "F226",
@@ -4287,8 +4287,7 @@
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "Settings Chat model provider/model row -> Test Chat model -> Copilot client adapter",
       "test_node_ids": [
-        "tests/test_connection_management_acceptance.py::test_every_provider_reaches_its_real_chat_route_probe",
-        "tests/test_provider_auth_acceptance.py::test_copilot_settings_connect_test_and_clear_real_button_workflow"
+        "tests/test_connection_management_acceptance.py::test_every_provider_reaches_its_real_chat_route_probe"
       ],
       "success_assertions": [
         "A configured Copilot route sends the selected model and probe prompt through the production Copilot client."
@@ -4948,7 +4947,7 @@
         "I120",
         "I121"
       ],
-      "audit_note": "Wisp request construction, capability caching, retry decisions, and adapter selection are real; SDK transports and account services are deterministic boundaries."
+      "audit_note": "OpenWand request construction, capability caching, retry decisions, and adapter selection are real; SDK transports and account services are deterministic boundaries."
     },
     {
       "function_id": "F268",
@@ -4984,15 +4983,15 @@
     },
     {
       "function_id": "F269",
-      "function": "Use Wisp, ChatGPT, or Claude Agent as the conversation execution engine.",
+      "function": "Use OpenWand, ChatGPT, or Claude Agent as the conversation execution engine.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Settings Run conversations with selector -> Save/config reload -> brain.chat -> Wisp stream or selected local agent adapter",
+      "production_entry_point": "Settings Run conversations with selector -> Save/config reload -> brain.chat -> OpenWand stream or selected local agent adapter",
       "test_node_ids": [
         "tests/test_feature_acceptance_workflows.py::test_conversation_engine_and_owner_settings_drive_runtime_dispatch_matrix",
         "tests/integration/brain/test_handler_chat.py::test_chat_execution_provider_by_conversation_owner_matrix"
       ],
       "success_assertions": [
-        "Wisp, ChatGPT, and Claude Agent selections persist through real Settings Save and the next production brain turn returns the selected engine's complete answer."
+        "OpenWand, ChatGPT, and Claude Agent selections persist through real Settings Save and the next production brain turn returns the selected engine's complete answer."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -5003,16 +5002,16 @@
     },
     {
       "function_id": "F270",
-      "function": "Choose Wisp or the selected agent as conversation owner.",
+      "function": "Choose OpenWand or the selected agent as conversation owner.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "Settings conversation owner selector -> Save/config reload -> brain.chat history handoff or provider session resume",
       "test_node_ids": [
         "tests/test_feature_acceptance_workflows.py::test_conversation_engine_and_owner_settings_drive_runtime_dispatch_matrix",
         "tests/integration/brain/test_handler_chat.py::test_chat_execution_provider_by_conversation_owner_matrix",
-        "tests/integration/brain/test_handler_chat.py::test_wisp_owned_harness_turn_sends_full_history_without_resuming"
+        "tests/integration/brain/test_handler_chat.py::test_openwand_owned_harness_turn_sends_full_history_without_resuming"
       ],
       "success_assertions": [
-        "Wisp ownership sends full Wisp history and clears provider continuation; agent ownership sends only the new turn and resumes its session; the unavailable Wisp-engine/agent-owner pairing is disabled and persists Wisp ownership."
+        "OpenWand ownership sends full OpenWand history and clears provider continuation; agent ownership sends only the new turn and resumes its session; the unavailable OpenWand-engine/agent-owner pairing is disabled and persists OpenWand ownership."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -5022,9 +5021,9 @@
     },
     {
       "function_id": "F271",
-      "function": "Edit separate system prompts for Wisp, ChatGPT, and Claude conversations.",
+      "function": "Edit separate system prompts for OpenWand, ChatGPT, and Claude conversations.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Three real Settings prompt editors -> Save/config reload -> Wisp system prompt, Codex developerInstructions, or Claude system_prompt",
+      "production_entry_point": "Three real Settings prompt editors -> Save/config reload -> OpenWand system prompt, Codex developerInstructions, or Claude system_prompt",
       "test_node_ids": [
         "tests/test_feature_acceptance_workflows.py::test_three_conversation_system_prompts_save_reload_and_remain_independent",
         "tests/test_feature_acceptance_workflows.py::test_conversation_engine_and_owner_settings_drive_runtime_dispatch_matrix",
@@ -5032,7 +5031,7 @@
         "tests/test_harness_clients.py::test_claude_streams_thinking_and_reply_without_repeating_final_blocks"
       ],
       "success_assertions": [
-        "Distinct Wisp, ChatGPT, and Claude prompts save, reload, and remain isolated; Wisp composes its selected prompt, Codex sends only its prompt as developer instructions on start/resume, and Claude sends only its prompt through the native SDK option."
+        "Distinct OpenWand, ChatGPT, and Claude prompts save, reload, and remain isolated; OpenWand composes its selected prompt, Codex sends only its prompt as developer instructions on start/resume, and Claude sends only its prompt through the native SDK option."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -5216,7 +5215,7 @@
       "interaction_ids": [
         "I128"
       ],
-      "audit_note": "Wisp's provider selection, credential/voice extraction, context request, and response loop are real; the Cartesia socket is deterministic."
+      "audit_note": "OpenWand's provider selection, credential/voice extraction, context request, and response loop are real; the Cartesia socket is deterministic."
     },
     {
       "function_id": "F281",
@@ -5272,7 +5271,7 @@
       "interaction_ids": [
         "I128"
       ],
-      "audit_note": "All Wisp field, persistence, client, and request paths are real; remote endpoint I/O is deterministic."
+      "audit_note": "All OpenWand field, persistence, client, and request paths are real; remote endpoint I/O is deterministic."
     },
     {
       "function_id": "F284",
@@ -5648,7 +5647,7 @@
     },
     {
       "function_id": "F303",
-      "function": "Interrupt Wisp by speaking over it when full duplex is enabled.",
+      "function": "Interrupt OpenWand by speaking over it when full duplex is enabled.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "Saved full-duplex mode -> LiveVoiceSession mic sender plus server interrupted message -> playback.clear/listening state",
       "test_node_ids": [
@@ -5667,7 +5666,7 @@
     },
     {
       "function_id": "F304",
-      "function": "Pause the microphone while Wisp speaks in speaker/half-duplex mode.",
+      "function": "Pause the microphone while OpenWand speaks in speaker/half-duplex mode.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "Saved speaker/half-duplex mode -> LiveVoiceSession mic sender -> playback activity/hangover gate",
       "test_node_ids": [
@@ -5717,7 +5716,7 @@
       "interaction_ids": [
         "I140"
       ],
-      "audit_note": "The real chat handler, parser, scope state, durability filter, JSON store, retrieval attempt, fake Wisp response, and reply events run; only the remote model is replaced."
+      "audit_note": "The real chat handler, parser, scope state, durability filter, JSON store, retrieval attempt, fake OpenWand response, and reply events run; only the remote model is replaced."
     },
     {
       "function_id": "F307",
@@ -6132,7 +6131,7 @@
       "function_id": "F329",
       "function": "Apply privacy handling to normal requests, tool results, and local-model requests.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "shared privacy gate before Wisp/provider routing plus live tool-result scrub -> every model adapter input",
+      "production_entry_point": "shared privacy gate before OpenWand/provider routing plus live tool-result scrub -> every model adapter input",
       "test_node_ids": [
         "tests/test_feature_acceptance_workflows.py::test_saved_privacy_modes_change_exact_model_bound_text_and_restore_the_reply",
         "tests/test_app_user_workflows.py::test_brain_query_workflow_assembles_context_and_redacts_secrets",
@@ -6846,7 +6845,7 @@
         "tests/test_addon_manager.py::test_invalid_incompatible_and_crashed_addons_fail_closed"
       ],
       "success_assertions": [
-        "Hooks and tools execute in a PID distinct from Wisp, return through IPC, capture stderr, shut down cleanly, and a crashed host is never reported loaded."
+        "Hooks and tools execute in a PID distinct from OpenWand, return through IPC, capture stderr, shut down cleanly, and a crashed host is never reported loaded."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -7045,7 +7044,7 @@
       "function_id": "F377",
       "function": "Discover configured MCP servers and expose their tools through the bridge.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "MCP bridge servers.json -> enabled child server initialize/tools-list -> Wisp tool schemas/executors -> tools-call -> shutdown",
+      "production_entry_point": "MCP bridge servers.json -> enabled child server initialize/tools-list -> OpenWand tool schemas/executors -> tools-call -> shutdown",
       "test_node_ids": [
         "tests/test_mcp_bridge.py::test_configured_mcp_server_discovers_and_executes_real_bridge_tools",
         "tests/runtime/test_supervisor_ipc.py::test_real_addon_tools_flow_from_addon_host_through_brain_policy"
@@ -7062,9 +7061,9 @@
     },
     {
       "function_id": "F378",
-      "function": "Expose Wisp context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
+      "function": "Expose OpenWand context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "External MCP client -> real Wisp context server handshake/tools -> selected text/clipboard/window/browser/snip capture adapters",
+      "production_entry_point": "External MCP client -> real OpenWand context server handshake/tools -> selected text/clipboard/window/browser/snip capture adapters",
       "test_node_ids": [
         "tests/test_mcp_context_server.py::test_handshake_and_tool_discovery",
         "tests/test_mcp_context_server.py::test_selected_text_happy_path",
@@ -7141,14 +7140,14 @@
       "function_id": "F382",
       "function": "Copy relevant context from the current application.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Visible Copy current app context button -> topmost non-Wisp window -> shared document/browser reader -> privacy redaction/budget -> AgentTaskSpec.required_context -> runner prompt",
+      "production_entry_point": "Visible Copy current app context button -> topmost non-OpenWand window -> shared document/browser reader -> privacy redaction/budget -> AgentTaskSpec.required_context -> runner prompt",
       "test_node_ids": [
         "tests/test_agent_task_workflows.py::test_agent_tray_setup_copy_preview_and_submit_real_workflow",
         "tests/test_agent_task_workflows.py::test_agent_current_app_context_uses_external_window_reader_and_budget",
         "tests/test_agent_task_workflows.py::test_agent_manual_by_current_app_context_prompt_matrix"
       ],
       "success_assertions": [
-        "The control excludes Wisp's PID, identifies the external title/application, reads its content with existing context adapters, redacts secrets/URLs, caps the result at 12,000 characters, appends rather than erases manual context, and the combined text reaches the real agent prompt."
+        "The control excludes OpenWand's PID, identifies the external title/application, reads its content with existing context adapters, redacts secrets/URLs, caps the result at 12,000 characters, appends rather than erases manual context, and the combined text reaches the real agent prompt."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -8061,7 +8060,7 @@
       "interaction_ids": [
         "I011"
       ],
-      "audit_note": "The four compound profiles exercise the shared geometry branch without replacing Wisp internals."
+      "audit_note": "The four compound profiles exercise the shared geometry branch without replacing OpenWand internals."
     },
     {
       "function_id": "F433",
@@ -8170,14 +8169,14 @@
     },
     {
       "function_id": "F439",
-      "function": "Edit separate Wisp, ChatGPT, and Claude system prompts.",
+      "function": "Edit separate OpenWand, ChatGPT, and Claude system prompts.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "Three system-prompt editors -> Save changes -> config reload -> Settings reopen",
       "test_node_ids": [
         "tests/test_feature_acceptance_workflows.py::test_three_conversation_system_prompts_save_reload_and_remain_independent"
       ],
       "success_assertions": [
-        "Distinct Wisp, ChatGPT, and Claude prompts persist, reload independently, and reach their separate runtime config values."
+        "Distinct OpenWand, ChatGPT, and Claude prompts persist, reload independently, and reach their separate runtime config values."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -8274,7 +8273,7 @@
     },
     {
       "function_id": "F445",
-      "function": "Restart Wisp immediately when an installed component requires restart.",
+      "function": "Restart OpenWand immediately when an installed component requires restart.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "Successful staged status restart_apply -> visible Restart app now button -> QApplication restart boundary",
       "test_node_ids": [
@@ -8308,7 +8307,7 @@
     },
     {
       "function_id": "F447",
-      "function": "Show the installed Wisp version.",
+      "function": "Show the installed OpenWand version.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "Settings About page construction -> core.updater.current_version -> Current version label",
       "test_node_ids": [
@@ -8525,7 +8524,7 @@
       "function_id": "F459",
       "function": "Confirm the exact uninstall plan before removal.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Settings About Uninstall Wisp button -> run_uninstall_dialog -> exact-target critical confirmation",
+      "production_entry_point": "Settings About Uninstall OpenWand button -> run_uninstall_dialog -> exact-target critical confirmation",
       "test_node_ids": [
         "tests/test_diagnostics_acceptance.py::test_settings_uninstall_exact_plan_and_isolated_self_removing_helper_matrix"
       ],
@@ -8540,20 +8539,20 @@
     },
     {
       "function_id": "F460",
-      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and Wisp-owned local AI assets.",
+      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and OpenWand-owned local AI assets.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "Confirmed uninstall plan -> rendered native helper -> isolated app/data/model target deletion",
       "test_node_ids": [
         "tests/test_diagnostics_acceptance.py::test_settings_uninstall_exact_plan_and_isolated_self_removing_helper_matrix"
       ],
       "success_assertions": [
-        "Confirmed release and source helpers remove temporary Wisp app trees, settings/chats/memory/add-ons/tools/logs/updates/optional-package data roots, and Wisp model cache targets; cancellation removes none."
+        "Confirmed release and source helpers remove temporary OpenWand app trees, settings/chats/memory/add-ons/tools/logs/updates/optional-package data roots, and OpenWand model cache targets; cancellation removes none."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
         "I024"
       ],
-      "audit_note": "The native helper scripts really execute, but every target is an isolated fake Wisp installation below tmp_path."
+      "audit_note": "The native helper scripts really execute, but every target is an isolated fake OpenWand installation below tmp_path."
     },
     {
       "function_id": "F461",
@@ -8574,14 +8573,14 @@
     },
     {
       "function_id": "F462",
-      "function": "Run the uninstaller as a detached self-removing process after Wisp closes.",
+      "function": "Run the uninstaller as a detached self-removing process after OpenWand closes.",
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "Confirmed plan -> core.uninstaller.launch_uninstaller -> native wait/delete/self-remove helper",
       "test_node_ids": [
         "tests/test_diagnostics_acceptance.py::test_settings_uninstall_exact_plan_and_isolated_self_removing_helper_matrix"
       ],
       "success_assertions": [
-        "Packaged and source helpers wait for the supplied Wisp PID, delete their literal plan targets, remove their own script, and schedule Wisp exit after launch."
+        "Packaged and source helpers wait for the supplied OpenWand PID, delete their literal plan targets, remove their own script, and schedule OpenWand exit after launch."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
@@ -8704,7 +8703,7 @@
         "I029",
         "I033"
       ],
-      "audit_note": "Carbon, ApplicationServices, Quartz, and AppKit are external OS boundaries; every Wisp helper/protocol and fallback decision is real."
+      "audit_note": "Carbon, ApplicationServices, Quartz, and AppKit are external OS boundaries; every OpenWand helper/protocol and fallback decision is real."
     },
     {
       "function_id": "F469",
@@ -8725,7 +8724,7 @@
         "I030",
         "I032"
       ],
-      "audit_note": "The display server and input hook are deterministic boundaries; Linux session routing and Wisp event/paste behavior are real."
+      "audit_note": "The display server and input hook are deterministic boundaries; Linux session routing and OpenWand event/paste behavior are real."
     },
     {
       "function_id": "F470",
@@ -8748,7 +8747,7 @@
         "I032",
         "I034"
       ],
-      "audit_note": "Win32/UIAutomation/clipboard calls are external boundaries; Wisp's anchored-control and multi-monitor logic remains real."
+      "audit_note": "Win32/UIAutomation/clipboard calls are external boundaries; OpenWand's anchored-control and multi-monitor logic remains real."
     },
     {
       "function_id": "F471",

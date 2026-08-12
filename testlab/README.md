@@ -1,4 +1,4 @@
-# Wisp Testlab
+# OpenWand Testlab
 
 Automated replacements for the manual per-release checks: does STT/TTS
 install, does every feature actually function, does anything crash. One
@@ -25,7 +25,7 @@ per run otherwise - trivially inside the AI Studio free tier).
 
 The spending checks default to the app's configured route. To pin a lab-only
 route (e.g. keep the lab on a free AI Studio model while the app uses a paid
-provider), set `WISP_TESTLAB_LLM_PROVIDER` / `WISP_TESTLAB_LLM_MODEL`.
+provider), set `OPENWAND_TESTLAB_LLM_PROVIDER` / `OPENWAND_TESTLAB_LLM_MODEL`.
 
 ## What runs
 
@@ -47,10 +47,10 @@ provider), set `WISP_TESTLAB_LLM_PROVIDER` / `WISP_TESTLAB_LLM_MODEL`.
 - **You will hear it speak.** tts_function and flow_e2e play short clips
   through the real output device - that is the point. `--no-play` /
   `--real-desktop` flags exist on the individual checks.
-- Safe to run while Wisp is open: data writes go to scratch dirs
-  (`WISP_REPO_ROOT` sandbox), the boot check sandboxes the single-instance
+- Safe to run while OpenWand is open: data writes go to scratch dirs
+  (`OPENWAND_REPO_ROOT` sandbox), the boot check sandboxes the single-instance
   lock (Windows/Linux), and hotkey/partial-registration cases turn into SKIPs
-  with a note instead of false failures. Conclusive hotkey runs need Wisp
+  with a note instead of false failures. Conclusive hotkey runs need OpenWand
   closed.
 - flow_e2e uses a scripted native worker by default so a background run never
   fires the synthetic copy (Ctrl+C) at whatever window you have focused. Run

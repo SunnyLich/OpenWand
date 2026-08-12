@@ -270,18 +270,18 @@ Real-provider test file:
 
 Run command:
 
-- `WISP_RUN_REAL_GPT55_TESTS=1 python -m pytest tests/test_real_gpt55_integration.py -q`
+- `OPENWAND_RUN_REAL_GPT55_TESTS=1 python -m pytest tests/test_real_gpt55_integration.py -q`
 - PowerShell/Codex sandbox form:
-  `$env:WISP_RUN_REAL_GPT55_TESTS='1'; python -m pytest tests\test_real_gpt55_integration.py -q -s -p no:cacheprovider --basetemp .tmp_pytest\real_gpt55_live`
+  `$env:OPENWAND_RUN_REAL_GPT55_TESTS='1'; python -m pytest tests\test_real_gpt55_integration.py -q -s -p no:cacheprovider --basetemp .tmp_pytest\real_gpt55_live`
 
 Required behavior:
 
 - Prefer provider `openai` when `OPENAI_API_KEY` is visible.
 - Fall back to provider `chatgpt` when ChatGPT OAuth is the real credential
   visible to the app.
-- Allow forcing either route with `WISP_REAL_GPT55_PROVIDER`.
+- Allow forcing either route with `OPENWAND_REAL_GPT55_PROVIDER`.
 - Use model `gpt-5.5` by default.
-- Allow override with `WISP_REAL_GPT55_MODEL`.
+- Allow override with `OPENWAND_REAL_GPT55_MODEL`.
 - Read credentials from the existing app secret store, environment, or ChatGPT
   auth store.
 - Patch memory and conversation stores to temp directories so the test does not
@@ -323,7 +323,7 @@ Required behavior:
   synthesize input.
 - Restore clipboard content after tests.
 - Allow platform-specific host limitations to be explicit, e.g.
-  `WISP_REAL_HOST_ALLOW_NO_TRAY=1` on Linux desktops without a tray.
+  `OPENWAND_REAL_HOST_ALLOW_NO_TRAY=1` on Linux desktops without a tray.
 
 ### `test_intent_overlay_context_chips_drive_query_request`
 

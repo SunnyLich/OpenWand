@@ -119,14 +119,14 @@ def render_excel_preview(plan: ActionPlan, snapshot: ExcelSnapshot) -> ActionPre
         details=tuple(detail_rows),
         warnings=(
             (
-                "Wisp restores the captured range if verification fails. Excel does not add "
+                "OpenWand restores the captured range if verification fails. Excel does not add "
                 "automation writes to its normal Undo history after a successful Apply."
             )
             if cleanup_operation is not None
             else (
-                "Wisp restores the captured range if sort verification fails. Excel may not retain an Undo item."
+                "OpenWand restores the captured range if sort verification fails. Excel may not retain an Undo item."
                 if sort_operation is not None
-                else "Creating the table cannot yet be completely undone by Wisp."
+                else "Creating the table cannot yet be completely undone by OpenWand."
             ),
         ),
     )

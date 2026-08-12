@@ -31,9 +31,9 @@ def test_install_app_icon_sets_application_metadata_without_qt(monkeypatch) -> N
 
     assert app_icon.install_app_icon(fake, platform="linux") is None
 
-    assert fake.application_name == "Wisp"
-    assert fake.display_name == "Wisp"
-    assert fake.desktop_file_name == "wisp"
+    assert fake.application_name == "OpenWand"
+    assert fake.display_name == "OpenWand"
+    assert fake.desktop_file_name == "openwand"
 
 
 def test_windows_app_user_model_id_is_noop_off_windows() -> None:
@@ -45,12 +45,12 @@ def test_linux_desktop_entry_written_and_stable(tmp_path, monkeypatch) -> None:
 
     path = app_icon.ensure_linux_desktop_entry(platform="linux")
 
-    assert path == tmp_path / "applications" / "wisp.desktop"
+    assert path == tmp_path / "applications" / "openwand.desktop"
     text = path.read_text(encoding="utf-8")
     assert text.startswith("[Desktop Entry]\n")
-    assert "Name=Wisp\n" in text
+    assert "Name=OpenWand\n" in text
     assert "Exec=" in text
-    assert "StartupWMClass=wisp\n" in text
+    assert "StartupWMClass=openwand\n" in text
 
     first_write = path.stat().st_mtime_ns
     assert app_icon.ensure_linux_desktop_entry(platform="linux") == path

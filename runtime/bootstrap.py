@@ -5,21 +5,67 @@ from __future__ import annotations
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 
 _console_ctrl_suppressed = False
+_supervisor_watchdog_started = False
+
+
+def _supervisor_identity_is_alive(pid: int, expected_create_time: float | None) -> bool:
+    """Return whether the exact supervisor process that spawned this worker lives."""
+    try:
+        import psutil
+
+        process = psutil.Process(pid)
+        if expected_create_time is not None and abs(process.create_time() - expected_create_time) > 0.01:
+            return False
+        return process.is_running() and process.status() != psutil.STATUS_ZOMBIE
+    except (OSError, ValueError):
+        return False
+    except Exception:  # noqa: BLE001 - uncertain ownership must not leave an orphan
+        return False
+
+
+def _start_supervisor_watchdog() -> None:
+    """Make a worker exit if its owning supervisor disappears unexpectedly."""
+    global _supervisor_watchdog_started
+    if _supervisor_watchdog_started:
+        return
+    raw_pid = str(os.environ.get("OPENWAND_SUPERVISOR_PID") or "").strip()
+    if not raw_pid.isdigit():
+        return
+    supervisor_pid = int(raw_pid)
+    if supervisor_pid <= 0 or supervisor_pid == os.getpid():
+        return
+    raw_create_time = str(os.environ.get("OPENWAND_SUPERVISOR_CREATE_TIME") or "").strip()
+    try:
+        expected_create_time = float(raw_create_time) if raw_create_time else None
+    except ValueError:
+        expected_create_time = None
+    _supervisor_watchdog_started = True
+
+    def watch() -> None:
+        while _supervisor_identity_is_alive(supervisor_pid, expected_create_time):
+            time.sleep(0.25)
+        # os._exit is intentional: the supervisor is gone, so protocol cleanup
+        # cannot complete and ordinary interpreter teardown may hang on a native
+        # audio/UI thread. The OS closes every remaining handle deterministically.
+        os._exit(0)
+
+    threading.Thread(target=watch, name="openwand-supervisor-watchdog", daemon=True).start()
 
 
 def suppress_console_ctrl_c() -> None:
     """Ignore console Ctrl+C (CTRL_C_EVENT) on Windows. Best-effort, idempotent.
 
-    Wisp synthesizes Ctrl+C to copy the selected text (the clipboard fallback in
-    ``core.capture``). When Wisp is launched from a console — e.g. double-clicking
-    ``Start Wisp.bat`` — that injected Ctrl+C is delivered to the whole console
+    OpenWand synthesizes Ctrl+C to copy the selected text (the clipboard fallback in
+    ``core.capture``). When OpenWand is launched from a console — e.g. double-clicking
+    ``Start OpenWand.bat`` — that injected Ctrl+C is delivered to the whole console
     process group as a CTRL_C_EVENT, which Python raises as KeyboardInterrupt and
     which kills the worker/supervisor processes, closing the app. Suppressing the
     handler stops the synthetic (and a stray real) Ctrl+C from tearing the app
-    down; Wisp is quit via its UI/tray, not Ctrl+C. No-op off Windows.
+    down; OpenWand is quit via its UI/tray, not Ctrl+C. No-op off Windows.
     """
     global _console_ctrl_suppressed
     if _console_ctrl_suppressed or sys.platform != "win32":
@@ -108,14 +154,14 @@ def install_crash_diagnostics() -> None:
 
 def repo_root() -> Path:
     """Return the repository root, honoring bundled/dev overrides."""
-    env_root = os.environ.get("WISP_REPO_ROOT")
+    env_root = os.environ.get("OPENWAND_REPO_ROOT")
     if env_root:
         return Path(env_root).expanduser().resolve()
     return Path(__file__).resolve().parents[1]
 
 
 def data_root() -> Path:
-    """Return the writable Wisp data root used by shared core modules."""
+    """Return the writable OpenWand data root used by shared core modules."""
     try:
         from core.system.paths import REPO_ROOT
 
@@ -136,7 +182,7 @@ def configure_worker_logging() -> None:
     example the "bubble notice: ..." mirrors) were dropped by Python's
     lastResort WARNING-level handler and never reached the supervisor's
     runtime event log. Root stays at WARNING to keep third-party noise out of
-    Runtime Status; wisp.* loggers emit INFO.
+    Runtime Status; openwand.* loggers emit INFO.
     """
     import logging
 
@@ -147,7 +193,7 @@ def configure_worker_logging() -> None:
     handler.setFormatter(logging.Formatter("[%(levelname)s] %(name)s: %(message)s"))
     root.addHandler(handler)
     root.setLevel(logging.WARNING)
-    logging.getLogger("wisp").setLevel(logging.INFO)
+    logging.getLogger("openwand").setLevel(logging.INFO)
 
 
 def configure_paths(*, include_brain: bool = False) -> Path:
@@ -158,6 +204,7 @@ def configure_paths(*, include_brain: bool = False) -> Path:
     suppress_console_ctrl_c()
     install_crash_diagnostics()
     configure_worker_logging()
+    _start_supervisor_watchdog()
     root = repo_root()
     paths = [root]
     if include_brain:

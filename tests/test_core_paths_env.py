@@ -4,10 +4,10 @@ import importlib
 import sys
 
 
-def test_wisp_repo_root_env_overrides_writable_paths(tmp_path, monkeypatch):
+def test_openwand_repo_root_env_overrides_writable_paths(tmp_path, monkeypatch):
     import core.system.paths as paths
 
-    monkeypatch.setenv("WISP_REPO_ROOT", str(tmp_path))
+    monkeypatch.setenv("OPENWAND_REPO_ROOT", str(tmp_path))
     try:
         reloaded = importlib.reload(paths)
         assert reloaded.REPO_ROOT == tmp_path
@@ -15,7 +15,7 @@ def test_wisp_repo_root_env_overrides_writable_paths(tmp_path, monkeypatch):
         assert reloaded.MODEL_TOOLS_DIR == tmp_path / "model_tools"
         assert tmp_path.exists()
     finally:
-        monkeypatch.delenv("WISP_REPO_ROOT", raising=False)
+        monkeypatch.delenv("OPENWAND_REPO_ROOT", raising=False)
         importlib.reload(paths)
 
 
@@ -23,16 +23,16 @@ def test_frozen_addons_dir_prefers_writable_executable_sibling(tmp_path, monkeyp
     """Packaged portable builds expose an addons folder next to the executable."""
     import core.system.paths as paths
 
-    exe_dir = tmp_path / "portable" / "Wisp"
+    exe_dir = tmp_path / "portable" / "OpenWand"
     exe_dir.mkdir(parents=True)
-    exe_path = exe_dir / ("Wisp.exe" if sys.platform == "win32" else "Wisp")
+    exe_path = exe_dir / ("OpenWand.exe" if sys.platform == "win32" else "OpenWand")
     exe_path.write_text("", encoding="utf-8")
     meipass = exe_dir / "_internal"
     meipass.mkdir()
 
     with monkeypatch.context() as mp:
-        mp.delenv("WISP_REPO_ROOT", raising=False)
-        mp.delenv("WISP_ADDONS_DIR", raising=False)
+        mp.delenv("OPENWAND_REPO_ROOT", raising=False)
+        mp.delenv("OPENWAND_ADDONS_DIR", raising=False)
         mp.setattr(sys, "frozen", True, raising=False)
         mp.setattr(sys, "_MEIPASS", str(meipass), raising=False)
         mp.setattr(sys, "executable", str(exe_path))
@@ -44,13 +44,13 @@ def test_frozen_addons_dir_prefers_writable_executable_sibling(tmp_path, monkeyp
     importlib.reload(paths)
 
 
-def test_wisp_addons_dir_env_overrides_default_addons_path(tmp_path, monkeypatch):
+def test_openwand_addons_dir_env_overrides_default_addons_path(tmp_path, monkeypatch):
     """An explicit addon directory override is honored and created."""
     import core.system.paths as paths
 
     addons_dir = tmp_path / "custom-addons"
     with monkeypatch.context() as mp:
-        mp.setenv("WISP_ADDONS_DIR", str(addons_dir))
+        mp.setenv("OPENWAND_ADDONS_DIR", str(addons_dir))
         reloaded = importlib.reload(paths)
 
         assert reloaded.ADDONS_DIR == addons_dir

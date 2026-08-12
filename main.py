@@ -10,7 +10,7 @@ from runtime.supervisor.app import main as _supervisor_main
 
 _IS_WIN = sys.platform == "win32"
 _win_console_handler = None
-log = logging.getLogger("wisp")
+log = logging.getLogger("openwand")
 
 
 class App:
@@ -22,7 +22,7 @@ class App:
             if self._shutdown_started:
                 return
             self._shutdown_started = True
-        log.info("Shutting down Wisp%s", f": {reason}" if reason else "")
+        log.info("Shutting down OpenWand%s", f": {reason}" if reason else "")
         for attr, method in (
             ("_generations", "next"),
             ("_hotkeys", "stop"),
@@ -65,7 +65,7 @@ class App:
 
     @staticmethod
     def _find_external_context_window_win(start_hwnd: int) -> int:
-        """Find an external context window behind Wisp."""
+        """Find an external context window behind OpenWand."""
         return context_hotkey.find_external_context_window_win(
             start_hwnd,
             is_win=_IS_WIN,
@@ -73,7 +73,7 @@ class App:
         )
 
     def _context_target_hwnd(self, foreground_hwnd: int) -> int:
-        """Use the real app behind Wisp if Wisp already owns foreground focus."""
+        """Use the real app behind OpenWand if OpenWand already owns foreground focus."""
         if not _IS_WIN or not foreground_hwnd:
             return foreground_hwnd
         foreground_pid = self._window_pid_win(foreground_hwnd)

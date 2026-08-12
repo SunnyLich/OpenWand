@@ -9,18 +9,21 @@ from pathlib import Path
 
 from core.system.paths import ASSETS_DIR, REPO_ROOT
 
-APP_NAME = "Wisp"
-MACOS_LAUNCH_AGENT_ID = "com.wisp.launcher"
-LINUX_DESKTOP_ID = "wisp.desktop"
+APP_NAME = "OpenWand"
+LEGACY_APP_NAME = "Wisp"
+MACOS_LAUNCH_AGENT_ID = "com.openwand.launcher"
+LEGACY_MACOS_LAUNCH_AGENT_ID = "com.wisp.launcher"
+LINUX_DESKTOP_ID = "openwand.desktop"
+LEGACY_LINUX_DESKTOP_ID = "wisp.desktop"
 
 
 def _is_frozen() -> bool:
-    """Return whether Wisp is running from a packaged executable."""
+    """Return whether OpenWand is running from a packaged executable."""
     return bool(getattr(sys, "frozen", False))
 
 
 def _source_command() -> list[str]:
-    """Return the command that can relaunch this Wisp checkout."""
+    """Return the command that can relaunch this OpenWand checkout."""
     return [sys.executable, "-m", "runtime.supervisor.app"]
 
 
@@ -67,10 +70,10 @@ def _linux_desktop_text() -> str:
         "[Desktop Entry]",
         "Type=Application",
         f"Name={APP_NAME}",
-        "Comment=Start Wisp when you sign in",
+        "Comment=Start OpenWand when you sign in",
         "Exec=" + " ".join(_desktop_quote(part) for part in _command()),
         f"Icon={ASSETS_DIR / 'app.png'}",
-        "StartupWMClass=Wisp",
+        "StartupWMClass=OpenWand",
         f"Path={REPO_ROOT}",
         "Terminal=false",
         "X-GNOME-Autostart-enabled=true",
@@ -79,7 +82,7 @@ def _linux_desktop_text() -> str:
 
 
 def _macos_plist() -> dict:
-    """Return a LaunchAgent plist for Wisp."""
+    """Return a LaunchAgent plist for OpenWand."""
     return {
         "Label": MACOS_LAUNCH_AGENT_ID,
         "ProgramArguments": _command(),
@@ -101,11 +104,15 @@ def sync_start_on_login(enabled: bool, *, platform: str | None = None, home: Pat
 
 
 def _sync_windows_start_on_login(enabled: bool) -> None:
-    """Create or remove Wisp's HKCU Run entry."""
+    """Create or remove OpenWand's HKCU Run entry."""
     import winreg
 
     path = r"Software\Microsoft\Windows\CurrentVersion\Run"
     with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_SET_VALUE) as key:
+        try:
+            winreg.DeleteValue(key, LEGACY_APP_NAME)
+        except FileNotFoundError:
+            pass
         if enabled:
             winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, _windows_run_command())
         else:
@@ -116,8 +123,13 @@ def _sync_windows_start_on_login(enabled: bool) -> None:
 
 
 def _sync_macos_start_on_login(enabled: bool, home: Path) -> None:
-    """Create or remove Wisp's LaunchAgent entry."""
+    """Create or remove OpenWand's LaunchAgent entry."""
     path = home / "Library" / "LaunchAgents" / f"{MACOS_LAUNCH_AGENT_ID}.plist"
+    legacy_path = home / "Library" / "LaunchAgents" / f"{LEGACY_MACOS_LAUNCH_AGENT_ID}.plist"
+    try:
+        legacy_path.unlink()
+    except FileNotFoundError:
+        pass
     if enabled:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(plistlib.dumps(_macos_plist(), sort_keys=True))
@@ -129,9 +141,14 @@ def _sync_macos_start_on_login(enabled: bool, home: Path) -> None:
 
 
 def _sync_linux_start_on_login(enabled: bool, home: Path) -> None:
-    """Create or remove Wisp's XDG autostart desktop file."""
+    """Create or remove OpenWand's XDG autostart desktop file."""
     base = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
     path = base / "autostart" / LINUX_DESKTOP_ID
+    legacy_path = base / "autostart" / LEGACY_LINUX_DESKTOP_ID
+    try:
+        legacy_path.unlink()
+    except FileNotFoundError:
+        pass
     if enabled:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(_linux_desktop_text(), encoding="utf-8")

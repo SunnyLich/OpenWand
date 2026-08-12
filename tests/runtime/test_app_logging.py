@@ -1,11 +1,29 @@
 """Tests for supervisor app startup dispatch and runtime log modes."""
 
 import os
+import subprocess
+import sys
+import uuid
 from pathlib import Path
 
 import pytest
 
+from core.system import single_instance
 from runtime.supervisor import app as supervisor_app
+
+_SINGLE_INSTANCE_CHILD_SCRIPT = """
+import os
+import sys
+from pathlib import Path
+
+from core.system import single_instance
+
+single_instance.SINGLE_INSTANCE_LOCK = Path(os.environ["OPENWAND_TEST_INSTANCE_LOCK"])
+single_instance._WINDOWS_MUTEX_NAME = os.environ["OPENWAND_TEST_MUTEX_NAME"]
+print(int(single_instance.acquire()), flush=True)
+if sys.argv[1] == "hold":
+    sys.stdin.readline()
+"""
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +54,7 @@ def test_optional_install_startup_maintenance_resumes_before_cleanup(monkeypatch
 
 def test_dispatch_module_mode_runs_requested_worker_module(monkeypatch):
     calls = []
-    monkeypatch.setattr(supervisor_app.sys, "argv", ["Wisp.exe", "-m", "runtime.workers.audio_host", "--flag"])
+    monkeypatch.setattr(supervisor_app.sys, "argv", ["OpenWand.exe", "-m", "runtime.workers.audio_host", "--flag"])
     monkeypatch.setattr(supervisor_app.runpy, "run_module", lambda *args, **kwargs: calls.append((args, kwargs)))
 
     with pytest.raises(SystemExit) as exc:
@@ -54,24 +72,24 @@ def test_dispatch_module_mode_runs_requested_worker_module(monkeypatch):
 
 def test_runtime_log_mode_defaults_to_crash(tmp_path, monkeypatch):
     """Verify normal runs do not create debug runtime logs by default."""
-    monkeypatch.delenv("WISP_RUNTIME_LOG_MODE", raising=False)
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
+    monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
 
     assert supervisor_app._runtime_log_mode() == "crash"
 
 
 def test_runtime_log_mode_debug_env_enables_debug_logs(monkeypatch):
     """Verify debug launchers opt in to persistent runtime logs."""
-    monkeypatch.setenv("WISP_RUNTIME_LOG_MODE", "debug")
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
+    monkeypatch.setenv("OPENWAND_RUNTIME_LOG_MODE", "debug")
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
 
     assert supervisor_app._runtime_log_mode() == "debug"
 
 
 def test_runtime_log_mode_frozen_defaults_to_debug_logs(monkeypatch):
     """Verify packaged no-console builds keep persistent runtime logs by default."""
-    monkeypatch.delenv("WISP_RUNTIME_LOG_MODE", raising=False)
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
+    monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
     monkeypatch.setattr(supervisor_app.sys, "frozen", True, raising=False)
 
     assert supervisor_app._runtime_log_mode() == "debug"
@@ -79,41 +97,41 @@ def test_runtime_log_mode_frozen_defaults_to_debug_logs(monkeypatch):
 
 def test_runtime_log_mode_explicit_crash_overrides_frozen_default(monkeypatch):
     """Verify explicit crash logging mode still works for packaged builds."""
-    monkeypatch.setenv("WISP_RUNTIME_LOG_MODE", "crash")
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
+    monkeypatch.setenv("OPENWAND_RUNTIME_LOG_MODE", "crash")
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
     monkeypatch.setattr(supervisor_app.sys, "frozen", True, raising=False)
 
     assert supervisor_app._runtime_log_mode() == "crash"
 
 
 def test_prepare_run_log_dir_sets_env_and_latest_pointer(tmp_path, monkeypatch):
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
     monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
 
     log_dir = supervisor_app._prepare_run_log_dir()
 
     assert log_dir.is_dir()
     assert log_dir.parent == tmp_path / "build_logs"
-    assert Path(supervisor_app.os.environ["WISP_RUN_LOG_DIR"]) == log_dir
-    assert (tmp_path / "build_logs" / "latest_wisp_runtime.txt").read_text(encoding="utf-8") == str(log_dir)
+    assert Path(supervisor_app.os.environ["OPENWAND_RUN_LOG_DIR"]) == log_dir
+    assert (tmp_path / "build_logs" / "latest_openwand_runtime.txt").read_text(encoding="utf-8") == str(log_dir)
 
 
 def test_prepare_crash_log_dir_does_not_enable_worker_logs(tmp_path, monkeypatch):
     """Verify crash-only log dirs do not turn on worker stderr file logging."""
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
     monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
 
     log_dir = supervisor_app._prepare_run_log_dir(reason="crash", expose_to_workers=False)
 
     assert log_dir.is_dir()
-    assert log_dir.name.startswith("wisp_crash_")
-    assert "WISP_RUN_LOG_DIR" not in supervisor_app.os.environ
-    assert (tmp_path / "build_logs" / "latest_wisp_runtime.txt").read_text(encoding="utf-8") == str(log_dir)
+    assert log_dir.name.startswith("openwand_crash_")
+    assert "OPENWAND_RUN_LOG_DIR" not in supervisor_app.os.environ
+    assert (tmp_path / "build_logs" / "latest_openwand_runtime.txt").read_text(encoding="utf-8") == str(log_dir)
 
 
 def test_prepare_run_log_dir_respects_existing_env(tmp_path, monkeypatch):
     configured = tmp_path / "custom-logs"
-    monkeypatch.setenv("WISP_RUN_LOG_DIR", str(configured))
+    monkeypatch.setenv("OPENWAND_RUN_LOG_DIR", str(configured))
 
     log_dir = supervisor_app._prepare_run_log_dir()
 
@@ -121,12 +139,12 @@ def test_prepare_run_log_dir_respects_existing_env(tmp_path, monkeypatch):
     assert configured.is_dir()
 
 
-def test_prune_runtime_logs_removes_wisp_logs_older_than_retention(tmp_path):
-    """Verify runtime log pruning removes only expired Wisp log artifacts."""
+def test_prune_runtime_logs_removes_openwand_logs_older_than_retention(tmp_path):
+    """Verify runtime log pruning removes only expired OpenWand log artifacts."""
     log_root = tmp_path / "build_logs"
-    old_runtime = log_root / "wisp_runtime_20260101-010101"
-    old_crash = log_root / "wisp_crash_20260101-010101"
-    fresh_runtime = log_root / "wisp_runtime_20260108-010101"
+    old_runtime = log_root / "openwand_runtime_20260101-010101"
+    old_crash = log_root / "openwand_crash_20260101-010101"
+    fresh_runtime = log_root / "openwand_runtime_20260108-010101"
     unrelated = log_root / "app_workflow_tests_20260101"
     ui_log = log_root / "ui_runtime" / "ui_freeze_20260101-010101.log"
     for path in (old_runtime, old_crash, fresh_runtime, unrelated, ui_log.parent):
@@ -151,10 +169,10 @@ def test_prune_runtime_logs_removes_wisp_logs_older_than_retention(tmp_path):
 
 
 def test_prepare_run_log_dir_prunes_expired_runtime_logs(tmp_path, monkeypatch):
-    """Verify automatic run log setup prunes old Wisp runtime logs."""
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
+    """Verify automatic run log setup prunes old OpenWand runtime logs."""
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
     monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
-    old_runtime = tmp_path / "build_logs" / "wisp_runtime_20260101-010101"
+    old_runtime = tmp_path / "build_logs" / "openwand_runtime_20260101-010101"
     old_runtime.mkdir(parents=True)
     os.utime(old_runtime, (0, 0))
 
@@ -165,22 +183,102 @@ def test_prepare_run_log_dir_prunes_expired_runtime_logs(tmp_path, monkeypatch):
 
 
 def test_main_exits_when_single_instance_lock_is_held(tmp_path, monkeypatch):
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
-    monkeypatch.delenv("WISP_RUNTIME_LOG_MODE", raising=False)
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
+    monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
     monkeypatch.setattr(supervisor_app.single_instance, "acquire", lambda: False)
+    side_effects = []
+    monkeypatch.setattr(supervisor_app, "_prepare_run_log_dir", lambda *args, **kwargs: side_effects.append("logs"))
+
+    from core.system import autostart
+
+    monkeypatch.setattr(autostart, "sync_start_on_login", lambda _enabled: side_effects.append("autostart"))
 
     class ShouldNotStart:
         def __init__(self):
             raise AssertionError("workers should not start for duplicate instance")
 
-    monkeypatch.setattr(supervisor_app, "WispSupervisor", ShouldNotStart)
+    monkeypatch.setattr(supervisor_app, "OpenWandSupervisor", ShouldNotStart)
 
     assert supervisor_app.main() == 2
+    assert side_effects == []
+
+
+def test_only_one_process_can_hold_the_openwand_instance_guard(tmp_path: Path) -> None:
+    """A second real Python process must be rejected while the owner lives."""
+    env = os.environ.copy()
+    env["OPENWAND_TEST_INSTANCE_LOCK"] = str(tmp_path / "openwand.lock")
+    env["OPENWAND_TEST_MUTEX_NAME"] = f"Local\\OpenWand.SingleInstance.Test.{uuid.uuid4().hex}"
+    holder = subprocess.Popen(
+        [sys.executable, "-c", _SINGLE_INSTANCE_CHILD_SCRIPT, "hold"],
+        cwd=Path(__file__).resolve().parents[2],
+        env=env,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline().strip() == "1"
+        contender = subprocess.run(
+            [sys.executable, "-c", _SINGLE_INSTANCE_CHILD_SCRIPT, "probe"],
+            cwd=Path(__file__).resolve().parents[2],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        assert contender.returncode == 0
+        assert contender.stdout.strip() == "0"
+    finally:
+        if holder.poll() is None and holder.stdin is not None:
+            holder.stdin.write("stop\n")
+            holder.stdin.flush()
+        holder.wait(timeout=10)
+
+
+def test_guard_backend_failure_fails_closed(tmp_path: Path, monkeypatch) -> None:
+    """An uncertain OS-lock result must never authorize another supervisor."""
+    monkeypatch.setattr(single_instance, "SINGLE_INSTANCE_LOCK", tmp_path / "openwand.lock")
+    backend_name = "_acquire_windows" if sys.platform == "win32" else "_acquire_posix"
+
+    def fail() -> bool:
+        raise OSError("lock service unavailable")
+
+    monkeypatch.setattr(single_instance, backend_name, fail)
+
+    assert single_instance.acquire() is False
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows kernel mutex behavior")
+def test_windows_guard_rejects_startup_when_mutex_creation_fails(tmp_path: Path, monkeypatch) -> None:
+    """A failed CreateMutex call must not fall through to a permissive file lock."""
+    import ctypes
+
+    class FakeFunction:
+        argtypes = None
+        restype = None
+
+        def __init__(self, result):
+            self.result = result
+
+        def __call__(self, *_args):
+            return self.result
+
+    class FakeKernel32:
+        CreateMutexW = FakeFunction(0)
+        CloseHandle = FakeFunction(True)
+
+    monkeypatch.setattr(single_instance, "SINGLE_INSTANCE_LOCK", tmp_path / "openwand.lock")
+    monkeypatch.setattr(ctypes, "WinDLL", lambda *_args, **_kwargs: FakeKernel32())
+
+    assert single_instance._acquire_windows() is False  # noqa: SLF001
 
 
 def test_main_exits_when_ui_worker_exits(tmp_path, monkeypatch):
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
-    monkeypatch.delenv("WISP_RUNTIME_LOG_MODE", raising=False)
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
+    monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
     monkeypatch.setattr(supervisor_app.single_instance, "acquire", lambda: True)
     instances = []
 
@@ -225,7 +323,7 @@ def test_main_exits_when_ui_worker_exits(tmp_path, monkeypatch):
         def start_hotkeys(self):
             return {"started": True}
 
-    monkeypatch.setattr(supervisor_app, "WispSupervisor", FakeSupervisor)
+    monkeypatch.setattr(supervisor_app, "OpenWandSupervisor", FakeSupervisor)
     monkeypatch.setattr(supervisor_app, "FlowController", FakeFlowController)
 
     assert supervisor_app.main() == 0
@@ -236,8 +334,8 @@ def test_main_exits_when_ui_worker_exits(tmp_path, monkeypatch):
 
 def test_main_shuts_down_after_nonzero_ui_exit(tmp_path, monkeypatch):
     """Verify an unexpected UI worker exit shuts down instead of restarting UI."""
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
-    monkeypatch.delenv("WISP_RUNTIME_LOG_MODE", raising=False)
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
+    monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
     monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(supervisor_app.single_instance, "acquire", lambda: True)
     instances = []
@@ -303,7 +401,7 @@ def test_main_shuts_down_after_nonzero_ui_exit(tmp_path, monkeypatch):
             """No-op hotkeys."""
             return {"started": True}
 
-    monkeypatch.setattr(supervisor_app, "WispSupervisor", FakeSupervisor)
+    monkeypatch.setattr(supervisor_app, "OpenWandSupervisor", FakeSupervisor)
     monkeypatch.setattr(supervisor_app, "FlowController", FakeFlowController)
 
     assert supervisor_app.main() == 0
@@ -311,15 +409,15 @@ def test_main_shuts_down_after_nonzero_ui_exit(tmp_path, monkeypatch):
     assert ui.restart_calls == 0
     assert ui.calls == []
     assert instances[0].shutdown_called is True
-    crash_logs = list((tmp_path / "build_logs").glob("wisp_crash_*/supervisor-crash.log"))
+    crash_logs = list((tmp_path / "build_logs").glob("openwand_crash_*/supervisor-crash.log"))
     assert len(crash_logs) == 1
     assert "UI worker exited with code 9" in crash_logs[0].read_text(encoding="utf-8")
 
 
 def test_main_restarts_audio_worker_after_unexpected_exit(tmp_path, monkeypatch):
-    """Verify an unexpected audio worker exit restarts without shutting down Wisp."""
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
-    monkeypatch.delenv("WISP_RUNTIME_LOG_MODE", raising=False)
+    """Verify an unexpected audio worker exit restarts without shutting down OpenWand."""
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
+    monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
     monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(supervisor_app.single_instance, "acquire", lambda: True)
     instances = []
@@ -378,7 +476,7 @@ def test_main_restarts_audio_worker_after_unexpected_exit(tmp_path, monkeypatch)
         def start_hotkeys(self):
             return {"started": True}
 
-    monkeypatch.setattr(supervisor_app, "WispSupervisor", FakeSupervisor)
+    monkeypatch.setattr(supervisor_app, "OpenWandSupervisor", FakeSupervisor)
     monkeypatch.setattr(supervisor_app, "FlowController", FakeFlowController)
 
     assert supervisor_app.main() == 0
@@ -390,8 +488,8 @@ def test_main_restarts_audio_worker_after_unexpected_exit(tmp_path, monkeypatch)
 
 def test_main_does_not_restart_ui_after_user_quit_event(tmp_path, monkeypatch):
     """Verify a user-requested Qt quit is not treated as a UI crash."""
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
-    monkeypatch.delenv("WISP_RUNTIME_LOG_MODE", raising=False)
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
+    monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
     monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(supervisor_app.single_instance, "acquire", lambda: True)
     instances = []
@@ -473,7 +571,7 @@ def test_main_does_not_restart_ui_after_user_quit_event(tmp_path, monkeypatch):
             self.start_hotkey_calls += 1
             return {"started": True}
 
-    monkeypatch.setattr(supervisor_app, "WispSupervisor", FakeSupervisor)
+    monkeypatch.setattr(supervisor_app, "OpenWandSupervisor", FakeSupervisor)
     monkeypatch.setattr(supervisor_app, "FlowController", FakeFlowController)
 
     assert supervisor_app.main() == 0
@@ -483,13 +581,13 @@ def test_main_does_not_restart_ui_after_user_quit_event(tmp_path, monkeypatch):
     assert instances[0].begin_shutdown_calls >= 1
     assert flow_instances[0].start_hotkey_calls == 0
     assert instances[0].shutdown_called is True
-    assert not list((tmp_path / "build_logs").glob("wisp_crash_*/supervisor-crash.log"))
+    assert not list((tmp_path / "build_logs").glob("openwand_crash_*/supervisor-crash.log"))
 
 
 def test_main_writes_crash_log_when_ui_worker_exits_nonzero(tmp_path, monkeypatch):
     """Verify normal mode writes logs only after an abrupt UI worker exit."""
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
-    monkeypatch.delenv("WISP_RUNTIME_LOG_MODE", raising=False)
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
+    monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
     monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(supervisor_app.single_instance, "acquire", lambda: True)
 
@@ -549,11 +647,11 @@ def test_main_writes_crash_log_when_ui_worker_exits_nonzero(tmp_path, monkeypatc
             """No-op hotkeys."""
             return {"started": True}
 
-    monkeypatch.setattr(supervisor_app, "WispSupervisor", FakeSupervisor)
+    monkeypatch.setattr(supervisor_app, "OpenWandSupervisor", FakeSupervisor)
     monkeypatch.setattr(supervisor_app, "FlowController", FakeFlowController)
 
     assert supervisor_app.main() == 0
-    crash_logs = list((tmp_path / "build_logs").glob("wisp_crash_*/supervisor-crash.log"))
+    crash_logs = list((tmp_path / "build_logs").glob("openwand_crash_*/supervisor-crash.log"))
     assert len(crash_logs) == 1
     report = crash_logs[0].read_text(encoding="utf-8")
     assert "UI worker exited with code 9" in report

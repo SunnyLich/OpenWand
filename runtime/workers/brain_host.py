@@ -1,4 +1,4 @@
-"""wisp-brain worker wrapper for the pure-Python target."""
+"""openwand-brain worker wrapper for the pure-Python target."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from runtime.boundaries import boundary_status
 def main() -> int:
     """Handle main for runtime workers brain host."""
     configure_paths(include_brain=True)
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     def brain_ping(value=None):
         """Handle brain ping for runtime workers brain host."""
@@ -30,7 +30,7 @@ def main() -> int:
     handlers.HANDLERS.setdefault("brain.ping", brain_ping)
     handlers.HANDLERS.setdefault("boundary.status", lambda: boundary_status("brain"))
     handlers.start_addon_bootstrap()
-    from wisp_brain.host import _main
+    from openwand_brain.host import _main
 
     return _main()
 

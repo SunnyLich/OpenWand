@@ -1,4 +1,4 @@
-# Runtime dependencies required to launch and use Wisp locally.
+# Runtime dependencies required to launch and use OpenWand locally.
 # --- Input capture ---
 pynput>=1.7.7             # global hotkeys (no admin rights required on Windows)
 keyboard>=0.13.5          # lightweight key-state checks during intent selection
@@ -9,7 +9,7 @@ Pillow>=12.2.0            # image handling
 # --- LLM ---
 openai>=2.37.0            # works with OpenAI and Groq (OpenAI-compatible)
 anthropic>=0.102.0        # Claude
-claude-agent-sdk>=0.2.120 # full local Claude agent harness used by the Wisp/Claude execution mode
+claude-agent-sdk>=0.2.120 # full local Claude agent harness used by the OpenWand/Claude execution mode
 github-copilot-sdk>=0.1.0 # GitHub Copilot SDK bridge (imports as copilot)
 
 # --- TTS ---
@@ -24,6 +24,7 @@ faster-whisper>=1.0.0     # local STT (Whisper model, CPU int8)
 
 # --- UI ---
 PySide6>=6.11.0           # overlay window + system tray
+ziamath==0.13             # pure-Python LaTeX-to-SVG equation rendering
 
 # --- Memory ---
 

@@ -9,6 +9,7 @@ from pathlib import Path
 from dotenv import dotenv_values, load_dotenv
 
 from core import secret_store
+from core.custom_connections import load_connections as _load_custom_connections
 from core.prompt_i18n import (
     ASSISTANT_RESPONSE_LANGUAGE_NAMES as _ASSISTANT_RESPONSE_LANGUAGE_NAMES,
 )
@@ -48,6 +49,7 @@ from core.settings_model import (
     ProfileSettings,
     ToolTurnBudgets,
 )
+from core.system.brand_migration import migrate_settings_files
 from core.system.env_utils import (
     env_bool,
     env_file_access_mode,
@@ -69,8 +71,10 @@ __all__ = [
     "_intent_template_language",
 ]
 
-_ENV_FILE = Path(os.environ.get("WISP_SETTINGS_ENV_PATH") or REPO_ROOT / ".env")
+_ENV_FILE = Path(os.environ.get("OPENWAND_SETTINGS_ENV_PATH") or REPO_ROOT / ".env")
 _LOADED_DOTENV_KEYS: set[str] = set()
+
+migrate_settings_files(_ENV_FILE)
 
 
 def _dotenv_keys() -> set[str]:
@@ -420,39 +424,39 @@ def _profile_from_template(template: dict, prefix: str | None = None) -> Profile
         "off",
     )
     screenshot_mode = env_screenshot_mode(
-        f"{prefix}_CONTEXT_SCREENSHOT" if prefix else "__WISP_PROFILE_CONTEXT_SCREENSHOT__",
+        f"{prefix}_CONTEXT_SCREENSHOT" if prefix else "__OPENWAND_PROFILE_CONTEXT_SCREENSHOT__",
         str(context_defaults.get("screenshot") or "off"),
     )
     file_access = env_file_access_mode(
-        f"{prefix}_FILE_ACCESS" if prefix else "__WISP_PROFILE_FILE_ACCESS__",
+        f"{prefix}_FILE_ACCESS" if prefix else "__OPENWAND_PROFILE_FILE_ACCESS__",
         str(context_defaults.get("file_access") or "off"),
     )
 
     context = ContextBudgets(
         browser_max_chars=env_int(
-            f"{prefix}_CONTEXT_BROWSER_MAX_CHARS" if prefix else "__WISP_PROFILE_BROWSER_CHARS__",
+            f"{prefix}_CONTEXT_BROWSER_MAX_CHARS" if prefix else "__OPENWAND_PROFILE_BROWSER_CHARS__",
             CONTEXT_BROWSER_MAX_CHARS,
         ),
         ambient_document_max_chars=env_int(
-            f"{prefix}_CONTEXT_AMBIENT_DOCUMENT_MAX_CHARS" if prefix else "__WISP_PROFILE_AMBIENT_DOC_CHARS__",
+            f"{prefix}_CONTEXT_AMBIENT_DOCUMENT_MAX_CHARS" if prefix else "__OPENWAND_PROFILE_AMBIENT_DOC_CHARS__",
             CONTEXT_AMBIENT_DOCUMENT_MAX_CHARS,
         ),
         tool_document_max_chars=env_int(
-            f"{prefix}_CONTEXT_TOOL_DOCUMENT_MAX_CHARS" if prefix else "__WISP_PROFILE_TOOL_DOC_CHARS__",
+            f"{prefix}_CONTEXT_TOOL_DOCUMENT_MAX_CHARS" if prefix else "__OPENWAND_PROFILE_TOOL_DOC_CHARS__",
             CONTEXT_TOOL_DOCUMENT_MAX_CHARS,
         ),
     )
     tools = ToolTurnBudgets(
         max_calls=env_int(
-            f"{prefix}_TOOL_TURN_MAX_CALLS" if prefix else "__WISP_PROFILE_TOOL_CALLS__",
+            f"{prefix}_TOOL_TURN_MAX_CALLS" if prefix else "__OPENWAND_PROFILE_TOOL_CALLS__",
             int(tool_defaults.get("max_calls") or TOOL_TURN_MAX_CALLS),
         ),
         max_result_chars=env_int(
-            f"{prefix}_TOOL_TURN_MAX_RESULT_CHARS" if prefix else "__WISP_PROFILE_TOOL_RESULT_CHARS__",
+            f"{prefix}_TOOL_TURN_MAX_RESULT_CHARS" if prefix else "__OPENWAND_PROFILE_TOOL_RESULT_CHARS__",
             int(tool_defaults.get("max_result_chars") or TOOL_TURN_MAX_RESULT_CHARS),
         ),
         max_total_chars=env_int(
-            f"{prefix}_TOOL_TURN_MAX_TOTAL_CHARS" if prefix else "__WISP_PROFILE_TOOL_TOTAL_CHARS__",
+            f"{prefix}_TOOL_TURN_MAX_TOTAL_CHARS" if prefix else "__OPENWAND_PROFILE_TOOL_TOTAL_CHARS__",
             int(tool_defaults.get("max_total_chars") or TOOL_TURN_MAX_TOTAL_CHARS),
         ),
     )
@@ -846,19 +850,19 @@ def _load_config() -> None:
     """Assign all .env-backed module-level config vars. Call after load_dotenv()."""
     global GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY
     global CARTESIA_API_KEY, ELEVENLABS_API_KEY, TTS_CUSTOM_API_KEY, CLOUDFLARE_API_TOKEN
-    global CUSTOM_API_KEY, CUSTOM_BASE_URL
+    global CUSTOM_API_KEY, CUSTOM_BASE_URL, CUSTOM_CONNECTIONS
     global DEEPSEEK_API_KEY, OPENROUTER_API_KEY, MISTRAL_API_KEY
     global XAI_API_KEY, TOGETHER_API_KEY, CEREBRAS_API_KEY, ZAI_API_KEY
     global NVIDIA_API_KEY, SAMBANOVA_API_KEY, GITHUB_MODELS_API_KEY, HUGGINGFACE_API_KEY
     global CHUTES_API_KEY, VERCEL_API_KEY, FIREWORKS_API_KEY, COHERE_API_KEY, AI21_API_KEY, NEBIUS_API_KEY
     global LLM_PROVIDER, LLM_MODEL, LLM_FALLBACKS
     global CHAT_LLM_PROVIDER, CHAT_LLM_MODEL, CHAT_LLM_FALLBACKS, CHAT_EXECUTION_MODE, CHAT_CONVERSATION_OWNER
-    global WISP_CODEX_MODEL, WISP_CODEX_FAST_MODE, WISP_CODEX_APPROVAL_MODE, WISP_CODEX_WORKSPACE
-    global WISP_CODEX_SYSTEM_PROMPT
-    global WISP_CODEX_REASONING_EFFORT, WISP_CODEX_REASONING_SUMMARY
-    global WISP_CLAUDE_MODEL, WISP_CLAUDE_FAST_MODE, WISP_CLAUDE_APPROVAL_MODE, WISP_CLAUDE_WORKSPACE
-    global WISP_CLAUDE_SYSTEM_PROMPT
-    global WISP_CLAUDE_REASONING_EFFORT, WISP_CLAUDE_REASONING_SUMMARY
+    global OPENWAND_CODEX_MODEL, OPENWAND_CODEX_FAST_MODE, OPENWAND_CODEX_APPROVAL_MODE, OPENWAND_CODEX_WORKSPACE
+    global OPENWAND_CODEX_SYSTEM_PROMPT
+    global OPENWAND_CODEX_REASONING_EFFORT, OPENWAND_CODEX_REASONING_SUMMARY
+    global OPENWAND_CLAUDE_MODEL, OPENWAND_CLAUDE_FAST_MODE, OPENWAND_CLAUDE_APPROVAL_MODE, OPENWAND_CLAUDE_WORKSPACE
+    global OPENWAND_CLAUDE_SYSTEM_PROMPT
+    global OPENWAND_CLAUDE_REASONING_EFFORT, OPENWAND_CLAUDE_REASONING_SUMMARY
     global TOOL_LLM_MODEL
     global CHAT_REASONING_EFFORT, CHAT_TOOL_TRACE_UI
     global PLANNED_CHUNKING, PLANNED_CHUNKING_CHUNKS, PLANNED_CHUNKING_MIN_PROMPT_CHARS
@@ -877,6 +881,8 @@ def _load_config() -> None:
     global KOKORO_VOICE, KOKORO_LANG_CODE, KOKORO_DEVICE, KOKORO_SPEED, KOKORO_SAMPLE_RATE, KOKORO_SPLIT_PATTERN
     global THEME_MODE, DARK_MODE, ICON_AUTO_HIDE, START_ON_LOGIN, CHAT_AUTO_ELABORATE, CHAT_ELABORATE_PROMPT
     global PRIVACY_MODE, TRUST_PRIVACY_MODE, PRIVACY_REVIEW_BEFORE_SEND, PRIVACY_AI_ENABLED, PRIVACY_CUSTOM_PATTERNS
+    global PRIVACY_HIDE_SECRETS, PRIVACY_HIDE_CONTACT_DETAILS, PRIVACY_HIDE_FINANCIAL_DETAILS
+    global PRIVACY_HIDE_GOVERNMENT_IDS, PRIVACY_HIDE_URLS
     global APP_LANGUAGE, ASSISTANT_LANGUAGE
     global THEME_DARK_BG, THEME_DARK_SURFACE, THEME_DARK_TEXT, THEME_DARK_ACCENT
     global THEME_LIGHT_BG, THEME_LIGHT_SURFACE, THEME_LIGHT_TEXT, THEME_LIGHT_ACCENT
@@ -925,6 +931,7 @@ def _load_config() -> None:
     CLOUDFLARE_API_TOKEN = secret_store.get_secret("CLOUDFLARE_API_TOKEN")
     CUSTOM_API_KEY    = secret_store.get_secret("CUSTOM_API_KEY")
     CUSTOM_BASE_URL   = os.getenv("CUSTOM_BASE_URL", "")
+    CUSTOM_CONNECTIONS = _load_custom_connections(os.environ)
     DEEPSEEK_API_KEY  = secret_store.get_secret("DEEPSEEK_API_KEY")
     OPENROUTER_API_KEY = secret_store.get_secret("OPENROUTER_API_KEY")
     MISTRAL_API_KEY   = secret_store.get_secret("MISTRAL_API_KEY")
@@ -954,40 +961,40 @@ def _load_config() -> None:
     CHAT_LLM_PROVIDER  = LLM_PROVIDER
     CHAT_LLM_MODEL     = LLM_MODEL
     CHAT_LLM_FALLBACKS = LLM_FALLBACKS
-    CHAT_EXECUTION_MODE = os.getenv("CHAT_EXECUTION_MODE", "wisp").strip().lower()
-    if CHAT_EXECUTION_MODE not in {"wisp", "codex", "claude"}:
-        CHAT_EXECUTION_MODE = "wisp"
-    default_conversation_owner = "agent" if CHAT_EXECUTION_MODE in {"codex", "claude"} else "wisp"
+    CHAT_EXECUTION_MODE = os.getenv("CHAT_EXECUTION_MODE", "openwand").strip().lower()
+    if CHAT_EXECUTION_MODE not in {"openwand", "codex", "claude"}:
+        CHAT_EXECUTION_MODE = "openwand"
+    default_conversation_owner = "agent" if CHAT_EXECUTION_MODE in {"codex", "claude"} else "openwand"
     CHAT_CONVERSATION_OWNER = os.getenv(
         "CHAT_CONVERSATION_OWNER",
         default_conversation_owner,
     ).strip().lower()
-    if CHAT_CONVERSATION_OWNER not in {"wisp", "agent"}:
+    if CHAT_CONVERSATION_OWNER not in {"openwand", "agent"}:
         CHAT_CONVERSATION_OWNER = default_conversation_owner
-    if CHAT_EXECUTION_MODE == "wisp":
-        CHAT_CONVERSATION_OWNER = "wisp"
-    WISP_CODEX_MODEL = os.getenv("WISP_CODEX_MODEL", "").strip()
-    WISP_CODEX_WORKSPACE = os.getenv("WISP_CODEX_WORKSPACE", "").strip()
-    WISP_CODEX_SYSTEM_PROMPT = os.getenv("WISP_CODEX_SYSTEM_PROMPT", "")
-    WISP_CODEX_FAST_MODE = env_bool("WISP_CODEX_FAST_MODE", False)
-    WISP_CODEX_APPROVAL_MODE = os.getenv("WISP_CODEX_APPROVAL_MODE", "ask").strip().lower()
-    if WISP_CODEX_APPROVAL_MODE not in {"ask", "auto_edits", "full_access", "read_only"}:
-        WISP_CODEX_APPROVAL_MODE = "ask"
-    WISP_CODEX_REASONING_EFFORT = os.getenv("WISP_CODEX_REASONING_EFFORT", "high").strip().lower()
-    WISP_CODEX_REASONING_SUMMARY = os.getenv("WISP_CODEX_REASONING_SUMMARY", "detailed").strip().lower()
-    if WISP_CODEX_REASONING_SUMMARY not in {"detailed", "concise", "none"}:
-        WISP_CODEX_REASONING_SUMMARY = "detailed"
-    WISP_CLAUDE_MODEL = os.getenv("WISP_CLAUDE_MODEL", "").strip()
-    WISP_CLAUDE_WORKSPACE = os.getenv("WISP_CLAUDE_WORKSPACE", "").strip()
-    WISP_CLAUDE_SYSTEM_PROMPT = os.getenv("WISP_CLAUDE_SYSTEM_PROMPT", "")
-    WISP_CLAUDE_FAST_MODE = env_bool("WISP_CLAUDE_FAST_MODE", False)
-    WISP_CLAUDE_APPROVAL_MODE = os.getenv("WISP_CLAUDE_APPROVAL_MODE", "ask").strip().lower()
-    if WISP_CLAUDE_APPROVAL_MODE not in {"ask", "auto_edits", "full_access", "read_only"}:
-        WISP_CLAUDE_APPROVAL_MODE = "ask"
-    WISP_CLAUDE_REASONING_EFFORT = os.getenv("WISP_CLAUDE_REASONING_EFFORT", "high").strip().lower()
-    WISP_CLAUDE_REASONING_SUMMARY = os.getenv("WISP_CLAUDE_REASONING_SUMMARY", "summarized").strip().lower()
-    if WISP_CLAUDE_REASONING_SUMMARY not in {"summarized", "none"}:
-        WISP_CLAUDE_REASONING_SUMMARY = "summarized"
+    if CHAT_EXECUTION_MODE == "openwand":
+        CHAT_CONVERSATION_OWNER = "openwand"
+    OPENWAND_CODEX_MODEL = os.getenv("OPENWAND_CODEX_MODEL", "").strip()
+    OPENWAND_CODEX_WORKSPACE = os.getenv("OPENWAND_CODEX_WORKSPACE", "").strip()
+    OPENWAND_CODEX_SYSTEM_PROMPT = os.getenv("OPENWAND_CODEX_SYSTEM_PROMPT", "")
+    OPENWAND_CODEX_FAST_MODE = env_bool("OPENWAND_CODEX_FAST_MODE", False)
+    OPENWAND_CODEX_APPROVAL_MODE = os.getenv("OPENWAND_CODEX_APPROVAL_MODE", "ask").strip().lower()
+    if OPENWAND_CODEX_APPROVAL_MODE not in {"ask", "auto_edits", "full_access", "read_only"}:
+        OPENWAND_CODEX_APPROVAL_MODE = "ask"
+    OPENWAND_CODEX_REASONING_EFFORT = os.getenv("OPENWAND_CODEX_REASONING_EFFORT", "high").strip().lower()
+    OPENWAND_CODEX_REASONING_SUMMARY = os.getenv("OPENWAND_CODEX_REASONING_SUMMARY", "detailed").strip().lower()
+    if OPENWAND_CODEX_REASONING_SUMMARY not in {"detailed", "concise", "none"}:
+        OPENWAND_CODEX_REASONING_SUMMARY = "detailed"
+    OPENWAND_CLAUDE_MODEL = os.getenv("OPENWAND_CLAUDE_MODEL", "").strip()
+    OPENWAND_CLAUDE_WORKSPACE = os.getenv("OPENWAND_CLAUDE_WORKSPACE", "").strip()
+    OPENWAND_CLAUDE_SYSTEM_PROMPT = os.getenv("OPENWAND_CLAUDE_SYSTEM_PROMPT", "")
+    OPENWAND_CLAUDE_FAST_MODE = env_bool("OPENWAND_CLAUDE_FAST_MODE", False)
+    OPENWAND_CLAUDE_APPROVAL_MODE = os.getenv("OPENWAND_CLAUDE_APPROVAL_MODE", "ask").strip().lower()
+    if OPENWAND_CLAUDE_APPROVAL_MODE not in {"ask", "auto_edits", "full_access", "read_only"}:
+        OPENWAND_CLAUDE_APPROVAL_MODE = "ask"
+    OPENWAND_CLAUDE_REASONING_EFFORT = os.getenv("OPENWAND_CLAUDE_REASONING_EFFORT", "high").strip().lower()
+    OPENWAND_CLAUDE_REASONING_SUMMARY = os.getenv("OPENWAND_CLAUDE_REASONING_SUMMARY", "summarized").strip().lower()
+    if OPENWAND_CLAUDE_REASONING_SUMMARY not in {"summarized", "none"}:
+        OPENWAND_CLAUDE_REASONING_SUMMARY = "summarized"
 
     # --- Tool model override (optional) ---
     # Empty = use the Main LLM model for tool calls. Set this only to force a
@@ -995,9 +1002,9 @@ def _load_config() -> None:
     TOOL_LLM_MODEL = os.getenv("TOOL_LLM_MODEL", "")
     CHAT_REASONING_EFFORT = os.getenv("CHAT_REASONING_EFFORT", "high").strip().lower()
     CHAT_TOOL_TRACE_UI = env_bool("CHAT_TOOL_TRACE_UI", False)
-    PLANNED_CHUNKING = env_bool("WISP_PLANNED_CHUNKING", False)
-    PLANNED_CHUNKING_CHUNKS = max(2, min(env_int("WISP_PLANNED_CHUNKING_CHUNKS", 3), 4))
-    PLANNED_CHUNKING_MIN_PROMPT_CHARS = max(0, env_int("WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS", 80))
+    PLANNED_CHUNKING = env_bool("OPENWAND_PLANNED_CHUNKING", False)
+    PLANNED_CHUNKING_CHUNKS = max(2, min(env_int("OPENWAND_PLANNED_CHUNKING_CHUNKS", 3), 4))
+    PLANNED_CHUNKING_MIN_PROMPT_CHARS = max(0, env_int("OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS", 80))
 
     # --- Vision LLM ---
     VISION_LLM_PROVIDER  = os.getenv("VISION_LLM_PROVIDER",  "")
@@ -1044,7 +1051,7 @@ def _load_config() -> None:
     KOKORO_SPLIT_PATTERN = os.getenv("KOKORO_SPLIT_PATTERN", r"\n+")
 
     # --- App behaviour ---
-    THEME_MODE            = os.getenv("THEME_MODE", "system")  # "dark" | "light" | "system"
+    THEME_MODE            = os.getenv("THEME_MODE", "dark")  # "dark" | "light" | "system"
     DARK_MODE             = env_bool("DARK_MODE", THEME_MODE == "dark")
     legacy_privacy_enabled = env_bool("TRUST_PRIVACY_MODE", True)
     legacy_privacy_ai = env_bool("PRIVACY_AI_ENABLED", False)
@@ -1060,19 +1067,24 @@ def _load_config() -> None:
     TRUST_PRIVACY_MODE = PRIVACY_MODE != "off"
     PRIVACY_REVIEW_BEFORE_SEND = env_bool("PRIVACY_REVIEW_BEFORE_SEND", True)
     PRIVACY_AI_ENABLED = PRIVACY_MODE == "advanced"
+    PRIVACY_HIDE_SECRETS = env_bool("PRIVACY_HIDE_SECRETS", True)
+    PRIVACY_HIDE_CONTACT_DETAILS = env_bool("PRIVACY_HIDE_CONTACT_DETAILS", True)
+    PRIVACY_HIDE_FINANCIAL_DETAILS = env_bool("PRIVACY_HIDE_FINANCIAL_DETAILS", True)
+    PRIVACY_HIDE_GOVERNMENT_IDS = env_bool("PRIVACY_HIDE_GOVERNMENT_IDS", True)
+    PRIVACY_HIDE_URLS = env_bool("PRIVACY_HIDE_URLS", True)
     PRIVACY_CUSTOM_PATTERNS = os.getenv("PRIVACY_CUSTOM_PATTERNS", "[]")
     # Customizable theme templates. Each mode (light/dark) is a template of four
     # base colours; switching mode swaps the template. The rest of the palette
     # (cards, borders, buttons, hovers) is derived from these four, so the user
     # only picks four swatches per mode in Settings → App.
-    THEME_DARK_BG         = os.getenv("THEME_DARK_BG",      "#1c1e26")  # window background
-    THEME_DARK_SURFACE    = os.getenv("THEME_DARK_SURFACE", "#17181d")  # inputs / sunken fields
-    THEME_DARK_TEXT       = os.getenv("THEME_DARK_TEXT",    "#e8e8f0")  # primary text
-    THEME_DARK_ACCENT     = os.getenv("THEME_DARK_ACCENT",  "#8b87ff")  # highlight / focus / buttons
-    THEME_LIGHT_BG        = os.getenv("THEME_LIGHT_BG",      "#f2f2f7")
-    THEME_LIGHT_SURFACE   = os.getenv("THEME_LIGHT_SURFACE", "#ffffff")
-    THEME_LIGHT_TEXT      = os.getenv("THEME_LIGHT_TEXT",    "#1c1c1e")
-    THEME_LIGHT_ACCENT    = os.getenv("THEME_LIGHT_ACCENT",  "#5856d6")
+    THEME_DARK_BG         = os.getenv("THEME_DARK_BG",      "#16181b")  # window background
+    THEME_DARK_SURFACE    = os.getenv("THEME_DARK_SURFACE", "#1c1f23")  # inputs / sunken fields
+    THEME_DARK_TEXT       = os.getenv("THEME_DARK_TEXT",    "#e9e6e0")  # primary text
+    THEME_DARK_ACCENT     = os.getenv("THEME_DARK_ACCENT",  "#d8a145")  # highlight / focus / buttons
+    THEME_LIGHT_BG        = os.getenv("THEME_LIGHT_BG",      "#f2efe6")
+    THEME_LIGHT_SURFACE   = os.getenv("THEME_LIGHT_SURFACE", "#e7e2d5")
+    THEME_LIGHT_TEXT      = os.getenv("THEME_LIGHT_TEXT",    "#201e1a")
+    THEME_LIGHT_ACCENT    = os.getenv("THEME_LIGHT_ACCENT",  "#a06c10")
     # ICON_AUTO_HIDE (formerly DOLL_AUTO_HIDE) — old key still honored for back-compat.
     ICON_AUTO_HIDE        = env_bool("ICON_AUTO_HIDE", env_bool("DOLL_AUTO_HIDE", False))
     START_ON_LOGIN        = env_bool("START_ON_LOGIN", False)
@@ -1083,11 +1095,11 @@ def _load_config() -> None:
         os.getenv("CHAT_ELABORATE_PROMPT", ""),
         ASSISTANT_LANGUAGE,
     )
-    USER_PROFILE_NAME = " ".join(os.getenv("WISP_PROFILE_NAME", "").split())[:80]
-    ONBOARDING_COMPLETE = env_bool("WISP_ONBOARDING_COMPLETE", False)
-    ONBOARDING_MODE = os.getenv("WISP_SETUP_MODE", "").strip().lower()
-    TTS_PREFERENCE = os.getenv("WISP_TTS_PREFERENCE", "none").strip().lower()
-    STT_PREFERENCE = os.getenv("WISP_STT_PREFERENCE", "none").strip().lower()
+    USER_PROFILE_NAME = " ".join(os.getenv("OPENWAND_PROFILE_NAME", "").split())[:80]
+    ONBOARDING_COMPLETE = env_bool("OPENWAND_ONBOARDING_COMPLETE", False)
+    ONBOARDING_MODE = os.getenv("OPENWAND_SETUP_MODE", "").strip().lower()
+    TTS_PREFERENCE = os.getenv("OPENWAND_TTS_PREFERENCE", "none").strip().lower()
+    STT_PREFERENCE = os.getenv("OPENWAND_STT_PREFERENCE", "none").strip().lower()
     GITHUB_DEFAULT_CLIENT_ID = os.getenv("GITHUB_DEFAULT_CLIENT_ID", "")
     GITHUB_CLIENT_ID     = os.getenv("GITHUB_CLIENT_ID", GITHUB_DEFAULT_CLIENT_ID)
     GITHUB_OAUTH_SCOPES  = os.getenv("GITHUB_OAUTH_SCOPES", "repo read:user user:email")
@@ -1273,9 +1285,9 @@ def _load_config() -> None:
     BUBBLE_FONT_SIZE       = max(6, min(env_int("BUBBLE_FONT_SIZE", 10), 32))
     # Chat-window text zoom multiplier (Ctrl+wheel / Ctrl+±). Clamped 0.7–2.5×.
     CHAT_FONT_SCALE        = max(0.7, min(env_float("CHAT_FONT_SCALE", 1.0), 2.5))
-    BUBBLE_COLOR           = os.getenv("BUBBLE_COLOR",           "#1c1c24dc")
-    BUBBLE_TEXT_COLOR      = os.getenv("BUBBLE_TEXT_COLOR",      "#e6e6e6")
-    BUBBLE_READ_WORD_COLOR = os.getenv("BUBBLE_READ_WORD_COLOR", "#4da3ff")
+    BUBBLE_COLOR           = os.getenv("BUBBLE_COLOR",           "#16181bdc")
+    BUBBLE_TEXT_COLOR      = os.getenv("BUBBLE_TEXT_COLOR",      "#e9e6e0")
+    BUBBLE_READ_WORD_COLOR = os.getenv("BUBBLE_READ_WORD_COLOR", "#d8a145")
     BUBBLE_SCROLL_ENABLED  = env_bool("BUBBLE_SCROLL_ENABLED", True)
     BUBBLE_SCROLL_SNAP_ENABLED = env_bool("BUBBLE_SCROLL_SNAP_ENABLED", True)
     BUBBLE_SCROLL_SNAP_DELAY_MS = env_int("BUBBLE_SCROLL_SNAP_DELAY_MS", 2500)

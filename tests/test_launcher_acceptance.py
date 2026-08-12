@@ -1,4 +1,4 @@
-"""Process-level acceptance tests for source and packaged Wisp launchers."""
+"""Process-level acceptance tests for source and packaged OpenWand launchers."""
 
 from __future__ import annotations
 

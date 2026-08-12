@@ -154,7 +154,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 33
+      "node_count": 34
     },
     {
       "path": "tests/integration/brain/test_handler_context.py",
@@ -289,7 +289,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 17
+      "node_count": 20
     },
     {
       "path": "tests/runtime/test_architecture_boundaries.py",
@@ -364,7 +364,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 228
+      "node_count": 231
     },
     {
       "path": "tests/runtime/test_flows_live_voice.py",
@@ -454,7 +454,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 44
+      "node_count": 47
     },
     {
       "path": "tests/runtime/test_runtime_log.py",
@@ -484,7 +484,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 42
+      "node_count": 43
     },
     {
       "path": "tests/runtime/test_ui_host_agent_meeting.py",
@@ -514,7 +514,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 56
+      "node_count": 58
     },
     {
       "path": "tests/runtime/test_ui_host_runtime_status.py",
@@ -889,7 +889,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 23
+      "node_count": 24
     },
     {
       "path": "tests/test_addon_manager_ui.py",
@@ -1102,6 +1102,21 @@
       "node_count": 1
     },
     {
+      "path": "tests/test_brand_migration.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 4
+    },
+    {
       "path": "tests/test_browser_actions.py",
       "kind": "pytest",
       "scope": "component",
@@ -1129,7 +1144,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 46
+      "node_count": 48
     },
     {
       "path": "tests/test_builtin_model_tools.py",
@@ -1189,7 +1204,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 21
+      "node_count": 22
     },
     {
       "path": "tests/test_chat_rendering.py",
@@ -1204,7 +1219,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 14
+      "node_count": 20
     },
     {
       "path": "tests/test_chat_window_render_limits.py",
@@ -1264,7 +1279,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 7
+      "node_count": 11
     },
     {
       "path": "tests/test_context_fetcher_linux.py",
@@ -1378,7 +1393,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 2
+      "node_count": 3
     },
     {
       "path": "tests/test_core_paths_env.py",
@@ -1764,7 +1779,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 55
+      "node_count": 56
     },
     {
       "path": "tests/test_intent_overlay_keyboard_hook.py",
@@ -1837,7 +1852,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 13
+      "node_count": 14
     },
     {
       "path": "tests/test_llm_fallbacks.py",
@@ -2114,7 +2129,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 12
+      "node_count": 14
     },
     {
       "path": "tests/test_overlay_shell_acceptance.py",
@@ -2292,7 +2307,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 4
+      "node_count": 5
     },
     {
       "path": "tests/test_provider_controls_acceptance.py",
@@ -2412,7 +2427,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 17
+      "node_count": 21
     },
     {
       "path": "tests/test_rewrite_browser.py",
@@ -2532,7 +2547,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 9
+      "node_count": 10
     },
     {
       "path": "tests/test_settings_dialog_controls.py",
@@ -2547,7 +2562,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 171
+      "node_count": 172
     },
     {
       "path": "tests/test_settings_env.py",

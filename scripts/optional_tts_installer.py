@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# How long an apply helper watches for Wisp to close. A missed window no
+# How long an apply helper watches for OpenWand to close. A missed window no
 # longer discards the staged download; the supervisor re-arms the plan on the
 # next launch, so this only bounds how long one helper process lingers.
 STAGED_APPLY_WAIT_SECONDS = 24 * 60 * 60.0
@@ -28,7 +28,7 @@ STAGED_FILE_RETRY_INTERVAL_SECONDS = 0.4
 _LAST_INSTALL_FAILURE_DETAIL = ""
 _POST_INSTALL_SETTING_KEYS = {
     "TTS_PROVIDER",
-    "WISP_TTS_PREFERENCE",
+    "OPENWAND_TTS_PREFERENCE",
     "KOKORO_VOICE",
     "KOKORO_LANG_CODE",
     "KOKORO_DEVICE",
@@ -37,7 +37,7 @@ _POST_INSTALL_SETTING_KEYS = {
     "STT_COMPUTE_TYPE",
     "STT_LANGUAGE",
     "STT_BEAM_SIZE",
-    "WISP_STT_PREFERENCE",
+    "OPENWAND_STT_PREFERENCE",
 }
 
 _DISK_FULL_MARKERS = (
@@ -49,7 +49,7 @@ _DISK_FULL_MARKERS = (
 )
 _DISK_FULL_GUIDANCE = (
     "Not enough free disk space while extracting the downloaded packages. "
-    "Free at least 15 GB on the drive containing the uv cache and Wisp optional packages, then retry. "
+    "Free at least 15 GB on the drive containing the uv cache and OpenWand optional packages, then retry. "
     "For a much smaller download, select CPU for Kokoro instead of Auto or GPU."
 )
 _INSTALLER_DECORATION_PREFIX = re.compile(r"^[\s?\ufffd×╰├│─▶└┌┬┐]+(?=[A-Za-z`(])")
@@ -190,7 +190,7 @@ def _format_spec_status_message(status: dict[str, object]) -> str:
     if message:
         return message
     display_name = str(status.get("display_name") or "Optional package")
-    return f"{display_name} package files do not match this Wisp release."
+    return f"{display_name} package files do not match this OpenWand release."
 
 
 def _spec_key_for_display_name(display_name: str) -> str:
@@ -545,7 +545,7 @@ def _post_install_result(log, prefix: str, plan: dict[str, Any], status_path: Pa
             elapsed = f"{minutes}m {seconds:02d}s" if minutes else f"{seconds}s"
             message = (
                 f"STT model {model} is still downloading or loading after {elapsed}. "
-                "The first download can be large; Wisp will report an error if verification times out."
+                "The first download can be large; OpenWand will report an error if verification times out."
             )
             _log(log, prefix, message)
             _write_status(status_path, ok=None, message=message, extra={"progress_percent": 75})
@@ -725,12 +725,12 @@ def _apply_staging(
         except OSError as exc:
             # Native speech DLLs can remain locked briefly on Windows.  Activation
             # has already succeeded, so keep the app usable and let supervisor
-            # startup retry this exact Wisp-generated backup later.
+            # startup retry this exact OpenWand-generated backup later.
             _log(
                 log,
                 prefix,
                 f"Could not remove inactive package backup {backup}: {type(exc).__name__}: {exc}. "
-                "Wisp will retry cleanup on a later startup.",
+                "OpenWand will retry cleanup on a later startup.",
             )
 
 
@@ -767,11 +767,11 @@ def _launch_apply_status_window(
         pass
 
 
-def _restart_wisp(log, prefix: str) -> None:
+def _restart_openwand(log, prefix: str) -> None:
     from core import updater
 
     command, cwd = updater.app_restart_command()
-    _log(log, prefix, f"Reopening Wisp: {' '.join(command)}")
+    _log(log, prefix, f"Reopening OpenWand: {' '.join(command)}")
     updater.launch_detached_helper(command, cwd=cwd)
 
 
@@ -787,33 +787,33 @@ def _run_staged_apply(plan_path: Path) -> int:
     staging_path = _path_from_plan(plan, "staging_path")
     reopen = bool(plan.get("reopen_after_apply", True))
     attempts = int(plan.get("apply_attempts") or 0)
-    # Record this helper so a later Wisp launch does not arm a second helper
+    # Record this helper so a later OpenWand launch does not arm a second helper
     # against the same staging (two concurrent applies would corrupt it).
     try:
         plan["helper_pid"] = os.getpid()
         _write_plan(plan_path, plan)
     except OSError:
         pass
-    wisp_closed = False
+    openwand_closed = False
     consumed = False
     try:
         with log_path.open("a", encoding="utf-8") as log:
             _write_status(
                 status_path,
                 ok=None,
-                message=f"{display_name} staged install is waiting for Wisp to close.",
+                message=f"{display_name} staged install is waiting for OpenWand to close.",
                 extra=_status_extra(plan, restart_apply=True, progress_percent=5),
             )
-            _log(log, prefix, "Waiting for Wisp to exit before applying staged packages.")
+            _log(log, prefix, "Waiting for OpenWand to exit before applying staged packages.")
             try:
-                updater.wait_for_wisp_exit(int(plan.get("wait_pid") or 0), timeout=STAGED_APPLY_WAIT_SECONDS)
+                updater.wait_for_openwand_exit(int(plan.get("wait_pid") or 0), timeout=STAGED_APPLY_WAIT_SECONDS)
             except updater.UpdateError:
-                # Wisp never closed while this helper watched. Keep the staged
+                # OpenWand never closed while this helper watched. Keep the staged
                 # download and the plan; the supervisor re-arms them on the
                 # next launch instead of throwing the download away.
                 message = (
                     f"{display_name} packages stay staged and will be applied "
-                    "the next time Wisp restarts."
+                    "the next time OpenWand restarts."
                 )
                 _log(log, prefix, message)
                 _write_status(
@@ -823,7 +823,7 @@ def _run_staged_apply(plan_path: Path) -> int:
                     extra=_status_extra(plan, restart_apply=True, progress_percent=5),
                 )
                 return 0
-            wisp_closed = True
+            openwand_closed = True
             try:
                 current_plan = _load_plan(plan_path)
             except Exception:
@@ -844,7 +844,7 @@ def _run_staged_apply(plan_path: Path) -> int:
                 extra=_status_extra(plan, progress_percent=45),
             )
             _launch_apply_status_window(display_name, status_path, log_path, app_language=_plan_app_language(plan))
-            # Re-check after Wisp closes as well as after download. A partial,
+            # Re-check after OpenWand closes as well as after download. A partial,
             # damaged, or modified staging tree must never be activated.
             records = _validate_staged_contracts(plan, staging_path)
             if records:
@@ -879,12 +879,12 @@ def _run_staged_apply(plan_path: Path) -> int:
             )
             plan_path.unlink(missing_ok=True)
             if reopen:
-                _restart_wisp(log, prefix)
+                _restart_openwand(log, prefix)
                 if ok:
                     _write_status(
                         status_path,
                         ok=True,
-                        message=f"{message} Wisp is reopening.",
+                        message=f"{message} OpenWand is reopening.",
                         extra=_status_extra(plan, progress_percent=100),
                     )
             return 0 if ok else 1
@@ -893,18 +893,18 @@ def _run_staged_apply(plan_path: Path) -> int:
         message = f"{display_name} staged install failed: {type(exc).__name__}: {exc}"
         extra: dict[str, object] | None = None
         if not give_up:
-            message = f"{message} Wisp will retry at the next restart."
+            message = f"{message} OpenWand will retry at the next restart."
             extra = _status_extra(plan, restart_apply=True, progress_percent=70)
         else:
             extra = _status_extra(plan, progress_percent=70)
         with log_path.open("a", encoding="utf-8") as log:
             _log(log, prefix, message)
             _write_status(status_path, ok=False, message=message, extra=extra)
-            if wisp_closed and reopen:
+            if openwand_closed and reopen:
                 try:
-                    _restart_wisp(log, prefix)
+                    _restart_openwand(log, prefix)
                 except Exception as restart_exc:  # noqa: BLE001
-                    _log(log, prefix, f"Failed to reopen Wisp: {type(restart_exc).__name__}: {restart_exc}")
+                    _log(log, prefix, f"Failed to reopen OpenWand: {type(restart_exc).__name__}: {restart_exc}")
         if give_up:
             consumed = True
             plan_path.unlink(missing_ok=True)
@@ -942,7 +942,7 @@ def pending_apply_plan_paths() -> list[Path]:
         optional_deps.optional_installer_dir(),
         optional_deps.OPTIONAL_PACKAGES_DIR / "_logs",
     ]
-    run_root = os.environ.get("WISP_RUN_LOG_DIR")
+    run_root = os.environ.get("OPENWAND_RUN_LOG_DIR")
     if run_root:
         legacy_run_root = Path(run_root).expanduser()
         bases.append(legacy_run_root / "installers")
@@ -968,10 +968,10 @@ def cleanup_stale_optional_package_swaps() -> tuple[list[Path], dict[Path, str]]
 
     Cleanup is deliberately deferred while any apply plan exists.  An apply
     helper does not own the app's single-instance lock, so a manually launched
-    Wisp could otherwise race the helper between moving the active package
+    OpenWand could otherwise race the helper between moving the active package
     folder aside and activating its replacement.
 
-    Only exact names emitted by Wisp's current and legacy speech installers are
+    Only exact names emitted by OpenWand's current and legacy speech installers are
     eligible.  The active optional-package folder, staging folders, symlinks,
     and arbitrary sibling directories are never removed.
     """
@@ -1010,7 +1010,7 @@ def cleanup_stale_optional_package_swaps() -> tuple[list[Path], dict[Path, str]]
 
 
 def _current_plan_contract(plan: dict[str, Any]) -> tuple[str, str]:
-    """Return the install contract and app version expected by this Wisp."""
+    """Return the install contract and app version expected by this OpenWand."""
     from core import optional_deps, updater
 
     display_name = str(plan.get("display_name") or "Optional package")
@@ -1038,7 +1038,7 @@ def _current_plan_contract(plan: dict[str, Any]) -> tuple[str, str]:
 def resume_pending_staged_applies() -> int:
     """Re-arm apply helpers for staged installs that were never applied.
 
-    Called at Wisp startup. An apply helper that gave up waiting (or died with
+    Called at OpenWand startup. An apply helper that gave up waiting (or died with
     the machine) leaves its staging directory and apply plan behind; arming a
     fresh helper lets the staged packages land at the next shutdown instead of
     forcing the user to reinstall.
@@ -1070,7 +1070,7 @@ def resume_pending_staged_applies() -> int:
                     ok=False,
                     message=(
                         f"{plan.get('display_name') or 'Optional package'} staged install was discarded because "
-                        "Wisp or its dependency contract changed. Run the installer again."
+                        "OpenWand or its dependency contract changed. Run the installer again."
                     ),
                     extra={
                         "install_contract": current_contract,
@@ -1081,9 +1081,9 @@ def resume_pending_staged_applies() -> int:
             helper_pid = int(plan.get("helper_pid") or 0)
             if helper_pid and updater.process_exists(helper_pid):
                 continue
-            plan["wait_pid"] = updater.wisp_wait_pid()
+            plan["wait_pid"] = updater.openwand_wait_pid()
             # A re-armed apply runs at whatever shutdown comes next, possibly
-            # hours later; popping Wisp back open then would be intrusive.
+            # hours later; popping OpenWand back open then would be intrusive.
             plan["reopen_after_apply"] = False
             _write_plan(plan_path, plan)
             _launch_staged_apply(plan_path)
@@ -1200,18 +1200,18 @@ def _run_staged_restart_install(
             **plan,
             "staging_path": str(staging_path),
             "target_path": str(optional_deps.OPTIONAL_PACKAGES_DIR),
-            "wait_pid": int(plan.get("wait_pid") or updater.wisp_wait_pid()),
+            "wait_pid": int(plan.get("wait_pid") or updater.openwand_wait_pid()),
             "log_path": str(log_path),
             "status_path": str(status_path) if status_path else "",
             "reopen_after_apply": True,
         }
         _write_plan(apply_plan_path, apply_plan)
-        _log(log, prefix, "Staged packages downloaded. Restart Wisp to replace locked package files.")
+        _log(log, prefix, "Staged packages downloaded. Restart OpenWand to replace locked package files.")
         _write_status(
             status_path,
             ok=None,
             message=(
-                f"{display_name} packages are staged. Click Restart app now to close Wisp, "
+                f"{display_name} packages are staged. Click Restart app now to close OpenWand, "
                 "replace locked files, verify the install, and reopen."
             ),
             extra=_status_extra(plan, restart_apply=True, progress_percent=100),

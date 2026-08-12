@@ -257,11 +257,16 @@ class AddedContextToast(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 
         from PySide6.QtWidgets import QLabel
+
+        from ui.shared.theme import theme_colors
+
+        colors = theme_colors()
         lbl = QLabel(t("Added as context!"), self)
         lbl.setFont(QFont("Segoe UI", 9))
         lbl.setStyleSheet(
-            "color: #dcdcff;"
-            "background: #23233a;"
+            f"color: {colors['accent']};"
+            f"background: {colors['well']};"
+            f"border: 1px solid {colors['border']};"
             "border-radius: 8px;"
             "padding: 4px 10px;"
         )

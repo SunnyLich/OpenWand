@@ -31,8 +31,8 @@ import _lab
 
 _lab.bootstrap()
 
-INTENT_PROMPT = "Reply with one short sentence saying the Wisp test lab hotkey flow works."
-CHAT_PROMPT = "Reply with one short sentence saying the Wisp test lab chat flow works."
+INTENT_PROMPT = "Reply with one short sentence saying the OpenWand test lab hotkey flow works."
+CHAT_PROMPT = "Reply with one short sentence saying the OpenWand test lab chat flow works."
 
 LAB_CALLER_ROW = {
     "name": "Testlab",
@@ -112,7 +112,7 @@ def _canned_context(params: dict[str, Any]) -> dict[str, Any]:
     result = {
         "selected_text": "def add(a, b): return a + b",
         "clipboard_text": "",
-        "active_app": {"name": "Testlab Editor", "pid": 4242, "bundle_id": "dev.wisp.testlab"},
+        "active_app": {"name": "Testlab Editor", "pid": 4242, "bundle_id": "dev.openwand.testlab"},
     }
     if params.get("include_selected_paths"):
         result["selected_paths"] = []
@@ -136,8 +136,8 @@ def main() -> int:
     from runtime.supervisor.ipc import WorkerClient, WorkerSpec
 
     # Optional lab-only route pin (e.g. a free AI Studio model) - see llm_query.
-    lab_provider = os.environ.get("WISP_TESTLAB_LLM_PROVIDER", "").strip()
-    lab_model = os.environ.get("WISP_TESTLAB_LLM_MODEL", "").strip()
+    lab_provider = os.environ.get("OPENWAND_TESTLAB_LLM_PROVIDER", "").strip()
+    lab_model = os.environ.get("OPENWAND_TESTLAB_LLM_MODEL", "").strip()
     provider = lab_provider or str(getattr(config, "LLM_PROVIDER", "") or "").strip()
     if not provider:
         return _lab.finish(_lab.SKIP, "no LLM provider configured")
@@ -167,7 +167,7 @@ def main() -> int:
             "lab-audio",
             "runtime.workers.audio_host",
             "audio",
-            env={**overrides, "WISP_MACOS_ENABLE_AUDIO": "1"},
+            env={**overrides, "OPENWAND_MACOS_ENABLE_AUDIO": "1"},
         )
     )
     native: Any

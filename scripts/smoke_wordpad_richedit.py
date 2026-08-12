@@ -1,4 +1,4 @@
-"""Exercise Wisp's WordPad adapter against a real Windows RichEdit control."""
+"""Exercise OpenWand's WordPad adapter against a real Windows RichEdit control."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def main() -> int:
     parent = user32.CreateWindowExW(
         0,
         "STATIC",
-        "Wisp hidden WordPad contract",
+        "OpenWand hidden WordPad contract",
         0,
         0,
         0,
@@ -74,7 +74,7 @@ def main() -> int:
         user32.SendMessageW(child, native_host._EM_SETSEL, 2, 7)
         before = native_host._win_edit_control_snapshot(int(child))
         if not before:
-            raise RuntimeError("Wisp could not bind the real RICHEDIT50W selection")
+            raise RuntimeError("OpenWand could not bind the real RICHEDIT50W selection")
         native_host._focus_cache.clear()
         native_host._focus_cache.update(before)
         native_host._focus_cache.update({"token": 991, "kind": "win-edit"})

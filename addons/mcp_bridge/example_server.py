@@ -176,7 +176,7 @@ def main() -> int:
             _ok(mid, {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "wisp-example-mcp", "version": "1.0.0"},
+                "serverInfo": {"name": "openwand-example-mcp", "version": "1.0.0"},
             })
         elif method == "notifications/initialized":
             continue  # notification: no response

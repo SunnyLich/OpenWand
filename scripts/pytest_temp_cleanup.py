@@ -1,7 +1,7 @@
 """Remove repository-owned pytest basetemps after a test process exits.
 
 Pytest intentionally retains an explicitly configured ``--basetemp`` after a
-run. Wisp uses repository-local basetemps for workflow and CI isolation, so
+run. OpenWand uses repository-local basetemps for workflow and CI isolation, so
 those retained trees otherwise accumulate indefinitely.
 """
 
@@ -16,7 +16,7 @@ import warnings
 from collections.abc import Callable
 from pathlib import Path
 
-KEEP_TEMP_ENV = "WISP_KEEP_PYTEST_TEMP"
+KEEP_TEMP_ENV = "OPENWAND_KEEP_PYTEST_TEMP"
 _RETRY_DELAYS_SECONDS = (0.0, 0.05, 0.2)
 _OWNED_CHILD_PATTERN = re.compile(
     r"^(?P<kind>pytest|app_workflows|app_architecture|failure_evidence|workflow)_(?P<pid>\d+)(?:_|$)"

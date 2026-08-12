@@ -9,6 +9,7 @@ Press the matching key to pick, Escape to cancel.
 from __future__ import annotations
 
 import os
+import re
 import sys
 
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
@@ -16,10 +17,11 @@ from PySide6.QtGui import (
     QBrush,
     QColor,
     QFont,
+    QFontDatabase,
     QFontMetrics,
     QKeySequence,
     QPainter,
-    QPainterPath,
+    QPalette,
     QPen,
     QTextLayout,
     QTextOption,
@@ -28,13 +30,14 @@ from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QPlainTextEdit,
 
 import config
 from core.prompt_i18n import localize_intent_if_default
+from core.system.paths import ASSETS_DIR
 from ui.i18n import current_language, t
 from ui.shared.theme import show_tooltip_text
 
 _IS_WIN = sys.platform == "win32"
 _IS_MAC = sys.platform == "darwin"
 _IS_LINUX = sys.platform.startswith("linux")
-_DEBUG_KEYS = os.environ.get("WISP_INTENT_KEY_DEBUG", "0").strip().lower() not in {
+_DEBUG_KEYS = os.environ.get("OPENWAND_INTENT_KEY_DEBUG", "0").strip().lower() not in {
     "0",
     "false",
     "no",
@@ -79,7 +82,7 @@ def _event_type_name(event) -> str:
 
 def _linux_qt_keyboard_grabs_enabled() -> bool:
     """Return whether the Linux picker should use Qt's native keyboard grab."""
-    raw = os.environ.get("WISP_LINUX_QT_KEYBOARD_GRAB")
+    raw = os.environ.get("OPENWAND_LINUX_QT_KEYBOARD_GRAB")
     if raw is not None:
         return raw.strip().lower() in {"1", "true", "yes", "on"}
     return not bool(getattr(sys, "frozen", False))
@@ -255,30 +258,44 @@ def _choose_addon_intent_key(label: str, used_keys: set[str]) -> str:
 
 
 # ── Layout constants ────────────────────────────────────────────────────────
-_W             = 520
-_ROW_H         = 64
-_PAD_V         = 10       # vertical padding around all rows
-_PAD_H         = 10       # horizontal margin inside the widget
-_RADIUS        = 14       # widget corner radius
-_ROW_RADIUS    = 9        # per-row highlight corner radius
-_BADGE_W       = 38
-_BADGE_H       = 38
-_BADGE_R       = 8        # badge corner radius
-_BADGE_X       = 12       # badge left offset inside row
-_TEXT_X        = _BADGE_X + _BADGE_W + 12
+_W             = 560
+_ROW_H         = 37
+_PAD_V         = 0
+_PAD_H         = 20
+_RADIUS        = 0
+_ROW_RADIUS    = 0
+_BADGE_W       = 12       # compatibility: 5a uses a key column, not badges
+_BADGE_H       = 0
+_BADGE_R       = 0
+_BADGE_X       = _PAD_H
+_TEXT_X        = _PAD_H + 24
 _AUTO_CLOSE_MS = 60000
-_INPUT_EXTRA   = 54
-_INPUT_MIN_H   = 34
+_INPUT_EXTRA   = 0        # the one-line input is part of the normal picker height
+_INPUT_MIN_H   = 36
 _INPUT_MAX_H   = 118      # fallback when usable screen geometry is unavailable
 _SCREEN_MARGIN = 24
-_CONV_H        = 38
-_CONV_TOP      = 4
+_CONV_H        = 77
+_CONV_TOP      = 36
 _PROVIDER_H    = 30
-_CTX_H         = 92
-_CTX_GAP       = 4
-_CTX_CHIP_H    = 58
-_CTX_CHIP_W    = 60
-_CTX_TOP       = 8
+_CTX_H         = 96
+_CTX_GAP       = 18
+_CTX_CHIP_H    = 22
+_CTX_CHIP_W    = 196
+_CTX_TOP       = 15
+_CTX_ROW_GAP   = 3
+_CTX_KEY_W     = 10
+_CTX_KEY_GAP   = 8
+_CTX_EST_GAP   = 20
+_ROWS_TOP      = 16
+_ROW_KEY_W     = 12
+_ROW_KEY_GAP   = 12
+_ROW_LABEL_W   = 150
+_ROW_LABEL_GAP = 12
+_INPUT_TOP     = 14
+_INPUT_BOTTOM  = 18
+_INPUT_BAR_W   = 2
+_INPUT_KEY_W   = 10
+_INPUT_KEY_GAP = 9
 _CTX_PREVIEW_TOP = 6
 _CTX_PREVIEW_LINE_H = 22
 _CTX_PREVIEW_MAX = 3
@@ -286,23 +303,94 @@ _CTX_PREVIEW_MAX_LINES = 2
 _CTX_PREVIEW_REMOVE_W = 16
 
 # ── Palette ─────────────────────────────────────────────────────────────────
-_BG         = QColor(20, 20, 30, 248)
-_BORDER     = QColor(255, 255, 255, 18)
-_ROW_HL     = QColor(255, 255, 255, 16)
-_BADGE_BG   = QColor(38, 38, 54, 255)
-_BADGE_HL   = QColor(100, 90, 200, 60)   # tinted badge on hover
-_KEY_COLOR  = QColor(155, 140, 255, 240) # accent purple
-_LABEL      = QColor(238, 238, 250, 228)
-_HINT       = QColor(135, 130, 160, 180)
-_HINT_ESC   = QColor(100, 96, 118, 140)
-_SEP        = QColor(255, 255, 255, 14)
-_CTX_OFF    = QColor(105, 108, 124, 170)
-_CTX_ON     = QColor(54, 177, 112, 220)
-_CTX_AUTO   = QColor(224, 176, 62, 230)
-_CTX_TEXT   = QColor(244, 245, 250, 235)
-_CTX_SUB    = QColor(190, 192, 205, 190)
-_WARN       = QColor(246, 197, 76, 245)
+_BG             = QColor("#16181b")
+_SURFACE        = QColor("#1c1f23")
+_SURFACE_RAISED = QColor("#22262b")
+_BORDER         = QColor("#30353b")
+_ROW_HL         = QColor("#1c1f23")
+_BADGE_BG       = QColor("#22262b")
+_BADGE_HL       = QColor("#22262b")
+_KEY_COLOR      = QColor("#d8a145")
+_LABEL          = QColor("#e9e6e0")
+_HINT           = QColor("#7e7c78")
+_HINT_ESC       = QColor("#6e6c68")
+_SEP            = QColor("#262a2f")
+_CTX_OFF        = QColor("#33373d")
+_CTX_ON         = QColor("#d8a145")
+_CTX_AUTO       = QColor("#d8a145")
+_CTX_TEXT       = QColor("#e9e6e0")
+_CTX_SUB        = QColor("#b8b4ac")
+_TEXT_DIM       = QColor("#8b8a86")
+_TEXT_FAINT     = QColor("#6e6c68")
+_WARN           = QColor("#c4553d")
 _NEW_PROJECT_SENTINEL = "__new_project__"
+
+_BITTER_READY = False
+
+
+def _ensure_bitter_fonts() -> None:
+    """Register the bundled Bitter faces once, retaining a Georgia fallback."""
+    global _BITTER_READY
+    if _BITTER_READY:
+        return
+    _BITTER_READY = True
+    for name in ("Bitter-Regular.ttf", "Bitter-SemiBold.ttf", "Bitter-Italic.ttf"):
+        path = ASSETS_DIR / "fonts" / name
+        if path.is_file():
+            QFontDatabase.addApplicationFont(str(path))
+
+
+def _design_font(
+    family: str,
+    px: float,
+    weight: QFont.Weight = QFont.Weight.Normal,
+    *,
+    italic: bool = False,
+    tracking: float = 0.0,
+) -> QFont:
+    """Return a 96-dpi design font expressed in Qt point units."""
+    font = QFont(family)
+    font.setPointSizeF(px * 0.75)
+    font.setWeight(weight)
+    font.setItalic(italic)
+    if tracking:
+        font.setLetterSpacing(
+            QFont.SpacingType.PercentageSpacing,
+            100.0 + tracking * 100.0,
+        )
+    return font
+
+
+def _serif_font(
+    px: float,
+    weight: QFont.Weight = QFont.Weight.Normal,
+    *,
+    italic: bool = False,
+    tracking: float = 0.0,
+) -> QFont:
+    _ensure_bitter_fonts()
+    families = set(QFontDatabase.families())
+    family = "Bitter" if "Bitter" in families else "Bitter Pro" if "Bitter Pro" in families else "Georgia"
+    return _design_font(
+        family,
+        px,
+        weight,
+        italic=italic,
+        tracking=tracking,
+    )
+
+
+def _mono_font(px: float, *, tracking: float = 0.0) -> QFont:
+    families = set(QFontDatabase.families())
+    family = next(
+        (
+            name
+            for name in ("Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono")
+            if name in families
+        ),
+        QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family(),
+    )
+    return _design_font(family, px, tracking=tracking)
 
 
 def _qcolor(value: str | None, fallback: QColor | str, alpha: int | None = None) -> QColor:
@@ -316,7 +404,8 @@ def _qcolor(value: str | None, fallback: QColor | str, alpha: int | None = None)
 
 
 def _theme_palette() -> dict[str, QColor]:
-    """Return intent overlay colors derived from the active settings theme."""
+    """Return the Graphite & amber palette, respecting user theme overrides."""
+    dark = True
     try:
         from ui.shared.theme import is_dark_mode, theme_colors
 
@@ -324,8 +413,7 @@ def _theme_palette() -> dict[str, QColor]:
         dark = is_dark_mode()
     except Exception:
         colors = {}
-        dark = True
-    app_action = QColor("#e0b03e" if dark else "#8a5a00")
+    app_action = QColor("#e0b03e") if dark else _qcolor(colors.get("accent_fill"), "#d8a145")
     app_action_dim = QColor(app_action)
     app_action_dim.setAlpha(205)
     app_action_badge = QColor(app_action)
@@ -335,22 +423,27 @@ def _theme_palette() -> dict[str, QColor]:
     app_action_row_hover = QColor(app_action)
     app_action_row_hover.setAlpha(28)
     return {
-        "bg": _qcolor(colors.get("bg"), _BG, 248),
-        "border": _qcolor(colors.get("border"), _BORDER, 54),
-        "row_hl": _qcolor(colors.get("accent"), _ROW_HL, 24),
-        "badge_bg": _qcolor(colors.get("surface"), _BADGE_BG, 255),
-        "badge_hl": _qcolor(colors.get("accent"), _BADGE_HL, 64),
-        "key": _qcolor(colors.get("accent"), _KEY_COLOR, 240),
-        "label": _qcolor(colors.get("text"), _LABEL, 228),
-        "hint": _qcolor(colors.get("text_dim"), _HINT, 190),
-        "hint_esc": _qcolor(colors.get("text_dim"), _HINT_ESC, 150),
-        "sep": _qcolor(colors.get("border"), _SEP, 55),
-        "ctx_off": _qcolor(colors.get("text_dim"), _CTX_OFF, 170),
-        "ctx_on": _qcolor(colors.get("accent"), _CTX_ON, 230),
-        "ctx_auto": _qcolor(colors.get("accent_hover") or colors.get("accent"), _CTX_AUTO, 230),
-        "ctx_text": _qcolor(colors.get("text"), _CTX_TEXT, 235),
-        "ctx_sub": _qcolor(colors.get("text_dim"), _CTX_SUB, 190),
-        "warn": _qcolor(colors.get("accent_hover") or colors.get("accent"), _WARN, 245),
+        "bg": _qcolor(colors.get("bg"), _BG),
+        "surface": _qcolor(colors.get("surface"), _SURFACE),
+        "surface_raised": _qcolor(colors.get("raised"), _SURFACE_RAISED),
+        "border": _qcolor(colors.get("border"), _BORDER),
+        "row_hl": _qcolor(colors.get("surface"), _ROW_HL),
+        "badge_bg": _qcolor(colors.get("surface"), _BADGE_BG),
+        "badge_hl": _qcolor(colors.get("button_pressed"), _BADGE_HL),
+        "key": _qcolor(colors.get("accent"), _KEY_COLOR),
+        "label": _qcolor(colors.get("text"), _LABEL),
+        "hint": _qcolor(colors.get("text_dim"), _HINT),
+        "hint_esc": _qcolor(colors.get("disabled"), _HINT_ESC),
+        "sep": _qcolor(colors.get("rule"), _SEP),
+        "ctx_off": _qcolor(colors.get("border"), _CTX_OFF),
+        "ctx_on": _qcolor(colors.get("accent"), _CTX_ON),
+        "ctx_auto": _qcolor(None, _CTX_AUTO, 115),
+        "ctx_text": _qcolor(colors.get("text"), _CTX_TEXT),
+        "ctx_sub": _qcolor(colors.get("label"), _CTX_SUB),
+        "text_dim": _qcolor(colors.get("text_dim"), _TEXT_DIM),
+        "text_faint": _qcolor(colors.get("disabled"), _TEXT_FAINT),
+        "selection_bg": _qcolor(colors.get("button_pressed"), "#101214"),
+        "warn": _qcolor(colors.get("over_budget"), _WARN),
         "app_action": app_action,
         "app_action_dim": app_action_dim,
         "app_action_badge": app_action_badge,
@@ -360,31 +453,26 @@ def _theme_palette() -> dict[str, QColor]:
 
 
 def _input_line_stylesheet() -> str:
-    """Return theme-aware styling for the custom prompt input."""
+    """Return the square, amber-rail input styling from direction 5a."""
     try:
         from ui.shared.theme import theme_colors
 
         colors = theme_colors()
     except Exception:
         colors = {}
-    surface = colors.get("surface", _BADGE_BG.name())
-    text = colors.get("text", _LABEL.name())
-    border = colors.get("border", _BORDER.name())
-    accent = colors.get("accent", _KEY_COLOR.name())
-    on_accent = colors.get("on_accent", "#ffffff")
+    surface = str(colors.get("surface") or _SURFACE.name())
+    text = str(colors.get("text") or _LABEL.name())
+    accent = str(colors.get("accent") or _KEY_COLOR.name())
+    on_accent = str(colors.get("on_accent") or _BG.name())
     return (
         "QPlainTextEdit {"
         f"  background: {surface};"
-        f"  border: 1px solid {border};"
-        "  border-radius: 6px;"
+        "  border: none;"
+        "  border-radius: 0;"
         f"  color: {text};"
-        "  padding: 4px 10px;"
-        "  font-size: 10pt;"
+        "  padding: 4px 0;"
         f"  selection-background-color: {accent};"
         f"  selection-color: {on_accent};"
-        "}"
-        "QPlainTextEdit:focus {"
-        f"  border-color: {accent};"
         "}"
     )
 
@@ -436,6 +524,24 @@ def _context_toggle_keys() -> str:
 def _context_chip_token_text(item: dict) -> str:
     """Return token text that should be painted for a context chip."""
     return str(item.get("tokens") or "")
+
+
+def _context_token_count(item: dict) -> int | None:
+    """Parse a concrete supervisor token label into an integer estimate."""
+    label = _context_chip_token_text(item).strip().lower().replace(",", "")
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(k)?", label)
+    if match is None or "?" in label:
+        return None
+    value = float(match.group(1))
+    if match.group(2):
+        value *= 1000
+    return max(0, int(round(value)))
+
+
+def _context_token_display(item: dict) -> str:
+    """Return the compact, unit-free per-source count used by direction 5a."""
+    count = _context_token_count(item)
+    return f"{count:,}" if count is not None else "?"
 
 
 def _default_context_items() -> list[dict]:
@@ -494,6 +600,7 @@ class IntentOverlay(QWidget):
     ):
         """Initialize the intent overlay instance."""
         super().__init__(parent)
+        _ensure_bitter_fonts()
         flags = (
             Qt.WindowType.Window
             | Qt.WindowType.FramelessWindowHint
@@ -597,7 +704,12 @@ class IntentOverlay(QWidget):
 
         self._input_line = _ExpandingPromptEdit(self)
         self._input_line.installEventFilter(self)
-        self._input_line.setPlaceholderText(t("Type your prompt, press Enter…"))
+        self._input_line.setPlaceholderText(t("Type your prompt"))
+        self._input_line.setFont(_serif_font(14.5))
+        input_palette = self._input_line.palette()
+        input_palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(_HINT))
+        input_palette.setColor(QPalette.ColorRole.Text, QColor(_LABEL))
+        self._input_line.setPalette(input_palette)
         self._input_line.setStyleSheet(_input_line_stylesheet())
         self._input_line.hide()
         self._input_line.textChanged.connect(self._schedule_prompt_input_resize)
@@ -641,7 +753,7 @@ class IntentOverlay(QWidget):
             input_focus = False
             input_visible = False
         print(
-            "[wisp-intent] "
+            "[openwand-intent] "
             f"{message} "
             f"custom={self._custom_mode} drop_next={self._drop_next_keypress} "
             f"input_focus={input_focus} input_visible={input_visible} "
@@ -756,17 +868,42 @@ class IntentOverlay(QWidget):
     def _base_height(self) -> int:
         """Return the picker height for the current rows and context previews."""
         conversation_h = _CONV_H if self._show_conversation_selector else 0
-        context_h = _CTX_H if self._context_items else 0
+        context_h = self._context_controls_height() if self._context_items else 0
         provider_h = _PROVIDER_H if self._provider_display_name() else 0
+        intent_count = sum(not bool(row.get("is_custom")) for row in self._rows)
         return (
-            _PAD_V * 2
-            + conversation_h
+            conversation_h
             + context_h
             + provider_h
-            + _ROW_H * len(self._rows)
+            + _ROWS_TOP
+            + _ROW_H * intent_count
             + self._context_preview_height()
-            + 26
+            + _INPUT_TOP
+            + _INPUT_MIN_H
+            + _INPUT_BOTTOM
         )
+
+    def _context_controls_height(self) -> int:
+        """Return the source-grid height including its body top inset."""
+        rows = max(1, (len(self._context_items) + 1) // 2)
+        grid_h = rows * _CTX_CHIP_H + max(0, rows - 1) * _CTX_ROW_GAP
+        return max(_CTX_H, _CTX_TOP + max(57, grid_h))
+
+    def _prompt_input_rect(self, height: int | None = None) -> QRect:
+        """Return the amber-rail prompt surface at the foot of the picker."""
+        input_h = int(height if height is not None else _INPUT_MIN_H)
+        return QRect(
+            _PAD_H,
+            self._normal_h - _INPUT_BOTTOM - _INPUT_MIN_H,
+            _W - _PAD_H * 2,
+            input_h,
+        )
+
+    def _prompt_editor_rect(self, height: int | None = None) -> QRect:
+        """Inset the editor after the painted shortcut key and prompt rail."""
+        surface = self._prompt_input_rect(height)
+        left = surface.x() + 12 + _INPUT_KEY_W + _INPUT_KEY_GAP
+        return QRect(left, surface.y(), max(1, surface.right() - left - 11), surface.height())
 
     def _provider_display_name(self) -> str:
         """Return the bounded app name painted above provider-owned actions."""
@@ -919,12 +1056,7 @@ class IntentOverlay(QWidget):
             next_h += self._prompt_input_extra()
         self.setFixedSize(_W, next_h)
         if self._prompt_input_visible():
-            self._input_line.setGeometry(
-                _PAD_H,
-                self._normal_h - 20,
-                _W - _PAD_H * 2,
-                self._prompt_input_h,
-            )
+            self._input_line.setGeometry(self._prompt_editor_rect(self._prompt_input_h))
         if hasattr(self, "_screen_geometry"):
             self._move_to_screen_center(next_h)
 
@@ -936,154 +1068,97 @@ class IntentOverlay(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         palette = _theme_palette()
 
-        # Widget background with border
-        path = QPainterPath()
-        path.addRoundedRect(0.5, 0.5, _W - 1, self.height() - 1, _RADIUS, _RADIUS)
-        p.fillPath(path, QBrush(palette["bg"]))
-        p.setPen(QPen(palette["border"], 1))
-        p.drawPath(path)
+        # Direction 5a is deliberately a single, square graphite plane.
+        p.fillRect(self.rect(), QBrush(palette["bg"]))
 
-        label_font = QFont("Segoe UI", 10, QFont.Weight.DemiBold)
-        hint_font  = QFont("Segoe UI", 8)
-        key_font   = QFont("Segoe UI", 12, QFont.Weight.Bold)
-        esc_font   = QFont("Segoe UI", 7)
-        ctx_label_font = QFont("Segoe UI", 8, QFont.Weight.DemiBold)
-        ctx_state_font = QFont("Segoe UI", 7, QFont.Weight.DemiBold)
-        ctx_token_font = QFont("Segoe UI", 7)
+        label_font = _serif_font(15.5)
+        hint_font = _serif_font(12.5, italic=True)
+        key_font = _mono_font(11)
+        ctx_label_font = _serif_font(13.5)
+        ctx_state_font = _mono_font(9.5)
+        ctx_token_font = _mono_font(10)
 
-        y = _PAD_V
+        y = 0
         self._warning_rects = []
-        self._row_rects = []
+        self._row_rects = [QRect() for _row in self._rows]
         if self._show_conversation_selector:
-            self._paint_conversation_selector(p, y, hint_font, ctx_label_font, palette)
+            self._paint_conversation_selector(p, y, _serif_font(13.5), _serif_font(13.5), palette)
             y += _CONV_H
         if self._context_items:
             self._paint_context_items(p, y, ctx_label_font, ctx_state_font, ctx_token_font, palette)
-            y += _CTX_H
+            y += self._context_controls_height()
         provider_name = self._provider_display_name()
         if provider_name:
-            p.setFont(QFont("Segoe UI", 9, QFont.Weight.DemiBold))
+            p.setFont(_mono_font(9, tracking=0.08))
             p.setPen(QPen(palette["app_action"]))
             p.drawText(
-                _PAD_H + 4,
+                _PAD_H,
                 y,
-                _W - (_PAD_H * 2) - 8,
+                _W - (_PAD_H * 2),
                 _PROVIDER_H,
                 Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-                f"{provider_name} actions",
+                f"{provider_name.upper()} ACTIONS",
             )
             y += _PROVIDER_H
 
+        y += _ROWS_TOP
         for i, row in enumerate(self._rows):
+            if row.get("is_custom"):
+                continue
             row_rect = QRect(_PAD_H, y, _W - _PAD_H * 2, _ROW_H)
-            self._row_rects.append(row_rect)
+            self._row_rects[i] = row_rect
             available = bool(row.get("available", True))
             hovered = available and i == self._hovered
-            app_action = row.get("appearance") == "app_action"
 
-            # Row highlight
-            if hovered:
-                rp = QPainterPath()
-                rp.addRoundedRect(
-                    _PAD_H, y, _W - _PAD_H * 2, _ROW_H,
-                    _ROW_RADIUS, _ROW_RADIUS,
-                )
-                hover_color = (
-                    palette["app_action_row_hover"] if app_action else palette["row_hl"]
-                )
-                p.fillPath(rp, QBrush(hover_color))
+            if self._selection_pending_idx == i:
+                p.fillRect(row_rect, QBrush(palette["surface_raised"]))
+            elif hovered:
+                p.fillRect(row_rect, QBrush(palette["row_hl"]))
 
-            # Separator above (skip first row)
-            if i > 0:
-                previous_app_action = self._rows[i - 1].get("appearance") == "app_action"
-                separator = (
-                    palette["app_action_dim"]
-                    if app_action or previous_app_action
-                    else palette["sep"]
-                )
-                p.setPen(QPen(separator, 1))
-                p.drawLine(_PAD_H + _BADGE_W + 12, y, _W - _PAD_H, y)
+            p.setPen(QPen(palette["sep"], 1))
+            p.drawLine(row_rect.left(), row_rect.top(), row_rect.right(), row_rect.top())
 
-            # Badge background
-            badge_y = y + (_ROW_H - _BADGE_H) // 2
-            bp = QPainterPath()
-            bp.addRoundedRect(_BADGE_X, badge_y, _BADGE_W, _BADGE_H, _BADGE_R, _BADGE_R)
-            if app_action:
-                badge_color = (
-                    palette["app_action_badge_hover"]
-                    if hovered
-                    else palette["app_action_badge"]
-                )
-            else:
-                badge_color = palette["badge_hl"] if hovered else palette["badge_bg"]
-            p.fillPath(bp, QBrush(badge_color))
-
-            # Key letter
             p.setFont(key_font)
-            key_color = (
-                palette["app_action"]
-                if app_action and available
-                else palette["key"] if available
-                else palette["hint"]
-            )
+            key_color = palette["key"] if available else palette["text_faint"]
             p.setPen(QPen(key_color))
-            p.drawText(_BADGE_X, badge_y, _BADGE_W, _BADGE_H,
-                       Qt.AlignmentFlag.AlignCenter, row["glyph"])
-
-            # Label
-            label_color = (
-                palette["app_action"]
-                if app_action and available
-                else palette["label"] if available
-                else palette["hint"]
+            p.drawText(
+                _PAD_H,
+                y,
+                _ROW_KEY_W,
+                _ROW_H,
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                str(row.get("glyph") or ""),
             )
-            text_w = _W - _PAD_H - _TEXT_X
-            label_y = y + (_ROW_H // 2) - 12
-            access = [str(item).strip().title() for item in row.get("access", []) if str(item).strip()]
-            if access:
-                tag_text = ", ".join(access)
-                tag_font = QFont("Segoe UI", 7, QFont.Weight.DemiBold)
-                tag_w = min(120, QFontMetrics(tag_font).horizontalAdvance(tag_text) + 14)
-                tag_rect = QRect(_W - _PAD_H - tag_w - 4, label_y + 1, tag_w, 18)
-                tag_color = {
-                    "green": QColor("#42b883"),
-                    "amber": QColor("#d9a441"),
-                    "red": QColor("#e06464"),
-                }.get(str(row.get("access_colour") or "green"), QColor("#42b883"))
-                tag_bg = QColor(tag_color)
-                tag_bg.setAlpha(42)
-                p.setBrush(QBrush(tag_bg))
-                p.setPen(QPen(tag_color, 1))
-                p.drawRoundedRect(tag_rect, 7, 7)
-                p.setFont(tag_font)
-                p.setPen(QPen(tag_color))
-                p.drawText(tag_rect, Qt.AlignmentFlag.AlignCenter, tag_text)
-                text_w -= tag_w + 10
+
+            label_x = _PAD_H + _ROW_KEY_W + _ROW_KEY_GAP
             p.setFont(label_font)
-            p.setPen(QPen(label_color))
-            p.drawText(_TEXT_X, label_y, text_w, 20,
-                       Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-                       row["label"])
-
-            # Subtitle: actual prompt snippet (configured rows) or hint (custom row)
-            subtitle = (
-                row["hint"]
-                if row["is_custom"] or not available
-                else (row["prompt"] or row["hint"])
+            p.setPen(QPen(palette["label"] if available else palette["text_faint"]))
+            p.drawText(
+                label_x,
+                y,
+                _ROW_LABEL_W,
+                _ROW_H,
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                str(row.get("label") or ""),
             )
+
+            subtitle = str(row.get("hint") or row.get("prompt") or "")
             if subtitle:
                 p.setFont(hint_font)
-                subtitle_color = (
-                    palette["app_action_dim"] if app_action else palette["hint"]
-                )
-                p.setPen(QPen(subtitle_color))
-                hint_y = y + (_ROW_H // 2) + 2
+                p.setPen(QPen(palette["hint"] if available else palette["text_faint"]))
+                hint_x = label_x + _ROW_LABEL_W + _ROW_LABEL_GAP
+                hint_w = _W - _PAD_H - hint_x
                 elided = QFontMetrics(hint_font).elidedText(
-                    subtitle, Qt.TextElideMode.ElideRight, text_w
+                    subtitle, Qt.TextElideMode.ElideRight, hint_w
                 )
-                p.drawText(_TEXT_X, hint_y, text_w, 18,
-                           Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-                           elided)
+                p.drawText(
+                    hint_x,
+                    y,
+                    hint_w,
+                    _ROW_H,
+                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                    elided,
+                )
 
             y += _ROW_H
 
@@ -1092,14 +1167,49 @@ class IntentOverlay(QWidget):
             self._paint_context_preview(p, y, hint_font, ctx_token_font, palette)
             y += preview_h
 
-        # ESC hint
-        if self._prompt_input_visible():
-            esc_y = y + self._prompt_input_extra() + 4
+        # The custom prompt is always visible as the fourth path through the picker.
+        input_rect = self._prompt_input_rect(self._prompt_input_h)
+        p.fillRect(input_rect, QBrush(palette["surface"]))
+        p.fillRect(
+            QRect(input_rect.x(), input_rect.y(), _INPUT_BAR_W, input_rect.height()),
+            QBrush(palette["key"]),
+        )
+        custom_idx = next(
+            (idx for idx, row in enumerate(self._rows) if row.get("is_custom")),
+            None,
+        )
+        if custom_idx is not None:
+            self._row_rects[custom_idx] = input_rect
+            custom_key = str(self._rows[custom_idx].get("glyph") or "S")
         else:
-            esc_y = y + 4
-        p.setFont(esc_font)
-        p.setPen(QPen(palette["hint_esc"]))
-        p.drawText(0, esc_y, _W, 18, Qt.AlignmentFlag.AlignCenter, t("ESC to cancel"))
+            custom_key = "S"
+        key_x = input_rect.x() + 12
+        p.setFont(_mono_font(10))
+        p.setPen(QPen(palette["key"]))
+        p.drawText(
+            key_x,
+            input_rect.y(),
+            _INPUT_KEY_W,
+            input_rect.height(),
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            custom_key,
+        )
+        if not self._prompt_input_visible():
+            text_x = key_x + _INPUT_KEY_W + _INPUT_KEY_GAP
+            p.setFont(_serif_font(14.5))
+            p.setPen(QPen(palette["hint"]))
+            placeholder = t("Type your prompt")
+            p.drawText(
+                text_x,
+                input_rect.y(),
+                input_rect.right() - text_x - 10,
+                input_rect.height(),
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                placeholder,
+            )
+            caret_x = text_x + QFontMetrics(_serif_font(14.5)).horizontalAdvance(placeholder) + 2
+            p.setPen(QPen(palette["key"], 1))
+            p.drawLine(caret_x, input_rect.y() + 9, caret_x, input_rect.bottom() - 8)
 
         p.end()
 
@@ -1113,50 +1223,81 @@ class IntentOverlay(QWidget):
     ) -> None:
         """Paint the project and chat selector row."""
         self._layout_conversation_selector(y)
-        project_rect = self._project_rect
+        p.fillRect(QRect(0, y, _W, _CONV_H), QBrush(palette["surface"]))
 
-        for rect, active in (
-            (project_rect, self._project_id != self._default_project_id()),
-            (self._conversation_mode_rect, self._conversation_mode == "continue"),
-            (self._conversation_list_rect, self._conversation_mode == "continue"),
-        ):
-            if rect.width() <= 0:
-                continue
-            path = QPainterPath()
-            path.addRoundedRect(rect, 7, 7)
-            bg = QColor(palette["badge_hl"] if active else palette["badge_bg"])
-            bg.setAlpha(58 if active else 200)
-            p.fillPath(path, QBrush(bg))
-            p.setPen(QPen(palette["border"], 1))
-            p.drawPath(path)
-
-        p.setFont(label_font)
-        p.setPen(QPen(palette["ctx_text"]))
-        project_prefix = (
-            f"{self._conversation_namespace_label} · "
-            if self._conversation_namespace_label
-            else f"{t('Project')}  "
-        )
-        project_value = f"{project_prefix}{self._selected_project_name()}  ▾"
-        project_value = QFontMetrics(label_font).elidedText(
-            project_value,
-            Qt.TextElideMode.ElideRight,
-            max(20, project_rect.width() - 14),
-        )
-        p.drawText(project_rect.adjusted(8, 0, -8, 0), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, project_value)
-
-        conversation_count = len(self._filtered_conversation_options())
-        mode_value = t("Continue") if self._conversation_mode == "continue" else t("New chat")
-        p.setFont(value_font)
-        p.setPen(QPen(palette["ctx_text"] if self._conversation_mode == "continue" else palette["ctx_sub"]))
-        mode_value = QFontMetrics(value_font).elidedText(
-            mode_value,
-            Qt.TextElideMode.ElideRight,
-            max(20, self._conversation_mode_rect.width() - 14),
-        )
+        p.setFont(_serif_font(14, QFont.Weight.DemiBold, tracking=0.05))
+        p.setPen(QPen(palette["label"]))
         p.drawText(
-            self._conversation_mode_rect.adjusted(8, 0, -8, 0),
-            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignCenter,
+            14,
+            y + 10,
+            _W - 28,
+            17,
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            "OpenWand",
+        )
+
+        project_rect = self._project_rect
+        mode_rect = self._conversation_mode_rect
+        chat_rect = self._conversation_list_rect
+        p.fillRect(project_rect, QBrush(palette["surface_raised"]))
+        p.setPen(QPen(palette["border"], 1))
+        p.drawRect(project_rect.adjusted(0, 0, -1, -1))
+
+        p.fillRect(mode_rect, QBrush(palette["key"]))
+
+        chat_bg = palette["surface_raised"] if self._conversation_mode == "continue" else QColor("#1a1d21")
+        p.fillRect(chat_rect, QBrush(chat_bg))
+        p.setPen(QPen(palette["border"], 1))
+        p.drawRect(chat_rect.adjusted(0, 0, -1, -1))
+
+        # Project label and value are separate runs, matching the reference's hierarchy.
+        p.setFont(label_font)
+        project_label = t("Project")
+        label_x = project_rect.x() + 10
+        p.setPen(QPen(palette["text_dim"]))
+        p.setFont(label_font)
+        p.drawText(
+            label_x,
+            project_rect.y(),
+            QFontMetrics(label_font).horizontalAdvance(project_label),
+            project_rect.height(),
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            project_label,
+        )
+        value_x = label_x + QFontMetrics(label_font).horizontalAdvance(project_label) + 8
+        arrow_w = 14
+        value_w = max(20, project_rect.right() - 10 - arrow_w - value_x)
+        project_value = QFontMetrics(label_font).elidedText(
+            self._selected_project_name(),
+            Qt.TextElideMode.ElideRight,
+            value_w,
+        )
+        p.setPen(QPen(palette["label"]))
+        p.drawText(
+            value_x,
+            project_rect.y(),
+            value_w,
+            project_rect.height(),
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            project_value,
+        )
+        p.setPen(QPen(palette["text_dim"]))
+        p.setFont(_mono_font(8))
+        p.drawText(
+            project_rect.right() - 18,
+            project_rect.y(),
+            12,
+            project_rect.height(),
+            Qt.AlignmentFlag.AlignCenter,
+            "▼",
+        )
+
+        mode_value = t("Continue") if self._conversation_mode == "continue" else t("New chat")
+        p.setFont(_serif_font(13.5, QFont.Weight.DemiBold))
+        p.setPen(QPen(palette["bg"]))
+        p.drawText(
+            mode_rect,
+            Qt.AlignmentFlag.AlignCenter,
             mode_value,
         )
 
@@ -1165,18 +1306,28 @@ class IntentOverlay(QWidget):
             if self._conversation_mode == "continue"
             else t("Choose conversation")
         )
-        if self._conversation_mode == "continue" and conversation_count:
-            chat_value = f"{chat_value}  ▾"
-        p.setPen(QPen(palette["ctx_sub"] if self._conversation_mode == "new" else palette["ctx_text"]))
+        p.setFont(value_font)
+        chat_color = palette["label"] if self._conversation_mode == "continue" else palette["text_faint"]
+        p.setPen(QPen(chat_color))
         chat_value = QFontMetrics(value_font).elidedText(
             chat_value,
             Qt.TextElideMode.ElideRight,
-            max(20, self._conversation_list_rect.width() - 14),
+            max(20, chat_rect.width() - 40),
         )
         p.drawText(
-            self._conversation_list_rect.adjusted(8, 0, -8, 0),
+            chat_rect.adjusted(10, 0, -30, 0),
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
             chat_value,
+        )
+        p.setPen(QPen(palette["text_dim"] if self._conversation_mode == "continue" else palette["text_faint"]))
+        p.setFont(_mono_font(8))
+        p.drawText(
+            chat_rect.right() - 20,
+            chat_rect.y(),
+            12,
+            chat_rect.height(),
+            Qt.AlignmentFlag.AlignCenter,
+            "▼",
         )
 
     def _layout_conversation_selector(self, y: int) -> None:
@@ -1187,17 +1338,11 @@ class IntentOverlay(QWidget):
             self._conversation_list_rect = QRect()
             return
         top = y + _CONV_TOP
-        project_rect = QRect(_PAD_H, top, 244, 28)
-        chat_rect = QRect(project_rect.right() + 6, top, _W - _PAD_H - project_rect.right() - 6, 28)
-        mode_w = min(116, max(92, chat_rect.width() // 3))
-        self._project_rect = project_rect
-        self._conversation_mode_rect = QRect(chat_rect.x(), chat_rect.y(), mode_w, chat_rect.height())
-        self._conversation_list_rect = QRect(
-            self._conversation_mode_rect.right() + 5,
-            chat_rect.y(),
-            max(0, chat_rect.right() - self._conversation_mode_rect.right() - 4),
-            chat_rect.height(),
-        )
+        available = _W - 28
+        project_w = available - 96 - 212 - 12
+        self._project_rect = QRect(14, top, project_w, 29)
+        self._conversation_mode_rect = QRect(self._project_rect.right() + 7, top, 96, 29)
+        self._conversation_list_rect = QRect(self._conversation_mode_rect.right() + 7, top, 212, 29)
 
     def _paint_context_items(
         self,
@@ -1210,60 +1355,126 @@ class IntentOverlay(QWidget):
     ) -> None:
         """Paint the per-prompt context controls."""
         palette = palette or _theme_palette()
-        key_font = QFont("Segoe UI", 8, QFont.Weight.Bold)
         top = y + _CTX_TOP
+        enabled = [
+            item
+            for item in self._context_items
+            if str(item.get("state") or "off").lower() != "off"
+        ]
+        total = sum(_context_token_count(item) or 0 for item in enabled)
+        try:
+            budget = max(1, int(getattr(config, "INTENT_CONTEXT_TOKEN_BUDGET", 8000) or 8000))
+        except (TypeError, ValueError, OverflowError):
+            budget = 8000
+        over_budget = total > budget
+        offender_id = ""
+        running = 0
+        if over_budget:
+            for item in enabled:
+                running += _context_token_count(item) or 0
+                if running > budget:
+                    offender_id = str(item.get("id") or "")
+                    break
+
         for item, rect in self._context_chip_rects(top):
             state = str(item.get("state") or "off").lower()
-            color = palette["ctx_on"] if state == "on" else (
-                palette["ctx_auto"] if state == "auto" else palette["ctx_off"]
+            selected = state != "off"
+            offending = bool(offender_id) and str(item.get("id") or "") == offender_id
+            key_color = palette["warn"] if offending else (
+                palette["key"] if selected else palette["text_faint"]
             )
-
-            path = QPainterPath()
-            path.addRoundedRect(rect, 7, 7)
-            bg = QColor(color)
-            bg.setAlpha(42 if state == "off" else 56)
-            p.fillPath(path, QBrush(bg))
-            p.setPen(QPen(color, 1))
-            p.drawPath(path)
+            name_color = palette["warn"] if offending else (
+                palette["key"] if selected else palette["text_faint"]
+            )
+            if selected:
+                p.fillRect(rect, QBrush(palette["selection_bg"]))
 
             key = str(item.get("key") or "")
+            key_x = rect.x() + 10
             if key:
-                p.setFont(key_font)
-                p.setPen(QPen(color))
-                p.drawText(rect.x() + 5, rect.y() + 4, 14, 14, Qt.AlignmentFlag.AlignCenter, key)
+                p.setFont(state_font)
+                p.setPen(QPen(key_color))
+                p.drawText(
+                    key_x,
+                    rect.y(),
+                    _CTX_KEY_W,
+                    rect.height(),
+                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                    key,
+                )
 
             warning = "" if state == "off" else str(item.get("warning") or "").strip()
             if warning:
-                warn_rect = QRect(rect.right() - 18, rect.y() + 4, 14, 14)
-                self._warning_rects.append((warn_rect, warning))
-                p.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
-                p.setPen(QPen(palette["warn"]))
-                p.drawText(warn_rect, Qt.AlignmentFlag.AlignCenter, "⚠")
+                self._warning_rects.append((rect, warning))
 
-            label = str(item.get("label") or "")
-            p.setFont(label_font)
-            p.setPen(QPen(palette["ctx_text"]))
+            label = {
+                "Browser/Web": "Browser",
+                "Screenshot": "Screen",
+                "Git/GitHub": "Git",
+            }.get(str(item.get("label") or ""), str(item.get("label") or ""))
+            text_x = key_x + _CTX_KEY_W + _CTX_KEY_GAP
+            token_text = _context_token_display(item) if selected else ""
+            token_w = QFontMetrics(token_font).horizontalAdvance(token_text) if token_text else 0
+            label_w = max(10, rect.right() - 8 - text_x - token_w - (8 if token_text else 0))
+            p.setFont(_serif_font(13.5, QFont.Weight.DemiBold) if selected else label_font)
+            p.setPen(QPen(name_color))
             label = QFontMetrics(label_font).elidedText(
-                label, Qt.TextElideMode.ElideRight, rect.width() - 12
+                label, Qt.TextElideMode.ElideRight, label_w
             )
-            p.drawText(rect.x() + 6, rect.y() + 18, rect.width() - 12, 16,
-                       Qt.AlignmentFlag.AlignCenter, label)
+            p.drawText(
+                text_x,
+                rect.y(),
+                label_w,
+                rect.height(),
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                label,
+            )
 
-            state_label = {"on": t("On"), "auto": t("auto"), "off": t("Off")}.get(state, state)
-            p.setFont(state_font)
-            p.setPen(QPen(color))
-            p.drawText(rect.x() + 6, rect.y() + 34, rect.width() - 12, 12,
-                       Qt.AlignmentFlag.AlignCenter, state_label)
-
-            tokens = _context_chip_token_text(item)
-            if tokens:
+            if token_text:
                 p.setFont(token_font)
-                p.setPen(QPen(palette["ctx_sub"]))
-                tokens = QFontMetrics(token_font).elidedText(
-                    tokens, Qt.TextElideMode.ElideRight, rect.width() - 8
+                p.setPen(QPen(name_color))
+                p.drawText(
+                    rect.right() - 8 - token_w,
+                    rect.y(),
+                    token_w,
+                    rect.height(),
+                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
+                    token_text,
                 )
-                p.drawText(rect.x() + 4, rect.y() + 46, rect.width() - 8, 11,
-                           Qt.AlignmentFlag.AlignCenter, tokens)
+
+        estimate_right = _W - _PAD_H
+        estimate_w = self._context_estimate_width()
+        estimate_x = estimate_right - estimate_w
+        p.setFont(_mono_font(8.5, tracking=0.12))
+        p.setPen(QPen(palette["text_dim"]))
+        p.drawText(
+            estimate_x,
+            top,
+            estimate_w,
+            13,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            "EST. TOKENS",
+        )
+        p.setFont(_serif_font(30, QFont.Weight.DemiBold))
+        p.setPen(QPen(palette["warn"] if over_budget else palette["key"]))
+        p.drawText(
+            estimate_x,
+            top + 12,
+            estimate_w,
+            33,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            f"≈{total:,}",
+        )
+        p.setFont(_mono_font(9, tracking=0.12))
+        p.setPen(QPen(palette["text_dim"]))
+        p.drawText(
+            estimate_x,
+            top + 44,
+            estimate_w,
+            13,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            f"OF {budget:,}",
+        )
 
     def _context_preview_entries(self) -> list[tuple[str, str, str, str]]:
         """Return (label, preview, item id, source id) rows for enabled context."""
@@ -1507,19 +1718,28 @@ class IntentOverlay(QWidget):
         return None
 
     def _context_chip_width(self) -> int:
-        """Return a chip width that fits every context source in one row."""
-        count = max(1, len(self._context_items))
-        available = _W - (_PAD_H * 2) - (_CTX_GAP * (count - 1))
-        return max(44, min(_CTX_CHIP_W, available // count))
+        """Return one of the two source-column widths beside the estimate."""
+        sources_w = _W - _PAD_H * 2 - _CTX_EST_GAP - self._context_estimate_width()
+        return max(44, min(_CTX_CHIP_W, (sources_w - _CTX_GAP) // 2))
+
+    @staticmethod
+    def _context_estimate_width() -> int:
+        """Reserve the measured width of the widest estimate line."""
+        label_w = QFontMetrics(_mono_font(8.5, tracking=0.12)).horizontalAdvance("EST. TOKENS")
+        number_w = QFontMetrics(_serif_font(30, QFont.Weight.DemiBold)).horizontalAdvance("≈8,000")
+        budget_w = QFontMetrics(_mono_font(9, tracking=0.12)).horizontalAdvance("OF 8,000")
+        return max(92, label_w, number_w, budget_w)
 
     def _context_chip_rects(self, top: int) -> list[tuple[dict, QRect]]:
         """Return context chip hit/paint rects."""
         chip_w = self._context_chip_width()
         rects: list[tuple[dict, QRect]] = []
-        x = _PAD_H
-        for item in self._context_items:
-            rects.append((item, QRect(x, top, chip_w, _CTX_CHIP_H)))
-            x += chip_w + _CTX_GAP
+        for idx, item in enumerate(self._context_items):
+            column = idx % 2
+            row = idx // 2
+            x = _PAD_H + column * (chip_w + _CTX_GAP)
+            y = top + row * (_CTX_CHIP_H + _CTX_ROW_GAP)
+            rects.append((item, QRect(x, y, chip_w, _CTX_CHIP_H)))
         return rects
 
     def _toggle_conversation_mode(self) -> bool:
@@ -1538,9 +1758,12 @@ class IntentOverlay(QWidget):
         return True
 
     def _menu_style(self) -> str:
+        p = _theme_palette()
         return (
-            "QMenu { background: #161620; color: #eeeef8; border: 1px solid #3f3f52; }"
-            "QMenu::item:selected { background: #34345a; }"
+            f"QMenu {{ background: {p['surface'].name()}; color: {p['label'].name()}; "
+            f"border: 1px solid {p['border'].name()}; }}"
+            "QMenu::item { padding: 7px 18px; }"
+            f"QMenu::item:selected {{ background: {p['surface_raised'].name()}; color: {p['key'].name()}; }}"
         )
 
     def _show_project_menu(self) -> None:
@@ -1794,12 +2017,7 @@ class IntentOverlay(QWidget):
         new_h = self._normal_h + self._prompt_input_extra()
         self.setFixedSize(_W, new_h)
         self._move_to_screen_center(new_h)
-        self._input_line.setGeometry(
-            _PAD_H,
-            self._normal_h - 20,
-            _W - _PAD_H * 2,
-            self._prompt_input_h,
-        )
+        self._input_line.setGeometry(self._prompt_editor_rect(self._prompt_input_h))
         self._input_line.show()
         self._focus_custom_input()
         self.update()
@@ -1819,12 +2037,7 @@ class IntentOverlay(QWidget):
         new_h = self._normal_h + self._prompt_input_extra()
         self.setFixedSize(_W, new_h)
         self._move_to_screen_center(new_h)
-        self._input_line.setGeometry(
-            _PAD_H,
-            self._normal_h - 20,
-            _W - _PAD_H * 2,
-            self._prompt_input_h,
-        )
+        self._input_line.setGeometry(self._prompt_editor_rect(self._prompt_input_h))
         self._input_line.setText(self._initial_custom_text)
         self._input_line.show()
         self._schedule_prompt_input_resize()
@@ -1907,12 +2120,7 @@ class IntentOverlay(QWidget):
         self._prompt_input_h = desired_h
         total_h = self._normal_h + self._prompt_input_extra()
         self.setFixedSize(_W, total_h)
-        self._input_line.setGeometry(
-            _PAD_H,
-            self._normal_h - 20,
-            _W - _PAD_H * 2,
-            self._prompt_input_h,
-        )
+        self._input_line.setGeometry(self._prompt_editor_rect(self._prompt_input_h))
         self._move_to_screen_center(total_h)
         self.update()
 

@@ -86,7 +86,7 @@ class PresentationApiClient(Protocol):
 
 @runtime_checkable
 class OfficeJsPowerPointBridge(PresentationApiClient, Protocol):
-    """Wisp-owned Office.js add-in bridge for PowerPoint desktop/web hosts."""
+    """OpenWand-owned Office.js add-in bridge for PowerPoint desktop/web hosts."""
 
 
 @runtime_checkable

@@ -33,8 +33,8 @@ def test_parse_manifest_selects_current_platform_asset() -> None:
         "notes_url": "https://example.invalid/release",
         "assets": {
             "windows-x64": {
-                "name": "Wisp-0.1.1-windows-x64.zip",
-                "url": "https://example.invalid/Wisp.zip",
+                "name": "OpenWand-0.1.1-windows-x64.zip",
+                "url": "https://example.invalid/OpenWand.zip",
                 "sha256": "abc",
                 "size": 123,
             }
@@ -47,31 +47,31 @@ def test_parse_manifest_selects_current_platform_asset() -> None:
     assert notes_url == "https://example.invalid/release"
     assert asset is not None
     assert asset.platform_key == "windows-x64"
-    assert asset.name == "Wisp-0.1.1-windows-x64.zip"
+    assert asset.name == "OpenWand-0.1.1-windows-x64.zip"
 
 
 def test_download_update_verifies_sha256(tmp_path: Path) -> None:
     source = tmp_path / "source.zip"
-    source.write_bytes(b"wisp update")
+    source.write_bytes(b"openwand update")
     digest = updater._sha256(source)
     asset = updater.UpdateAsset(
         platform_key="linux-x64",
-        name="Wisp-test-linux-x64.tar.gz",
+        name="OpenWand-test-linux-x64.tar.gz",
         url=source.as_uri(),
         sha256=digest,
     )
 
     downloaded = updater.download_update(asset, target_dir=tmp_path / "downloads")
 
-    assert downloaded.name == "Wisp-test-linux-x64.tar.gz"
-    assert downloaded.read_bytes() == b"wisp update"
+    assert downloaded.name == "OpenWand-test-linux-x64.tar.gz"
+    assert downloaded.read_bytes() == b"openwand update"
 
 
 def test_apply_update_rejects_source_checkout(tmp_path: Path) -> None:
-    update = tmp_path / "Wisp-test.zip"
+    update = tmp_path / "OpenWand-test.zip"
     update.write_bytes(b"not used")
 
-    with pytest.raises(updater.UpdateError, match="packaged Wisp builds"):
+    with pytest.raises(updater.UpdateError, match="packaged OpenWand builds"):
         updater.apply_update(update, pid=123)
 
 
@@ -208,11 +208,11 @@ def test_apply_repo_update_rejects_non_main_branch(monkeypatch, tmp_path: Path) 
 
 
 def test_apply_update_writes_windows_helper_without_running_it(monkeypatch, tmp_path: Path) -> None:
-    update = tmp_path / "Wisp-test-windows-x64.zip"
+    update = tmp_path / "OpenWand-test-windows-x64.zip"
     with zipfile.ZipFile(update, "w") as archive:
-        archive.writestr("Wisp/Wisp.exe", "new exe")
+        archive.writestr("OpenWand/OpenWand.exe", "new exe")
 
-    executable = tmp_path / "CurrentWisp" / "Wisp.exe"
+    executable = tmp_path / "CurrentOpenWand" / "OpenWand.exe"
     executable.parent.mkdir()
     executable.write_text("current exe", encoding="utf-8")
     updates_dir = tmp_path / "updates"
@@ -227,7 +227,7 @@ def test_apply_update_writes_windows_helper_without_running_it(monkeypatch, tmp_
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(sys, "executable", str(executable))
     monkeypatch.setattr(updater, "UPDATE_DOWNLOAD_DIR", updates_dir)
-    monkeypatch.setattr(updater, "SINGLE_INSTANCE_LOCK", tmp_path / "wisp.lock")
+    monkeypatch.setattr(updater, "SINGLE_INSTANCE_LOCK", tmp_path / "openwand.lock")
     monkeypatch.setattr(updater.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(updater.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200, raising=False)
     monkeypatch.setattr(updater.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
@@ -240,19 +240,19 @@ def test_apply_update_writes_windows_helper_without_running_it(monkeypatch, tmp_
     assert "Wait-Process -Id $pidToWait" in script_text
     assert "System.Windows.Forms.Form" in script_text
     assert "[System.Drawing.Icon]::ExtractAssociatedIcon($restartTarget)" in script_text
-    assert "Updating Wisp" in script_text
+    assert "Updating OpenWand" in script_text
     assert "Find-NewVersionHelper" in script_text
     assert "windows_apply_update.ps1" in script_text
     assert "Starting the newer installer..." in script_text
-    assert "Test-WispLockReleased" in script_text
+    assert "Test-OpenWandLockReleased" in script_text
     assert "$singleInstanceLock" in script_text
     assert "Split-Path -LiteralPath" not in script_text
     assert "$archiveParent = [System.IO.Path]::GetDirectoryName($archive)" in script_text
     assert "$workRoot = Join-Path ([System.IO.Path]::GetTempPath())" in script_text
-    assert "Wait-For-WispExit" in script_text
+    assert "Wait-For-OpenWandExit" in script_text
     assert "Expand-Archive" not in script_text
     assert "[System.IO.Compression.ZipFile]::ExtractToDirectory($archive, $extractRoot)" in script_text
-    assert "$archiveRootName = 'Wisp'" in script_text
+    assert "$archiveRootName = 'OpenWand'" in script_text
     assert launched["cmd"][:6] == [
         "powershell",
         "-NoProfile",
@@ -270,11 +270,11 @@ def test_apply_update_writes_windows_helper_without_running_it(monkeypatch, tmp_
 
 
 def test_apply_update_writes_posix_helper_with_lock_wait(monkeypatch, tmp_path: Path) -> None:
-    update = tmp_path / "Wisp-test-linux-x64.zip"
+    update = tmp_path / "OpenWand-test-linux-x64.zip"
     with zipfile.ZipFile(update, "w") as archive:
-        archive.writestr("Wisp/Wisp", "new executable")
+        archive.writestr("OpenWand/OpenWand", "new executable")
 
-    executable = tmp_path / "CurrentWisp" / "Wisp"
+    executable = tmp_path / "CurrentOpenWand" / "OpenWand"
     executable.parent.mkdir()
     executable.write_text("current executable", encoding="utf-8")
     updates_dir = tmp_path / "updates"
@@ -289,7 +289,7 @@ def test_apply_update_writes_posix_helper_with_lock_wait(monkeypatch, tmp_path: 
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(sys, "executable", str(executable))
     monkeypatch.setattr(updater, "UPDATE_DOWNLOAD_DIR", updates_dir)
-    monkeypatch.setattr(updater, "SINGLE_INSTANCE_LOCK", tmp_path / "wisp.lock")
+    monkeypatch.setattr(updater, "SINGLE_INSTANCE_LOCK", tmp_path / "openwand.lock")
     monkeypatch.setattr(updater.subprocess, "Popen", fake_popen)
 
     script = updater.apply_update(update, pid=123)
@@ -297,27 +297,27 @@ def test_apply_update_writes_posix_helper_with_lock_wait(monkeypatch, tmp_path: 
     assert script.exists()
     assert script.parent == updates_dir
     script_text = script.read_text(encoding="utf-8")
-    assert "wait_for_wisp_exit" in script_text
+    assert "wait_for_openwand_exit" in script_text
     assert "single_instance_lock=" in script_text
     assert "flock -n 9" in script_text
-    assert "Timed out waiting for Wisp to exit before applying the update." in script_text
+    assert "Timed out waiting for OpenWand to exit before applying the update." in script_text
     assert "start_installer_ui" in script_text
     assert "zenity --progress --pulsate --no-cancel --auto-close" in script_text
-    assert 'kdialog --title "Wisp Update" --passivepopup' in script_text
+    assert 'kdialog --title "OpenWand Update" --passivepopup' in script_text
     assert 'xmessage -center -buttons ""' in script_text
     assert "update_installer_status \"Extracting the downloaded update...\"" in script_text
-    assert "finish_installer_ui \"Wisp has been updated and reopened.\" 0" in script_text
-    assert "finish_installer_ui \"Wisp update failed. Details were saved to $error_log\" 1" in script_text
+    assert "finish_installer_ui \"OpenWand has been updated and reopened.\" 0" in script_text
+    assert "finish_installer_ui \"OpenWand update failed. Details were saved to $error_log\" 1" in script_text
     assert launched["cmd"] == [str(script)]
     assert launched["kwargs"]["start_new_session"] is True
 
 
 def test_apply_update_prefers_supervisor_pid_from_environment(monkeypatch, tmp_path: Path) -> None:
-    update = tmp_path / "Wisp-test-windows-x64.zip"
+    update = tmp_path / "OpenWand-test-windows-x64.zip"
     with zipfile.ZipFile(update, "w") as archive:
-        archive.writestr("Wisp/Wisp.exe", "new exe")
+        archive.writestr("OpenWand/OpenWand.exe", "new exe")
 
-    executable = tmp_path / "CurrentWisp" / "Wisp.exe"
+    executable = tmp_path / "CurrentOpenWand" / "OpenWand.exe"
     executable.parent.mkdir()
     executable.write_text("current exe", encoding="utf-8")
 
@@ -325,9 +325,9 @@ def test_apply_update_prefers_supervisor_pid_from_environment(monkeypatch, tmp_p
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(sys, "executable", str(executable))
     monkeypatch.setattr(updater, "UPDATE_DOWNLOAD_DIR", tmp_path / "updates")
-    monkeypatch.setattr(updater, "SINGLE_INSTANCE_LOCK", tmp_path / "wisp.lock")
+    monkeypatch.setattr(updater, "SINGLE_INSTANCE_LOCK", tmp_path / "openwand.lock")
     monkeypatch.setattr(updater.subprocess, "Popen", lambda *args, **kwargs: SimpleNamespace(pid=456))
-    monkeypatch.setenv("WISP_SUPERVISOR_PID", "9876")
+    monkeypatch.setenv("OPENWAND_SUPERVISOR_PID", "9876")
 
     script = updater.apply_update(update)
 
@@ -349,18 +349,18 @@ def test_windows_new_version_helper_asset_is_bundled() -> None:
 def test_windows_update_helper_restores_backup_after_candidate_replacement_fails(tmp_path: Path) -> None:
     """The real helper restores the old install after a post-replacement failure."""
     helper = Path("assets/updater/windows_apply_update.ps1").resolve()
-    install_root = tmp_path / "Wisp"
-    backup_root = tmp_path / "Wisp-backup"
+    install_root = tmp_path / "OpenWand"
+    backup_root = tmp_path / "OpenWand-backup"
     candidate = tmp_path / "candidate"
     work_root = tmp_path / "work"
-    archive = tmp_path / "Wisp-update.zip"
+    archive = tmp_path / "OpenWand-update.zip"
     install_root.mkdir()
     candidate.mkdir()
     work_root.mkdir()
     archive.write_bytes(b"contract archive placeholder")
     (install_root / "version.txt").write_text("old-known-good", encoding="utf-8")
     (candidate / "version.txt").write_text("new-candidate", encoding="utf-8")
-    missing_restart_target = install_root / "missing-Wisp.exe"
+    missing_restart_target = install_root / "missing-OpenWand.exe"
 
     result = subprocess.run(
         [
@@ -403,11 +403,11 @@ def test_windows_update_helper_restores_backup_after_candidate_replacement_fails
 def test_windows_update_helper_replaces_install_restarts_and_cleans_backup(tmp_path: Path) -> None:
     """The shipped helper completes a real successful install-directory swap."""
     helper = Path("assets/updater/windows_apply_update.ps1").resolve()
-    install_root = tmp_path / "Wisp"
-    backup_root = tmp_path / "Wisp-backup"
+    install_root = tmp_path / "OpenWand"
+    backup_root = tmp_path / "OpenWand-backup"
     candidate = tmp_path / "candidate"
     work_root = tmp_path / "work"
-    archive = tmp_path / "Wisp-update.zip"
+    archive = tmp_path / "OpenWand-update.zip"
     install_root.mkdir()
     candidate.mkdir()
     work_root.mkdir()
@@ -420,7 +420,7 @@ def test_windows_update_helper_replaces_install_restarts_and_cleans_backup(tmp_p
     # target. ``where.exe`` exits immediately when started without arguments,
     # so the test proves Start-Process accepted the replaced executable without
     # leaving a background test process behind.
-    restart_target = candidate / "Wisp.exe"
+    restart_target = candidate / "OpenWand.exe"
     shutil.copy2(Path(os.environ["WINDIR"]) / "System32" / "where.exe", restart_target)
 
     result = subprocess.run(
@@ -438,7 +438,7 @@ def test_windows_update_helper_replaces_install_restarts_and_cleans_backup(tmp_p
             "-Candidate",
             str(candidate),
             "-RestartTarget",
-            str(install_root / "Wisp.exe"),
+            str(install_root / "OpenWand.exe"),
             "-BackupRoot",
             str(backup_root),
             "-WorkRoot",
@@ -452,7 +452,7 @@ def test_windows_update_helper_replaces_install_restarts_and_cleans_backup(tmp_p
 
     assert result.returncode == 0, result.stderr or result.stdout
     assert (install_root / "version.txt").read_text(encoding="utf-8") == "new-version"
-    assert (install_root / "Wisp.exe").is_file()
+    assert (install_root / "OpenWand.exe").is_file()
     assert not (install_root / "old-only.txt").exists()
     assert not candidate.exists()
     assert not backup_root.exists()

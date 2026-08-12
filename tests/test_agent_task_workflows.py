@@ -81,6 +81,18 @@ def test_agent_tray_setup_copy_preview_and_submit_real_workflow(tmp_path, monkey
     monkeypatch.setattr(config, "LLM_PROVIDER", "openai", raising=False)
     monkeypatch.setattr(config, "LLM_MODEL", "gpt-5.5", raising=False)
     monkeypatch.setattr(config, "LLM_FALLBACKS", "anthropic:claude-sonnet-4-5", raising=False)
+    monkeypatch.setattr(config, "OPENAI_API_KEY", "test-openai", raising=False)
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "test-anthropic", raising=False)
+    monkeypatch.setattr(config, "GOOGLE_API_KEY", "test-google", raising=False)
+    monkeypatch.setattr(config, "GROQ_API_KEY", "", raising=False)
+    monkeypatch.setattr(config, "CUSTOM_CONNECTIONS", [], raising=False)
+    from core.auth import chatgpt as chatgpt_auth
+    from core.auth import copilot_auth
+    from core import ollama_manager
+
+    monkeypatch.setattr(chatgpt_auth, "get_tokens", lambda: None)
+    monkeypatch.setattr(copilot_auth, "has_effective_token", lambda: False)
+    monkeypatch.setattr(ollama_manager, "find_ollama_executable", lambda: None)
     monkeypatch.setattr(
         task_window,
         "_capture_current_app_context",
@@ -117,6 +129,16 @@ def test_agent_tray_setup_copy_preview_and_submit_real_workflow(tmp_path, monkey
 
         dialog = task_window.AgentTaskDialog(on_submit=submitted.append)
         widgets.append(dialog)
+        assert [dialog.provider_combo.itemData(index) for index in range(dialog.provider_combo.count())] == [
+            "same as app",
+            "openai",
+            "anthropic",
+            "google",
+        ]
+        assert dialog.provider_combo.currentData() == "same as app"
+        assert dialog.provider_combo.currentText() == "Same as OpenWand chat"
+        assert dialog.model_edit.currentText() == "gpt-5.5"
+        assert not dialog.model_edit.isEnabled()
         monkeypatch.setattr(dialog, "_show_spec_preview", previews.append)
         dialog.title_edit.setText("Implement real workflow")
         dialog.objective_edit.setPlainText("Run the configured agents and verify the result.")
@@ -131,14 +153,20 @@ def test_agent_tray_setup_copy_preview_and_submit_real_workflow(tmp_path, monkey
         dialog.parallel_execution.setChecked(True)
         dialog.max_parallel_agents.setValue(2)
 
+        inherited = dialog._collect_spec()
+        assert inherited.provider == "same as app"
+        assert inherited.model == "same as app"
+        assert inherited.model_fallbacks == ""
+
         # Exercise the visible app-model copy and fallback-row add/remove route.
         _button(dialog, "Copy from app").click()
         assert dialog.provider_combo.currentData() == "openai"
         assert dialog.model_edit.currentText() == "gpt-5.5"
+        assert dialog.model_edit.isEnabled()
         assert dialog._collect_fallbacks() == "anthropic:claude-sonnet-4-5"
         _button(dialog, "+ Add fallback model").click()
         added = dialog._fallback_rows[-1]
-        added["provider"].setCurrentText("google")
+        added["provider"].setCurrentIndex(added["provider"].findData("google"))
         added["model"].setCurrentText("gemini-2.5-pro")
 
         _button(dialog, "Preview Spec").click()
@@ -191,7 +219,7 @@ def test_agent_tray_setup_copy_preview_and_submit_real_workflow(tmp_path, monkey
 
 
 def test_agent_current_app_context_uses_external_window_reader_and_budget(monkeypatch):
-    """Current-app copy excludes Wisp, reuses document extraction/redaction, and stays bounded."""
+    """Current-app copy excludes OpenWand, reuses document extraction/redaction, and stays bounded."""
     from core import context_fetcher
     from core.context_fetcher import WindowInfo
     from core.llm_clients import client
@@ -293,6 +321,11 @@ def test_agent_communication_map_visible_editing_workflow(monkeypatch):
     from ui.agent import task_window
 
     monkeypatch.setattr(
+        task_window,
+        "_configured_agent_provider_options",
+        lambda: [("Anthropic", "anthropic")],
+    )
+    monkeypatch.setattr(
         QMessageBox,
         "exec",
         lambda _self: QMessageBox.StandardButton.Yes,
@@ -312,7 +345,7 @@ def test_agent_communication_map_visible_editing_workflow(monkeypatch):
         window.window_agent_list.setCurrentRow(3)
         window.map_agent_name.setText("Test Model")
         window.map_agent_role.setCurrentText("Researcher")
-        window.map_agent_provider.setCurrentText("anthropic")
+        window.map_agent_provider.setCurrentIndex(window.map_agent_provider.findData("anthropic"))
         window.map_agent_model.setText("claude-sonnet-4-5")
         window.map_agent_responsibility.setPlainText("Inspect the runtime without changing files.")
         assert task_dialog._agent_specs[-1] == {

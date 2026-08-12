@@ -48,7 +48,7 @@ def test_explicit_relations_are_many_to_many_without_duplicates():
     assert len(relations["F030"]) == 2
     shared_node = (
         "tests/runtime/test_supervisor_ipc.py::"
-        "test_wisp_supervisor_starts_real_app_worker_process_set"
+        "test_openwand_supervisor_starts_real_app_worker_process_set"
     )
     assert shared_node in relations["F016"]
     assert shared_node in relations["F030"]

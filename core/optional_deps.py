@@ -23,7 +23,7 @@ from core.system.paths import REPO_ROOT, USER_DATA_DIR
 
 def _optional_packages_dir() -> Path:
     """Return the shared user-writable optional dependency install directory."""
-    override = os.environ.get("WISP_OPTIONAL_PACKAGES_DIR")
+    override = os.environ.get("OPENWAND_OPTIONAL_PACKAGES_DIR")
     if override:
         return Path(override).expanduser()
     return USER_DATA_DIR / "python_packages"
@@ -53,7 +53,7 @@ GOOGLE_GENAI_PACKAGE = "google-genai==2.10.0"
 STT_PACKAGE = "faster-whisper==1.2.1"
 # Runtime optional installs cannot consume the build environment's monolithic
 # requirements lock: installing that entire file into the shared optional
-# directory would duplicate Wisp itself and every provider.  Keep the exact
+# directory would duplicate OpenWand itself and every provider.  Keep the exact
 # faster-whisper dependency closure here instead.  These versions are copied
 # from the platform release locks and are checked against them in CI.
 _STT_LOCKED_VERSIONS = {
@@ -173,7 +173,7 @@ STT_WINDOWS_CUDA_PACKAGES = [
 ]
 OPTIONAL_INSTALL_CONTRACT_SCHEMA = 5
 OPTIONAL_LAYER_MANIFEST_SCHEMA = 1
-OPTIONAL_LAYER_MANIFEST_NAME = ".wisp-contract.json"
+OPTIONAL_LAYER_MANIFEST_NAME = ".openwand-contract.json"
 _SUPPORTED_CONTRACT_TARGETS = {
     "win32": {"amd64", "x86_64"},
     "linux": {"amd64", "x86_64"},
@@ -272,7 +272,7 @@ class OptionalDependencyContract:
 
 
 def _is_frozen() -> bool:
-    """Return whether Wisp is running from a packaged executable."""
+    """Return whether OpenWand is running from a packaged executable."""
     return bool(getattr(sys, "frozen", False))
 
 
@@ -292,7 +292,7 @@ def optional_contract_target_supported(
     platform_name: str | None = None,
     machine: str | None = None,
 ) -> bool:
-    """Return whether Wisp builds and tests dependency contracts for a target."""
+    """Return whether OpenWand builds and tests dependency contracts for a target."""
     selected_platform = str(platform_name or sys.platform).strip().lower()
     return _normalized_machine(machine) in _SUPPORTED_CONTRACT_TARGETS.get(selected_platform, set())
 
@@ -449,7 +449,7 @@ def add_optional_packages_to_path(*, prepend: bool = False) -> None:
 
 
 def is_importable(module_name: str) -> bool:
-    """Return whether an optional dependency exists in Wisp's managed package dir."""
+    """Return whether an optional dependency exists in OpenWand's managed package dir."""
     add_optional_packages_to_path()
     importlib.invalidate_caches()
     try:
@@ -560,7 +560,7 @@ def optional_dependency_contracts(
 ) -> tuple[OptionalDependencyContract, ...]:
     """Return the whole Source and Release contracts accepted for one feature.
 
-    Contracts exist only for Wisp's supported release targets. Unsupported
+    Contracts exist only for OpenWand's supported release targets. Unsupported
     operating-system/architecture combinations remain source-only best effort
     and deliberately do not acquire an implied compatibility promise.
     """
@@ -696,7 +696,7 @@ def local_speech_install_contract(*, kokoro_device: str, stt_device: str) -> str
 def optional_installer_dir() -> Path:
     """Return the durable control/log directory for optional installs.
 
-    Installer plans must survive a Wisp restart. Per-run diagnostic directories
+    Installer plans must survive a OpenWand restart. Per-run diagnostic directories
     deliberately do not, so they can never own apply plans or status files.
     """
     return OPTIONAL_PACKAGES_DIR.parent / "installers"
@@ -1074,7 +1074,7 @@ def _source_environment_spec_status(key: str, *, device: str | None = None) -> d
 
     Supported targets must match one complete Source or Release dependency
     contract. Unsupported targets are explicitly source-only best effort: the
-    provider and required imports must work, but Wisp makes no version promise.
+    provider and required imports must work, but OpenWand makes no version promise.
     """
     spec = optional_package_spec(key, device=device)
     paths = _source_environment_paths()
@@ -1165,7 +1165,12 @@ def optional_package_runtime_status(key: str, *, device: str | None = None) -> d
     return environment
 
 
-def require_optional_package_runtime(key: str, *, device: str | None = None) -> dict[str, object]:
+def require_optional_package_runtime(
+    key: str,
+    *,
+    device: str | None = None,
+    allow_version_drift: bool = False,
+) -> dict[str, object]:
     """Prepare one valid dependency layer for runtime use.
 
     Frozen releases must use the installer-owned layer because speech SDKs are
@@ -1174,11 +1179,23 @@ def require_optional_package_runtime(key: str, *, device: str | None = None) -> 
     install still takes precedence.
     """
     status = optional_package_runtime_status(key, device=device)
-    if not status.get("valid"):
+    # Kokoro has had compatible transitive dependency updates between app
+    # releases.  Synthesis imports the real entry point immediately after this
+    # check, so it is both safer and more useful to let that import decide than
+    # to reject an otherwise complete layer solely because metadata pins moved.
+    # Install/repair verification remains strict unless the caller explicitly
+    # opts into this runtime-only compatibility path.
+    compatible_managed_drift = bool(
+        allow_version_drift
+        and str(key or "").strip().lower().replace("_", "-") == "kokoro"
+        and str(status.get("source") or "managed") == "managed"
+        and status.get("installed")
+    )
+    if not status.get("valid") and not compatible_managed_drift:
         display_name = str(status.get("display_name") or key)
         detail = str(status.get("message") or "package files are missing or invalid")
         raise RuntimeError(
-            f"{display_name} is not installed for this Wisp release. "
+            f"{display_name} is not installed for this OpenWand release. "
             f"Open Settings > Voice and install it. {detail}"
         )
 
@@ -1203,11 +1220,14 @@ def require_optional_package_runtime(key: str, *, device: str | None = None) -> 
             f"{spec.display_name} install is incomplete in the selected {source} dependency layer: "
             f"missing {', '.join(missing_modules)}. Open Settings > Voice and reinstall it."
         )
+    if compatible_managed_drift:
+        status["runtime_compatible"] = True
+        status["version_drift"] = True
     return status
 
 
 def remove_optional_package_artifacts(patterns: list[str]) -> list[str]:
-    """Remove package files/directories from Wisp's optional package layer.
+    """Remove package files/directories from OpenWand's optional package layer.
 
     This is intentionally scoped to ``OPTIONAL_PACKAGES_DIR``. Runtime installs
     use ``pip --target``/``uv --target``, and a broken native wheel can survive a
@@ -1655,7 +1675,7 @@ def _optional_probe_status(
         if extra_args:
             command.extend(extra_args)
         probe_env = pip_install_env()
-        probe_env["WISP_OPTIONAL_PROBE_SOURCE"] = dependency_source
+        probe_env["OPENWAND_OPTIONAL_PROBE_SOURCE"] = dependency_source
         common_kwargs = {
             "text": True,
             "encoding": "utf-8",
@@ -1787,7 +1807,7 @@ def stt_model_status_subprocess(
     progress: Callable[[int], None] | None = None,
 ) -> dict[str, object]:
     """Load a Whisper model in a subprocess to verify STT without freezing Settings."""
-    timeout_text = os.environ.get("WISP_STT_MODEL_VERIFY_TIMEOUT_SECONDS", "").strip()
+    timeout_text = os.environ.get("OPENWAND_STT_MODEL_VERIFY_TIMEOUT_SECONDS", "").strip()
     timeout: float | None = 60 * 60
     if timeout_text:
         try:
@@ -1900,6 +1920,10 @@ def kokoro_runtime_import_status_subprocess() -> dict[str, object]:
             "error": "",
             "subprocess": True,
         },
+        # Importing the CUDA-enabled Torch + Kokoro stack can legitimately take
+        # around a minute on Windows after process start.  Thirty seconds caused
+        # healthy installs to be reported as broken.
+        timeout=90,
     )
 
 
@@ -1909,15 +1933,15 @@ def pip_install_command(
     reinstall: bool = False,
     target_dir: Path | str | None = None,
 ) -> list[str]:
-    """Return a command that installs packages into Wisp's optional dir."""
+    """Return a command that installs packages into OpenWand's optional dir."""
     target = Path(target_dir) if target_dir is not None else OPTIONAL_PACKAGES_DIR
     if _is_frozen():
         uv = _find_uv()
         if not uv:
             suffix = ".exe" if sys.platform == "win32" else ""
             raise RuntimeError(
-                "Packaged Wisp installs optional packages with uv, but uv was not bundled. "
-                f"Place uv{suffix} under bin/ or tools/ before building, then rebuild Wisp."
+                "Packaged OpenWand installs optional packages with uv, but uv was not bundled. "
+                f"Place uv{suffix} under bin/ or tools/ before building, then rebuild OpenWand."
             )
         index_args = _uv_index_strategy_args(packages)
         return [

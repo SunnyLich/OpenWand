@@ -1,7 +1,7 @@
 ﻿"""Unit tests for the dependency-free streaming ``brain.echo`` handler."""
 from __future__ import annotations
 
-from wisp_brain import handlers
+from openwand_brain import handlers
 
 
 def _chunks(events):

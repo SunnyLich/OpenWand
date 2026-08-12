@@ -1,7 +1,7 @@
 """
 core/crash.py — Local crash report writer.
 
-On any unhandled exception, writes a timestamped .crash file next to wisp.log
+On any unhandled exception, writes a timestamped .crash file next to openwand.log
 so problems survive across restarts and are easy to find and share.
 """
 from __future__ import annotations
@@ -26,10 +26,10 @@ def write_crash_report(
     try:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_dir = os.path.dirname(os.path.abspath(sys.argv[0] if sys.argv else __file__))
-        path = os.path.join(log_dir, f"wisp_{ts}.crash")
+        path = os.path.join(log_dir, f"openwand_{ts}.crash")
 
         header = [
-            f"Wisp crash report — {datetime.now().isoformat()}",
+            f"OpenWand crash report — {datetime.now().isoformat()}",
             f"Platform : {sys.platform}",
             f"Python   : {sys.version.splitlines()[0]}",
         ]

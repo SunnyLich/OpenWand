@@ -49,7 +49,7 @@ _CAT_LABELS = {
     "project_context": "Project",
     "general":         "General",
 }
-_memory_log = logging.getLogger("wisp.memory_viewer")
+_memory_log = logging.getLogger("openwand.memory_viewer")
 
 
 def _load_projects() -> list[dict]:
@@ -192,7 +192,7 @@ class _FactRow(QWidget):
 
         threading.Thread(
             target=worker,
-            name=f"wisp-memory-{action}",
+            name=f"openwand-memory-{action}",
             daemon=True,
         ).start()
 
@@ -313,7 +313,7 @@ class MemoryPanel(QWidget):
 
         threading.Thread(
             target=worker,
-            name="wisp-memory-refresh",
+            name="openwand-memory-refresh",
             daemon=True,
         ).start()
 
@@ -417,7 +417,7 @@ class MemoryPanel(QWidget):
 
         threading.Thread(
             target=worker,
-            name="wisp-memory-add",
+            name="openwand-memory-add",
             daemon=True,
         ).start()
 

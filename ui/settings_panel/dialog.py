@@ -25,21 +25,33 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QMimeData, QObject, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QDrag, QFont, QPainter, QPalette
+from PySide6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QDrag,
+    QFont,
+    QFontDatabase,
+    QFontMetrics,
+    QIcon,
+    QPainter,
+    QPalette,
+)
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QButtonGroup,
     QCheckBox,
     QComboBox,
     QCompleter,
     QDialog,
-    QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QLayout,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -49,6 +61,8 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSlider,
+    QStyle,
+    QStyledItemDelegate,
     QTabWidget,
     QTextEdit,
     QVBoxLayout,
@@ -57,12 +71,34 @@ from PySide6.QtWidgets import (
 
 import ui.settings_panel.env as settings_env
 from core import secret_store, settings_profiles
+from core.custom_connections import (
+    connection_id as _custom_connection_id,
+)
+from core.custom_connections import (
+    env_keys as _custom_connection_env_keys,
+)
+from core.custom_connections import (
+    env_values as _custom_connection_env_values,
+)
+from core.custom_connections import (
+    is_custom as _is_custom_route,
+)
+from core.custom_connections import (
+    load_connections as _load_custom_connections,
+)
+from core.custom_connections import (
+    route_id as _custom_route_id,
+)
+from core.custom_connections import (
+    secret_name as _custom_secret_name,
+)
 from core.system.env_utils import (
     format_tool_modes,
     normalize_file_access_mode,
     normalize_screenshot_mode,
     parse_tool_modes,
 )
+from core.system.paths import ASSETS_DIR
 from ui.i18n import (
     COMBO_I18N_SOURCE_ROLE,
     LANGUAGE_OPTIONS,
@@ -90,7 +126,7 @@ from ui.settings_panel.hotkey_capture import HotkeyCaptureEdit
 from ui.shared.window_utils import enable_standard_window_controls, fit_window_to_screen
 
 ENV_PATH = settings_env.ENV_PATH
-_settings_log = logging.getLogger("wisp.settings")
+_settings_log = logging.getLogger("openwand.settings")
 _settings_dialog: SettingsDialog | None = None
 _settings_open_pending = False
 _SETUP_CHECK_STATUS_LABELS = {
@@ -111,17 +147,183 @@ _TTS_TIMING_NOTICE = (
     "instead of audio-synced word highlighting."
 )
 _AUTH_STATUS_TIMEOUT_MS = 7000
-_SETTINGS_NAV_ITEM_HEIGHT = 40
+_SETTINGS_NAV_ITEM_HEIGHT = 33
+_SETTINGS_NAV_DIRTY_ROLE = int(Qt.ItemDataRole.UserRole) + 41
+_THEME_REPAINT_KEYS = frozenset({
+    "THEME_MODE",
+    "DARK_MODE",  # legacy compatibility setting
+    "THEME_DARK_BG",
+    "THEME_DARK_SURFACE",
+    "THEME_DARK_TEXT",
+    "THEME_DARK_ACCENT",
+    "THEME_LIGHT_BG",
+    "THEME_LIGHT_SURFACE",
+    "THEME_LIGHT_TEXT",
+    "THEME_LIGHT_ACCENT",
+})
 
-_SETTINGS_PAGE_META: tuple[tuple[str, str, str], ...] = (
-    ("App", "General", "Appearance, languages, privacy, and everyday behavior."),
-    ("Connections", "Connections", "Provider sign-ins, API keys, and custom endpoints."),
-    ("LLM", "Model routing", "Choose primary and fallback models for each purpose."),
-    ("TTS / Voice", "Voice & audio", "Playback, text to speech, transcription, and live conversation."),
-    ("Keybinds", "Shortcuts", "Keyboard controls, caller actions, context, and tool access."),
-    ("Prompts", "Prompts & context", "Instructions that shape how Wisp responds."),
-    ("Advanced", "Advanced", "Context limits, local file access, memory, and timing."),
-    ("About", "About", "Version, updates, and uninstall options."),
+
+def _settings_change_requires_theme_repaint(changed_keys: set[str]) -> bool:
+    """Return whether changed settings feed the shared Qt palette or stylesheet."""
+    return not _THEME_REPAINT_KEYS.isdisjoint(changed_keys)
+
+
+def _settings_font(px: float, *, semibold: bool = False, mono: bool = False) -> QFont:
+    """Return a design font using CSS-pixel sizing at the standard 96 DPI."""
+    families = set(QFontDatabase.families())
+    if mono:
+        family = next(
+            (
+                name
+                for name in ("Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono")
+                if name in families
+            ),
+            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family(),
+        )
+    else:
+        family = _settings_ui_family()
+    font = QFont(family)
+    font.setPointSizeF(px * 0.75)
+    font.setWeight(QFont.Weight.DemiBold if semibold else QFont.Weight.Normal)
+    return font
+
+
+def _settings_ui_family() -> str:
+    """Return the clean platform UI face used throughout Settings."""
+    families = set(QFontDatabase.families())
+    language = current_app_language().strip().lower()
+    language_families: tuple[str, ...] = ()
+    if language in {"zh-hant", "zh-tw", "zh-hk"}:
+        language_families = ("Microsoft JhengHei UI", "Microsoft JhengHei")
+    elif language.startswith("zh"):
+        language_families = ("Microsoft YaHei UI", "Microsoft YaHei")
+    return next(
+        (
+            name
+            for name in (
+                *language_families,
+                "Segoe UI Variable Text",
+                "Segoe UI",
+                "SF Pro Text",
+                "Inter",
+                "Noto Sans",
+                "DejaVu Sans",
+            )
+            if name in families
+        ),
+        QApplication.font().family(),
+    )
+
+
+def _compact_ui_font(px: float, *, semibold: bool = False) -> QFont:
+    """Return a tightly hinted sans-serif font for dense controls and status rows."""
+    family = _settings_ui_family()
+    font = QFont(family)
+    font.setPixelSize(round(px))
+    font.setWeight(QFont.Weight.DemiBold if semibold else QFont.Weight.Normal)
+    font.setKerning(True)
+    font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
+    return font
+
+
+class _FlexibleWrapLabel(QLabel):
+    """A wrapped label whose row cannot collapse below its preferred text height."""
+
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self.setWordWrap(True)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802 - Qt override
+        # QLabel's narrow minimumSizeHint can win over its wrapped size hint in
+        # a resizable QScrollArea. Fallback CJK fonts can then paint an extra
+        # line outside the allocated row. Preserve the larger content height.
+        wrapped_height = QLabel.heightForWidth(self, width)
+        preferred_height = QLabel.sizeHint(self).height()
+        return max(wrapped_height, preferred_height)
+
+
+class _SettingsNavigationDelegate(QStyledItemDelegate):
+    """Paint the 9b navigation rows and their four-pixel dirty marker."""
+
+    def __init__(self, parent: QWidget | None = None, *, dark: bool = True) -> None:
+        super().__init__(parent)
+        self._dark = dark
+
+    def set_dark(self, dark: bool) -> None:
+        self._dark = dark
+
+    def sizeHint(self, option, index):  # noqa: N802 - Qt override
+        hint = super().sizeHint(option, index)
+        hint.setHeight(_SETTINGS_NAV_ITEM_HEIGHT)
+        return hint
+
+    def paint(self, painter: QPainter, option, index) -> None:
+        from ui.shared.theme import theme_colors
+
+        c = theme_colors(self._dark)
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        if self._dark:
+            well, hover, text, dim, accent, selected_text = (
+                "#0e1013",
+                "#1c1f23",
+                "#e9e6e0",
+                "#8b8a86",
+                "#d8a145",
+                "#d8a145",
+            )
+        else:
+            well, hover, text, dim, accent, selected_text = (
+                c["accent_fill"],
+                c["button_hover"],
+                c["text"],
+                c["text_dim"],
+                c["accent"],
+                c["text"],
+            )
+
+        painter.save()
+        rect = option.rect.adjusted(0, 0, 0, -1)
+        if selected:
+            painter.fillRect(rect, QColor(well))
+        elif hovered:
+            painter.fillRect(rect, QColor(hover))
+
+        font = _settings_font(14, semibold=selected)
+        painter.setFont(font)
+        painter.setPen(QColor(selected_text if selected else text if hovered else dim))
+        dirty = bool(index.data(_SETTINGS_NAV_DIRTY_ROLE))
+        right_gutter = 25 if dirty else 11
+        text_rect = rect.adjusted(11, 0, -right_gutter, 0)
+        label = str(index.data(Qt.ItemDataRole.DisplayRole) or "")
+        clipped = QFontMetrics(font).elidedText(
+            label,
+            Qt.TextElideMode.ElideRight,
+            max(0, text_rect.width()),
+        )
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            clipped,
+        )
+        if dirty:
+            marker = option.rect.adjusted(option.rect.width() - 15, 16, -11, -16)
+            marker.setWidth(4)
+            marker.setHeight(4)
+            marker.moveTop(option.rect.center().y() - 2)
+            painter.fillRect(marker, QColor(accent))
+        painter.restore()
+
+_SETTINGS_PAGE_META: tuple[tuple[str, str], ...] = (
+    ("App", "General"),
+    ("Connections", "Connections"),
+    ("LLM", "Model routing"),
+    ("TTS / Voice", "Voice & audio"),
+    ("Keybinds", "Shortcuts"),
+    ("Prompts", "Prompts & context"),
+    ("Advanced", "Advanced"),
+    ("About", "About"),
 )
 
 
@@ -135,8 +337,8 @@ _DEFERRED_PAGE_ATTRS = frozenset({
     "_api_key_rows_layout", "_caller_blocks", "_callers_container", "_callers_vlayout",
     "_cgpt_login_btn", "_cgpt_logout_btn", "_chatgpt_status_lbl", "_connections_empty_lbl",
     "_connections_expanded", "_connections_filter", "_connections_page",
-    "_connections_search", "_connections_show_more_btn", "_copilot_clear_btn",
-    "_copilot_connect_btn", "_copilot_status_lbl", "_copilot_test_btn",
+    "_connections_search", "_connections_show_more_btn",
+    "_custom_base_url_label", "_custom_endpoint_combo",
     "_elevenlabs_install_btn", "_elevenlabs_install_status_lbl", "_expanded_shortcut_detail",
     "_github_login_btn", "_github_logout_btn", "_github_status_lbl", "_global_shortcut_rows",
     "_kokoro_assets_btn", "_kokoro_assets_mode", "_kokoro_assets_update_revision",
@@ -302,8 +504,157 @@ _CONNECTION_PROVIDER_IDS: tuple[str, ...] = (
 )
 # Fixed width of the leading drag-handle/priority column beside each model row.
 _MODEL_PRIORITY_COL_W = 72
-_MODEL_ROUTE_ROW_MIME = "application/x-wisp-model-route-row"
+_MODEL_ROUTE_ROW_MIME = "application/x-openwand-model-route-row"
 _SECRET_MASK_PLACEHOLDER = "●" * 16
+
+
+class _FolderListEditor(QWidget):
+    """A path list backed by the operating system's native folder chooser."""
+
+    valueChanged = Signal()
+    _MAX_VISIBLE_ROWS = 5
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        self._list = QListWidget()
+        self._list.setObjectName("settingsModelFileFolderList")
+        self._list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self._list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._list.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        layout.addWidget(self._list)
+
+        controls = QHBoxLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        self._add_button = QPushButton(t("Browse..."))
+        self._add_button.setObjectName("settingsModelFileFolderAdd")
+        self._remove_button = QPushButton(t("Remove"))
+        self._remove_button.setObjectName("settingsModelFileFolderRemove")
+        self._remove_button.setEnabled(False)
+        controls.addWidget(self._add_button)
+        controls.addWidget(self._remove_button)
+        controls.addStretch()
+        layout.addLayout(controls)
+
+        self._add_button.clicked.connect(self._choose_folder)
+        self._remove_button.clicked.connect(self._remove_selected)
+        self._list.itemSelectionChanged.connect(self._sync_remove_button)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._sync_list_height()
+
+    def _sync_list_height(self) -> None:
+        """Show one compact row, then grow with entries up to a useful cap."""
+        visible_rows = max(1, min(self._list.count(), self._MAX_VISIBLE_ROWS))
+        row_height = self._list.fontMetrics().height() + 10
+        if self._list.count():
+            measured_height = self._list.sizeHintForRow(0)
+            if measured_height > 0:
+                row_height = max(row_height, measured_height)
+        frame_height = self._list.frameWidth() * 2
+        content_width = self._list.sizeHintForColumn(0) if self._list.count() else 0
+        viewport_width = max(0, self._list.viewport().width())
+        needs_horizontal_scroll = (
+            self._list.horizontalScrollBar().maximum() > 0
+            or content_width > viewport_width
+        )
+        scrollbar_height = (
+            self._list.style().pixelMetric(
+                QStyle.PixelMetric.PM_ScrollBarExtent,
+                None,
+                self._list,
+            )
+            if needs_horizontal_scroll
+            else 0
+        )
+        self._list.setFixedHeight(
+            (row_height * visible_rows) + frame_height + scrollbar_height
+        )
+        self.updateGeometry()
+
+    def resizeEvent(self, event) -> None:
+        """Recalculate overflow after the settings page assigns its final width."""
+        super().resizeEvent(event)
+        QTimer.singleShot(0, self._sync_list_height)
+
+    @staticmethod
+    def _normalized_path_key(path: str) -> str:
+        return os.path.normcase(os.path.normpath(str(path or "").strip()))
+
+    @staticmethod
+    def _split_value(value: str) -> list[str]:
+        paths: list[str] = []
+        for line in str(value or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+            for path in line.split(os.pathsep):
+                path = path.strip()
+                if path:
+                    paths.append(path)
+        return paths
+
+    def paths(self) -> list[str]:
+        return [self._list.item(index).text() for index in range(self._list.count())]
+
+    def text(self) -> str:
+        return "\n".join(self.paths())
+
+    def setText(self, value: str) -> None:
+        previous = self.text()
+        self._list.clear()
+        seen: set[str] = set()
+        for path in self._split_value(value):
+            key = self._normalized_path_key(path)
+            if key in seen:
+                continue
+            seen.add(key)
+            self._list.addItem(path)
+        self._sync_remove_button()
+        self._sync_list_height()
+        if self.text() != previous:
+            self.valueChanged.emit()
+
+    def add_folder(self, path: str) -> bool:
+        path = str(path or "").strip()
+        if not path:
+            return False
+        key = self._normalized_path_key(path)
+        if any(self._normalized_path_key(item) == key for item in self.paths()):
+            return False
+        self._list.addItem(path)
+        self._list.setCurrentRow(self._list.count() - 1)
+        self._sync_list_height()
+        self.valueChanged.emit()
+        return True
+
+    def _choose_folder(self) -> None:
+        selected = self._list.currentItem()
+        start = selected.text() if selected is not None else ""
+        if not start or not Path(start).is_dir():
+            start = next((path for path in self.paths() if Path(path).is_dir()), str(Path.home()))
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            t("Folders the model may use"),
+            start,
+            QFileDialog.Option.ShowDirsOnly,
+        )
+        if folder:
+            self.add_folder(folder)
+
+    def _remove_selected(self) -> None:
+        rows = sorted({self._list.row(item) for item in self._list.selectedItems()}, reverse=True)
+        if not rows and self._list.currentRow() >= 0:
+            rows = [self._list.currentRow()]
+        if not rows:
+            return
+        for row in rows:
+            self._list.takeItem(row)
+        self._sync_remove_button()
+        self._sync_list_height()
+        self.valueChanged.emit()
+
+    def _sync_remove_button(self) -> None:
+        self._remove_button.setEnabled(bool(self._list.selectedItems()))
 
 
 class _SecretLineEdit(QLineEdit):
@@ -575,8 +926,8 @@ _CHAT_REASONING_EFFORT_OPTIONS: tuple[tuple[str, str], ...] = (
     ("High", "high"),
 )
 
-_SETTINGS_PRESET_KEY = "WISP_SETTINGS_PRESET"
-_PRESET_ENV_PREFIX = "WISP_PRESET_"
+_SETTINGS_PRESET_KEY = "OPENWAND_SETTINGS_PRESET"
+_PRESET_ENV_PREFIX = "OPENWAND_PRESET_"
 
 _PRESET_LABELS: dict[str, str] = {
     "low_setup": "Low setup",
@@ -697,11 +1048,15 @@ class SettingsDialog(QDialog):
         self._extra_tools = _normalize_extra_tool_payloads(extra_tools)
         self._disposing = False
         self.setWindowTitle("Settings")
-        self.setMinimumWidth(760)
+        self.setMinimumSize(980, 720)
         self.setModal(False)
         enable_standard_window_controls(self)
+        self.setFont(_settings_font(14))
         self._env = _read_env()
-        self._fields: dict[str, QLineEdit | QComboBox | QCheckBox | QTextEdit | QSlider] = (
+        self._fields: dict[
+            str,
+            QLineEdit | QComboBox | QCheckBox | QTextEdit | QSlider | _FolderListEditor,
+        ] = (
             _DeferredPageFields(self)
         )
         # Pages after the first are built once the window is on screen. Until then
@@ -720,6 +1075,7 @@ class SettingsDialog(QDialog):
         self._theme_syncing: bool = False
         self._api_key_rows: list[dict] = _DeferredPageRows(self)
         self._removed_connection_providers: set[str] = set()
+        self._removed_custom_connection_ids: set[str] = set()
         self._model_section_rows: dict[str, list[dict]] = _DeferredPageRowGroups(
             self, ("LLM", "VISION_LLM", "MEMORY_LLM")
         )
@@ -772,7 +1128,6 @@ class SettingsDialog(QDialog):
         self._tabs = None
         self._settings_nav: QListWidget | None = None
         self._page_title_lbl: QLabel | None = None
-        self._page_subtitle_lbl: QLabel | None = None
         self._test_result_timer = QTimer(self)
         self._test_result_timer.setInterval(100)
         self._test_result_timer.timeout.connect(self._drain_test_results)
@@ -793,7 +1148,7 @@ class SettingsDialog(QDialog):
             self._loading_values = False
         localize_widget_tree(self)
         self._refresh_tab_labels()
-        fit_window_to_screen(self, preferred_width=980, preferred_height=760)
+        fit_window_to_screen(self, preferred_width=980, preferred_height=720)
 
     def _page_widget(self, index: int) -> QWidget | None:
         """Return the real page at ``index``.
@@ -824,6 +1179,37 @@ class SettingsDialog(QDialog):
                 widget.setParent(None)
                 widget.deleteLater()
         layout.addWidget(page)
+        self._polish_page_layout(page)
+
+    def _polish_page_layout(self, page: QWidget) -> None:
+        """Apply 9b spacing and section hierarchy to an existing settings page."""
+        if isinstance(page, QScrollArea):
+            scroll_body = page.widget()
+            if scroll_body is not None and scroll_body.layout() is not None:
+                scroll_body.layout().setContentsMargins(0, 0, 0, 12)
+        forms = page.findChildren(QFormLayout)
+        for form in forms:
+            form.setHorizontalSpacing(14)
+            form.setVerticalSpacing(6)
+            form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            for row in range(form.rowCount()):
+                label_item = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
+                field_item = form.itemAt(row, QFormLayout.ItemRole.FieldRole)
+                label = label_item.widget() if label_item is not None else None
+                if label is None or field_item is None:
+                    continue
+                label.setFixedWidth(170)
+                label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+
+        headers = [
+            label
+            for label in page.findChildren(QLabel)
+            if label.objectName() in {"sectionHeader", "areaHeader"}
+        ]
+        for index, header in enumerate(headers):
+            header.setProperty("firstSection", index == 0)
+            header.style().unpolish(header)
+            header.style().polish(header)
 
     def __getattr__(self, name: str):
         """Materialize deferred pages when one of their widgets is read early.
@@ -858,7 +1244,7 @@ class SettingsDialog(QDialog):
         pending = self.__dict__.get("_pending_page_builds") or []
         if not pending:
             return False
-        debug_enabled = bool(os.environ.get("WISP_UI_DEBUG_METHODS"))
+        debug_enabled = bool(os.environ.get("OPENWAND_UI_DEBUG_METHODS"))
         started_at = time.monotonic()
         phase_at = started_at
 
@@ -973,12 +1359,21 @@ class SettingsDialog(QDialog):
             nav.setCurrentRow(index)
             nav.blockSignals(False)
         if 0 <= index < len(_SETTINGS_PAGE_META):
-            _internal, title, subtitle = _SETTINGS_PAGE_META[index]
+            _internal, title = _SETTINGS_PAGE_META[index]
             if isinstance(self._page_title_lbl, QLabel):
                 self._page_title_lbl.setText(t(title))
-            if isinstance(self._page_subtitle_lbl, QLabel):
-                self._page_subtitle_lbl.setText(t(subtitle))
         self._refresh_current_install_status(force_tts=False)
+
+    def select_page(self, internal_name: str) -> bool:
+        """Select a settings page by its stable internal name."""
+        try:
+            index = [meta[0] for meta in _SETTINGS_PAGE_META].index(str(internal_name))
+        except ValueError:
+            return False
+        if not isinstance(self._tabs, QTabWidget):
+            return False
+        self._tabs.setCurrentIndex(index)
+        return True
 
     def _refresh_current_install_status(self, *, force_tts: bool) -> None:
         """Refresh install state for the visible Settings page."""
@@ -1051,6 +1446,20 @@ class SettingsDialog(QDialog):
                 _settings_log.error("Could not clear %s connection credential: %s", label, exc)
                 failures.append(f"{label}: {exc}")
 
+        for connection_id in list(self._removed_custom_connection_ids):
+            if any(
+                _get(row["provider"]).strip() == "custom"
+                and str(row.get("connection_id") or "legacy") == connection_id
+                for row in self._api_key_rows
+            ):
+                self._removed_custom_connection_ids.discard(connection_id)
+                continue
+            try:
+                secret_store.delete_secret(_custom_secret_name(connection_id))
+                self._removed_custom_connection_ids.discard(connection_id)
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"Custom ({connection_id}): {exc}")
+
         # LLM provider keys from the API key table
         for row in self._api_key_rows:
             provider = _get(row["provider"]).strip()
@@ -1070,7 +1479,11 @@ class SettingsDialog(QDialog):
                     _settings_log.error("Could not save GitHub Copilot token to OS keychain: %s", exc)
                     failures.append(f"{label}: {exc}")
                     continue
-            key_name = _PROVIDER_KEY_NAMES.get(provider)
+            key_name = (
+                _custom_secret_name(str(row.get("connection_id") or "legacy"))
+                if provider == "custom"
+                else _PROVIDER_KEY_NAMES.get(provider)
+            )
             if not key_name:
                 continue
             if _store(key_name, value, label):
@@ -1130,7 +1543,7 @@ class SettingsDialog(QDialog):
     def showEvent(self, event):                 # noqa: N802
         """Show event."""
         super().showEvent(event)
-        fit_window_to_screen(self, preferred_width=980, preferred_height=760)
+        fit_window_to_screen(self, preferred_width=980, preferred_height=720)
         self._refresh_current_install_status(force_tts=True)
 
     def paintEvent(self, event):  # noqa: N802 - Qt override
@@ -1178,153 +1591,236 @@ class SettingsDialog(QDialog):
         """Build the dialog stylesheet from the active mode's template colours."""
         from ui.shared.theme import theme_colors
         c = theme_colors(dark)
-        # In light mode card/tab text read better a touch dimmer than text_dim.
+        ui_family = _settings_ui_family().replace('"', "")
+        if dark:
+            bg = "#16181b"
+            well = "#0e1013"
+            hover = "#141619"
+            raised = "#22262b"
+            rule = "#262a2f"
+            text = "#e9e6e0"
+            label = "#b8b4ac"
+            dim = "#8b8a86"
+            disabled = "#5f574f"
+            accent = "#d8a145"
+            on_accent = "#16181b"
+        else:
+            bg = c["bg"]
+            well = c["well"]
+            hover = c["button_hover"]
+            raised = c["raised"]
+            rule = c["rule"]
+            text = c["text"]
+            label = c["label"]
+            dim = c["text_dim"]
+            disabled = c["disabled"]
+            accent = c["accent"]
+            on_accent = c["on_accent"]
+        selected_bg = well if dark else c["accent_fill"]
+        selected_text = accent if dark else text
+        primary_fill = accent if dark else c["accent_fill"]
+        primary_hover = c["accent_hover"] if dark else c["accent_fill_hover"]
         return f"""
-        QDialog, QWidget#wispWindowContent {{
-            background: {c["bg"]};
+        QDialog, QWidget#openwandWindowContent {{
+            background: {bg};
+        }}
+        QWidget {{
+            color: {text};
+            font-family: "{ui_family}";
+            font-size: 14px;
+        }}
+        QLabel#oauthProviderName,
+        QLabel#oauthLoginStatus,
+        QLabel#oauthFeaturePurpose,
+        QLabel#oauthInlineMessage,
+        QPushButton#chatgptOAuthSignIn,
+        QPushButton#chatgptOAuthSignOut,
+        QPushButton#githubOAuthSignIn,
+        QPushButton#githubOAuthSignOut {{
+            font-family: "{ui_family}";
+            letter-spacing: 0px;
         }}
         QTabWidget#settingsTabs {{
-            background: {c["bg"]};
+            background: {bg}; border: none;
         }}
         QTabWidget#settingsTabs::pane {{
-            border: none;
-            background: {c["bg"]};
+            border: none; background: {bg};
         }}
         QTabWidget#settingsTabs::tab-bar {{
-            background: {c["bg"]};
-            alignment: left;
+            background: {bg}; alignment: left;
         }}
         QTabWidget#settingsTabs > QWidget {{
-            background: {c["bg"]};
+            background: {bg};
         }}
         QTabBar#settingsTabBar {{
-            background: {c["bg"]};
-            background-color: {c["bg"]};
-            border: none;
+            background: {bg}; background-color: {bg}; border: none;
         }}
         QTabBar#settingsTabBar::tab {{
-            color: {c["text_dim"]}; padding: 7px 20px; border-radius: 8px;
-            border: 1px solid {c["border"]};
-            font-size: 9pt; margin: 2px 2px; background: transparent;
+            color: {dim}; padding: 7px 20px; border: none;
+            border-radius: 0px; font-size: 14px; background: transparent;
         }}
         QTabBar#settingsTabBar::tab:selected {{
-            background: {c["tab_selected"]}; color: {c["accent"]};
-            border: 1px solid {c["accent"]}; font-weight: 600;
+            background: {selected_bg}; color: {selected_text}; font-weight: 600;
         }}
-        QTabBar#settingsTabBar::tab:hover:!selected {{ background: {c["accent_hint"]}; }}
+        QTabBar#settingsTabBar::tab:hover:!selected {{ background: {hover}; color: {text}; }}
         QTabBar#settingsTabBar::scroller {{
-            background: {c["bg"]};
-            width: 0px;
+            background: {bg}; width: 0px;
         }}
         QTabBar#settingsTabBar QToolButton {{
-            background: {c["bg"]};
-            border: none;
+            background: {bg}; border: none;
         }}
         QFrame#settingsSidebar {{
-            background: {c["card"]}; border: 1px solid {c["border"]};
-            border-radius: 12px;
+            background: transparent; border: none; border-radius: 0px;
         }}
         QListWidget#settingsNavigation {{
-            background: transparent; border: none; outline: none; padding: 4px;
+            background: transparent; border: none; outline: none; padding: 0px;
         }}
         QListWidget#settingsNavigation::item {{
-            color: {c["text_dim"]}; border-radius: 8px; padding: 9px 10px;
-            margin: 1px 0px;
+            border: none; border-radius: 0px; padding: 0px; margin: 0px;
         }}
         QListWidget#settingsNavigation::item:selected {{
-            background: {c["accent_soft"]}; color: {c["accent"]}; font-weight: 600;
+            background: {selected_bg}; color: {selected_text};
         }}
         QListWidget#settingsNavigation::item:hover:!selected {{
-            background: {c["accent_hint"]}; color: {c["text"]};
+            background: {hover}; color: {text};
         }}
         QLabel#settingsWindowTitle {{
-            color: {c["text"]}; font-size: 15pt; font-weight: 700;
+            color: {text}; font-size: 20px; font-weight: 600;
         }}
         QLabel#settingsPageTitle {{
-            color: {c["text"]}; font-size: 14pt; font-weight: 700;
+            color: {text}; font-size: 26px; font-weight: 600;
         }}
-        QLabel#settingsPageSubtitle {{
-            color: {c["text_dim"]}; font-size: 9pt;
+        QLabel#settingsSearchStatus {{
+            color: {dim}; font-size: 12px;
+        }}
+        QLabel#settingsProfileLabel {{
+            color: {dim}; font-family: "Cascadia Mono", "Consolas", monospace;
+            font-size: 9px; font-weight: 600; letter-spacing: 1.1px;
         }}
         QPushButton#settingsSegmentButton {{
-            border: 1px solid {c["border"]}; color: {c["text_dim"]};
-            background: {c["surface"]}; padding: 7px 14px;
+            border: 1px solid {rule}; color: {dim};
+            background: {well}; padding: 7px 14px;
         }}
         QPushButton#settingsSegmentButton:checked {{
-            border-color: {c["accent"]}; color: {c["accent"]};
-            background: {c["accent_soft"]}; font-weight: 600;
+            border-color: {rule}; color: {accent};
+            background: {well}; font-weight: 600;
         }}
         QPushButton[primary="true"] {{
-            color: {c["on_accent"]}; background: {c["accent"]};
-            border-color: {c["accent"]}; font-weight: 600;
+            color: {on_accent}; background: {primary_fill};
+            border-color: {primary_fill}; font-weight: 600;
         }}
-        QPushButton[primary="true"]:hover {{ background: {c["accent_hover"]}; }}
+        QPushButton[primary="true"]:hover {{ background: {primary_hover}; }}
         QFrame#card {{
-            background: {c["card"]}; border: 1px solid {c["border"]}; border-radius: 12px;
+            background: transparent; border: none; border-radius: 0px;
+        }}
+        QWidget#sectionHeadingRow {{ background: transparent; }}
+        QFrame#sectionRule {{
+            background: {rule}; border: none; min-height: 1px; max-height: 1px;
         }}
         QLabel#sectionHeader {{
-            color: {c["text"]}; font-size: 10pt; font-weight: 700;
-            letter-spacing: 0.5px; padding: 0px;
+            color: {dim}; font-family: "Cascadia Mono", "Consolas", monospace;
+            font-size: 9px; font-weight: 600; letter-spacing: 1.2px; padding: 0px;
+        }}
+        QLabel#sectionHeader[firstSection="true"] {{
+            color: {accent};
         }}
         QLabel#areaHeader {{
-            color: {c["text"]}; font-size: 11pt; font-weight: 700;
-            letter-spacing: 0px; padding: 0px;
+            color: {dim}; font-family: "Cascadia Mono", "Consolas", monospace;
+            font-size: 9px; font-weight: 600; letter-spacing: 1.2px; padding: 0px;
         }}
-        QLabel#areaSubheader {{
-            color: {c["text_dim"]}; font-size: 9pt; padding: 0px;
-        }}
+        QLabel#areaHeader[firstSection="true"] {{ color: {accent}; }}
         QFrame#areaAccentLine {{
-            background: {c["accent"]}; border: none; border-radius: 2px;
+            background: {rule}; border: none; border-radius: 0px;
+            min-height: 1px; max-height: 1px;
         }}
         QScrollArea {{
-            background: {c["bg"]};
-            border: none;
+            background: {bg}; border: none;
         }}
         QScrollArea > QWidget {{
-            background: {c["bg"]};
+            background: {bg};
         }}
         QScrollArea > QWidget > QWidget {{ background: transparent; }}
-        QWidget {{ color: {c["text"]}; }}
-        QLineEdit {{
-            background: {c["surface"]}; border: 1px solid {c["border"]}; border-radius: 8px;
-            padding: 5px 10px; font-size: 10pt; color: {c["text"]}; min-height: 30px;
+        QLabel {{ color: {text}; }}
+        QLabel[description="true"] {{ color: {dim}; font-size: 13px; }}
+        QLineEdit, QComboBox, QTextEdit, QPlainTextEdit {{
+            background: {well}; border: 1px solid {well}; border-radius: 0px;
+            padding: 6px 10px; font-size: 14px; color: {text}; min-height: 18px;
         }}
-        QLineEdit:focus {{ border-color: {c["accent"]}; }}
-        QComboBox {{
-            background: {c["surface"]}; border: 1px solid {c["border"]}; border-radius: 8px;
-            padding: 5px 10px; font-size: 10pt; color: {c["text"]}; min-height: 30px;
+        QLineEdit:hover, QComboBox:hover, QTextEdit:hover, QPlainTextEdit:hover {{
+            background: {hover};
         }}
-        QComboBox:focus {{ border-color: {c["accent"]}; }}
-        QComboBox::drop-down {{ border: none; width: 20px; }}
+        QLineEdit:focus, QComboBox:focus, QTextEdit:focus, QPlainTextEdit:focus {{
+            border-color: {accent};
+        }}
+        QLineEdit:disabled, QComboBox:disabled, QTextEdit:disabled, QPlainTextEdit:disabled {{
+            color: {disabled}; background: {well};
+        }}
+        QLineEdit#settingsSearch {{ min-width: 250px; max-width: 250px; }}
+        QComboBox::drop-down {{ border: none; width: 24px; }}
+        QComboBox::down-arrow {{ width: 8px; height: 5px; }}
         QComboBox QAbstractItemView {{
-            background: {c["card"]}; color: {c["text"]}; border: 1px solid {c["border"]};
+            background: {well}; color: {text}; border: 1px solid {rule};
+            selection-background-color: {hover}; selection-color: {accent}; outline: 0;
         }}
         QPushButton {{
-            border: 1.5px solid {c["accent"]}; color: {c["accent"]}; border-radius: 8px;
-            padding: 5px 16px; background: transparent; font-size: 10pt;
+            border: 1px solid {well}; color: {accent}; border-radius: 0px;
+            padding: 7px 16px; background: {well}; font-size: 13px; font-weight: 600;
         }}
-        QPushButton:hover {{ background: {c["accent_soft"]}; }}
-        QPushButton:pressed {{ background: {c["accent_strong"]}; }}
-        QPushButton:flat {{ border: none; color: {c["accent"]}; background: transparent; }}
+        QPushButton#settingsProfilesButton {{
+            color: {text}; padding: 6px 10px; text-align: left; font-weight: 400;
+        }}
+        QPushButton#settingsSetupCheckButton {{
+            color: {accent}; padding: 7px 11px; text-align: left; font-weight: 600;
+        }}
+        QPushButton:hover {{ background: {hover}; border-color: {hover}; }}
+        QPushButton:pressed {{ background: {raised}; border-color: {raised}; }}
+        QPushButton:disabled {{ color: {disabled}; background: {well}; border-color: {well}; }}
+        QPushButton:flat {{ border: none; color: {accent}; background: transparent; }}
         QPushButton:flat:hover {{ color: {c["accent_hover"]}; background: transparent; }}
-        QCheckBox {{ color: {c["text"]}; }}
-        QLabel {{ color: {c["text"]}; }}
-        QTextEdit, QPlainTextEdit {{
-            background: {c["surface"]}; border: 1px solid {c["border"]}; border-radius: 8px;
-            color: {c["text"]};
+        QCheckBox {{ color: {label}; spacing: 8px; }}
+        QCheckBox::indicator {{
+            width: 14px; height: 14px; border-radius: 0px;
+            border: 1px solid {rule}; background: {well};
+        }}
+        QCheckBox::indicator:checked {{
+            background: {primary_fill}; border-color: {primary_fill};
         }}
         QLineEdit[dirty="true"], QComboBox[dirty="true"], QTextEdit[dirty="true"] {{
-            border-color: {c["accent"]};
+            border-color: {accent};
+        }}
+        QFrame#settingsFooter {{
+            background: {bg}; border: none; border-top: 1px solid {rule};
+        }}
+        QPushButton#settingsResetPageButton, QPushButton#settingsCancelButton {{
+            color: {label}; padding: 7px 14px;
+        }}
+        QPushButton#settingsCancelButton {{ padding-left: 18px; padding-right: 18px; }}
+        QPushButton#settingsResetAllButton {{
+            color: #c4553d; padding: 7px 14px;
+        }}
+        QPushButton#settingsApplyButton {{
+            color: {on_accent}; background: {primary_fill}; border-color: {primary_fill};
+            padding: 8px 20px; font-weight: 600;
+        }}
+        QPushButton#settingsApplyButton:hover {{ background: {primary_hover}; }}
+        QMenu {{
+            background: {well}; color: {text}; border: 1px solid {rule}; padding: 4px 0px;
+        }}
+        QMenu::item {{ padding: 6px 18px; }}
+        QMenu::item:selected {{ background: {hover}; color: {accent}; }}
+        QSlider::groove:horizontal {{ height: 2px; background: {rule}; }}
+        QSlider::handle:horizontal {{
+            width: 12px; margin: -5px 0px; border-radius: 0px; background: {accent};
         }}
         QScrollBar:vertical, QScrollBar:horizontal {{
-            background: {c["bg"]}; border: none;
+            background: {bg}; border: none;
         }}
         QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{
-            background: {c["scroll_handle"]}; border-radius: 4px;
+            background: {c["scroll_handle"]}; border-radius: 0px;
             min-height: 24px; min-width: 24px;
         }}
         QScrollBar::add-page, QScrollBar::sub-page {{
-            background: {c["bg"]};
+            background: {bg};
         }}
         QScrollBar::add-line, QScrollBar::sub-line {{ width: 0px; height: 0px; }}
     """
@@ -1332,63 +1828,66 @@ class SettingsDialog(QDialog):
     def _apply_dialog_theme(self):
         """Apply dialog theme."""
         from ui.shared.theme import is_dark_mode
-        self.setStyleSheet(self._dialog_style(is_dark_mode()))
+        dark = is_dark_mode()
+        self.setFont(_settings_font(14))
+        self.setStyleSheet(self._dialog_style(dark))
+        nav = getattr(self, "_settings_nav", None)
+        if isinstance(nav, QListWidget) and isinstance(nav.itemDelegate(), _SettingsNavigationDelegate):
+            nav.itemDelegate().set_dark(dark)
+            nav.viewport().update()
 
     def _build_ui(self):
         """Build ui."""
         self._apply_dialog_theme()
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 14)
-        root.setSpacing(14)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        header_row = QHBoxLayout()
-        header_row.setSpacing(12)
-        window_title = QLabel(t("Settings"))
-        window_title.setObjectName("settingsWindowTitle")
-        header_row.addWidget(window_title)
-        header_row.addStretch()
-        self._settings_search = QLineEdit()
-        self._settings_search.setObjectName("settingsSearch")
-        self._settings_search.setPlaceholderText(t("Search all settings..."))
-        self._settings_search.setClearButtonEnabled(True)
-        self._settings_search.setMinimumWidth(250)
-        self._settings_search.setMaximumWidth(380)
-        self._settings_search.textChanged.connect(self._apply_settings_search)
-        header_row.addWidget(self._settings_search)
-        root.addLayout(header_row)
-
-        self._search_status_lbl = QLabel()
-        self._search_status_lbl.setStyleSheet("color: palette(placeholder-text); font-size: 9pt;")
-        self._search_status_lbl.hide()
-        root.addWidget(self._search_status_lbl)
-
+        body_widget = QWidget()
         body = QHBoxLayout()
-        body.setSpacing(14)
+        body_widget.setLayout(body)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
 
         sidebar = QFrame()
         sidebar.setObjectName("settingsSidebar")
-        sidebar.setFixedWidth(166)
+        sidebar.setFixedWidth(200)
         sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(8, 10, 8, 10)
-        sidebar_layout.setSpacing(8)
+        sidebar_layout.setContentsMargins(22, 20, 16, 16)
+        sidebar_layout.setSpacing(0)
+        window_title = QLabel(t("Settings"))
+        window_title.setObjectName("settingsWindowTitle")
+        sidebar_layout.addWidget(window_title)
+        sidebar_layout.addSpacing(16)
         nav = QListWidget()
         nav.setObjectName("settingsNavigation")
+        nav.setFrameShape(QFrame.Shape.NoFrame)
         nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        nav.setSpacing(3)
+        nav.setSpacing(1)
         nav.setUniformItemSizes(True)
+        nav.setMouseTracking(True)
+        from ui.shared.theme import is_dark_mode
+        nav.setItemDelegate(_SettingsNavigationDelegate(nav, dark=is_dark_mode()))
         self._settings_nav = nav
         sidebar_layout.addWidget(nav, 1)
 
+        sidebar_layout.addSpacing(12)
         profile_label = QLabel(t("Profile"))
         profile_label.setObjectName("settingsProfileLabel")
+        profile_font = _settings_font(8.5, mono=True)
+        profile_font.setCapitalization(QFont.Capitalization.AllUppercase)
+        profile_font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 112.0)
+        profile_label.setFont(profile_font)
         sidebar_layout.addWidget(profile_label)
+        sidebar_layout.addSpacing(6)
         profile_btn = QPushButton()
         self._profiles_btn = profile_btn
         profile_btn.setObjectName("settingsProfilesButton")
-        profile_btn.setToolTip(t("Load or create a profile for common Wisp setups. Review changes before saving."))
+        profile_btn.setToolTip(t("Load or create a profile for common OpenWand setups. Review changes before saving."))
         profile_btn.setMenu(self._build_profiles_menu(profile_btn))
         self._refresh_profile_button_text()
         sidebar_layout.addWidget(profile_btn)
+        sidebar_layout.addSpacing(7)
         setup_btn = QPushButton(t("Run setup check"))
         setup_btn.setObjectName("settingsSetupCheckButton")
         setup_btn.setToolTip(t("Check provider, speech, hotkey, and privacy readiness."))
@@ -1398,15 +1897,33 @@ class SettingsDialog(QDialog):
 
         content = QWidget()
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(4)
+        content_layout.setContentsMargins(26, 20, 24, 0)
+        content_layout.setSpacing(0)
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.setSpacing(18)
+        header_copy = QVBoxLayout()
+        header_copy.setContentsMargins(0, 0, 0, 0)
+        header_copy.setSpacing(3)
         self._page_title_lbl = QLabel()
         self._page_title_lbl.setObjectName("settingsPageTitle")
-        self._page_subtitle_lbl = QLabel()
-        self._page_subtitle_lbl.setObjectName("settingsPageSubtitle")
-        self._page_subtitle_lbl.setWordWrap(True)
-        content_layout.addWidget(self._page_title_lbl)
-        content_layout.addWidget(self._page_subtitle_lbl)
+        header_copy.addWidget(self._page_title_lbl)
+        header_row.addLayout(header_copy, 1)
+        self._settings_search = QLineEdit()
+        self._settings_search.setObjectName("settingsSearch")
+        self._settings_search.setPlaceholderText(t("Search all settings..."))
+        self._settings_search.setClearButtonEnabled(True)
+        self._settings_search.setFixedWidth(250)
+        self._settings_search.setFixedHeight(32)
+        self._settings_search.textChanged.connect(self._apply_settings_search)
+        header_row.addWidget(self._settings_search, 0, Qt.AlignmentFlag.AlignTop)
+        content_layout.addLayout(header_row)
+
+        self._search_status_lbl = QLabel()
+        self._search_status_lbl.setObjectName("settingsSearchStatus")
+        self._search_status_lbl.hide()
+        content_layout.addWidget(self._search_status_lbl)
+        content_layout.addSpacing(10)
 
         tabs = QTabWidget()
         tabs.setObjectName("settingsTabs")
@@ -1455,11 +1972,10 @@ class SettingsDialog(QDialog):
         tabs.tabBar().hide()
         content_layout.addWidget(tabs, 1)
         body.addWidget(content, 1)
-        root.addLayout(body, 1)
+        root.addWidget(body_widget, 1)
 
-        for _internal, title, subtitle in _SETTINGS_PAGE_META:
+        for _internal, title in _SETTINGS_PAGE_META:
             item = QListWidgetItem(t(title))
-            item.setToolTip(t(subtitle))
             item.setSizeHint(QSize(0, _SETTINGS_NAV_ITEM_HEIGHT))
             nav.addItem(item)
         nav.currentRowChanged.connect(tabs.setCurrentIndex)
@@ -1468,18 +1984,19 @@ class SettingsDialog(QDialog):
 
         self._status_lbl = QLabel()
         self._status_lbl.setStyleSheet("color: #80c080; font-size: 9pt;")
-        btn_row = QHBoxLayout()
+        footer = QFrame()
+        footer.setObjectName("settingsFooter")
+        btn_row = QHBoxLayout(footer)
+        btn_row.setContentsMargins(24, 12, 24, 12)
+        btn_row.setSpacing(10)
         reset_page_btn = QPushButton(t("Reset Page…"))
+        reset_page_btn.setObjectName("settingsResetPageButton")
         reset_page_btn.setToolTip(t("Reset only the currently selected settings page to defaults"))
         reset_page_btn.clicked.connect(self._reset_current_page)
         btn_row.addWidget(reset_page_btn)
         reset_btn = QPushButton(t("Reset All…"))
+        reset_btn.setObjectName("settingsResetAllButton")
         reset_btn.setToolTip(t("Delete all API keys from the OS keychain and reset every setting to defaults"))
-        reset_btn.setStyleSheet(
-            "QPushButton { border: 1.5px solid #c0392b; color: #c0392b; }"
-            "QPushButton:hover { background: #3a2020; }"
-            "QPushButton:pressed { background: #4c2424; }"
-        )
         reset_btn.clicked.connect(self._reset_all)
         btn_row.addWidget(reset_btn)
         btn_row.addWidget(self._status_lbl)
@@ -1496,7 +2013,7 @@ class SettingsDialog(QDialog):
         self._apply_btn = save_btn
         btn_row.addWidget(cancel_btn)
         btn_row.addWidget(save_btn)
-        root.addLayout(btn_row)
+        root.addWidget(footer)
 
         # Reapply after every navigation item exists. On Windows, applying the
         # parent stylesheet only before constructing the QListWidget can leave
@@ -2167,13 +2684,16 @@ class SettingsDialog(QDialog):
                 snapshot[key] = self._live_voice_model_value()
             elif key == "LIVE_VOICE_VOICE_NAME":
                 snapshot[key] = self._live_voice_voice_value()
-            elif isinstance(widget, (QLineEdit, QComboBox, QTextEdit)):
+            elif isinstance(widget, (QLineEdit, QComboBox, QTextEdit, _FolderListEditor)):
                 snapshot[key] = _get(widget)
 
         for idx, row in enumerate(getattr(self, "_api_key_rows", []), 1):
             snapshot[f"API_KEY_ROW_{idx}_PROVIDER"] = _get(row["provider"])
             snapshot[f"API_KEY_ROW_{idx}_ALIAS"] = row["alias"].text()
             snapshot[f"API_KEY_ROW_{idx}_KEY"] = row["key"].text()
+            if _get(row["provider"]) == "custom":
+                snapshot[f"API_KEY_ROW_{idx}_CONNECTION_ID"] = str(row.get("connection_id") or "")
+                snapshot[f"API_KEY_ROW_{idx}_BASE_URL"] = row["custom_address"].text()
         snapshot["API_KEY_ROW_COUNT"] = str(len(getattr(self, "_api_key_rows", [])))
 
         for section, rows in getattr(self, "_model_section_rows", {}).items():
@@ -2275,9 +2795,11 @@ class SettingsDialog(QDialog):
         widgets = [root]
         widgets.extend(root.findChildren(QWidget))
         for widget in widgets:
-            if widget.property("_wisp_dirty_connected"):
+            if widget.property("_openwand_dirty_connected"):
                 continue
-            if isinstance(widget, QLineEdit):
+            if isinstance(widget, _FolderListEditor):
+                widget.valueChanged.connect(self._schedule_dirty_refresh)
+            elif isinstance(widget, QLineEdit):
                 widget.textChanged.connect(lambda _text="", self=self: self._schedule_dirty_refresh())
             elif isinstance(widget, QTextEdit):
                 widget.textChanged.connect(self._schedule_dirty_refresh)
@@ -2286,7 +2808,7 @@ class SettingsDialog(QDialog):
                 widget.currentTextChanged.connect(lambda _text="", self=self: self._schedule_dirty_refresh())
             elif isinstance(widget, QCheckBox):
                 widget.toggled.connect(lambda _checked=False, self=self: self._schedule_dirty_refresh())
-            widget.setProperty("_wisp_dirty_connected", True)
+            widget.setProperty("_openwand_dirty_connected", True)
 
     def _refresh_dirty_state(self) -> None:
         """Refresh dirty state."""
@@ -2320,14 +2842,16 @@ class SettingsDialog(QDialog):
 
         if keys:
             display_by_internal = {
-                internal: t(title) for internal, title, _subtitle in _SETTINGS_PAGE_META
+                internal: t(title) for internal, title in _SETTINGS_PAGE_META
             }
             visible_pages = [
                 display_by_internal.get(page, t(page))
                 for page in self._tab_base_names
                 if page in dirty_pages
             ]
-            self._status_lbl.setText(t("Unsaved changes") + ": " + ", ".join(visible_pages))
+            self._status_lbl.setText(
+                t("Unsaved changes: {pages}").format(pages=", ".join(visible_pages))
+            )
         elif self._status_lbl.text().startswith(t("Unsaved changes")):
             self._status_lbl.setText("")
 
@@ -2342,9 +2866,14 @@ class SettingsDialog(QDialog):
             nav = getattr(self, "_settings_nav", None)
             if isinstance(nav, QListWidget) and idx < nav.count():
                 title = _SETTINGS_PAGE_META[idx][1] if idx < len(_SETTINGS_PAGE_META) else base
-                nav.item(idx).setText(t(title) + suffix)
-                if idx < len(_SETTINGS_PAGE_META):
-                    nav.item(idx).setToolTip(t(_SETTINGS_PAGE_META[idx][2]))
+                nav.item(idx).setText(t(title))
+                nav.item(idx).setData(
+                    _SETTINGS_NAV_DIRTY_ROLE,
+                    base in getattr(self, "_tab_dirty_names", set()),
+                )
+        nav = getattr(self, "_settings_nav", None)
+        if isinstance(nav, QListWidget):
+            nav.viewport().update()
 
     def _schedule_search_index_refresh(self) -> None:
         """Coalesce many index rebuilds into one pass on the next event loop turn.
@@ -2374,7 +2903,7 @@ class SettingsDialog(QDialog):
         text_by_page: dict[str, str] = {}
         for idx, page in enumerate(self._tab_base_names):
             tab_widget = tabs.widget(idx)
-            meta = _SETTINGS_PAGE_META[idx] if idx < len(_SETTINGS_PAGE_META) else (page, page, "")
+            meta = _SETTINGS_PAGE_META[idx] if idx < len(_SETTINGS_PAGE_META) else (page, page)
             parts = [
                 page,
                 *per_page_fields.get(page, []),
@@ -2391,7 +2920,7 @@ class SettingsDialog(QDialog):
     def _settings_search_original_text(widget: QWidget, prop_name: str) -> str:
         """Return text saved before runtime localization changed a widget property."""
         try:
-            return str(widget.property(f"_wisp_i18n_{prop_name}") or "")
+            return str(widget.property(f"_openwand_i18n_{prop_name}") or "")
         except Exception:
             return ""
 
@@ -2462,7 +2991,7 @@ class SettingsDialog(QDialog):
         for idx in range(layout.count()):
             item = layout.itemAt(idx)
             widget = item.widget()
-            if widget is not None and widget.objectName() == "sectionHeader":
+            if widget is not None and widget.objectName() in {"sectionHeader", "sectionHeadingRow"}:
                 continue
             form = widget.layout() if widget is not None else None
             if isinstance(form, QFormLayout):
@@ -2513,7 +3042,7 @@ class SettingsDialog(QDialog):
         """Hide unrelated cards and form rows within one matching settings page."""
         tabs = self._tabs
         tab_widget = tabs.widget(idx)
-        meta = _SETTINGS_PAGE_META[idx] if idx < len(_SETTINGS_PAGE_META) else (page, page, "")
+        meta = _SETTINGS_PAGE_META[idx] if idx < len(_SETTINGS_PAGE_META) else (page, page)
         page_title_text = " ".join(
             [*(str(part) for part in meta), *(t(str(part)) for part in meta)]
         ).lower()
@@ -2532,7 +3061,7 @@ class SettingsDialog(QDialog):
             if query in " ".join(
                 label.text()
                 for label in group.findChildren(QLabel)
-                if label.objectName() in {"areaHeader", "areaSubheader"}
+                if label.objectName() == "areaHeader"
             ).lower()
         }
 
@@ -2656,7 +3185,8 @@ class SettingsDialog(QDialog):
             _set(blk[simple_widgets[caller_key]], value)
             return True
         if caller_key == "PASTE_BACK":
-            blk["paste_back"].setChecked(str(value).strip().lower() == "true")
+            paste_back = str(value).strip().lower() == "true"
+            blk["paste_back" if paste_back else "show_only"].setChecked(True)
             return True
         if caller_key == "CONTEXT_AMBIENT":
             blk["context_ambient"].setChecked(str(value).strip().lower() == "true")
@@ -2795,84 +3325,46 @@ class SettingsDialog(QDialog):
         outer = QVBoxLayout(w)
         outer.setContentsMargins(12, 12, 12, 12)
         outer.setSpacing(12)
-        credentials_group, credentials_layout = self._area_group(
-            "Provider credentials",
-            "Sign in or save provider API keys and custom endpoint details before assigning models.",
+        credentials_group, credentials_layout = self._area_group("Provider credentials")
+
+        # ── OAUTH LOGINS ─────────────────────────────────────────────────
+        auth_card, auth_cv = self._card("OAuth logins")
+        auth_cv.setSpacing(6)
+
+        auth_cv.addWidget(
+            self._oauth_provider_row(
+                key="chatgpt",
+                icon_asset="provider-icons/chatgpt.svg",
+                title=t("ChatGPT OAuth"),
+                purpose=t("Allows you to use ChatGPT subscription models in Model settings."),
+                sign_in=self._chatgpt_login_browser,
+                sign_out=self._chatgpt_logout,
+            )
         )
 
-        # ── AUTHENTICATION card ───────────────────────────────────────────
-        auth_card, auth_cv = self._card("Authentication")
-
-        chatgpt_hdr = QLabel("ChatGPT Plus/Pro subscription login")
-        chatgpt_hdr.setStyleSheet("font-weight: 600;")
-        auth_cv.addWidget(chatgpt_hdr)
-        self._chatgpt_status_lbl = QLabel()
-        self._chatgpt_status_lbl.setWordWrap(True)
-        self._set_status_label(self._chatgpt_status_lbl, None, "Checking status...")
-        auth_cv.addWidget(self._chatgpt_status_lbl)
-        cgpt_row = self._button_row(
-            ("Sign in",  self._chatgpt_login_browser),
-            ("Sign out", self._chatgpt_logout),
+        auth_cv.addWidget(
+            self._oauth_provider_row(
+                key="github",
+                icon_asset="provider-icons/github-invertocat.svg",
+                title=t("GitHub OAuth"),
+                purpose=t(
+                    "Allows authenticated GitHub tools to give the model repository metadata and "
+                    "issues/PRs as context, and lets you use Copilot models when your account has "
+                    "Copilot access."
+                ),
+                sign_in=self._github_login_device,
+                sign_out=self._github_logout,
+            )
         )
-        btns = cgpt_row.findChildren(QPushButton)
-        self._cgpt_login_btn, self._cgpt_logout_btn = btns[0], btns[1]
-        auth_cv.addWidget(cgpt_row)
-        auth_cv.addWidget(_sep(visible=True))
 
-        github_hdr = QLabel("GitHub OAuth")
-        github_hdr.setStyleSheet("font-weight: 600;")
-        auth_cv.addWidget(github_hdr)
-        auth_cv.addWidget(_desc_label("", "Sign in opens GitHub in your browser and links this app to your account."))
         self._fields["GITHUB_CLIENT_ID"] = QLineEdit()
         self._fields["GITHUB_CLIENT_ID"].setPlaceholderText("Developer OAuth app client ID override")
         self._fields["GITHUB_OAUTH_SCOPES"] = QLineEdit()
         self._fields["GITHUB_OAUTH_SCOPES"].setPlaceholderText("e.g. repo read:user user:email")
-        self._github_status_lbl = QLabel()
-        self._github_status_lbl.setWordWrap(True)
-        self._set_status_label(self._github_status_lbl, None, "Checking status...")
-        auth_cv.addWidget(self._github_status_lbl)
-        github_row = self._button_row(
-            ("Sign in with GitHub", self._github_login_device),
-            ("Sign out",            self._github_logout),
-        )
-        gh_btns = github_row.findChildren(QPushButton)
-        self._github_login_btn, self._github_logout_btn = gh_btns[0], gh_btns[1]
-        auth_cv.addWidget(github_row)
-        auth_cv.addWidget(_sep(visible=True))
-
-        copilot_hdr = QLabel("GitHub Copilot token")
-        copilot_hdr.setStyleSheet("font-weight: 600;")
-        auth_cv.addWidget(copilot_hdr)
-        auth_cv.addWidget(
-            _desc_label(
-                "",
-                "Add a GitHub Copilot connection below, paste its token, then connect, test, or clear it here.",
-            )
-        )
-        self._copilot_status_lbl = QLabel()
-        self._copilot_status_lbl.setWordWrap(True)
-        self._set_status_label(self._copilot_status_lbl, None, "Checking status...")
-        auth_cv.addWidget(self._copilot_status_lbl)
-        copilot_row = self._button_row(
-            ("Connect token", self._copilot_save_token),
-            ("Test connection", self._copilot_test_token),
-            ("Clear token", self._copilot_clear_token),
-        )
-        copilot_btns = copilot_row.findChildren(QPushButton)
-        self._copilot_connect_btn = copilot_btns[0]
-        self._copilot_test_btn = copilot_btns[1]
-        self._copilot_clear_btn = copilot_btns[2]
-        auth_cv.addWidget(copilot_row)
         credentials_layout.addWidget(auth_card)
 
         # ── PROVIDER CONNECTIONS card ─────────────────────────────────────
         api_keys_card, api_keys_cv = self._card("Provider connections")
-        note = QLabel(
-            f"<small>{t('Add the providers you use. Optional aliases and filters keep large connection lists easy to scan.')}</small>"
-        )
-        note.setWordWrap(True)
-        api_keys_cv.addWidget(note)
-
         connection_tools = QWidget()
         connection_tools_h = QHBoxLayout(connection_tools)
         connection_tools_h.setContentsMargins(0, 0, 0, 0)
@@ -2922,7 +3414,7 @@ class SettingsDialog(QDialog):
         akw.addWidget(self._connections_show_more_btn)
         akw.addStretch()
         api_keys_cv.addLayout(akw)
-        add_key_btn.clicked.connect(self._show_add_connection_dialog)
+        add_key_btn.clicked.connect(self._add_inline_connection_row)
         self._connections_show_more_btn.clicked.connect(self._toggle_connections_expanded)
         self._connections_search.textChanged.connect(self._refresh_connection_rows_filter)
         self._connections_filter.currentIndexChanged.connect(self._refresh_connection_rows_filter)
@@ -2941,44 +3433,58 @@ class SettingsDialog(QDialog):
 
         custom_card, custom_cv = self._card("Custom provider")
         custom_note = QLabel(
-            f"<small>{t('Any other OpenAI-compatible endpoint, including LM Studio. Select Custom in a model row below after setting the base URL.')}</small>"
+            f"<small>{t('Choose a known OpenAI-compatible endpoint, or select Custom endpoint to enter an address. Select Custom in a model row below to use it.')}</small>"
         )
         custom_note.setWordWrap(True)
         custom_cv.addWidget(custom_note)
 
-        endpoints_btn = QPushButton(t("Endpoints ▾"))
-        endpoints_btn.clicked.connect(self._show_custom_endpoints_menu)
-        base_url_row = QWidget()
-        bur_h = QHBoxLayout(base_url_row)
-        bur_h.setContentsMargins(0, 0, 0, 0)
-        bur_h.setSpacing(6)
-        bur_h.addWidget(self._fields["CUSTOM_BASE_URL"])
-        bur_h.addWidget(endpoints_btn)
+        self._custom_endpoint_combo = _NoScrollCombo()
+        self._custom_endpoint_combo.setObjectName("settingsCustomEndpointSelector")
+        self._custom_endpoint_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self._custom_endpoint_combo.setMinimumContentsLength(38)
+        self._custom_endpoint_combo.view().setTextElideMode(Qt.TextElideMode.ElideMiddle)
+        for name, url, _model_hint, _api_key_hint in self._CUSTOM_ENDPOINTS:
+            display = f"{name} [{url}]"
+            self._custom_endpoint_combo.addItem(display, url)
+            self._custom_endpoint_combo.setItemData(
+                self._custom_endpoint_combo.count() - 1,
+                display,
+                Qt.ItemDataRole.ToolTipRole,
+            )
+        self._custom_endpoint_combo.addItem(t("Custom endpoint"), "")
+        self._custom_endpoint_combo.setItemData(
+            self._custom_endpoint_combo.count() - 1,
+            t("Enter any OpenAI-compatible API address."),
+            Qt.ItemDataRole.ToolTipRole,
+        )
+        self._custom_endpoint_combo.currentIndexChanged.connect(
+            self._custom_endpoint_changed
+        )
+        self._custom_base_url_label = QLabel(t("Custom address"))
 
         custom_f_w = QWidget()
         custom_f = _expanding_form_layout(custom_f_w)
         custom_f.setContentsMargins(0, 0, 0, 0)
         custom_f.setSpacing(8)
-        custom_f.addRow(t("Base URL"), base_url_row)
+        custom_f.addRow(t("Endpoint"), self._custom_endpoint_combo)
+        custom_f.addRow(self._custom_base_url_label, self._fields["CUSTOM_BASE_URL"])
         custom_f.addRow(t("API key"), self._fields["CUSTOM_API_KEY"])
         custom_cv.addWidget(custom_f_w)
+        self._set_custom_url_field_visible(False)
 
+        # Kept as hidden legacy controls so old CUSTOM_BASE_URL/CUSTOM_API_KEY
+        # settings can be migrated into the first connection row. Custom
+        # endpoints are now edited where they belong: inside each connection.
+        custom_card.hide()
         credentials_layout.addWidget(custom_card)
         connections_outer.addWidget(credentials_group)
         connections_outer.addStretch()
         connections_scroll.setWidget(connections_w)
         self._connections_page = connections_scroll
 
-        model_group, model_layout = self._area_group(
-            "Model routing",
-            "Choose which saved credential and model powers each purpose.",
-        )
-        ollama_note = QLabel(
-            f"<small><b>{t('Using Ollama?')}</b> "
-            f"{t('Choose Ollama directly in the Provider menu. Wisp connects to the local Ollama app and loads your installed models automatically—no API key or model name to enter.')}</small>"
-        )
-        ollama_note.setWordWrap(True)
-        model_layout.addWidget(ollama_note)
+        model_group, model_layout = self._area_group("Model routing")
 
         # ── MODEL SECTIONS ─────────────────────────────────────────────────
         section_configs = [
@@ -3038,9 +3544,22 @@ class SettingsDialog(QDialog):
             mch_h = QHBoxLayout(mch_w)
             mch_h.setContentsMargins(0, 0, 0, 0)
             mch_h.setSpacing(8)
-            lp = QLabel(f"<small><b>{t('Priority')}</b></small>")
+            priority_tip = t(
+                "The first row is the primary model; lower rows are fallbacks tried in priority order."
+            )
+            lp = QLabel(f"<small><b>{t('Priority')}  ⓘ</b></small>")
             lp.setFixedWidth(_MODEL_PRIORITY_COL_W)
-            lp.setToolTip(t("The first row is the primary model; lower rows are fallbacks tried in priority order."))
+            lp.setObjectName("settingsInfoLabel")
+            lp.setToolTip(priority_tip)
+            lp.setCursor(Qt.CursorShape.WhatsThisCursor)
+            lp.setAccessibleName(t("Priority"))
+            lp.setAccessibleDescription(priority_tip)
+            lp.setProperty("_openwand_info_source", "Priority")
+            lp.setProperty("_openwand_info_small_bold", True)
+            lp.setProperty(
+                "_openwand_i18n_tooltip",
+                "The first row is the primary model; lower rows are fallbacks tried in priority order.",
+            )
             lk = QLabel(f"<small><b>{t('Provider')}</b></small>")
             lm = QLabel(f"<small><b>{t('Model')}</b></small>")
             mch_h.addWidget(lp)
@@ -3063,7 +3582,8 @@ class SettingsDialog(QDialog):
             self._model_section_layouts[section_key] = rows_layout
             self._model_route_rows_containers[section_key] = rows_container
 
-            # test status + button
+            # Test status + button. It is placed after Add fallback below so
+            # the route-building actions read in order before route testing.
             test_lbl = QLabel()
             test_lbl.setWordWrap(True)
             setattr(self, f"_{test_attr}_status_lbl", test_lbl)
@@ -3075,7 +3595,6 @@ class SettingsDialog(QDialog):
             test_btn.clicked.connect(test_fn)
             tr_h.addWidget(test_btn)
             tr_h.addWidget(test_lbl, 1)
-            cv.addWidget(test_row_w)
 
             add_row_btn = QPushButton(t("+ Add fallback"))
             self._model_route_add_buttons[section_key] = add_row_btn
@@ -3084,6 +3603,7 @@ class SettingsDialog(QDialog):
             arw.addWidget(add_row_btn)
             arw.addStretch()
             cv.addLayout(arw)
+            cv.addWidget(test_row_w)
             add_row_btn.clicked.connect(
                 lambda _checked=False, sk=section_key: self._add_inline_model_section_row(sk)
             )
@@ -3092,29 +3612,38 @@ class SettingsDialog(QDialog):
         self._show_model_route("LLM")
 
         advanced_group, advanced_layout = self._collapsible_group("Advanced settings")
+        chat_trace_tip = (
+            "Show temporary progress lines in Chat that identify the tool loop and tool calls. "
+            "Useful for testing; leave off for normal use."
+        )
         self._fields["CHAT_TOOL_TRACE_UI"] = QCheckBox(t("Show chat tool-loop trace"))
-        self._fields["CHAT_TOOL_TRACE_UI"].setToolTip(
-            t(
-                "Show temporary progress lines in Chat that identify the tool loop and tool calls. "
-                "Useful for testing; leave off for normal use."
-            )
+        chat_trace_row = _checkbox_with_info(
+            self._fields["CHAT_TOOL_TRACE_UI"], chat_trace_tip, "CHAT_TOOL_TRACE_UI"
         )
-        self._fields["WISP_PLANNED_CHUNKING"] = QCheckBox(t("Use planned chunked replies"))
-        self._fields["WISP_PLANNED_CHUNKING"].setToolTip(
-            t(
-                "Experimental. For eligible overlay replies, privately plans the answer and emits "
-                "a few stable visible parts. Tool, file, image, and history requests keep the normal path."
-            )
+        planned_chunking_tip = (
+            "Experimental. For longer text-only overlay questions, OpenWand first creates a private "
+            "outline, then writes the answer as 2-4 ordered sections. The outline is never shown; "
+            "each section appears as it is generated and the sections are joined into one final reply. "
+            "This can make long answers more organized, but it uses one planning request plus one request "
+            "per section, so it can be slower and use more model tokens. It only runs when the combined "
+            "prompt and context reaches the minimum length. Requests using tools, files, images, or "
+            "conversation history keep the normal reply path."
         )
-        self._fields["WISP_PLANNED_CHUNKING_CHUNKS"] = QLineEdit()
-        self._fields["WISP_PLANNED_CHUNKING_CHUNKS"].setPlaceholderText("e.g. 3")
-        self._fields["WISP_PLANNED_CHUNKING_CHUNKS"].setToolTip(
-            t("Number of visible parts, clamped to 2-4.")
+        self._fields["OPENWAND_PLANNED_CHUNKING"] = QCheckBox(t("Use planned chunked replies"))
+        planned_chunking_row = _checkbox_with_info(
+            self._fields["OPENWAND_PLANNED_CHUNKING"],
+            planned_chunking_tip,
+            "OPENWAND_PLANNED_CHUNKING",
         )
-        self._fields["WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS"] = QLineEdit()
-        self._fields["WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS"].setPlaceholderText("e.g. 80")
-        self._fields["WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS"].setToolTip(
-            t("Minimum combined prompt/context length before planned chunking can run.")
+        self._fields["OPENWAND_PLANNED_CHUNKING_CHUNKS"] = QLineEdit()
+        self._fields["OPENWAND_PLANNED_CHUNKING_CHUNKS"].setPlaceholderText("e.g. 3")
+        self._fields["OPENWAND_PLANNED_CHUNKING_CHUNKS"].setToolTip(
+            t("How many ordered answer sections to generate, from 2 to 4. More sections use more model requests and may take longer.")
+        )
+        self._fields["OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS"] = QLineEdit()
+        self._fields["OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS"].setPlaceholderText("e.g. 80")
+        self._fields["OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS"].setToolTip(
+            t("Minimum combined prompt and context length required to use planned replies. Shorter requests use the normal single reply path.")
         )
         reasoning_combo = _NoScrollCombo()
         reasoning_combo.setToolTip(
@@ -3126,9 +3655,14 @@ class SettingsDialog(QDialog):
         for label, value in _CHAT_REASONING_EFFORT_OPTIONS:
             reasoning_combo.addItem(t(label), value)
         self._fields["CHAT_REASONING_EFFORT"] = reasoning_combo
+        auto_elaborate_tip = (
+            "When enabled, opening Chat after a short overlay reply asks the model for a fuller explanation."
+        )
         self._fields["CHAT_AUTO_ELABORATE"] = QCheckBox(t("Auto-elaborate when opening chat"))
-        self._fields["CHAT_AUTO_ELABORATE"].setToolTip(
-            t("When enabled, opening Chat after a short overlay reply asks the model for a fuller explanation.")
+        auto_elaborate_row = _checkbox_with_info(
+            self._fields["CHAT_AUTO_ELABORATE"],
+            auto_elaborate_tip,
+            "CHAT_AUTO_ELABORATE",
         )
         self._fields["CHAT_ELABORATE_PROMPT"] = QLineEdit()
         self._fields["CHAT_ELABORATE_PROMPT"].setPlaceholderText(t("e.g. Please elaborate on that."))
@@ -3140,15 +3674,13 @@ class SettingsDialog(QDialog):
         advanced_form = _expanding_form_layout(advanced_form_w)
         advanced_form.setSpacing(8)
         advanced_form.setContentsMargins(0, 0, 0, 0)
-        advanced_form.addRow("", self._fields["CHAT_TOOL_TRACE_UI"])
-        advanced_form.addRow("", self._fields["WISP_PLANNED_CHUNKING"])
         advanced_form.addRow(
-            _tooltip_label("Planned reply chunks", "Number of visible parts for eligible planned replies. Runtime clamps this to 2-4."),
-            self._fields["WISP_PLANNED_CHUNKING_CHUNKS"],
+            _tooltip_label("Planned reply chunks", "How many ordered answer sections to generate, from 2 to 4. More sections use more model requests and may take longer."),
+            self._fields["OPENWAND_PLANNED_CHUNKING_CHUNKS"],
         )
         advanced_form.addRow(
-            _tooltip_label("Planned reply min chars", "Minimum combined prompt/context length before planned chunking can run."),
-            self._fields["WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS"],
+            _tooltip_label("Planned reply min chars", "Minimum combined prompt and context length required to use planned replies. Shorter requests use the normal single reply path."),
+            self._fields["OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS"],
         )
         advanced_form.addRow(
             _tooltip_label(
@@ -3157,8 +3689,12 @@ class SettingsDialog(QDialog):
             ),
             self._fields["CHAT_REASONING_EFFORT"],
         )
-        advanced_form.addRow("", self._fields["CHAT_AUTO_ELABORATE"])
         advanced_form.addRow(self._chat_elaborate_prompt_label, self._fields["CHAT_ELABORATE_PROMPT"])
+        # Keep optional switches together after the value fields so the form
+        # reads top-to-bottom as configuration first, behavior toggles second.
+        advanced_form.addRow("", chat_trace_row)
+        advanced_form.addRow("", planned_chunking_row)
+        advanced_form.addRow("", auto_elaborate_row)
         self._fields["CHAT_AUTO_ELABORATE"].toggled.connect(  # type: ignore[attr-defined]
             self._update_chat_elaborate_prompt_visibility
         )
@@ -3173,82 +3709,11 @@ class SettingsDialog(QDialog):
 
     # ---- Connection and API key row helpers ----
 
-    def _show_add_connection_dialog(self) -> None:
-        """Open a searchable provider catalog and add the selected connection."""
-        dialog = QDialog(self)
-        dialog.setWindowTitle(t("Add connection"))
-        dialog.setModal(True)
-        dialog.resize(460, 520)
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(10)
-
-        title = QLabel(t("Choose a provider"))
-        title.setObjectName("settingsPageTitle")
-        layout.addWidget(title)
-        hint = QLabel(t("Search the provider catalog, then use an optional alias to label the connection."))
-        hint.setWordWrap(True)
-        hint.setObjectName("settingsPageSubtitle")
-        layout.addWidget(hint)
-        search = QLineEdit()
-        search.setPlaceholderText(t("Search providers..."))
-        search.setClearButtonEnabled(True)
-        layout.addWidget(search)
-        provider_list = QListWidget()
-        provider_list.setObjectName("settingsProviderCatalog")
-        for provider in _CONNECTION_PROVIDER_IDS:
-            label = t(_PROVIDER_LABELS.get(provider, provider))
-            item = QListWidgetItem(label)
-            item.setData(Qt.ItemDataRole.UserRole, provider)
-            item.setToolTip(
-                t("Local or self-hosted provider")
-                if provider in {"ollama", "custom"}
-                else t("Cloud provider")
-            )
-            provider_list.addItem(item)
-        layout.addWidget(provider_list, 1)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(t("Add connection"))
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-
-        def _filter_catalog(query: str = "") -> None:
-            needle = query.strip().lower()
-            first_visible = None
-            for index in range(provider_list.count()):
-                item = provider_list.item(index)
-                provider = str(item.data(Qt.ItemDataRole.UserRole) or "")
-                match = not needle or needle in f"{item.text()} {provider}".lower()
-                item.setHidden(not match)
-                if match and first_visible is None:
-                    first_visible = item
-            if first_visible is not None and provider_list.currentItem() is None:
-                provider_list.setCurrentItem(first_visible)
-
-        def _selection_changed() -> None:
-            current = provider_list.currentItem()
-            buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
-                current is not None and not current.isHidden()
-            )
-
-        search.textChanged.connect(_filter_catalog)
-        provider_list.currentItemChanged.connect(lambda *_: _selection_changed())
-        provider_list.itemDoubleClicked.connect(lambda *_: dialog.accept())
-        _filter_catalog()
-        _selection_changed()
-        search.setFocus()
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        current = provider_list.currentItem()
-        if current is None or current.isHidden():
-            return
-        provider = str(current.data(Qt.ItemDataRole.UserRole) or "")
+    def _add_inline_connection_row(self) -> None:
+        """Insert a compact provider connection row without opening a dialog."""
         self._connections_expanded = True
-        self._add_api_key_row(provider=provider)
+        row = self._add_api_key_row()
+        row["provider"].setFocus(Qt.FocusReason.ShortcutFocusReason)
 
     def _toggle_connections_expanded(self) -> None:
         self._connections_expanded = not bool(getattr(self, "_connections_expanded", False))
@@ -3300,14 +3765,31 @@ class SettingsDialog(QDialog):
         provider: str = "",
         alias: str = "",
         stored: bool = False,
+        *,
+        connection_id: str = "",
+        base_url: str = "",
     ) -> dict:
         """Add api key row."""
         row_w = QWidget()
-        h = QHBoxLayout(row_w)
+        row_layout = QVBoxLayout(row_w)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(5)
+
+        header_w = QWidget()
+        h = QHBoxLayout(header_w)
         h.setContentsMargins(0, 0, 0, 0)
         h.setSpacing(8)
 
-        provider_combo = self._combo(list(_CONNECTION_PROVIDER_IDS), provider)
+        provider_combo = _NoScrollCombo()
+        provider_combo.setObjectName("settingsConnectionProvider")
+        provider_combo.addItem(t("Choose a provider"), "")
+        for provider_id in _CONNECTION_PROVIDER_IDS:
+            provider_combo.addItem(
+                t(_PROVIDER_LABELS.get(provider_id, provider_id)),
+                provider_id,
+            )
+        provider_index = provider_combo.findData(provider)
+        provider_combo.setCurrentIndex(max(0, provider_index))
         provider_combo.setMinimumWidth(120)
 
         alias_edit = QLineEdit(alias)
@@ -3325,13 +3807,48 @@ class SettingsDialog(QDialog):
         h.addWidget(key_edit, 3)
         h.addWidget(remove_btn)
 
+        details_w = QWidget()
+        details_w.setObjectName("settingsCustomConnectionDetails")
+        details_form = _expanding_form_layout(details_w)
+        details_form.setContentsMargins(28, 2, 40, 5)
+        details_form.setSpacing(6)
+        endpoint_combo = _NoScrollCombo()
+        endpoint_combo.setObjectName("settingsCustomConnectionEndpoint")
+        for name, url, _model_hint, _api_key_hint in self._CUSTOM_ENDPOINTS:
+            display = f"{name} [{url}]"
+            endpoint_combo.addItem(display, url)
+            endpoint_combo.setItemData(
+                endpoint_combo.count() - 1,
+                display,
+                Qt.ItemDataRole.ToolTipRole,
+            )
+        endpoint_combo.addItem(t("Custom endpoint"), "")
+        custom_address = QLineEdit(base_url)
+        custom_address.setObjectName("settingsCustomConnectionAddress")
+        custom_address.setPlaceholderText("https://api.example.com/v1")
+        custom_address_label = QLabel(t("Custom address"))
+        details_form.addRow(t("Endpoint"), endpoint_combo)
+        details_form.addRow(custom_address_label, custom_address)
+
+        row_layout.addWidget(header_w)
+        row_layout.addWidget(details_w)
+
+        if provider == "custom" and not connection_id:
+            connection_id = self._new_custom_connection_id()
+
         row_info: dict = {
             "widget":   row_w,
             "provider": provider_combo,
             "alias":    alias_edit,
             "key":      key_edit,
             "last_provider": _get(provider_combo).strip(),
+            "connection_id": connection_id,
+            "custom_details": details_w,
+            "endpoint_combo": endpoint_combo,
+            "custom_address": custom_address,
+            "custom_address_label": custom_address_label,
         }
+        self._sync_custom_connection_row(row_info)
         self._sync_api_key_row_placeholder(row_info, stored=stored)
 
         remove_btn.clicked.connect(lambda: self._remove_api_key_row(row_info))
@@ -3343,10 +3860,16 @@ class SettingsDialog(QDialog):
         provider_combo.currentIndexChanged.connect(self._refresh_connection_rows_filter)
         alias_edit.textChanged.connect(lambda _: self._refresh_model_api_key_combos())
         alias_edit.textChanged.connect(self._refresh_connection_rows_filter)
+        endpoint_combo.currentIndexChanged.connect(
+            lambda index: self._custom_connection_endpoint_changed(row_info, index)
+        )
+        custom_address.textChanged.connect(lambda _: self._refresh_model_api_key_combos())
 
         self._api_key_rows_layout.addWidget(row_w)
         self._api_key_rows.append(row_info)
         self._removed_connection_providers.discard(provider)
+        if connection_id:
+            self._removed_custom_connection_ids.discard(connection_id)
         self._refresh_model_api_key_combos()
         self._wire_change_tracking(row_w)
         self._schedule_search_index_refresh()
@@ -3354,14 +3877,72 @@ class SettingsDialog(QDialog):
         self._schedule_dirty_refresh()
         return row_info
 
+    def _new_custom_connection_id(self) -> str:
+        used = {
+            str(row.get("connection_id") or "")
+            for row in getattr(self, "_api_key_rows", [])
+            if _get(row.get("provider")).strip() == "custom"
+        }
+        index = 1
+        while f"custom-{index}" in used:
+            index += 1
+        return f"custom-{index}"
+
+    def _sync_custom_connection_row(self, row_info: dict) -> None:
+        """Show and initialize endpoint controls for one Custom connection."""
+        is_custom = _get(row_info["provider"]).strip() == "custom"
+        details = row_info["custom_details"]
+        details.setVisible(is_custom)
+        if not is_custom:
+            return
+        if not row_info.get("connection_id"):
+            row_info["connection_id"] = self._new_custom_connection_id()
+        combo = row_info["endpoint_combo"]
+        address = row_info["custom_address"]
+        base_url = address.text().strip()
+        index = combo.findData(base_url) if base_url else combo.count() - 1
+        if index < 0:
+            index = combo.count() - 1
+        combo.blockSignals(True)
+        combo.setCurrentIndex(index)
+        combo.blockSignals(False)
+        combo.setToolTip(combo.itemText(index))
+        custom = not bool(combo.itemData(index))
+        row_info["custom_address_label"].setVisible(custom)
+        address.setVisible(custom)
+
+    def _custom_connection_endpoint_changed(self, row_info: dict, index: int) -> None:
+        combo = row_info["endpoint_combo"]
+        address = row_info["custom_address"]
+        url = str(combo.itemData(index) or "").strip()
+        combo.setToolTip(combo.itemText(index))
+        if url:
+            address.setText(url)
+            row_info["custom_address_label"].hide()
+            address.hide()
+        else:
+            preset_urls = {endpoint[1] for endpoint in self._CUSTOM_ENDPOINTS}
+            if address.text().strip() in preset_urls:
+                address.clear()
+            row_info["custom_address_label"].show()
+            address.show()
+            address.setFocus()
+        self._refresh_model_api_key_combos()
+        self._schedule_dirty_refresh()
+
     def _on_api_key_row_provider_changed(self, row_info: dict) -> None:
         """Stage removal of a provider replaced through a connection row."""
 
         previous = str(row_info.get("last_provider") or "").strip()
         provider = _get(row_info.get("provider")).strip()
         row_info["last_provider"] = provider
+        if provider == "custom" and not row_info.get("connection_id"):
+            row_info["connection_id"] = self._new_custom_connection_id()
+        self._sync_custom_connection_row(row_info)
         if self._loading_values or previous == provider:
             return
+        if previous == "custom" and row_info.get("connection_id"):
+            self._removed_custom_connection_ids.add(str(row_info["connection_id"]))
         if previous and not any(
             row is not row_info and _get(row["provider"]).strip() == previous
             for row in self._api_key_rows
@@ -3369,6 +3950,8 @@ class SettingsDialog(QDialog):
             self._removed_connection_providers.add(previous)
         if provider:
             self._removed_connection_providers.discard(provider)
+        if provider == "custom" and row_info.get("connection_id"):
+            self._removed_custom_connection_ids.discard(str(row_info["connection_id"]))
 
     def _sync_api_key_row_placeholder(self, row_info: dict, *, stored: bool = False) -> None:
         """Refresh provider-specific API key placeholder text."""
@@ -3388,8 +3971,11 @@ class SettingsDialog(QDialog):
     def _remove_api_key_row(self, row_info: dict) -> None:
         """Remove api key row."""
         provider = _get(row_info.get("provider")).strip()
+        connection_id = str(row_info.get("connection_id") or "")
         if row_info in self._api_key_rows:
             self._api_key_rows.remove(row_info)
+        if provider == "custom" and connection_id and not self._loading_values:
+            self._removed_custom_connection_ids.add(connection_id)
         if (
             provider
             and not self._loading_values
@@ -3407,10 +3993,23 @@ class SettingsDialog(QDialog):
         options: list[tuple[str, str]] = []
         for row in getattr(self, "_api_key_rows", []):
             provider = _get(row["provider"])
+            if not provider:
+                # A newly inserted row is intentionally incomplete until the
+                # user chooses a provider. Do not expose that draft row to the
+                # model-routing selectors.
+                continue
             alias = row["alias"].text().strip()
             label = t(_PROVIDER_LABELS.get(provider, provider))
-            display = f"{label} ({alias})" if alias else label
-            options.append((display, provider))
+            route_provider = provider
+            if provider == "custom":
+                route_provider = _custom_route_id(str(row.get("connection_id") or "legacy"))
+                endpoint = row.get("custom_address")
+                endpoint_text = endpoint.text().strip() if isinstance(endpoint, QLineEdit) else ""
+                display = alias or endpoint_text or label
+                display = f"{label} ({display})" if display != label else label
+            else:
+                display = f"{label} ({alias})" if alias else label
+            options.append((display, route_provider))
         # Local/OAuth/keychain providers are always available regardless of API
         # key rows. In particular, Ollama must not require the user to create a
         # fake credential before it appears in Model routing.
@@ -3419,8 +4018,6 @@ class SettingsDialog(QDialog):
         options.append((t(_PROVIDER_LABELS.get("chatgpt", "ChatGPT Plus/Pro (OAuth subscription)")), "chatgpt"))
         if not any(provider == "copilot" for _display, provider in options):
             options.append((t(_PROVIDER_LABELS.get("copilot", "GitHub Copilot") + " (keychain token)"), "copilot"))
-        if not any(provider == "custom" for _display, provider in options):
-            options.append((t(_PROVIDER_LABELS.get("custom", "Custom (OpenAI-compatible)")), "custom"))
         return options
 
     def _credential_availability(self) -> dict[str, tuple[bool, str]]:
@@ -3471,12 +4068,15 @@ class SettingsDialog(QDialog):
                         item.setToolTip(hint)
         target = (current or "").strip()
         idx = combo.findData(target) if target else -1
+        if target == "custom" and idx < 0:
+            idx = combo.findData(_custom_route_id("legacy"))
         if target and idx < 0:
             # The configured route points at a provider with no saved credential
             # yet. Keep showing the configured provider without the obsolete
             # "add an API key below" hint: credentials now live on the separate
             # Connections page, and local providers may not need a key at all.
-            label = t(_PROVIDER_LABELS.get(target, target))
+            provider_kind = "custom" if _is_custom_route(target) else target
+            label = t(_PROVIDER_LABELS.get(provider_kind, target))
             combo.addItem(label, target)
             idx = combo.count() - 1
         elif not target:
@@ -3585,14 +4185,17 @@ class SettingsDialog(QDialog):
             "refresh_btn":   refresh_btn,
         }
 
-        # Populate with the curated list for this provider. Ollama replaces this
-        # automatically with the models installed in the user's local app.
+        # Populate with the curated list for this provider. Ollama has no
+        # built-in guesses: while its live scan runs, preserve only a model the
+        # user had already saved.
         # For a blank "+ Add row" the combo still defaults to the first provider,
         # so fall back to its current selection rather than leaving the list empty.
         effective_provider = provider or (api_key_combo.currentData() or "")
-        self._fill_model_combo(
-            row_info, _PROVIDER_MODELS.get(effective_provider, []), effective_provider, model
-        )
+        provider_kind = "custom" if _is_custom_route(effective_provider) else effective_provider
+        initial_models = list(_PROVIDER_MODELS.get(provider_kind, []))
+        if provider_kind == "ollama" and (model or "").strip():
+            initial_models = [(model or "").strip()]
+        self._fill_model_combo(row_info, initial_models, provider_kind, model)
 
         model_combo.currentIndexChanged.connect(
             lambda _: self._on_model_combo_changed(row_info)
@@ -3601,13 +4204,16 @@ class SettingsDialog(QDialog):
         def _on_key_change():
             """Handle key change events."""
             p = api_key_combo.currentData() or ""
-            selected = self._model_value(row_info)
+            provider_kind = "custom" if _is_custom_route(p) else p
+            # A model from the previous provider is not an Ollama model. Leave
+            # Ollama empty until its installed-model scan completes.
+            selected = "" if p == "ollama" else self._model_value(row_info)
             row_info["_fetch_token"] = int(row_info.get("_fetch_token", 0)) + 1
             refresh_btn.setEnabled(True)
             refresh_btn.setText("↻")
             refresh_btn.setToolTip(t("Fetch the latest model names from the provider"))
             self._fill_model_combo(
-                row_info, _PROVIDER_MODELS.get(p, []), p, selected
+                row_info, _PROVIDER_MODELS.get(provider_kind, []), provider_kind, selected
             )
             self._schedule_warning_marker_refresh()
             if p == "ollama":
@@ -3627,7 +4233,7 @@ class SettingsDialog(QDialog):
         self._wire_change_tracking(row_w)
         self._schedule_search_index_refresh()
         self._schedule_dirty_refresh()
-        if effective_provider == "ollama" and not (model or "").strip():
+        if effective_provider == "ollama":
             # Let construction/loading finish before starting the local probe.
             QTimer.singleShot(
                 0,
@@ -3679,27 +4285,31 @@ class SettingsDialog(QDialog):
     def _fill_model_combo(
         self, row_info: dict, models: list, provider: str, selected: str
     ) -> None:
-        """Repopulate a row's model combo with *models* plus the Custom sentinel,
-        preserving/applying the *selected* value (custom text routes to the edit)."""
+        """Repopulate a model combo, without manual/default entries for Ollama."""
         combo = row_info["model_combo"]
         edit = row_info["model_edit"]
         combo.blockSignals(True)
         combo.clear()
         for m in models:
             combo.addItem(m, m)
-        combo.addItem(_CUSTOM_MODEL_LABEL, _CUSTOM_MODEL_SENTINEL)
+        allow_custom = provider != "ollama"
+        if allow_custom:
+            combo.addItem(_CUSTOM_MODEL_LABEL, _CUSTOM_MODEL_SENTINEL)
         selected = (selected or "").strip()
         if selected and selected in models:
             combo.setCurrentIndex(combo.findData(selected))
             edit.clear()
             edit.hide()
-        elif selected:
+        elif selected and allow_custom:
             combo.setCurrentIndex(combo.findData(_CUSTOM_MODEL_SENTINEL))
             edit.setText(selected)
             edit.show()
         else:
             combo.setCurrentIndex(-1)
             edit.hide()
+        combo.setPlaceholderText(
+            t("Finding installed Ollama models…") if provider == "ollama" else ""
+        )
         edit.setPlaceholderText(_model_hint(provider) if provider else "model name")
         completer = QCompleter(models, edit)
         completer.setFilterMode(Qt.MatchFlag.MatchContains)
@@ -3742,7 +4352,7 @@ class SettingsDialog(QDialog):
         if automatic and provider != "ollama":
             return
         api_key = self._effective_secret_value_from_provider(provider)
-        base_url = _get(self._fields["CUSTOM_BASE_URL"]).strip() if provider == "custom" else ""
+        base_url = self._custom_base_url_for_provider(provider) if _is_custom_route(provider) else ""
 
         # A quick provider change can leave an earlier request in flight. The
         # token prevents an old response from filling the new provider's combo.
@@ -3845,10 +4455,18 @@ class SettingsDialog(QDialog):
 
     def _effective_secret_value_from_provider(self, provider: str) -> str:
         """Handle effective secret value from provider for settings dialog."""
-        if provider == "custom":
-            field = self._fields.get("CUSTOM_API_KEY")
-            typed = _get(field).strip() if field is not None else ""
-            return typed or secret_store.get_keychain_secret("CUSTOM_API_KEY") or ""
+        if _is_custom_route(provider):
+            connection_id = _custom_connection_id(provider)
+            for row in self._api_key_rows:
+                if (
+                    _get(row["provider"]) == "custom"
+                    and str(row.get("connection_id") or "legacy") == connection_id
+                ):
+                    typed = row["key"].text().strip()
+                    if typed:
+                        return typed
+                    break
+            return secret_store.get_keychain_secret(_custom_secret_name(connection_id)) or ""
         if provider == "copilot":
             for row in self._api_key_rows:
                 if _get(row["provider"]) == provider:
@@ -3869,6 +4487,18 @@ class SettingsDialog(QDialog):
                 if typed:
                     return typed
         return secret_store.get_keychain_secret(key_name) or ""
+
+    def _custom_base_url_for_provider(self, provider: str) -> str:
+        connection_id = _custom_connection_id(provider)
+        for row in self._api_key_rows:
+            if (
+                _get(row["provider"]) == "custom"
+                and str(row.get("connection_id") or "legacy") == connection_id
+            ):
+                return row["custom_address"].text().strip()
+        if connection_id == "legacy":
+            return _get(self._fields.get("CUSTOM_BASE_URL")).strip()
+        return ""
 
     # ---- Custom provider helpers ----
 
@@ -3895,54 +4525,119 @@ class SettingsDialog(QDialog):
         ("LM Studio (local)", "http://localhost:1234/v1",        "local-model", ""),
     ]
 
-    def _show_custom_endpoints_menu(self) -> None:
-        """Show custom provider endpoint shortcuts."""
-        from PySide6.QtGui import QAction
-        from PySide6.QtWidgets import QMenu
+    def _set_custom_url_field_visible(self, visible: bool) -> None:
+        """Show the address editor only for the Custom endpoint choice."""
+        label = getattr(self, "_custom_base_url_label", None)
+        field = self._fields.get("CUSTOM_BASE_URL")
+        if isinstance(label, QLabel):
+            label.setVisible(bool(visible))
+        if isinstance(field, QLineEdit):
+            field.setVisible(bool(visible))
 
-        menu = QMenu(self)
-        for name, url, model_hint, api_key_hint in self._CUSTOM_ENDPOINTS:
-            action = QAction(name, self)
-            action.setToolTip(url)
-            action.triggered.connect(
-                lambda checked, u=url, h=model_hint, k=api_key_hint: self._apply_custom_preset(u, h, k)
-            )
-            menu.addAction(action)
-        btn = self.sender()
-        menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
+    def _custom_endpoint_changed(self, index: int) -> None:
+        """Apply a preset URL or reveal the custom-address editor."""
+        combo = self._custom_endpoint_combo
+        url = str(combo.itemData(index) or "").strip()
+        combo.setToolTip(combo.itemText(index))
+        if not url:
+            current = self._fields["CUSTOM_BASE_URL"].text().strip()
+            preset_urls = {endpoint[1] for endpoint in self._CUSTOM_ENDPOINTS}
+            if current in preset_urls:
+                self._fields["CUSTOM_BASE_URL"].clear()
+            self._set_custom_url_field_visible(True)
+            self._fields["CUSTOM_BASE_URL"].setFocus()
+            return
+        self._set_custom_url_field_visible(False)
+        for _name, preset_url, model_hint, api_key_hint in self._CUSTOM_ENDPOINTS:
+            if preset_url == url:
+                self._apply_custom_preset(
+                    preset_url,
+                    model_hint,
+                    api_key_hint,
+                    sync_selector=False,
+                )
+                return
 
-    def _apply_custom_preset(self, base_url: str, model_hint: str, api_key_hint: str = "") -> None:
-        """Apply custom preset."""
-        self._fields["CUSTOM_BASE_URL"].setText(base_url)
-        if api_key_hint:
-            self._fields["CUSTOM_API_KEY"].setText(api_key_hint)
+    def _sync_custom_endpoint_selection(self) -> None:
+        """Match a loaded URL to a preset, otherwise select Custom endpoint."""
+        combo = self._custom_endpoint_combo
+        base_url = self._fields["CUSTOM_BASE_URL"].text().strip()
+        index = combo.findData(base_url) if base_url else combo.count() - 1
+        if index < 0:
+            index = combo.count() - 1
+        combo.blockSignals(True)
+        combo.setCurrentIndex(index)
+        combo.blockSignals(False)
+        combo.setToolTip(combo.itemText(index))
+        self._set_custom_url_field_visible(not bool(combo.itemData(index)))
+        if base_url:
+            for _name, preset_url, model_hint, _api_key_hint in self._CUSTOM_ENDPOINTS:
+                if preset_url == base_url:
+                    self._set_custom_model_hint(model_hint)
+                    break
+
+    def _set_custom_model_hint(self, model_hint: str) -> None:
+        """Apply a selected endpoint's example model to Custom model rows."""
+        if not model_hint:
+            return
         for section_rows in self._model_section_rows.values():
             for row in section_rows:
-                if (row["api_key_combo"].currentData() or "") == "custom":
+                if _is_custom_route(row["api_key_combo"].currentData() or ""):
                     row["model_edit"].setPlaceholderText(f"e.g. {model_hint}")
+
+    def _apply_custom_preset(
+        self,
+        base_url: str,
+        model_hint: str,
+        api_key_hint: str = "",
+        *,
+        sync_selector: bool = True,
+    ) -> None:
+        """Apply custom preset."""
+        self._fields["CUSTOM_BASE_URL"].setText(base_url)
+        if sync_selector and hasattr(self, "_custom_endpoint_combo"):
+            index = self._custom_endpoint_combo.findData(base_url)
+            if index >= 0:
+                self._custom_endpoint_combo.blockSignals(True)
+                self._custom_endpoint_combo.setCurrentIndex(index)
+                self._custom_endpoint_combo.blockSignals(False)
+                self._custom_endpoint_combo.setToolTip(
+                    self._custom_endpoint_combo.itemText(index)
+                )
+                self._set_custom_url_field_visible(False)
+        if api_key_hint:
+            self._fields["CUSTOM_API_KEY"].setText(api_key_hint)
+        self._set_custom_model_hint(model_hint)
 
     def _refresh_chatgpt_status(self) -> None:
         """Refresh chatgpt status."""
         try:
             from core.auth import chatgpt as chatgpt_auth
-            tokens = chatgpt_auth.get_tokens()
-            if tokens:
-                aid = tokens.get("account_id") or ""
-                label = "Logged in" + (f" \u2022 account {aid[:8]}\u2026" if aid else "")
-                self._chatgpt_status_lbl.setText(_translate_status_message(label))
-                self._chatgpt_status_lbl.setStyleSheet("color: #80c080;")
+
+            verified, _account = chatgpt_auth.validate_login(timeout_seconds=5.0)
+            if verified:
+                self._set_oauth_status("chatgpt", t("Logged in"), signed_in=True)
+                self._chatgpt_status_lbl.setToolTip("")
             else:
-                self._chatgpt_status_lbl.setText(t("Not logged in"))
-                self._chatgpt_status_lbl.setStyleSheet("color: palette(placeholder-text);")
+                self._set_oauth_status("chatgpt", t("Not logged in"), signed_in=False)
+                self._chatgpt_status_lbl.setToolTip("")
         except Exception as exc:
-            self._chatgpt_status_lbl.setText(_translate_status_message(f"Error reading status: {exc}"))
-            self._chatgpt_status_lbl.setStyleSheet("color: #c04040;")
+            self._set_oauth_status(
+                "chatgpt",
+                t("Status unavailable"),
+                signed_in=None,
+                message=_translate_status_message(f"Error reading status: {exc}"),
+            )
 
     def _chatgpt_login_browser(self) -> None:
         """Handle chatgpt login browser for settings dialog."""
         from core.auth import chatgpt as chatgpt_auth
-        self._chatgpt_status_lbl.setText(t("Opening browser\u2026 waiting for callback"))
-        self._chatgpt_status_lbl.setStyleSheet("color: #c0c040;")
+        self._set_oauth_status(
+            "chatgpt",
+            t("Opening browser… waiting for callback"),
+            signed_in=None,
+            busy=True,
+        )
         self._start_auth_poll()
 
         def on_success(_tokens):
@@ -3971,15 +4666,19 @@ class SettingsDialog(QDialog):
             msg = self._auth_poll_error
             self._auth_poll_error = None  # clear so we don't re-trigger
             self._auth_poll_timer.stop()
-            self._chatgpt_status_lbl.setText(_translate_status_message(f"Error: {msg}"))
-            self._chatgpt_status_lbl.setStyleSheet("color: #c04040;")
+            self._set_oauth_status(
+                "chatgpt",
+                t("Status unavailable"),
+                signed_in=None,
+                message=_translate_status_message(f"Error: {msg}"),
+            )
             return
         # Check if tokens have appeared in the keychain
         try:
             from core.auth import chatgpt as chatgpt_auth
             if chatgpt_auth.get_tokens():
                 self._auth_poll_timer.stop()
-                self._refresh_chatgpt_status()
+                self._schedule_open_status_refresh()
                 self._refresh_model_api_key_combos()
                 return
         except Exception:
@@ -3988,8 +4687,12 @@ class SettingsDialog(QDialog):
         self._auth_poll_ticks += 1
         if self._auth_poll_ticks >= 300:
             self._auth_poll_timer.stop()
-            self._chatgpt_status_lbl.setText(t("Timed out waiting for login"))
-            self._chatgpt_status_lbl.setStyleSheet("color: #c04040;")
+            self._set_oauth_status(
+                "chatgpt",
+                t("Not logged in"),
+                signed_in=False,
+                message=t("Timed out waiting for login"),
+            )
 
     def _chatgpt_logout(self) -> None:
         """Handle chatgpt logout for settings dialog."""
@@ -4005,21 +4708,30 @@ class SettingsDialog(QDialog):
         """Refresh github status."""
         try:
             from core.auth import github as github_auth
-            tokens = github_auth.get_tokens()
-            if tokens:
-                login = (tokens.get("user") or {}).get("login") or ""
+
+            tokens = github_auth.get_tokens() or {}
+            verified, login = github_auth.validate_login(timeout_seconds=5.0)
+            if verified:
                 scopes = tokens.get("scope") or ""
                 label = "Logged in" + (f" as {login}" if login else "")
-                if scopes:
-                    label += f"\nScopes: {scopes}"
-                self._github_status_lbl.setText(_translate_status_message(label))
-                self._github_status_lbl.setStyleSheet("color: #80c080;")
+                self._set_oauth_status(
+                    "github",
+                    _translate_status_message(label),
+                    signed_in=True,
+                )
+                self._github_status_lbl.setToolTip(
+                    t("Scopes: ") + scopes if scopes else ""
+                )
             else:
-                self._github_status_lbl.setText(t("Not logged in"))
-                self._github_status_lbl.setStyleSheet("color: palette(placeholder-text);")
+                self._set_oauth_status("github", t("Not logged in"), signed_in=False)
+                self._github_status_lbl.setToolTip("")
         except Exception as exc:
-            self._github_status_lbl.setText(_translate_status_message(f"Error reading status: {exc}"))
-            self._github_status_lbl.setStyleSheet("color: #c04040;")
+            self._set_oauth_status(
+                "github",
+                t("Status unavailable"),
+                signed_in=None,
+                message=_translate_status_message(f"Error reading status: {exc}"),
+            )
 
     def _github_login_device(self) -> None:
         """Handle github login device for settings dialog."""
@@ -4032,14 +4744,20 @@ class SettingsDialog(QDialog):
         cfg.GITHUB_CLIENT_ID = override_client_id or getattr(cfg, "GITHUB_DEFAULT_CLIENT_ID", "")
         cfg.GITHUB_OAUTH_SCOPES = _get(self._fields["GITHUB_OAUTH_SCOPES"]).strip()
         if not github_auth.has_configured_client_id():
-            self._github_status_lbl.setText(t(
-                "This build does not include a GitHub OAuth app client ID yet."
-            ))
-            self._github_status_lbl.setStyleSheet("color: #c04040;")
+            self._set_oauth_status(
+                "github",
+                t("Not logged in"),
+                signed_in=False,
+                message=t("This build does not include a GitHub OAuth app client ID yet."),
+            )
             return
 
-        self._github_status_lbl.setText(t("Starting GitHub device auth..."))
-        self._github_status_lbl.setStyleSheet("color: #c0c040;")
+        self._set_oauth_status(
+            "github",
+            t("Starting GitHub device auth..."),
+            signed_in=None,
+            busy=True,
+        )
         self._start_github_auth_poll()
 
         def on_code(url, user_code):
@@ -4077,20 +4795,28 @@ class SettingsDialog(QDialog):
             if msg.startswith("__device_code__"):
                 body = msg[len("__device_code__"):]
                 url, _, code = body.partition("\n")
-                self._github_status_lbl.setText(f"{t('Go to:')} {url}\n{t('Enter code:')} {code}")
-                self._github_status_lbl.setStyleSheet("color: #80a0ff;")
+                self._set_oauth_status(
+                    "github",
+                    t("Starting GitHub device auth..."),
+                    signed_in=None,
+                    message=f"{t('Go to:')} {url}   {t('Enter code:')} {code}",
+                    message_kind="info",
+                    busy=True,
+                )
                 return
             self._github_auth_poll_timer.stop()
-            self._github_status_lbl.setText(_translate_status_message(f"Error: {msg}"))
-            self._github_status_lbl.setStyleSheet("color: #c04040;")
+            self._set_oauth_status(
+                "github",
+                t("Status unavailable"),
+                signed_in=None,
+                message=_translate_status_message(f"Error: {msg}"),
+            )
             return
         try:
             from core.auth import github as github_auth
             if github_auth.get_tokens():
                 self._github_auth_poll_timer.stop()
-                self._refresh_github_status()
-                # GitHub login also enables the Copilot route (OAuth fallback token).
-                self._refresh_copilot_status()
+                self._schedule_open_status_refresh()
                 self._refresh_model_api_key_combos()
                 return
         except Exception:
@@ -4098,8 +4824,12 @@ class SettingsDialog(QDialog):
         self._github_auth_poll_ticks += 1
         if self._github_auth_poll_ticks >= 900:
             self._github_auth_poll_timer.stop()
-            self._github_status_lbl.setText(t("Timed out waiting for GitHub login"))
-            self._github_status_lbl.setStyleSheet("color: #c04040;")
+            self._set_oauth_status(
+                "github",
+                t("Not logged in"),
+                signed_in=False,
+                message=t("Timed out waiting for GitHub login"),
+            )
 
     def _github_logout(self) -> None:
         """Handle github logout for settings dialog."""
@@ -4109,73 +4839,7 @@ class SettingsDialog(QDialog):
         except Exception:
             pass
         self._refresh_github_status()
-        # Signing out of GitHub may disable the Copilot route's fallback token.
-        self._refresh_copilot_status()
         self._refresh_model_api_key_combos()
-
-    def _refresh_copilot_status(self) -> None:
-        """Refresh copilot status."""
-        try:
-            from core.auth import copilot_auth
-            stored, message = copilot_auth.token_status()
-            self._copilot_status_lbl.setText(t(message))
-            self._copilot_status_lbl.setStyleSheet(
-                "color: #80c080;" if stored else "color: palette(placeholder-text);"
-            )
-        except Exception as exc:
-            self._copilot_status_lbl.setText(_translate_status_message(f"Keychain error: {exc}"))
-            self._copilot_status_lbl.setStyleSheet("color: #c04040;")
-
-    def _copilot_save_token(self) -> None:
-        """Handle copilot save token for settings dialog."""
-        try:
-            from core.auth import copilot_auth
-            token = ""
-            for row in self._api_key_rows:
-                if _get(row["provider"]) == "copilot":
-                    token = row["key"].text()
-                    if token.strip():
-                        copilot_auth.save_token(token)
-                        row["key"].clear()
-                        self._set_secret_placeholder(row["key"], "stored in keychain", stored=True)
-                        break
-            if not token.strip():
-                raise ValueError("Add a GitHub Copilot provider row and paste a token first.")
-            self._refresh_copilot_status()
-            self._refresh_model_api_key_combos()
-        except Exception as exc:
-            self._copilot_status_lbl.setText(t(str(exc)))
-            self._copilot_status_lbl.setStyleSheet("color: #c04040;")
-            QMessageBox.warning(self, t("GitHub Copilot token"), str(exc))
-
-    def _copilot_clear_token(self) -> None:
-        """Handle copilot clear token for settings dialog."""
-        try:
-            from core.auth import copilot_auth
-            copilot_auth.clear_token()
-            for row in self._api_key_rows:
-                if _get(row["provider"]) == "copilot":
-                    row["key"].clear()
-                    self._sync_api_key_row_placeholder(row)
-            self._refresh_copilot_status()
-            self._refresh_model_api_key_combos()
-        except Exception as exc:
-            self._copilot_status_lbl.setText(t(str(exc)))
-            self._copilot_status_lbl.setStyleSheet("color: #c04040;")
-            QMessageBox.warning(self, t("GitHub Copilot token"), str(exc))
-
-    def _copilot_test_token(self) -> None:
-        """Handle copilot test token for settings dialog."""
-        try:
-            from core.auth import copilot_client
-            ok, message = copilot_client.test_copilot_token()
-            self._copilot_status_lbl.setText(t(message))
-            self._copilot_status_lbl.setStyleSheet(
-                "color: #80c080;" if ok else "color: #c04040;"
-            )
-        except Exception as exc:
-            self._copilot_status_lbl.setText(_translate_status_message(f"Test failed: {exc}"))
-            self._copilot_status_lbl.setStyleSheet("color: #c04040;")
 
     def _tab_tts(self) -> QWidget:
         """Handle tab TTS for settings dialog."""
@@ -4224,7 +4888,6 @@ class SettingsDialog(QDialog):
         # ── SPEECH-TO-TEXT card ──────────────────────────────────────────
         stt_card, stt_cv = self._card("Speech to Text")
         stt_note_text = (
-            "Whisper model settings for hold-to-talk transcription. "
             "Larger models improve Mandarin/Cantonese speech accuracy but use more disk and CPU."
         )
         stt_note = QLabel(
@@ -4324,7 +4987,7 @@ class SettingsDialog(QDialog):
         cloudflare_note = QLabel(
             "<small>"
             + t(
-                "Cloudflare mode sends each speech clip to Workers AI after Wisp's local silence check. "
+                "Cloudflare mode sends each speech clip to Workers AI after OpenWand's local silence check. "
                 "It needs internet access and does not provide live streaming transcription."
             )
             + "</small>"
@@ -4503,7 +5166,7 @@ class SettingsDialog(QDialog):
         gsv_text_lang_tip = "Language code for assistant replies sent to GPT-SoVITS."
         self._fields["GPT_SOVITS_SAMPLE_RATE"] = QLineEdit()
         self._fields["GPT_SOVITS_SAMPLE_RATE"].setPlaceholderText("32000")
-        gsv_rate_tip = "Playback sample rate Wisp should use. The adapter resamples GPT-SoVITS output to this rate."
+        gsv_rate_tip = "Playback sample rate OpenWand should use. The adapter resamples GPT-SoVITS output to this rate."
         self._fields["KOKORO_VOICE"] = QLineEdit()
         self._fields["KOKORO_VOICE"].setPlaceholderText("af_heart")
         kokoro_voice_tip = "Built-in Kokoro voice name, such as af_heart, af_bella, af_sky, am_adam, or am_michael."
@@ -4549,7 +5212,7 @@ class SettingsDialog(QDialog):
         tts_chunk_min_tip = "Minimum words before read-aloud TTS may split at punctuation."
         self._fields["TTS_READ_ALOUD_MAX_WORDS"] = QLineEdit()
         self._fields["TTS_READ_ALOUD_MAX_WORDS"].setPlaceholderText("110")
-        tts_chunk_max_tip = "Maximum words per read-aloud TTS chunk before Wisp splits anyway."
+        tts_chunk_max_tip = "Maximum words per read-aloud TTS chunk before OpenWand splits anyway."
         self._fields["STT_BACKGROUND_CHUNK_FIRST_TRIGGER_SECONDS"] = QLineEdit()
         self._fields["STT_BACKGROUND_CHUNK_FIRST_TRIGGER_SECONDS"].setPlaceholderText("15.0")
         stt_first_chunk_tip = "Recording length before background transcription starts."
@@ -4651,7 +5314,7 @@ class SettingsDialog(QDialog):
         kf.setContentsMargins(0, 0, 0, 0)
         kf.setSpacing(8)
         kokoro_note = QLabel(
-            f"<small>{t('Runs Kokoro directly in Wisp. No server, API key, reference audio, or voice clone is needed.')}</small>"
+            f"<small>{t('Runs Kokoro directly in OpenWand. No server, API key, reference audio, or voice clone is needed.')}</small>"
         )
         kokoro_note.setWordWrap(True)
         self._kokoro_install_btn = QPushButton(t("Install Kokoro"))
@@ -4732,17 +5395,6 @@ class SettingsDialog(QDialog):
 
         # ── LIVE VOICE CONVERSATION card ─────────────────────────────────
         live_card, live_cv = self._card("Live voice conversation")
-        live_note = QLabel(
-            "<small>"
-            + t(
-                "Hands-free conversation with Gemini Live: press the toggle "
-                "hotkey, talk naturally, and interrupt Wisp by speaking over "
-                "it. Set the hotkey on the Keybinds tab."
-            )
-            + "</small>"
-        )
-        live_note.setWordWrap(True)
-        live_cv.addWidget(live_note)
         self._live_voice_key_note_lbl = QLabel()
         self._live_voice_key_note_lbl.setWordWrap(True)
         live_cv.addWidget(self._live_voice_key_note_lbl)
@@ -4832,12 +5484,12 @@ class SettingsDialog(QDialog):
         live_voice_name.currentIndexChanged.connect(lambda _: self._schedule_dirty_refresh())
         live_voice_name_edit.textChanged.connect(lambda _: self._schedule_dirty_refresh())
         self._fields["LIVE_VOICE_HALF_DUPLEX"] = QCheckBox(
-            t("Pause mic while Wisp talks (for speakers; disables barge-in)")
+            t("Pause mic while OpenWand talks (for speakers; disables barge-in)")
         )
         live_half_duplex_tip = (
-            "Turn this on when Wisp plays through speakers, so it does not "
+            "Turn this on when OpenWand plays through speakers, so it does not "
             "hear and interrupt itself. With headphones, leave it off to talk "
-            "over Wisp naturally."
+            "over OpenWand naturally."
         )
 
         live_fw = QWidget()
@@ -4862,15 +5514,10 @@ class SettingsDialog(QDialog):
         self._refresh_live_voice_key_note()
 
         advanced_group, advanced_layout = self._collapsible_group("Advanced settings")
-        advanced_note = QLabel(
-            f"<small>{t('Chunking controls for read-aloud TTS and long speech-to-text recordings.')}</small>"
-        )
-        advanced_note.setWordWrap(True)
         advanced_form_w = QWidget()
         advanced_form = _expanding_form_layout(advanced_form_w)
         advanced_form.setContentsMargins(0, 0, 0, 0)
         advanced_form.setSpacing(8)
-        advanced_form.addRow(advanced_note)
         advanced_form.addRow(
             _tooltip_label("Read-aloud min words", tts_chunk_min_tip),
             self._fields["TTS_READ_ALOUD_MIN_WORDS"],
@@ -5285,11 +5932,15 @@ class SettingsDialog(QDialog):
                     "kokoro",
                     device="cuda" if mode == "gpu" else "cpu",
                 )
-                kokoro_installed = bool(kokoro_spec_status.get("valid"))
+                kokoro_candidate = bool(kokoro_spec_status.get("installed"))
                 kokoro_runtime_status = (
                     optional_deps.kokoro_runtime_import_status_subprocess()
-                    if kokoro_installed
+                    if kokoro_candidate
                     else {}
+                )
+                kokoro_installed = bool(
+                    kokoro_spec_status.get("valid")
+                    or kokoro_runtime_status.get("valid") is True
                 )
                 needs_cuda_status = mode == "gpu"
                 torch_status = (
@@ -5379,7 +6030,7 @@ class SettingsDialog(QDialog):
                     button.setEnabled(True)
             return
         # Mirror the Voice-page detection line into the runtime event log:
-        # staged installs that failed while Wisp was closed used to be visible
+        # staged installs that failed while OpenWand was closed used to be visible
         # only in this Settings label.
         summary = (
             f"Install status: STT {'installed' if result.get('stt_package_installed') else 'not installed'}; "
@@ -5503,7 +6154,7 @@ class SettingsDialog(QDialog):
         self._connect_button_action(button, self._restart_for_staged_apply)
         message = str(install_status.get("message") or "").strip()
         if not message:
-            message = f"{display_name} packages are staged. Click Restart app now to close Wisp and apply them."
+            message = f"{display_name} packages are staged. Click Restart app now to close OpenWand and apply them."
         self._set_test_status(label, "warn", _translate_status_message(message))
         return True
 
@@ -5853,13 +6504,13 @@ class SettingsDialog(QDialog):
         if mode == "repair":
             title = t("Repair voice files")
             message = t(
-                "Wisp will redownload Kokoro's damaged or missing voice model files "
+                "OpenWand will redownload Kokoro's damaged or missing voice model files "
                 "(up to about 330 MB).\n\nContinue?"
             )
         else:
             title = t("Update voice model")
             message = t(
-                "Wisp will download the updated Kokoro voice model (about 330 MB) and switch to it "
+                "OpenWand will download the updated Kokoro voice model (about 330 MB) and switch to it "
                 "only after the download is verified. The current voice keeps working if the update fails.\n\n"
                 "Continue?"
             )
@@ -5912,7 +6563,7 @@ class SettingsDialog(QDialog):
         self._tts_install_status_result = None
 
     def _install_kokoro(self) -> None:
-        """Confirm and install optional Kokoro dependencies into Wisp's Python."""
+        """Confirm and install optional Kokoro dependencies into OpenWand's Python."""
         from core import optional_deps
 
         snapshot = self._kokoro_install_snapshot()
@@ -5940,14 +6591,14 @@ class SettingsDialog(QDialog):
         )
         storage_note = t(
             "The GPU install downloads several GB and can temporarily require at least 15 GB free for the uv cache, extraction, "
-            "and Wisp's staging folder. It requires an NVIDIA GPU and compatible driver. "
+            "and OpenWand's staging folder. It requires an NVIDIA GPU and compatible driver. "
         ) if mode == "gpu" else ""
         action_note = t(
-            "Wisp will upgrade Kokoro's optional package layer with GPU support.\n\n"
+            "OpenWand will upgrade Kokoro's optional package layer with GPU support.\n\n"
             if needs_gpu
-            else "Wisp will reinstall Kokoro in its user-writable optional packages folder.\n\n"
+            else "OpenWand will reinstall Kokoro in its user-writable optional packages folder.\n\n"
             if reinstall
-            else "Wisp will install Kokoro into its user-writable optional packages folder.\n\n"
+            else "OpenWand will install Kokoro into its user-writable optional packages folder.\n\n"
         )
         speed = _get(self._fields["KOKORO_SPEED"]).strip() or "1.0"
         sample_rate = _get(self._fields["KOKORO_SAMPLE_RATE"]).strip() or "24000"
@@ -6024,7 +6675,7 @@ class SettingsDialog(QDialog):
                 "pre_install_packages": pre_install_packages,
                 "settings_updates": {
                     "TTS_PROVIDER": "kokoro",
-                    "WISP_TTS_PREFERENCE": "local",
+                    "OPENWAND_TTS_PREFERENCE": "local",
                     "KOKORO_VOICE": voice,
                     "KOKORO_LANG_CODE": lang_code,
                     "KOKORO_DEVICE": device,
@@ -6079,22 +6730,22 @@ class SettingsDialog(QDialog):
             )
 
     def _install_elevenlabs(self) -> None:
-        """Confirm and install optional ElevenLabs dependencies into Wisp's Python."""
+        """Confirm and install optional ElevenLabs dependencies into OpenWand's Python."""
         from core import optional_deps
 
         installed = self._elevenlabs_installed()
         message_source = (
-            "Wisp will reinstall ElevenLabs support in its user-writable optional packages folder.\n\n"
+            "OpenWand will reinstall ElevenLabs support in its user-writable optional packages folder.\n\n"
             "Package: {package}\n\n"
             "Release builds do not bundle ElevenLabs, keeping downloads smaller. "
-            "The install may need internet access and will survive Wisp updates.\n\n"
+            "The install may need internet access and will survive OpenWand updates.\n\n"
             "Continue?"
             if installed
             else (
-                "Wisp will install ElevenLabs support into its user-writable optional packages folder.\n\n"
+                "OpenWand will install ElevenLabs support into its user-writable optional packages folder.\n\n"
                 "Package: {package}\n\n"
                 "Release builds do not bundle ElevenLabs, keeping downloads smaller. "
-                "The install may need internet access and will survive Wisp updates.\n\n"
+                "The install may need internet access and will survive OpenWand updates.\n\n"
                 "Continue?"
             )
         )
@@ -6127,7 +6778,7 @@ class SettingsDialog(QDialog):
             external_plan_extra={
                 "settings_updates": {
                     "TTS_PROVIDER": "elevenlabs",
-                    "WISP_TTS_PREFERENCE": "cloud",
+                    "OPENWAND_TTS_PREFERENCE": "cloud",
                 },
             },
         )
@@ -6147,15 +6798,15 @@ class SettingsDialog(QDialog):
 
         installed = self._live_voice_installed()
         message_source = (
-            "Wisp will reinstall live voice support (google-genai) in its user-writable optional packages folder.\n\n"
+            "OpenWand will reinstall live voice support (google-genai) in its user-writable optional packages folder.\n\n"
             "Package: {package}\n\n"
-            "The install may need internet access and will survive Wisp rebuilds.\n\n"
+            "The install may need internet access and will survive OpenWand rebuilds.\n\n"
             "Continue?"
             if installed
             else (
-                "Wisp will install live voice support (google-genai) into its user-writable optional packages folder.\n\n"
+                "OpenWand will install live voice support (google-genai) into its user-writable optional packages folder.\n\n"
                 "Package: {package}\n\n"
-                "The install may need internet access and will survive Wisp rebuilds.\n\n"
+                "The install may need internet access and will survive OpenWand rebuilds.\n\n"
                 "Continue?"
             )
         )
@@ -6178,7 +6829,7 @@ class SettingsDialog(QDialog):
             status_attr="_live_voice_install_status_lbl",
             success_message="Live voice installed. Press the toggle hotkey to start a conversation.",
             thread_name="live-voice-install",
-            # google-genai itself is never imported by a running Wisp, but its
+            # google-genai itself is never imported by a running OpenWand, but its
             # dependencies (charset_normalizer, pydantic, ...) overlap with
             # already-loaded optional packages, so Windows still needs the
             # staged restart-apply path to replace locked .pyd files.
@@ -6198,8 +6849,8 @@ class SettingsDialog(QDialog):
         external_plan_extra: dict[str, object] | None = None,
         reinstall: bool = False,
     ) -> bool:
-        """Launch an optional speech install in a Wisp-owned installer window."""
-        if os.environ.get("WISP_OPTIONAL_INSTALL_INLINE", "").strip().lower() in {"1", "true", "yes", "on"}:
+        """Launch an optional speech install in a OpenWand-owned installer window."""
+        if os.environ.get("OPENWAND_OPTIONAL_INSTALL_INLINE", "").strip().lower() in {"1", "true", "yes", "on"}:
             return False
         status = getattr(self, status_attr, None)
         button = getattr(self, button_attr, None)
@@ -6221,8 +6872,8 @@ class SettingsDialog(QDialog):
                 message=f"{display_name} install is running.",
             )
             dialog = OptionalInstallDialog(
-                title=t("Wisp {display_name} installer").format(display_name=display_name),
-                subtitle=t("Installing {display_name} into Wisp's optional packages folder.").format(
+                title=t("OpenWand {display_name} installer").format(display_name=display_name),
+                subtitle=t("Installing {display_name} into OpenWand's optional packages folder.").format(
                     display_name=display_name
                 ),
                 command=command,
@@ -6266,7 +6917,7 @@ class SettingsDialog(QDialog):
             button.setText(t(f"Installing {display_name}..."))
         self._set_test_pending(
             status,
-            "Installer opened in a Wisp installer window. Progress and errors will appear there.",
+            "Installer opened in a OpenWand installer window. Progress and errors will appear there.",
         )
         return True
 
@@ -6286,7 +6937,7 @@ class SettingsDialog(QDialog):
         exit_code: int,
         dialog: OptionalInstallDialog,
     ) -> None:
-        """Refresh Settings after a Wisp-owned optional installer exits."""
+        """Refresh Settings after a OpenWand-owned optional installer exits."""
         button = getattr(self, button_attr, None)
         status = getattr(self, status_attr, None)
         if isinstance(button, QPushButton):
@@ -6323,8 +6974,8 @@ class SettingsDialog(QDialog):
                     button.setText(t("Restart app now"))
                     _disconnect_clicked_handlers(button)
                     button.clicked.connect(lambda _checked=False: QApplication.instance().quit() if QApplication.instance() else None)
-                self._set_test_pending(status, f"{display_name} packages are staged. Click Restart app now to close Wisp and apply them.")
-                log_event("installer", "info", f"{display_name} packages are staged; restart Wisp to apply them.")
+                self._set_test_pending(status, f"{display_name} packages are staged. Click Restart app now to close OpenWand and apply them.")
+                log_event("installer", "info", f"{display_name} packages are staged; restart OpenWand to apply them.")
                 return
             if not message:
                 message = (
@@ -6371,7 +7022,7 @@ class SettingsDialog(QDialog):
 
         Both the installer-window path and the inline fallback stage the
         packages and apply them on the next restart, so the live package
-        folder is never modified while Wisp runs. ``post_install`` and
+        folder is never modified while OpenWand runs. ``post_install`` and
         ``post_install_progress_detail`` are unused here: verification runs
         in the apply helper via the plan's ``post_install`` field.
         """
@@ -6406,7 +7057,7 @@ class SettingsDialog(QDialog):
             self._queue_test_progress(test_key, token, message)
 
         def _runner() -> tuple[bool, str]:
-            """Install optional packages with pip into Wisp's user package folder."""
+            """Install optional packages with pip into OpenWand's user package folder."""
             from core import optional_deps
 
             log_path = _optional_install_log_path(display_name, optional_deps.OPTIONAL_PACKAGES_DIR)
@@ -6439,7 +7090,7 @@ class SettingsDialog(QDialog):
                 return False, f"No packages selected for {display_name} install."
             # This fallback runs the same staged installer as the installer
             # window: pip writes into a staging folder and the live package
-            # dir is only touched after Wisp exits, so a locked DLL cannot
+            # dir is only touched after OpenWand exits, so a locked DLL cannot
             # corrupt a working install. The staged installer owns artifact
             # cleanup, logging, and post-install verification.
             try:
@@ -6543,7 +7194,7 @@ class SettingsDialog(QDialog):
                 optional_deps.add_optional_packages_to_path()
                 # The staged installer wrote the durable status: usually
                 # "packages are staged, restart to apply". Verification runs
-                # in the apply helper after Wisp exits, not in this process.
+                # in the apply helper after OpenWand exits, not in this process.
                 install_status = _read_optional_install_status(display_name, optional_deps.OPTIONAL_PACKAGES_DIR)
                 message = str(install_status.get("message") or "").strip() or success_message
                 if install_status.get("ok") is False:
@@ -6589,28 +7240,18 @@ class SettingsDialog(QDialog):
 
         # ── SYSTEM PROMPT card ────────────────────────────────────────────
         prompt_card, prompt_cv = self._card("System Prompt")
-        note = QLabel(
-            f"<small>{t('Each conversation mode has its own system prompt.')}</small>"
-        )
-        note.setWordWrap(True)
-        prompt_cv.addWidget(note)
-
         prompt_tabs = QTabWidget()
         prompt_tabs.setObjectName("systemPromptModeTabs")
 
         def add_prompt_tab(
             label: str,
             field_key: str,
-            description: str,
             placeholder: str = "",
         ) -> None:
             page = QWidget()
             layout = QVBoxLayout(page)
             layout.setContentsMargins(8, 10, 8, 8)
             layout.setSpacing(8)
-            description_label = QLabel(t(description))
-            description_label.setWordWrap(True)
-            layout.addWidget(description_label)
             editor = QTextEdit()
             editor.setMinimumHeight(260)
             editor.setSizePolicy(
@@ -6626,21 +7267,18 @@ class SettingsDialog(QDialog):
             prompt_tabs.addTab(page, t(label))
 
         add_prompt_tab(
-            "Wisp",
+            "OpenWand",
             "SYSTEM_PROMPT_UTILITY",
-            "Used only when conversations run with Wisp.",
         )
         add_prompt_tab(
             "ChatGPT",
-            "WISP_CODEX_SYSTEM_PROMPT",
-            "Used only when conversations run with ChatGPT.",
-            "Optional instructions for ChatGPT conversations. Leave blank to use ChatGPT's native instructions.",
+            "OPENWAND_CODEX_SYSTEM_PROMPT",
+            placeholder="Optional instructions for ChatGPT conversations. Leave blank to use ChatGPT's native instructions.",
         )
         add_prompt_tab(
             "Claude",
-            "WISP_CLAUDE_SYSTEM_PROMPT",
-            "Used only when conversations run with Claude.",
-            "Optional instructions for Claude conversations. Leave blank to use Claude's native instructions.",
+            "OPENWAND_CLAUDE_SYSTEM_PROMPT",
+            placeholder="Optional instructions for Claude conversations. Leave blank to use Claude's native instructions.",
         )
         self._system_prompt_tabs = prompt_tabs
         prompt_cv.addWidget(prompt_tabs, stretch=1)
@@ -6673,7 +7311,6 @@ class SettingsDialog(QDialog):
         # Global shortcuts: intent-overlay callers and region snipping.
         global_card, global_rows = self._create_shortcut_section(
             "Global shortcuts",
-            "Intent-overlay and screen-capture entry points available from any application.",
             add_label="Add intent shortcut",
             add_callback=lambda: self._add_caller_block(),
         )
@@ -6706,12 +7343,9 @@ class SettingsDialog(QDialog):
         global_rows.addWidget(timeout_row)
         outer_layout.addWidget(global_card)
 
-        self._add_app_action_file_summary(outer_layout)
-
         # Voice shortcuts.
         voice_card, voice_rows = self._create_shortcut_section(
             "Voice shortcuts",
-            "Speech input, dictation, live conversation, and spoken selection.",
         )
 
         voice_detail, voice_cv = self._shortcut_detail()
@@ -6815,7 +7449,6 @@ class SettingsDialog(QDialog):
         # Context shortcuts.
         context_card, context_rows = self._create_shortcut_section(
             "Context shortcuts",
-            "Build or clear the context buffer without opening Wisp.",
         )
         self._kb_special_row(
             context_rows, "HOTKEY_ADD_CONTEXT", "Add selection as context",
@@ -6834,65 +7467,6 @@ class SettingsDialog(QDialog):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         return scroll
 
-    def _add_app_action_file_summary(self, outer_layout: QVBoxLayout) -> None:
-        """Show app-folder actions and their declared access without running code."""
-        from core.action_files.store import live_catalog
-
-        card, layout = self._card("Application actions")
-        note = QLabel(
-            t(
-                "These actions come from app folders. Their access badges are self-declared; "
-                "open a file to change its key, text, or enabled setting."
-            )
-        )
-        note.setWordWrap(True)
-        layout.addWidget(note)
-        for app in live_catalog().apps:
-            app_label = QLabel(f"<b>{app.display_name}</b>")
-            layout.addWidget(app_label)
-            for bound in app.actions:
-                action = bound.action
-                row = QWidget()
-                row_layout = QHBoxLayout(row)
-                row_layout.setContentsMargins(8, 1, 0, 1)
-                key = bound.key.upper() if bound.key else "·"
-                status = "" if action.enabled else f" — {t('disabled')}"
-                summary = QLabel(f"{key}   {action.label}{status}")
-                summary.setToolTip(action.hint or action.prompt)
-                summary.setMinimumWidth(0)
-                summary.setSizePolicy(
-                    QSizePolicy.Policy.Ignored,
-                    QSizePolicy.Policy.Preferred,
-                )
-                row_layout.addWidget(summary, 1)
-                access = ", ".join(item.value.title() for item in action.access)
-                if access:
-                    colour = {
-                        "green": "#42b883",
-                        "amber": "#d9a441",
-                        "red": "#e06464",
-                    }.get(action.colour, "#42b883")
-                    badge = QLabel(access)
-                    badge.setMaximumWidth(110)
-                    badge.setWordWrap(True)
-                    badge.setToolTip(
-                        t("Access declared by this action file; this is a label, not a sandbox")
-                    )
-                    badge.setStyleSheet(
-                        f"QLabel {{ color: {colour}; border: 1px solid {colour}; "
-                        "border-radius: 6px; padding: 2px 6px; }}"
-                    )
-                    row_layout.addWidget(badge)
-                open_button = QPushButton(t("Open file"))
-                open_button.clicked.connect(
-                    lambda _checked=False, path=action.path: QDesktopServices.openUrl(
-                        QUrl.fromLocalFile(path)
-                    )
-                )
-                row_layout.addWidget(open_button)
-                layout.addWidget(row)
-        outer_layout.addWidget(card)
-
     @staticmethod
     def _configure_shortcut_grid(grid: QGridLayout) -> None:
         grid.setHorizontalSpacing(8)
@@ -6901,12 +7475,17 @@ class SettingsDialog(QDialog):
         grid.setColumnStretch(1, 1)
         grid.setColumnMinimumWidth(2, 104)
         grid.setColumnMinimumWidth(3, 104)
-        grid.setColumnMinimumWidth(4, 76)
+        # Reserve the full Details-button width even on rows without details.
+        # Otherwise the flexible Action column grows on those rows and pushes
+        # both shortcut editors into different horizontal positions.
+        grid.setColumnMinimumWidth(4, 104)
+        # Keep deletion in its own narrow final column. Non-removable rows use
+        # a same-size ghost so every shortcut row remains vertically aligned.
+        grid.setColumnMinimumWidth(5, 36)
 
     def _create_shortcut_section(
         self,
         title: str,
-        description: str,
         *,
         add_label: str = "",
         add_callback: Callable[[], None] | None = None,
@@ -6926,15 +7505,7 @@ class SettingsDialog(QDialog):
         title_label = _WarningHeaderLabel(t(title))
         title_label.setObjectName("shortcutSectionTitle")
         self._register_warning_header(title, title_label, uppercase=False)
-        description_label = QLabel(t(description))
-        description_label.setWordWrap(True)
-        description_label.setMinimumWidth(0)
-        description_label.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
-        )
-        description_label.setStyleSheet("color: palette(placeholder-text);")
         heading_layout.addWidget(title_label)
-        heading_layout.addWidget(description_label)
         header_layout.addWidget(heading, 1)
         if add_label and add_callback:
             add_button = QPushButton(t(add_label))
@@ -6951,6 +7522,10 @@ class SettingsDialog(QDialog):
             cell = QLabel(t(label))
             cell.setStyleSheet("color: palette(placeholder-text);")
             columns_grid.addWidget(cell, 0, column)
+        remove_header = QWidget()
+        remove_header.setFixedWidth(36)
+        remove_header.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        columns_grid.addWidget(remove_header, 0, 5)
         layout.addWidget(columns)
 
         rows = QWidget()
@@ -6986,6 +7561,7 @@ class SettingsDialog(QDialog):
         detail: QWidget | None = None,
         *,
         section_rows_layout: QVBoxLayout | None = None,
+        remove_callback: Callable[[], None] | None = None,
     ) -> QFrame:
         wrapper = QFrame()
         wrapper.setObjectName("shortcutRowWrapper")
@@ -7029,6 +7605,7 @@ class SettingsDialog(QDialog):
             edit.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             grid.addWidget(edit, 0, column, Qt.AlignmentFlag.AlignTop)
 
+        customize: QPushButton | None = None
         if detail is not None:
             detail.setVisible(False)
             customize = QPushButton(t("Customize"))
@@ -7044,7 +7621,40 @@ class SettingsDialog(QDialog):
             wrapper_layout.addWidget(row)
             wrapper_layout.addWidget(detail)
         else:
+            details_ghost = QWidget()
+            details_ghost.setObjectName("shortcutDetailsGhost")
+            details_ghost.setFixedWidth(104)
+            details_ghost.setSizePolicy(
+                QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+            )
+            details_ghost.setAttribute(
+                Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+            )
+            grid.addWidget(details_ghost, 0, 4, Qt.AlignmentFlag.AlignTop)
             wrapper_layout.addWidget(row)
+
+        if remove_callback is not None:
+            remove_button = QPushButton("×")
+            remove_button.setObjectName("shortcutRemoveButton")
+            remove_button.setAccessibleName(t("Remove intent shortcut"))
+            remove_button.setToolTip(t("Remove intent shortcut"))
+            remove_button.setFixedSize(36, 32)
+            remove_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            remove_button.setStyleSheet(
+                "QPushButton { color: #e06464; background: transparent; border: none; "
+                "font-size: 18pt; font-weight: 700; padding: 0; }"
+                "QPushButton:hover { color: #ff7b7b; background: #3b2929; "
+                "border-radius: 6px; }"
+                "QPushButton:pressed { color: #c94f4f; }"
+            )
+            remove_button.clicked.connect(remove_callback)
+            grid.addWidget(remove_button, 0, 5, Qt.AlignmentFlag.AlignTop)
+        else:
+            remove_ghost = QWidget()
+            remove_ghost.setObjectName("shortcutRemoveGhost")
+            remove_ghost.setFixedWidth(36)
+            remove_ghost.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            grid.addWidget(remove_ghost, 0, 5, Qt.AlignmentFlag.AlignTop)
 
         def _set_enabled(checked: bool) -> None:
             primary.setEnabled(checked)
@@ -7294,22 +7904,44 @@ class SettingsDialog(QDialog):
         )
         outer.addWidget(identity)
 
-        paste_cb = QCheckBox(t("Paste the final answer into the focused application"))
-        paste_cb.setChecked(paste_back)
-        paste_cb.setToolTip(
-            t("When enabled, Wisp pastes the final answer into the focused app instead of only showing it.")
+        result_label = QLabel(f"<small><b>{t('Result behavior')}</b></small>")
+        outer.addWidget(result_label)
+        result_selector = QWidget()
+        result_layout = QHBoxLayout(result_selector)
+        result_layout.setContentsMargins(0, 0, 0, 0)
+        result_layout.setSpacing(6)
+        result_group = QButtonGroup(result_selector)
+        result_group.setExclusive(True)
+
+        show_only_btn = QPushButton(t("Show answer in OpenWand"))
+        show_only_btn.setObjectName("settingsSegmentButton")
+        show_only_btn.setCheckable(True)
+        show_only_btn.setToolTip(
+            t("Show the final answer in OpenWand without changing the selected text.")
         )
-        outer.addWidget(paste_cb)
+        paste_cb = QPushButton(t("Rewrite selected text"))
+        paste_cb.setObjectName("settingsSegmentButton")
+        paste_cb.setCheckable(True)
+        paste_cb.setToolTip(
+            t("Replace the selected text in the focused application with the final answer.")
+        )
+        result_group.addButton(show_only_btn)
+        result_group.addButton(paste_cb)
+        show_only_btn.setChecked(not paste_back)
+        paste_cb.setChecked(paste_back)
+        for button in (show_only_btn, paste_cb):
+            button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            button.toggled.connect(self._schedule_dirty_refresh)
+            result_layout.addWidget(button, 1)
+        outer.addWidget(result_selector)
 
         actions = QWidget()
         actions_layout = QHBoxLayout(actions)
         actions_layout.setContentsMargins(0, 0, 0, 0)
         tools_btn = QPushButton(t("Allowed tools…"))
         tools_btn.setToolTip(t("Choose which installed/addon tools this hotkey may use"))
-        del_caller_btn = QPushButton(t("Remove intent shortcut"))
         actions_layout.addWidget(tools_btn)
         actions_layout.addStretch()
-        actions_layout.addWidget(del_caller_btn)
         outer.addWidget(actions)
 
         docs_mode = context_documents_mode or ("auto" if context_documents else ("model" if context_tools else "off"))
@@ -7332,11 +7964,24 @@ class SettingsDialog(QDialog):
         int_hdr_h.setContentsMargins(0, 2, 0, 0)
         int_hdr_h.setSpacing(6)
         for txt, w in [("On", 24), ("Key", 40), ("Label", 130), ("Prompt", 0)]:
-            lbl = QLabel(f"<small><b>{t(txt)}</b></small>")
             if txt == "Prompt":
-                lbl.setToolTip(
-                    t("Instruction sent with this intent. The user's selected text or context is added separately.")
+                prompt_tip = t(
+                    "Instruction sent with this intent. The user's selected text or context is added separately."
                 )
+                lbl = QLabel(f"<small><b>{t(txt)}  ⓘ</b></small>")
+                lbl.setObjectName("settingsInfoLabel")
+                lbl.setToolTip(prompt_tip)
+                lbl.setCursor(Qt.CursorShape.WhatsThisCursor)
+                lbl.setAccessibleName(t(txt))
+                lbl.setAccessibleDescription(prompt_tip)
+                lbl.setProperty("_openwand_info_source", txt)
+                lbl.setProperty("_openwand_info_small_bold", True)
+                lbl.setProperty(
+                    "_openwand_i18n_tooltip",
+                    "Instruction sent with this intent. The user's selected text or context is added separately.",
+                )
+            else:
+                lbl = QLabel(f"<small><b>{t(txt)}</b></small>")
             if w:
                 lbl.setFixedWidth(w)
             else:
@@ -7362,6 +8007,8 @@ class SettingsDialog(QDialog):
             "detail":         detail,
             "label":          label_edit,
             "paste_back":     paste_cb,
+            "show_only":      show_only_btn,
+            "result_behavior_group": result_group,
             "context_ambient": context_controls["context_ambient"],
             "context_clipboard": context_controls["context_clipboard"],
             "context_documents": context_controls["context_documents_mode"],
@@ -7421,8 +8068,6 @@ class SettingsDialog(QDialog):
         add_wrap.addStretch()
         outer.addLayout(add_wrap)
 
-        del_caller_btn.clicked.connect(lambda: self._delete_caller_block(blk))
-
         display_label = label_edit.text().strip() or t("New intent shortcut")
         wrapper = self._add_shortcut_row(
             self._callers_vlayout,
@@ -7435,6 +8080,7 @@ class SettingsDialog(QDialog):
             section_rows_layout=getattr(
                 self, "_global_shortcut_rows", self._callers_vlayout
             ),
+            remove_callback=lambda: self._delete_caller_block(blk),
         )
         blk["widget"] = wrapper
         title_label = self._shortcut_rows[-1]["title_label"]
@@ -7706,7 +8352,7 @@ class SettingsDialog(QDialog):
         self._set_status_label(
             self._harness_auth_status_lbl,
             None,
-            "Complete sign-in in the terminal or browser. Wisp will refresh automatically.",
+            "Complete sign-in in the terminal or browser. OpenWand will refresh automatically.",
         )
         self._start_harness_auth_poll(target=True)
 
@@ -7793,30 +8439,30 @@ class SettingsDialog(QDialog):
         execution_card, execution_cv = self._card("Run conversations with")
         execution_cv.addWidget(_desc_label(
             "",
-            "Choose the agent behind Wisp conversations. Wisp uses the configured model route; "
-            "ChatGPT and Claude run their full local agent harness and stream progress back into Wisp.",
+            "Choose the agent behind OpenWand conversations. OpenWand uses the configured model route; "
+            "ChatGPT and Claude run their full local agent harness and stream progress back into OpenWand.",
         ))
         execution_mode = _NoScrollCombo()
-        execution_mode.addItem(t("Wisp"), "wisp")
+        execution_mode.addItem(t("OpenWand"), "openwand")
         execution_mode.addItem(t("ChatGPT"), "codex")
         execution_mode.addItem(t("Claude Agent"), "claude")
         execution_mode.setToolTip(t(
-            "Wisp always keeps a local chat copy. Agent-managed conversations also keep a resumable ChatGPT or Claude session."
+            "OpenWand always keeps a local chat copy. Agent-managed conversations also keep a resumable ChatGPT or Claude session."
         ))
         self._fields["CHAT_EXECUTION_MODE"] = execution_mode
         conversation_owner = _NoScrollCombo()
-        conversation_owner.addItem(t("Wisp"), "wisp")
+        conversation_owner.addItem(t("OpenWand"), "openwand")
         conversation_owner.addItem(t("Selected agent"), "agent")
         conversation_owner.setToolTip(t(
-            "Wisp-managed conversations send the full Wisp history with each request. "
+            "OpenWand-managed conversations send the full OpenWand history with each request. "
             "Agent-managed conversations transfer once, then resume the ChatGPT or Claude session."
         ))
         self._fields["CHAT_CONVERSATION_OWNER"] = conversation_owner
 
-        owner_sync_state = {"provider": str(execution_mode.currentData() or "wisp")}
+        owner_sync_state = {"provider": str(execution_mode.currentData() or "openwand")}
 
         def sync_owner_agent_label(*, select_default: bool = True) -> None:
-            selected = str(execution_mode.currentData() or "wisp")
+            selected = str(execution_mode.currentData() or "openwand")
             previous = owner_sync_state["provider"]
             label = {
                 "codex": t("ChatGPT"),
@@ -7824,9 +8470,9 @@ class SettingsDialog(QDialog):
             }.get(selected, t("Selected agent"))
             conversation_owner.setItemText(1, label)
             conversation_owner.setEnabled(selected in {"codex", "claude"})
-            if selected == "wisp":
-                conversation_owner.setCurrentIndex(conversation_owner.findData("wisp"))
-            elif select_default and previous == "wisp":
+            if selected == "openwand":
+                conversation_owner.setCurrentIndex(conversation_owner.findData("openwand"))
+            elif select_default and previous == "openwand":
                 conversation_owner.setCurrentIndex(conversation_owner.findData("agent"))
             owner_sync_state["provider"] = selected
             poll_timer = getattr(self, "_harness_auth_poll_timer", None)
@@ -7870,7 +8516,7 @@ class SettingsDialog(QDialog):
         harness_auth_layout.addWidget(self._harness_auth_title_lbl)
         harness_auth_layout.addWidget(_desc_label(
             "",
-            "Wisp keeps ChatGPT agent sessions and login state in an isolated Wisp profile, "
+            "OpenWand keeps ChatGPT agent sessions and login state in an isolated OpenWand profile, "
             "so they do not appear in your personal Codex history. Sign-in opens its terminal and browser flow.",
         ))
         self._harness_auth_status_lbl = QLabel()
@@ -7896,15 +8542,11 @@ class SettingsDialog(QDialog):
         outer.addWidget(execution_card)
 
         profile_card, profile_cv = self._card("Profile setup")
-        profile_cv.addWidget(_desc_label(
-            "",
-            "Run the guided profile setup again to update your languages, theme, provider, and voice preferences.",
-        ))
         profile_setup_btn = QPushButton(t("Run profile setup"))
+        profile_setup_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         profile_setup_btn.setToolTip(t("Open the guided first-time setup without resetting your other settings."))
         profile_setup_btn.clicked.connect(self._open_profile_setup)
-        profile_cv.addWidget(profile_setup_btn)
-        outer.addWidget(profile_card)
+        profile_cv.addWidget(profile_setup_btn, 0, Qt.AlignmentFlag.AlignLeft)
 
         card, cv = self._card("App Settings")
         fw = QWidget()
@@ -7917,14 +8559,14 @@ class SettingsDialog(QDialog):
         theme_combo.addItem(t("Light"), "light")
         theme_combo.addItem(t("Dark"), "dark")
         self._fields["THEME_MODE"] = theme_combo
-        theme_tip = "System follows your OS theme. Light and Dark use Wisp's saved color templates."
+        theme_tip = "System follows your OS theme. Light and Dark use OpenWand's saved color templates."
         self._fields["ICON_AUTO_HIDE"] = QCheckBox(t("Auto-hide icon (only visible when active)"))
         self._fields["ICON_AUTO_HIDE"].setToolTip(
-            "Hide the floating icon when Wisp is idle, then show it again while listening or responding."
+            "Hide the floating icon when OpenWand is idle, then show it again while listening or responding."
         )
-        self._fields["START_ON_LOGIN"] = QCheckBox(t("Start Wisp when you sign in"))
+        self._fields["START_ON_LOGIN"] = QCheckBox(t("Start OpenWand when you sign in"))
         self._fields["START_ON_LOGIN"].setToolTip(
-            t("Launch Wisp automatically after you sign in to this computer.")
+            t("Launch OpenWand automatically after you sign in to this computer.")
         )
         app_language = _NoScrollCombo()
         for label, value in LANGUAGE_OPTIONS:
@@ -7958,13 +8600,13 @@ class SettingsDialog(QDialog):
         self._fields["BUBBLE_SCROLL_SNAP_ENABLED"].setToolTip(
             t("After manual scrolling, return to the current highlighted word if speech is still active.")
         )
-        _bg_row      = self._color_field("THEME_BG",      "e.g. #1c1e26", alpha=False)
-        _surface_row = self._color_field("THEME_SURFACE", "e.g. #17181d", alpha=False)
-        _text_row    = self._color_field("THEME_TEXT",    "e.g. #e8e8f0", alpha=False)
-        _accent_row  = self._color_field("THEME_ACCENT",  "e.g. #8b87ff", alpha=False)
+        _bg_row      = self._color_field("THEME_BG",      "e.g. #16181b", alpha=False)
+        _surface_row = self._color_field("THEME_SURFACE", "e.g. #1c1f23", alpha=False)
+        _text_row    = self._color_field("THEME_TEXT",    "e.g. #e9e6e0", alpha=False)
+        _accent_row  = self._color_field("THEME_ACCENT",  "e.g. #d8a145", alpha=False)
         _bubble_color_row      = self._color_field("BUBBLE_COLOR",          "e.g. #1c1c24dc")
         _bubble_text_color_row = self._color_field("BUBBLE_TEXT_COLOR",     "e.g. #e6e6e6")
-        _read_word_color_row   = self._color_field("BUBBLE_READ_WORD_COLOR", "e.g. #4da3ff")
+        _read_word_color_row   = self._color_field("BUBBLE_READ_WORD_COLOR", "e.g. #d8a145")
 
         theme_color_tip = (
             "Colors for the theme selected above. Light and Dark each keep their\n"
@@ -7980,8 +8622,6 @@ class SettingsDialog(QDialog):
         f.addRow(_tooltip_label("Surface color", theme_color_tip), _surface_row)
         f.addRow(_tooltip_label("Text color", theme_color_tip), _text_row)
         f.addRow(_tooltip_label("Accent color", theme_color_tip), _accent_row)
-        f.addRow("", self._fields["ICON_AUTO_HIDE"])
-        f.addRow("", self._fields["START_ON_LOGIN"])
         f.addRow(_tooltip_label("App language", app_language_tip), self._fields["APP_LANGUAGE"])
         f.addRow(_tooltip_label("Assistant language", assistant_language_tip), self._fields["ASSISTANT_LANGUAGE"])
         f.addRow(_sep(), _sep())
@@ -7994,6 +8634,8 @@ class SettingsDialog(QDialog):
         f.addRow(t("Text bubble color"), _bubble_color_row)
         f.addRow(t("Text bubble text color"), _bubble_text_color_row)
         f.addRow(t("Read word color"), _read_word_color_row)
+        f.addRow("", self._fields["ICON_AUTO_HIDE"])
+        f.addRow("", self._fields["START_ON_LOGIN"])
         cv.addWidget(fw)
         outer.addWidget(card)
 
@@ -8006,11 +8648,12 @@ class SettingsDialog(QDialog):
             self._update_signal_carriers = []
         repo_checkout = updater.is_repo_checkout()
         self._update_repo_checkout = repo_checkout
-        self._update_current_lbl = QLabel(f"{t('Current version')}: {updater.current_version()}")
+        self._update_current_lbl = QLabel(
+            t("Current version: {version}").format(version=updater.current_version())
+        )
         status_text = "Repo checkout: ready to pull origin/main." if repo_checkout else "Ready to check for updates."
-        self._update_status_lbl = QLabel(t(status_text))
+        self._update_status_lbl = _FlexibleWrapLabel(t(status_text))
         self._update_status_lbl.setObjectName("settingsUpdateStatusLabel")
-        self._update_status_lbl.setWordWrap(True)
         self._update_status_lbl.setStyleSheet("color: palette(placeholder-text);")
         self._update_mode = "repo" if repo_checkout else "check"
         self._update_btn = QPushButton(t("Pull latest") if repo_checkout else t("Check for updates"))
@@ -8018,7 +8661,7 @@ class SettingsDialog(QDialog):
         tooltip = (
             "Fast-forward this repo checkout from origin/main."
             if repo_checkout
-            else "Check GitHub Releases for a newer Wisp build."
+            else "Check GitHub Releases for a newer OpenWand build."
         )
         self._update_btn.setToolTip(t(tooltip))
         self._update_btn.clicked.connect(self._on_update_button)
@@ -8033,13 +8676,12 @@ class SettingsDialog(QDialog):
         crash_card, crash_cv = self._card("Crash report")
         crash_cv.addWidget(_desc_label(
             "",
-            "Create a redacted diagnostic bundle to attach to a bug report. Wisp includes bounded log tails "
+            "Create a redacted diagnostic bundle to attach to a bug report. OpenWand includes bounded log tails "
             "and system details, but does not collect chat, memory, settings, environment, or keychain files. "
             "Review the archive before sharing because logs can still contain user-provided text.",
         ))
-        self._crash_report_status_lbl = QLabel(t("No crash report created yet."))
+        self._crash_report_status_lbl = _FlexibleWrapLabel(t("No crash report created yet."))
         self._crash_report_status_lbl.setObjectName("settingsCrashReportStatus")
-        self._crash_report_status_lbl.setWordWrap(True)
         self._crash_report_status_lbl.setStyleSheet("color: palette(placeholder-text);")
         self._crash_report_btn = QPushButton(t("Create crash report…"))
         self._crash_report_btn.setObjectName("settingsCrashReportButton")
@@ -8051,28 +8693,33 @@ class SettingsDialog(QDialog):
         uninstall_card, uninstall_cv = self._card("Uninstall")
         uninstall_cv.addWidget(_desc_label(
             "",
-            t("Permanently remove Wisp, its data, and Wisp-owned local AI models from this computer."),
+            t("Permanently remove OpenWand, its data, and OpenWand-owned local AI models from this computer."),
         ))
-        self._uninstall_btn = QPushButton(t("Uninstall Wisp"))
+        self._uninstall_btn = QPushButton(t("Uninstall OpenWand"))
         self._uninstall_btn.setObjectName("settingsUninstallButton")
-        self._uninstall_btn.clicked.connect(self._uninstall_wisp)
+        self._uninstall_btn.clicked.connect(self._uninstall_openwand)
         uninstall_cv.addWidget(self._uninstall_btn)
         self._about_uninstall_card = uninstall_card
 
-        privacy_card, privacy_cv = self._card("Privacy protection")
+        privacy_card, privacy_cv = self._card("Text privacy before model requests")
         privacy_cv.addWidget(_desc_label(
             "",
-            "Choose privacy protection for model requests. The built-in filter needs no download; "
-            "Advanced adds a local AI model while keeping built-in protection active.",
+            t("Choose whether OpenWand hides sensitive text before sending it to a model. "
+              "Built-in rules need no download. Advanced adds an optional local AI detector."),
         ))
         privacy_mode = _NoScrollCombo()
-        privacy_mode.addItem(t("Off (send full messages)"), "off")
-        privacy_mode.addItem(t("Built-in privacy filter"), "builtin")
-        privacy_mode.addItem(t("Advanced privacy model"), "advanced")
-        privacy_general_tooltip = t(
-            "Use no filter, built-in patterns, or Advanced mode, which combines the local AI model "
-            "with built-in patterns."
+        privacy_mode.addItem(t("Off — send original text"), "off")
+        privacy_mode.addItem(t("Built-in rules — no download"), "builtin")
+        privacy_mode.addItem(t("Advanced — built-in rules plus local AI"), "advanced")
+        privacy_mode_help = _tooltip_label(
+            "Protection level",
+            "This controls text filtering, not which model provider you use. Off sends original "
+            "text. Built-in replaces the enabled categories below with placeholders. Advanced "
+            "also uses the optional local AI model to find context-sensitive private text. "
+            "Screenshots and images are not inspected or redacted.",
         )
+        privacy_mode_help.setProperty("privacyHelpKey", "mode")
+        privacy_general_tooltip = privacy_mode_help.toolTip()
         privacy_mode.setToolTip(privacy_general_tooltip)
         privacy_mode.setProperty("generalToolTip", privacy_general_tooltip)
         advanced_index = privacy_mode.findData("advanced")
@@ -8080,7 +8727,7 @@ class SettingsDialog(QDialog):
             advanced_index,
             t(
                 "Advanced privacy loads a local 2.8 GB AI model into memory and warms it in the "
-                "background when Wisp starts. Warm-up may take tens of seconds on CPU. If you send "
+                "background when OpenWand starts. Warm-up may take tens of seconds on CPU. If you send "
                 "a request before it finishes, that request waits; later requests are faster. The "
                 "privacy model never uploads your text."
             ),
@@ -8088,14 +8735,74 @@ class SettingsDialog(QDialog):
         )
         privacy_mode.currentIndexChanged.connect(self._on_privacy_mode_changed)
         self._fields["PRIVACY_MODE"] = privacy_mode
-        privacy_cv.addWidget(privacy_mode)
+        privacy_form = QFormLayout()
+        privacy_form.setContentsMargins(0, 0, 0, 0)
+        privacy_form.setHorizontalSpacing(14)
+        privacy_form.setVerticalSpacing(8)
+        privacy_form.addRow(privacy_mode_help, privacy_mode)
         self._fields["PRIVACY_REVIEW_BEFORE_SEND"] = QCheckBox(
-            t("Review detected private information before sending")
+            t("Ask me before sending when private text is found")
         )
-        self._fields["PRIVACY_REVIEW_BEFORE_SEND"].setToolTip(
-            t("Show the redacted request and detected categories before any model request, including local models.")
+        review_help = _tooltip_label(
+            "Confirmation",
+            "When private text is found, pause before the model request and show the redacted "
+            "preview. You can send the redacted text, send the original text for this request, "
+            "or cancel. Turn this off to redact and send automatically.",
         )
-        privacy_cv.addWidget(self._fields["PRIVACY_REVIEW_BEFORE_SEND"])
+        review_help.setProperty("privacyHelpKey", "review")
+        self._fields["PRIVACY_REVIEW_BEFORE_SEND"].setToolTip(review_help.toolTip())
+        privacy_form.addRow(review_help, self._fields["PRIVACY_REVIEW_BEFORE_SEND"])
+        privacy_cv.addLayout(privacy_form)
+
+        category_header = QLabel(t("Built-in categories to hide"))
+        category_header.setObjectName("sectionHeader")
+        privacy_cv.addWidget(category_header)
+        privacy_cv.addWidget(_desc_label(
+            "",
+            t("These switches control the rule-based filter. They apply to prompt text, captured "
+              "document or app text, memory, and chat history. They do not inspect images."),
+        ))
+        category_grid = QGridLayout()
+        category_grid.setContentsMargins(0, 0, 0, 0)
+        category_grid.setHorizontalSpacing(20)
+        category_grid.setVerticalSpacing(6)
+        category_options = (
+            ("PRIVACY_HIDE_SECRETS", "Secrets and credentials", "Passwords, API keys, access tokens, URL credentials, and private keys"),
+            ("PRIVACY_HIDE_CONTACT_DETAILS", "Contact details", "Email addresses and phone numbers"),
+            ("PRIVACY_HIDE_FINANCIAL_DETAILS", "Financial information", "Payment cards, IBANs, and labeled account or routing numbers"),
+            ("PRIVACY_HIDE_GOVERNMENT_IDS", "Government IDs", "US Social Security numbers, passports, and driver’s licence numbers"),
+            ("PRIVACY_HIDE_URLS", "Web addresses", "HTTP and HTTPS URLs; credentials inside URLs are always part of Secrets and credentials"),
+        )
+        for index, (key, label, help_text) in enumerate(category_options):
+            checkbox = QCheckBox(t(label))
+            checkbox.setToolTip(t(help_text))
+            checkbox.setProperty("privacyCategory", key)
+            self._fields[key] = checkbox
+            category_grid.addWidget(checkbox, index // 2, index % 2)
+        privacy_cv.addLayout(category_grid)
+
+        privacy_help_row = QHBoxLayout()
+        privacy_help_row.setContentsMargins(0, 0, 0, 0)
+        privacy_help_row.setSpacing(24)
+        protected_help = _tooltip_label(
+            "Where filtering applies",
+            "OpenWand checks text in your prompt, captured app or document context, memory, and "
+            "chat history. The category switches above show exactly what the built-in rules hide. "
+            "Screenshots and other images are not inspected.",
+        )
+        protected_help.setProperty("privacyHelpKey", "protected-content")
+        advanced_help = _tooltip_label(
+            "Advanced model requirements",
+            "Optional local download: about 2.8 GB plus its runtime. It loads into memory and "
+            "warms in the background when OpenWand starts; CPU warm-up may take tens of seconds "
+            "and an early request waits. Detection stays on this computer, but the resulting "
+            "request is still sent to the model provider you selected.",
+        )
+        advanced_help.setProperty("privacyHelpKey", "advanced-model")
+        privacy_help_row.addWidget(protected_help)
+        privacy_help_row.addWidget(advanced_help)
+        privacy_help_row.addStretch()
+        privacy_cv.addLayout(privacy_help_row)
         self._privacy_model_status_lbl = QLabel()
         self._privacy_model_status_lbl.setWordWrap(True)
         self._privacy_model_status_lbl.setStyleSheet("color: palette(placeholder-text);")
@@ -8114,6 +8821,10 @@ class SettingsDialog(QDialog):
         privacy_cv.addLayout(privacy_actions)
         outer.addWidget(privacy_card)
         self._refresh_privacy_model_status()
+
+        # Profile setup changes personal data, so keep it at the end of General
+        # instead of interrupting the everyday application controls near the top.
+        outer.addWidget(profile_card)
 
         outer.addStretch()
         scroll.setWidget(outer_w)
@@ -8154,6 +8865,16 @@ class SettingsDialog(QDialog):
         review = self._fields.get("PRIVACY_REVIEW_BEFORE_SEND")
         if isinstance(review, QCheckBox):
             review.setEnabled(mode != "off")
+        for key in (
+            "PRIVACY_HIDE_SECRETS",
+            "PRIVACY_HIDE_CONTACT_DETAILS",
+            "PRIVACY_HIDE_FINANCIAL_DETAILS",
+            "PRIVACY_HIDE_GOVERNMENT_IDS",
+            "PRIVACY_HIDE_URLS",
+        ):
+            category = self._fields.get(key)
+            if isinstance(category, QCheckBox):
+                category.setEnabled(mode != "off")
         if mode != "advanced" or bool(getattr(self, "_privacy_model_ready", False)):
             return
         fallback = combo.findData("builtin")
@@ -8177,12 +8898,12 @@ class SettingsDialog(QDialog):
         return root / "privacy-model.log", root / "privacy-model.status.json"
 
     def _install_privacy_model(self) -> None:
-        """Launch the official model download in Wisp's installer window."""
+        """Launch the official model download in OpenWand's installer window."""
         answer = QMessageBox.question(
             self,
             t("Download and install advanced privacy model?"),
             t(
-                "Wisp will download the official OpenAI Privacy Filter (about 2.8 GB) and install "
+                "OpenWand will download the official OpenAI Privacy Filter (about 2.8 GB) and install "
                 "its dedicated local runtime. The model runs only on this computer. Continue?"
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -8291,12 +9012,6 @@ class SettingsDialog(QDialog):
         outer.setContentsMargins(12, 12, 12, 12)
         outer.setSpacing(12)
 
-        about_card, about_cv = self._card("Wisp")
-        about_cv.addWidget(_desc_label(
-            "",
-            "A private desktop assistant overlay with configurable models, voice, context, and tools.",
-        ))
-        outer.addWidget(about_card)
         outer.addWidget(self._about_updates_card)
         outer.addWidget(self._about_crash_card)
         outer.addWidget(self._about_uninstall_card)
@@ -8333,8 +9048,8 @@ class SettingsDialog(QDialog):
         finally:
             self._crash_report_btn.setEnabled(True)
 
-    def _uninstall_wisp(self) -> None:
-        """Confirm and launch the detached, self-removing Wisp uninstaller."""
+    def _uninstall_openwand(self) -> None:
+        """Confirm and launch the detached, self-removing OpenWand uninstaller."""
         from ui.uninstall_dialog import run_uninstall_dialog
 
         run_uninstall_dialog(self)
@@ -8454,7 +9169,7 @@ class SettingsDialog(QDialog):
             except Exception as exc:  # noqa: BLE001 - update checks should be visible, not fatal
                 carrier.done.emit(None, str(exc))
 
-        threading.Thread(target=_worker, daemon=True, name="wisp-update-check").start()
+        threading.Thread(target=_worker, daemon=True, name="openwand-update-check").start()
 
     def _pull_repo_update(self) -> None:
         """Fast-forward a source checkout without blocking the Settings dialog."""
@@ -8478,7 +9193,7 @@ class SettingsDialog(QDialog):
             except Exception as exc:  # noqa: BLE001 - repo update errors should stay in Settings
                 carrier.done.emit(None, str(exc))
 
-        threading.Thread(target=_worker, daemon=True, name="wisp-repo-update").start()
+        threading.Thread(target=_worker, daemon=True, name="openwand-repo-update").start()
 
     def _finish_repo_update(self, carrier: _UpdateSignals, result: object, error: str) -> None:
         """Apply a repo update result on the Qt thread."""
@@ -8491,7 +9206,7 @@ class SettingsDialog(QDialog):
             self._set_update_status("Repo update failed: {error}", "error", error=error)
             return
         if bool(getattr(result, "updated", False)):
-            self._set_update_status("Repo updated. Restart Wisp to use the latest code.", "ok")
+            self._set_update_status("Repo updated. Restart OpenWand to use the latest code.", "ok")
         else:
             self._set_update_status("Repo is already up to date.", "ok")
 
@@ -8532,7 +9247,7 @@ class SettingsDialog(QDialog):
 
         self._update_mode = "check"
         self._update_btn.setText(t("Check for updates"))
-        self._set_update_status("Wisp is up to date.", "ok")
+        self._set_update_status("OpenWand is up to date.", "ok")
 
     def _download_available_update(self) -> None:
         """Download the selected update artifact."""
@@ -8563,7 +9278,7 @@ class SettingsDialog(QDialog):
             except Exception as exc:  # noqa: BLE001 - update downloads should be visible, not fatal
                 carrier.done.emit("", str(exc))
 
-        threading.Thread(target=_worker, daemon=True, name="wisp-update-download").start()
+        threading.Thread(target=_worker, daemon=True, name="openwand-update-download").start()
 
     def _finish_update_download(self, carrier: _UpdateSignals, path: object, error: str) -> None:
         """Apply an update-download result on the Qt thread."""
@@ -8581,11 +9296,11 @@ class SettingsDialog(QDialog):
         self._update_download_path = Path(str(path))
         self._update_mode = "apply"
         self._update_btn.setText(t("Apply update"))
-        self._update_btn.setToolTip(t("Apply the downloaded update and restart Wisp."))
-        self._set_update_status("Update downloaded. Apply it when you are ready to restart Wisp.", "ok")
+        self._update_btn.setToolTip(t("Apply the downloaded update and restart OpenWand."))
+        self._set_update_status("Update downloaded. Apply it when you are ready to restart OpenWand.", "ok")
 
     def _apply_downloaded_update(self) -> None:
-        """Apply the downloaded update via a helper process and quit Wisp."""
+        """Apply the downloaded update via a helper process and quit OpenWand."""
         path = self._update_download_path
         if path is None or not path.exists():
             self._update_mode = "check"
@@ -8597,12 +9312,12 @@ class SettingsDialog(QDialog):
         confirm.setIcon(QMessageBox.Icon.Question)
         confirm.setWindowTitle(t("Apply update"))
         confirm.setText(t("Apply the downloaded update now?"))
-        confirm.setInformativeText(t("Wisp will close, install the update, and restart."))
+        confirm.setInformativeText(t("OpenWand will close, install the update, and restart."))
         confirm.setStandardButtons(QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes)
         confirm.button(QMessageBox.StandardButton.Yes).setText(t("Apply and restart"))
         confirm.button(QMessageBox.StandardButton.Cancel).setText(t("Not now"))
         if confirm.exec() != QMessageBox.StandardButton.Yes:
-            self._set_update_status("Update downloaded. Apply it when you are ready to restart Wisp.", "ok")
+            self._set_update_status("Update downloaded. Apply it when you are ready to restart OpenWand.", "ok")
             return
 
         try:
@@ -8613,7 +9328,7 @@ class SettingsDialog(QDialog):
             self._update_btn.setEnabled(False)
             self._update_btn.setText(t("Applying..."))
             self._set_update_status(
-                "Applying update. Wisp will close now; installing and reopening can take a few minutes.",
+                "Applying update. OpenWand will close now; installing and reopening can take a few minutes.",
                 "ok",
             )
             app = QApplication.instance()
@@ -8690,18 +9405,13 @@ class SettingsDialog(QDialog):
         outer.setSpacing(12)
 
         context_card, context_cv = self._card("Context limits")
-        context_note = QLabel(
-            t("Tuning limits for how much external text Wisp can collect before asking the model.")
-        )
-        context_note.setWordWrap(True)
-        context_cv.addWidget(context_note)
         context_fw = QWidget()
         context_f = _expanding_form_layout(context_fw)
         context_f.setSpacing(8)
         context_f.setContentsMargins(0, 0, 0, 0)
         self._fields["CONTEXT_BROWSER_MAX_CHARS"] = QLineEdit()
         self._fields["CONTEXT_BROWSER_MAX_CHARS"].setPlaceholderText("e.g. 8000")
-        browser_chars_tip = "Maximum characters Wisp reads from a browser page when browser context is on."
+        browser_chars_tip = "Maximum characters OpenWand reads from a browser page when browser context is on."
         self._fields["CONTEXT_AMBIENT_DOCUMENT_MAX_CHARS"] = QLineEdit()
         self._fields["CONTEXT_AMBIENT_DOCUMENT_MAX_CHARS"].setPlaceholderText("e.g. 12000")
         ambient_doc_chars_tip = "Maximum characters read automatically from open documents before the model answers."
@@ -8733,20 +9443,26 @@ class SettingsDialog(QDialog):
         local_file_f = _expanding_form_layout(local_file_fw)
         local_file_f.setSpacing(8)
         local_file_f.setContentsMargins(0, 0, 0, 0)
-        self._fields["TOOL_FILE_ROOTS"] = QTextEdit()
-        self._fields["TOOL_FILE_ROOTS"].setPlaceholderText(
-            "One folder per line. Leave empty to turn local file access off."
-        )
+        self._fields["TOOL_FILE_ROOTS"] = _FolderListEditor()
         file_roots_tip = "Folders that file tools are allowed to inspect. Paths outside this list are refused."
-        self._fields["TOOL_FILE_ROOTS"].setFixedHeight(72)
         self._fields["TOOL_FILE_BLOCKED_GLOBS"] = QTextEdit()
         self._fields["TOOL_FILE_BLOCKED_GLOBS"].setPlaceholderText(
-            "One private pattern per line. Matching files are always refused."
+            t("Add one blocking rule per line. Hover over ⓘ for examples.")
         )
-        blocked_globs_tip = "Glob patterns to block even inside allowed folders, such as secrets or private notes."
+        blocked_globs_tip = (
+            "Block matching files even when they are inside an allowed folder. Add one rule per line. "
+            "Use * to match part of a file name and ** to match folders at any depth.\n\n"
+            "Examples:\n"
+            ".env* — blocks .env and .env.local\n"
+            "**/secrets/** — blocks every secrets folder\n"
+            "*.pem — blocks PEM key files"
+        )
         self._fields["TOOL_FILE_BLOCKED_GLOBS"].setFixedHeight(92)
         local_file_f.addRow(_tooltip_label("Folders the model may use", file_roots_tip), self._fields["TOOL_FILE_ROOTS"])
-        local_file_f.addRow(_tooltip_label("Private file patterns", blocked_globs_tip), self._fields["TOOL_FILE_BLOCKED_GLOBS"])
+        local_file_f.addRow(
+            _tooltip_label("Files and folders to block", blocked_globs_tip, show_info=True),
+            self._fields["TOOL_FILE_BLOCKED_GLOBS"],
+        )
         local_file_cv.addWidget(local_file_fw)
         outer.addWidget(local_file_card)
 
@@ -8759,7 +9475,7 @@ class SettingsDialog(QDialog):
         memory_f.setContentsMargins(0, 0, 0, 0)
         self._fields["MEMORY_CONSOLIDATION_INTERVAL"] = QLineEdit()
         self._fields["MEMORY_CONSOLIDATION_INTERVAL"].setPlaceholderText("minutes between consolidations")
-        consolidation_tip = "How often Wisp compresses recent conversation into longer-term memory."
+        consolidation_tip = "How often OpenWand compresses recent conversation into longer-term memory."
         self._fields["MEMORY_STM_TOKEN_BUDGET"] = QLineEdit()
         self._fields["MEMORY_STM_TOKEN_BUDGET"].setPlaceholderText("tokens before STM compression kicks in")
         stm_budget_tip = "Approximate short-term memory size before recent conversation is summarized."
@@ -8900,10 +9616,12 @@ class SettingsDialog(QDialog):
 
         edit = QLineEdit()
         edit.setPlaceholderText(placeholder)
+        edit.setProperty("hexField", True)
+        edit.setFont(_settings_font(13.5, mono=True))
         self._fields[field_key] = edit
 
         swatch = QPushButton()
-        swatch.setFixedSize(26, 26)
+        swatch.setFixedSize(28, 28)
         swatch.setToolTip("Pick color")
 
         def _parse(text: str) -> QColor:
@@ -8925,15 +9643,19 @@ class SettingsDialog(QDialog):
 
         def _update_swatch(text=""):
             """Update swatch."""
+            from ui.shared.theme import theme_colors
+
+            border = theme_colors()["border"]
             c = _parse(edit.text())
             if c.isValid():
                 swatch.setStyleSheet(
                     f"QPushButton {{ background: #{c.alpha():02x}{c.red():02x}{c.green():02x}{c.blue():02x};"
-                    f" border: 1px solid #666; border-radius: 4px; padding: 0px; }}"
+                    f" border: 1px solid {border}; border-radius: 0px; padding: 0px; }}"
                 )
             else:
                 swatch.setStyleSheet(
-                    "QPushButton { background: transparent; border: 1px solid #666; border-radius: 4px; padding: 0px; }"
+                    f"QPushButton {{ background: transparent; border: 1px solid {border}; "
+                    "border-radius: 0px; padding: 0px; }"
                 )
 
         def _pick():
@@ -8974,6 +9696,144 @@ class SettingsDialog(QDialog):
         layout.addStretch()
         return row
 
+    def _oauth_provider_row(
+        self,
+        *,
+        key: str,
+        icon_asset: str,
+        title: str,
+        purpose: str,
+        sign_in: Callable[[], None],
+        sign_out: Callable[[], None],
+    ) -> QWidget:
+        """Build one compact OAuth row with status, purpose, and inline details."""
+        from ui.shared.theme import theme_colors
+
+        colors = theme_colors()
+        row = QWidget()
+        row.setObjectName(f"{key}OAuthRow")
+        outer = QVBoxLayout(row)
+        outer.setContentsMargins(0, 5, 0, 7)
+        outer.setSpacing(3)
+
+        top = QWidget(row)
+        top_layout = QHBoxLayout(top)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        top_layout.setSpacing(8)
+
+        icon = QLabel(top)
+        icon.setObjectName("oauthProviderIcon")
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon.setFixedSize(30, 30)
+        icon.setStyleSheet(
+            f"background:#ffffff; border:1px solid {colors['border']}; border-radius:8px;"
+        )
+        icon_path = ASSETS_DIR / icon_asset
+        provider_icon = QIcon(str(icon_path))
+        if provider_icon.isNull():
+            icon.setText("?")
+        else:
+            icon.setPixmap(provider_icon.pixmap(QSize(20, 20)))
+        icon.setProperty("providerIconAsset", str(icon_asset))
+        icon.setAccessibleName(title)
+        top_layout.addWidget(icon, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        name = QLabel(title, top)
+        name.setObjectName("oauthProviderName")
+        name.setFont(_compact_ui_font(13, semibold=True))
+        name.setMinimumWidth(126)
+        top_layout.addWidget(name, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        status = QLabel(top)
+        status.setObjectName("oauthLoginStatus")
+        status.setProperty("oauthProviderKey", key)
+        status.setFont(_compact_ui_font(13))
+        status.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        status.setWordWrap(False)
+        top_layout.addWidget(status, 1, Qt.AlignmentFlag.AlignVCenter)
+
+        login_button = QPushButton(t("Sign in"), top)
+        login_button.setObjectName(f"{key}OAuthSignIn")
+        login_button.setFont(_compact_ui_font(13, semibold=True))
+        login_button.clicked.connect(sign_in)
+        logout_button = QPushButton(t("Sign out"), top)
+        logout_button.setObjectName(f"{key}OAuthSignOut")
+        logout_button.setFont(_compact_ui_font(13, semibold=True))
+        logout_button.clicked.connect(sign_out)
+        top_layout.addWidget(login_button, 0, Qt.AlignmentFlag.AlignVCenter)
+        top_layout.addWidget(logout_button, 0, Qt.AlignmentFlag.AlignVCenter)
+        outer.addWidget(top)
+
+        purpose_label = QLabel(purpose, row)
+        purpose_label.setObjectName("oauthFeaturePurpose")
+        purpose_label.setWordWrap(True)
+        purpose_label.setFont(_compact_ui_font(12))
+        purpose_label.setStyleSheet(
+            f"color: {colors['text_dim']};"
+        )
+        purpose_label.setContentsMargins(38, 0, 0, 0)
+        outer.addWidget(purpose_label)
+
+        message = QLabel(row)
+        message.setObjectName("oauthInlineMessage")
+        message.setWordWrap(True)
+        message.setFont(_compact_ui_font(12))
+        message.setContentsMargins(38, 0, 0, 0)
+        message.hide()
+        outer.addWidget(message)
+
+        setattr(self, f"_{key}_icon_lbl", icon)
+        setattr(self, f"_{key}_purpose_lbl", purpose_label)
+        setattr(self, f"_{key}_status_lbl", status)
+        setattr(self, f"_{key}_message_lbl", message)
+        if key == "chatgpt":
+            self._cgpt_login_btn = login_button
+            self._cgpt_logout_btn = logout_button
+        elif key == "github":
+            self._github_login_btn = login_button
+            self._github_logout_btn = logout_button
+        self._set_oauth_status(key, t("Checking status..."), signed_in=None, busy=True)
+        return row
+
+    def _set_oauth_status(
+        self,
+        key: str,
+        status_text: str,
+        *,
+        signed_in: bool | None,
+        message: str = "",
+        message_kind: str = "error",
+        busy: bool = False,
+    ) -> None:
+        """Keep OAuth status concise and place errors/instructions below the row."""
+        from ui.shared.theme import theme_colors
+
+        colors = theme_colors()
+        status = getattr(self, f"_{key}_status_lbl", None)
+        detail = getattr(self, f"_{key}_message_lbl", None)
+        login_button = getattr(self, "_cgpt_login_btn" if key == "chatgpt" else "_github_login_btn", None)
+        logout_button = getattr(self, "_cgpt_logout_btn" if key == "chatgpt" else "_github_logout_btn", None)
+        if isinstance(status, QLabel):
+            status.setText(str(status_text or ""))
+            status.setStyleSheet(
+                "color: #80c080; font-weight: 600;"
+                if signed_in is True
+                else f"color: {colors['text_dim']};"
+            )
+        if isinstance(detail, QLabel):
+            clean_message = str(message or "").strip()
+            detail.setText(clean_message)
+            detail.setStyleSheet(
+                "color: #c04040;"
+                if message_kind == "error"
+                else "color: palette(highlight);"
+            )
+            detail.setVisible(bool(clean_message))
+        if isinstance(login_button, QPushButton):
+            login_button.setEnabled(not busy and signed_in is not True)
+        if isinstance(logout_button, QPushButton):
+            logout_button.setEnabled(not busy and signed_in is not False)
+
     @staticmethod
     def _status_action_row(status: QLabel, button: QPushButton) -> QWidget:
         """Return the shared compact status/action layout used by speech cards."""
@@ -8988,16 +9848,30 @@ class SettingsDialog(QDialog):
         return row
 
     def _card(self, title: str) -> tuple[QFrame, QVBoxLayout]:
-        """Return a styled card frame and its inner VBoxLayout, with a header label."""
+        """Return an unboxed 9b section with a small-caps heading and rule."""
         card = QFrame()
         card.setObjectName("card")
         cv = QVBoxLayout(card)
-        cv.setContentsMargins(16, 12, 16, 16)
+        # Cards live inside resizable scroll pages. Without a minimum-size
+        # constraint Qt may squeeze a card below the height required by wrapped
+        # translated labels, causing the last lines to overlap the next row.
+        cv.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        cv.setContentsMargins(0, 8, 0, 8)
         cv.setSpacing(10)
         if title:
+            heading_row = QWidget()
+            heading_row.setObjectName("sectionHeadingRow")
+            heading_layout = QHBoxLayout(heading_row)
+            heading_layout.setContentsMargins(0, 0, 0, 0)
+            heading_layout.setSpacing(10)
             hdr = _WarningHeaderLabel(t(title).upper())
             hdr.setObjectName("sectionHeader")
-            cv.addWidget(hdr)
+            rule = QFrame()
+            rule.setObjectName("sectionRule")
+            rule.setFixedHeight(1)
+            heading_layout.addWidget(hdr, 0, Qt.AlignmentFlag.AlignVCenter)
+            heading_layout.addWidget(rule, 1, Qt.AlignmentFlag.AlignVCenter)
+            cv.addWidget(heading_row)
             self._register_warning_header(title, hdr, uppercase=True)
         return card, cv
 
@@ -9099,68 +9973,31 @@ class SettingsDialog(QDialog):
             return
         QTimer.singleShot(0, self._refresh_capability_warning_markers)
 
-    def _area_heading(self, title: str, subtitle: str) -> QWidget:
-        """Return a compact section label with an accent rail."""
-        w = QWidget()
-        h = QHBoxLayout(w)
-        h.setContentsMargins(0, 4, 0, 0)
-        h.setSpacing(10)
-
-        rail = QFrame()
-        rail.setObjectName("areaAccentLine")
-        rail.setFixedWidth(4)
-        rail.setMinimumHeight(34)
-
-        text_w = QWidget()
-        text_v = QVBoxLayout(text_w)
-        text_v.setContentsMargins(0, 0, 0, 0)
-        text_v.setSpacing(2)
-        title_lbl = _WarningHeaderLabel(title)
-        title_lbl.setObjectName("areaHeader")
-        subtitle_lbl = QLabel(subtitle)
-        subtitle_lbl.setObjectName("areaSubheader")
-        subtitle_lbl.setWordWrap(True)
-        text_v.addWidget(title_lbl)
-        text_v.addWidget(subtitle_lbl)
-
-        h.addWidget(rail)
-        h.addWidget(text_w, 1)
-        return w
-
-    def _area_group(self, title: str, subtitle: str) -> tuple[QWidget, QVBoxLayout]:
-        """Return a section group whose accent rail spans all contained cards."""
+    def _area_group(self, title: str) -> tuple[QWidget, QVBoxLayout]:
+        """Return an unboxed section group using the 9b heading treatment."""
         w = QWidget()
         w.setObjectName("settingsAreaGroup")
-        h = QHBoxLayout(w)
-        h.setContentsMargins(0, 4, 0, 0)
-        h.setSpacing(10)
-
-        rail = QFrame()
-        rail.setObjectName("areaAccentLine")
-        rail.setFixedWidth(4)
-        rail.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-
-        content_w = QWidget()
-        content_v = QVBoxLayout(content_w)
-        content_v.setContentsMargins(0, 0, 0, 0)
-        content_v.setSpacing(12)
-
-        title_lbl = _WarningHeaderLabel(t(title))
+        content_v = QVBoxLayout(w)
+        content_v.setContentsMargins(0, 8, 0, 0)
+        content_v.setSpacing(7)
+        heading = QWidget()
+        heading_layout = QHBoxLayout(heading)
+        heading_layout.setContentsMargins(0, 0, 0, 0)
+        heading_layout.setSpacing(10)
+        title_lbl = _WarningHeaderLabel(t(title).upper())
         title_lbl.setObjectName("areaHeader")
-        self._register_warning_header(title, title_lbl)
-        subtitle_lbl = QLabel(t(subtitle))
-        subtitle_lbl.setObjectName("areaSubheader")
-        subtitle_lbl.setWordWrap(True)
-        content_v.addWidget(title_lbl)
-        content_v.addWidget(subtitle_lbl)
+        self._register_warning_header(title, title_lbl, uppercase=True)
+        rule = QFrame()
+        rule.setObjectName("areaAccentLine")
+        rule.setFixedHeight(1)
+        heading_layout.addWidget(title_lbl)
+        heading_layout.addWidget(rule, 1, Qt.AlignmentFlag.AlignVCenter)
+        content_v.addWidget(heading)
 
         body_v = QVBoxLayout()
         body_v.setContentsMargins(0, 0, 0, 0)
         body_v.setSpacing(12)
         content_v.addLayout(body_v)
-
-        h.addWidget(rail)
-        h.addWidget(content_w, 1)
         return w, body_v
 
     def _provider_model_row(
@@ -9365,24 +10202,24 @@ class SettingsDialog(QDialog):
 
         _set(
             self._fields["CHAT_EXECUTION_MODE"],
-            self._env.get("CHAT_EXECUTION_MODE", getattr(cfg, "CHAT_EXECUTION_MODE", "wisp")),
+            self._env.get("CHAT_EXECUTION_MODE", getattr(cfg, "CHAT_EXECUTION_MODE", "openwand")),
         )
         _set(
             self._fields["CHAT_CONVERSATION_OWNER"],
             self._env.get(
                 "CHAT_CONVERSATION_OWNER",
-                getattr(cfg, "CHAT_CONVERSATION_OWNER", "wisp"),
+                getattr(cfg, "CHAT_CONVERSATION_OWNER", "openwand"),
             ),
         )
-        if self._fields["CHAT_EXECUTION_MODE"].currentData() == "wisp":  # type: ignore[attr-defined]
-            _set(self._fields["CHAT_CONVERSATION_OWNER"], "wisp")
+        if self._fields["CHAT_EXECUTION_MODE"].currentData() == "openwand":  # type: ignore[attr-defined]
+            _set(self._fields["CHAT_CONVERSATION_OWNER"], "openwand")
 
         # Read ICON_AUTO_HIDE, falling back to the legacy DOLL_AUTO_HIDE key.
         auto_hide = self._env.get(
             "ICON_AUTO_HIDE",
             self._env.get("DOLL_AUTO_HIDE", str(cfg.ICON_AUTO_HIDE)),
         ).lower() == "true"
-        theme_mode = self._env.get("THEME_MODE", getattr(cfg, "THEME_MODE", "system"))
+        theme_mode = self._env.get("THEME_MODE", getattr(cfg, "THEME_MODE", "dark"))
         combo = self._fields["THEME_MODE"]
         idx = combo.findData(theme_mode)  # type: ignore[attr-defined]
         combo.setCurrentIndex(idx if idx >= 0 else 0)  # type: ignore[attr-defined]
@@ -9431,6 +10268,16 @@ class SettingsDialog(QDialog):
                 str(getattr(cfg, "PRIVACY_REVIEW_BEFORE_SEND", True)),
             ).lower() == "true"
         )
+        for key in (
+            "PRIVACY_HIDE_SECRETS",
+            "PRIVACY_HIDE_CONTACT_DETAILS",
+            "PRIVACY_HIDE_FINANCIAL_DETAILS",
+            "PRIVACY_HIDE_GOVERNMENT_IDS",
+            "PRIVACY_HIDE_URLS",
+        ):
+            self._fields[key].setChecked(
+                self._env.get(key, str(getattr(cfg, key, True))).lower() == "true"
+            )
         self._on_privacy_mode_changed()
 
         _set(
@@ -9476,6 +10323,8 @@ class SettingsDialog(QDialog):
         # ── API key rows ──────────────────────────────────────────────────
         for row in list(self._api_key_rows):
             self._remove_api_key_row(row)
+        self._removed_connection_providers.clear()
+        self._removed_custom_connection_ids.clear()
 
         _LLM_KEY_MAP = [
             ("groq",       "GROQ_API_KEY"),
@@ -9502,7 +10351,7 @@ class SettingsDialog(QDialog):
         ]
         for provider, key_name in _LLM_KEY_MAP:
             if self._secret_configured_fast(key_name):
-                alias_key = f"WISP_CONNECTION_ALIAS_{provider.upper()}"
+                alias_key = f"OPENWAND_CONNECTION_ALIAS_{provider.upper()}"
                 self._add_api_key_row(
                     provider=provider,
                     alias=self._env.get(alias_key, ""),
@@ -9514,11 +10363,20 @@ class SettingsDialog(QDialog):
             if stored:
                 self._add_api_key_row(
                     provider="copilot",
-                    alias=self._env.get("WISP_CONNECTION_ALIAS_COPILOT", ""),
+                    alias=self._env.get("OPENWAND_CONNECTION_ALIAS_COPILOT", ""),
                     stored=True,
                 )
         except Exception:
             pass
+        for connection in _load_custom_connections(self._env):
+            connection_id = connection["id"]
+            self._add_api_key_row(
+                provider="custom",
+                alias=connection.get("alias", ""),
+                stored=self._secret_configured_fast(_custom_secret_name(connection_id)),
+                connection_id=connection_id,
+                base_url=connection.get("base_url", ""),
+            )
         # No default placeholder row — the list stays empty until the user adds
         # a key via "+ Add API Key". Avoids a spurious "Groq" row on every open.
 
@@ -9553,24 +10411,24 @@ class SettingsDialog(QDialog):
             ).strip().lower()
             in {"1", "true", "yes", "on"}
         )  # type: ignore[attr-defined]
-        self._fields["WISP_PLANNED_CHUNKING"].setChecked(
+        self._fields["OPENWAND_PLANNED_CHUNKING"].setChecked(
             self._env.get(
-                "WISP_PLANNED_CHUNKING",
+                "OPENWAND_PLANNED_CHUNKING",
                 str(getattr(cfg, "PLANNED_CHUNKING", False)),
             ).strip().lower()
             in {"1", "true", "yes", "on"}
         )  # type: ignore[attr-defined]
         _set(
-            self._fields["WISP_PLANNED_CHUNKING_CHUNKS"],
+            self._fields["OPENWAND_PLANNED_CHUNKING_CHUNKS"],
             self._env.get(
-                "WISP_PLANNED_CHUNKING_CHUNKS",
+                "OPENWAND_PLANNED_CHUNKING_CHUNKS",
                 str(getattr(cfg, "PLANNED_CHUNKING_CHUNKS", 3)),
             ),
         )
         _set(
-            self._fields["WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS"],
+            self._fields["OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS"],
             self._env.get(
-                "WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS",
+                "OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS",
                 str(getattr(cfg, "PLANNED_CHUNKING_MIN_PROMPT_CHARS", 80)),
             ),
         )
@@ -9790,6 +10648,7 @@ class SettingsDialog(QDialog):
             else dict(sc.get("tools") or {})
         )
         _set(self._fields["CUSTOM_BASE_URL"],      self._env.get("CUSTOM_BASE_URL",      cfg.CUSTOM_BASE_URL))
+        self._sync_custom_endpoint_selection()
         _set(self._fields["GITHUB_CLIENT_ID"],     self._env.get("GITHUB_CLIENT_ID",     cfg.GITHUB_CLIENT_ID))
         _set(self._fields["GITHUB_OAUTH_SCOPES"],  self._env.get("GITHUB_OAUTH_SCOPES",  cfg.GITHUB_OAUTH_SCOPES))
         for key, default in (
@@ -9997,16 +10856,16 @@ class SettingsDialog(QDialog):
             assistant_language,
         )
         self._fields["SYSTEM_PROMPT_UTILITY"].setPlainText(util_val)  # type: ignore
-        self._fields["WISP_CODEX_SYSTEM_PROMPT"].setPlainText(  # type: ignore[attr-defined]
+        self._fields["OPENWAND_CODEX_SYSTEM_PROMPT"].setPlainText(  # type: ignore[attr-defined]
             self._env.get(
-                "WISP_CODEX_SYSTEM_PROMPT",
-                getattr(cfg, "WISP_CODEX_SYSTEM_PROMPT", ""),
+                "OPENWAND_CODEX_SYSTEM_PROMPT",
+                getattr(cfg, "OPENWAND_CODEX_SYSTEM_PROMPT", ""),
             )
         )
-        self._fields["WISP_CLAUDE_SYSTEM_PROMPT"].setPlainText(  # type: ignore[attr-defined]
+        self._fields["OPENWAND_CLAUDE_SYSTEM_PROMPT"].setPlainText(  # type: ignore[attr-defined]
             self._env.get(
-                "WISP_CLAUDE_SYSTEM_PROMPT",
-                getattr(cfg, "WISP_CLAUDE_SYSTEM_PROMPT", ""),
+                "OPENWAND_CLAUDE_SYSTEM_PROMPT",
+                getattr(cfg, "OPENWAND_CLAUDE_SYSTEM_PROMPT", ""),
             )
         )
         self._refresh_capability_warning_markers()
@@ -10049,6 +10908,28 @@ class SettingsDialog(QDialog):
 
     def _set_status_label(self, label: QLabel, ok, message: str) -> None:
         """Set status label."""
+        oauth_key = str(label.property("oauthProviderKey") or "")
+        if oauth_key in {"chatgpt", "github"}:
+            translated = _translate_status_message(message)
+            if ok is False:
+                self._set_oauth_status(
+                    oauth_key,
+                    t("Status unavailable"),
+                    signed_in=None,
+                    message=translated,
+                )
+            elif ok is True:
+                self._set_oauth_status(oauth_key, translated, signed_in=True)
+            elif str(message or "").strip().casefold() == "not logged in":
+                self._set_oauth_status(oauth_key, translated, signed_in=False)
+            else:
+                self._set_oauth_status(
+                    oauth_key,
+                    translated,
+                    signed_in=None,
+                    busy=True,
+                )
+            return
         if ok is None:
             color = "palette(placeholder-text)"
         elif ok:
@@ -10107,7 +10988,6 @@ class SettingsDialog(QDialog):
         self._pending_status_attrs = {
             "_chatgpt_status_lbl",
             "_github_status_lbl",
-            "_copilot_status_lbl",
         }
         harness_provider = self._selected_harness_provider()
         if harness_provider:
@@ -10124,47 +11004,31 @@ class SettingsDialog(QDialog):
         QTimer.singleShot(_AUTH_STATUS_TIMEOUT_MS, lambda tok=token: self._expire_status_refresh(tok))
 
         def _chatgpt_worker() -> None:
-            """Read ChatGPT sign-in status without blocking other providers."""
+            """Verify ChatGPT sign-in without blocking other providers."""
             try:
                 from core.auth import chatgpt as chatgpt_auth
 
-                tokens = chatgpt_auth.get_tokens()
-                if tokens:
-                    aid = tokens.get("account_id") or ""
-                    label = "Logged in" + (f" - account {aid[:8]}..." if aid else "")
-                    self._queue_status_result(token, "_chatgpt_status_lbl", True, label)
+                verified, _account = chatgpt_auth.validate_login(timeout_seconds=5.0)
+                if verified:
+                    self._queue_status_result(token, "_chatgpt_status_lbl", True, "Logged in")
                 else:
                     self._queue_status_result(token, "_chatgpt_status_lbl", None, "Not logged in")
             except Exception as exc:
                 self._queue_status_result(token, "_chatgpt_status_lbl", False, f"Error reading status: {exc}")
 
         def _github_worker() -> None:
-            """Read GitHub sign-in status without waiting on ChatGPT/Copilot."""
+            """Verify GitHub sign-in without waiting on ChatGPT/Copilot."""
             try:
                 from core.auth import github as github_auth
 
-                tokens = github_auth.get_tokens()
-                if tokens:
-                    login = (tokens.get("user") or {}).get("login") or ""
-                    scopes = tokens.get("scope") or ""
+                verified, login = github_auth.validate_login(timeout_seconds=5.0)
+                if verified:
                     label = "Logged in" + (f" as {login}" if login else "")
-                    if scopes:
-                        label += f"\nScopes: {scopes}"
                     self._queue_status_result(token, "_github_status_lbl", True, label)
                 else:
                     self._queue_status_result(token, "_github_status_lbl", None, "Not logged in")
             except Exception as exc:
                 self._queue_status_result(token, "_github_status_lbl", False, f"Error reading status: {exc}")
-
-        def _copilot_worker() -> None:
-            """Read Copilot token status independently."""
-            try:
-                from core.auth import copilot_auth
-
-                stored, message = copilot_auth.token_status()
-                self._queue_status_result(token, "_copilot_status_lbl", bool(stored), message)
-            except Exception as exc:
-                self._queue_status_result(token, "_copilot_status_lbl", False, f"Keychain error: {exc}")
 
         def _harness_worker() -> None:
             """Read the selected local agent CLI's login state."""
@@ -10194,7 +11058,6 @@ class SettingsDialog(QDialog):
         for name, worker in (
             ("settings-status-chatgpt", _chatgpt_worker),
             ("settings-status-github", _github_worker),
-            ("settings-status-copilot", _copilot_worker),
         ):
             threading.Thread(target=worker, daemon=True, name=name).start()
         if harness_provider:
@@ -10260,7 +11123,7 @@ class SettingsDialog(QDialog):
             except RuntimeError:
                 pass
             return
-        message = t("Status check timed out. Sign-in may still work; try again or restart Wisp.")
+        message = t("Status check timed out. Sign-in may still work; try again or restart OpenWand.")
         for attr in tuple(self._pending_status_attrs):
             self._apply_status_result(attr, False, message)
         self._pending_status_attrs = set()
@@ -10397,10 +11260,12 @@ class SettingsDialog(QDialog):
             self._set_test_status(status_label, False, "No model configured.")
             return
         anthropic_api_key = self._effective_secret_value_from_provider("anthropic")
-        custom_base_url = _get(self._fields["CUSTOM_BASE_URL"]).strip()
         compat_keys = {
             p: self._effective_secret_value_from_provider(p)
-            for p in _PROVIDER_KEY_NAMES
+            for p in (
+                {provider for provider, _model in routes if _is_custom_route(provider)}
+                | set(_PROVIDER_KEY_NAMES)
+            )
         }
         test_key = {
             "LLM": "llm_test",
@@ -10421,7 +11286,11 @@ class SettingsDialog(QDialog):
                     route_name,
                     image=image,
                     anthropic_api_key=anthropic_api_key,
-                    custom_base_url=custom_base_url,
+                    custom_base_url=(
+                        self._custom_base_url_for_provider(provider)
+                        if _is_custom_route(provider)
+                        else ""
+                    ),
                     compat_keys=compat_keys,
                 )
                 results.append((label, ok, provider, model, message))
@@ -10531,7 +11400,7 @@ class SettingsDialog(QDialog):
     @staticmethod
     def _reset_stt_model_in_background() -> None:
         """Reset stt model in background."""
-        if os.environ.get("WISP_MACOS_PY_UI_HOST") == "1":
+        if os.environ.get("OPENWAND_MACOS_PY_UI_HOST") == "1":
             # In the split worker app, the UI process must not import core.stt:
             # that pulls in NumPy/faster-whisper and can stall Qt while Python is
             # starting other threads. The supervisor's settings-applied flow
@@ -10735,14 +11604,14 @@ class SettingsDialog(QDialog):
         beam_size = _get(self._fields["STT_BEAM_SIZE"]).strip() or "5"
 
         message = t(
-            "Wisp will install or repair local speech-to-text support in its user-writable optional packages folder.\n\n"
+            "OpenWand will install or repair local speech-to-text support in its user-writable optional packages folder.\n\n"
             "Package: {package}\n"
             "Model: {model}\n"
             "Device: {device}\n"
             "Compute type: {compute_type}\n"
             "Speech language: {language}\n"
             "Beam size: {beam_size}\n\n"
-            "Before installing, Wisp will remove any previous STT package files from its optional packages folder so a broken build cannot be reused.\n\n"
+            "Before installing, OpenWand will remove any previous STT package files from its optional packages folder so a broken build cannot be reused.\n\n"
             "The installer will then load the selected Whisper model in a separate process. "
             "The first model download needs internet access and may take a while.\n\n"
             "Continue?"
@@ -10784,7 +11653,7 @@ class SettingsDialog(QDialog):
                 "stt_device": device,
                 "stt_compute_type": compute_type,
                 "settings_updates": {
-                    "WISP_STT_PREFERENCE": "local",
+                    "OPENWAND_STT_PREFERENCE": "local",
                     "STT_PROVIDER": "local",
                     "STT_MODEL": model,
                     "STT_DEVICE": device,
@@ -10944,41 +11813,53 @@ class SettingsDialog(QDialog):
                 str(blk["context_screenshot"].currentData())  # type: ignore[attr-defined]
                 for blk in all_blocks
             ]
-            screenshot_warnings = screenshot_capability_warnings(
-                screenshot_modes,
-                llm_provider=vals.get("LLM_PROVIDER", ""),
-                llm_model=vals.get("LLM_MODEL", ""),
-                vision_provider=vals.get("VISION_LLM_PROVIDER", ""),
-                vision_model=vals.get("VISION_LLM_MODEL", ""),
-            )
-            screenshot_targets: set[str] = set()
-            if any(self._block_uses_screenshot(blk, "auto") for blk in all_blocks):
-                screenshot_targets.add("VISION_LLM")
-            if any(self._block_uses_screenshot(blk, "model") for blk in all_blocks):
-                screenshot_targets.add("LLM")
-            if any(self._block_uses_screenshot(blk, mode) for blk in self._caller_blocks for mode in ("auto", "model")):
-                screenshot_targets.add("Global shortcuts")
-            if any(self._block_uses_screenshot(vb, mode) for mode in ("auto", "model")):
-                screenshot_targets.add("Voice shortcuts")
-            for warning in screenshot_warnings:
-                add_warning(sorted(screenshot_targets) or ["LLM"], warning)
+            for screenshot_mode, model_target in (
+                ("auto", "VISION_LLM"),
+                ("model", "LLM"),
+            ):
+                if screenshot_mode not in screenshot_modes:
+                    continue
+                screenshot_targets = {model_target}
+                if any(
+                    self._block_uses_screenshot(blk, screenshot_mode)
+                    for blk in self._caller_blocks
+                ):
+                    screenshot_targets.add("Global shortcuts")
+                if self._block_uses_screenshot(vb, screenshot_mode):
+                    screenshot_targets.add("Voice shortcuts")
+                if sb and self._block_uses_screenshot(sb, screenshot_mode):
+                    screenshot_targets.add("Global shortcuts")
+                for warning in screenshot_capability_warnings(
+                    [screenshot_mode],
+                    llm_provider=vals.get("LLM_PROVIDER", ""),
+                    llm_model=vals.get("LLM_MODEL", ""),
+                    vision_provider=vals.get("VISION_LLM_PROVIDER", ""),
+                    vision_model=vals.get("VISION_LLM_MODEL", ""),
+                ):
+                    add_warning(sorted(screenshot_targets), warning)
 
             llm_provider = vals.get("LLM_PROVIDER", "")
             vision_provider = vals.get("VISION_LLM_PROVIDER", "")
-            auth_targets: list[str] = []
+            llm_auth_targets: list[str] = []
             if llm_provider.strip().lower() == "chatgpt":
-                auth_targets.extend(["Provider credentials", "Authentication", "LLM"])
+                llm_auth_targets.extend(["Provider credentials", "Authentication", "LLM"])
             if llm_provider.strip().lower() == "copilot":
-                auth_targets.extend(["Provider credentials", "API Keys", "LLM"])
+                llm_auth_targets.extend(["Provider credentials", "API Keys", "LLM"])
+            vision_auth_targets: list[str] = []
             if vision_provider.strip().lower() == "chatgpt":
-                auth_targets.extend(["Provider credentials", "Authentication", "VISION_LLM"])
+                vision_auth_targets.extend(
+                    ["Provider credentials", "Authentication", "VISION_LLM"]
+                )
             if vision_provider.strip().lower() == "copilot":
-                auth_targets.extend(["Provider credentials", "API Keys", "VISION_LLM"])
+                vision_auth_targets.extend(["Provider credentials", "API Keys", "VISION_LLM"])
             for warning in subscription_auth_warnings(
                 llm_provider=llm_provider,
+            ):
+                add_warning(list(dict.fromkeys(llm_auth_targets)) or ["Authentication"], warning)
+            for warning in subscription_auth_warnings(
                 vision_provider=vision_provider,
             ):
-                add_warning(list(dict.fromkeys(auth_targets)) or ["Authentication"], warning)
+                add_warning(list(dict.fromkeys(vision_auth_targets)) or ["Authentication"], warning)
 
             caller_tools = any(self._block_uses_live_tools(blk) for blk in self._caller_blocks)
             voice_tools = self._block_uses_live_tools(vb)
@@ -11003,6 +11884,7 @@ class SettingsDialog(QDialog):
 
     def _apply_settings(self) -> bool:
         """Save settings and apply changes live. Returns True on success."""
+        apply_started = time.monotonic()
         old_env = dict(self._env)
         stt_changed = self._stt_fields_changed(old_env)
         cloudflare_token_changed = bool(
@@ -11018,27 +11900,31 @@ class SettingsDialog(QDialog):
                 from core import tts as _tts
                 from core.llm_clients import client as _llm
                 from ui.shared.theme import apply_app_theme
+                new_env = _read_env()
+                changed_key_set = {
+                    key
+                    for key in set(old_env) | set(new_env)
+                    if old_env.get(key) != new_env.get(key)
+                }
+                if cloudflare_token_changed:
+                    # Keychain-only changes never appear in the .env diff,
+                    # but the long-lived audio worker still needs to reload.
+                    changed_key_set.add("CLOUDFLARE_API_TOKEN")
                 config.reload()
                 _llm.reset_clients()
                 _tts.reset_connections()
                 if stt_changed:
                     self._reset_stt_model_in_background()
-                apply_app_theme()
-                self._apply_dialog_theme()
-                localize_widget_tree(self)
+                theme_changed = _settings_change_requires_theme_repaint(changed_key_set)
+                language_changed = "APP_LANGUAGE" in changed_key_set
+                if theme_changed:
+                    apply_app_theme()
+                    self._apply_dialog_theme()
+                if language_changed:
+                    localize_widget_tree(self)
                 self._refresh_tab_labels()
                 self._on_settings_tab_changed(self._tabs.currentIndex())
                 if self._on_apply:
-                    new_env = _read_env()
-                    changed_key_set = {
-                        key
-                        for key in set(old_env) | set(new_env)
-                        if old_env.get(key) != new_env.get(key)
-                    }
-                    if cloudflare_token_changed:
-                        # Keychain-only changes never appear in the .env diff,
-                        # but the long-lived audio worker still needs to reload.
-                        changed_key_set.add("CLOUDFLARE_API_TOKEN")
                     changed_keys = sorted(changed_key_set)
                     apply_payload = {"changed_keys": changed_keys}
                     try:
@@ -11047,7 +11933,7 @@ class SettingsDialog(QDialog):
                         self._on_apply()
                     self._env = new_env
                 else:
-                    self._env = _read_env()
+                    self._env = new_env
                 self._active_preset_slug = self._env.get(_SETTINGS_PRESET_KEY, "")
                 self._refresh_capability_warning_markers()
                 self._refresh_search_index()
@@ -11058,6 +11944,9 @@ class SettingsDialog(QDialog):
             saved = False
         finally:
             self._saving_settings = False
+            elapsed = time.monotonic() - apply_started
+            if elapsed >= 0.5:
+                _settings_log.info("Settings save/apply completed in %.2fs", elapsed)
         if saved:
             self._show_save_warnings()
             return True
@@ -11110,7 +11999,7 @@ class SettingsDialog(QDialog):
                 "VISION_LLM_PROVIDER", "VISION_LLM_MODEL", "VISION_LLM_FALLBACKS",
                 "MEMORY_LLM_PROVIDER", "MEMORY_LLM_MODEL", "MEMORY_LLM_FALLBACKS",
                 "TOOL_LLM_MODEL", "CHAT_TOOL_TRACE_UI", "CHAT_REASONING_EFFORT",
-                "WISP_PLANNED_CHUNKING", "WISP_PLANNED_CHUNKING_CHUNKS", "WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS",
+                "OPENWAND_PLANNED_CHUNKING", "OPENWAND_PLANNED_CHUNKING_CHUNKS", "OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS",
                 "CHAT_AUTO_ELABORATE", "CHAT_ELABORATE_PROMPT",
             },
             "Connections": {
@@ -11136,8 +12025,8 @@ class SettingsDialog(QDialog):
             },
             "Prompts": {
                 "SYSTEM_PROMPT_UTILITY",
-                "WISP_CODEX_SYSTEM_PROMPT",
-                "WISP_CLAUDE_SYSTEM_PROMPT",
+                "OPENWAND_CODEX_SYSTEM_PROMPT",
+                "OPENWAND_CLAUDE_SYSTEM_PROMPT",
             },
             "Keybinds": {
                 "HOTKEY_ADD_CONTEXT", "HOTKEY_ADD_CONTEXT_2", "HOTKEY_ADD_CONTEXT_ENABLED",
@@ -11161,6 +12050,9 @@ class SettingsDialog(QDialog):
                 "CHAT_CONVERSATION_OWNER",
                 "THEME_MODE", "DARK_MODE", "PRIVACY_MODE", "TRUST_PRIVACY_MODE",
                 "PRIVACY_REVIEW_BEFORE_SEND", "PRIVACY_AI_ENABLED",
+                "PRIVACY_HIDE_SECRETS", "PRIVACY_HIDE_CONTACT_DETAILS",
+                "PRIVACY_HIDE_FINANCIAL_DETAILS", "PRIVACY_HIDE_GOVERNMENT_IDS",
+                "PRIVACY_HIDE_URLS",
                 "ICON_AUTO_HIDE", "DOLL_AUTO_HIDE", "START_ON_LOGIN",
                 "THEME_DARK_BG", "THEME_DARK_SURFACE", "THEME_DARK_TEXT", "THEME_DARK_ACCENT",
                 "THEME_LIGHT_BG", "THEME_LIGHT_SURFACE", "THEME_LIGHT_TEXT", "THEME_LIGHT_ACCENT",
@@ -11182,7 +12074,8 @@ class SettingsDialog(QDialog):
         }
         keys = set(exact.get(page, set()))
         if page == "Connections":
-            keys.update(key for key in env if key.startswith("WISP_CONNECTION_ALIAS_"))
+            keys.update(key for key in env if key.startswith("OPENWAND_CONNECTION_ALIAS_"))
+            keys.update(_custom_connection_env_keys(env))
         if page == "Keybinds":
             keys.update(
                 key for key in env
@@ -11224,7 +12117,7 @@ class SettingsDialog(QDialog):
         self._build_deferred_pages()
         page = self._current_tab_name()
         display_page = next(
-            (title for internal, title, _subtitle in _SETTINGS_PAGE_META if internal == page),
+            (title for internal, title in _SETTINGS_PAGE_META if internal == page),
             page,
         )
         confirm = QMessageBox(self)
@@ -11316,7 +12209,7 @@ class SettingsDialog(QDialog):
         confirm = QMessageBox(self)
         confirm.setIcon(QMessageBox.Icon.Warning)
         confirm.setWindowTitle(t("Reset all settings?"))
-        confirm.setText(t("Reset Wisp to its defaults? This cannot be undone."))
+        confirm.setText(t("Reset OpenWand to its defaults? This cannot be undone."))
         confirm.setInformativeText(
             t(
                 "This will permanently:\n"
@@ -11324,10 +12217,10 @@ class SettingsDialog(QDialog):
                 "(Groq, OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Mistral, "
                 "xAI, Together, Cerebras, Z.AI, NVIDIA, SambaNova, GitHub Models, "
                 "Hugging Face, Chutes, Vercel, Fireworks, Cohere, AI21, Nebius, "
-                "Cartesia, ElevenLabs, custom)\n"
+                "Cartesia, ElevenLabs, Copilot, custom)\n"
                 "• ERASE all saved settings (models, hotkeys, prompts, theme, "
                 "callers, and everything else in your .env)\n"
-                "• SIGN YOU OUT of all OAuth logins (ChatGPT, GitHub, GitHub Copilot)\n\n"
+                "• SIGN YOU OUT of all OAuth logins (ChatGPT, GitHub)\n\n"
                 "You will need to re-enter your API keys, sign in again, and "
                 "reconfigure the app afterwards.\n\n"
                 "Continue?"
@@ -11344,7 +12237,11 @@ class SettingsDialog(QDialog):
 
         # 1. Delete every known secret from the OS keychain, verifying removal.
         key_failures: list[str] = []
-        for name in secret_store.API_KEY_NAMES:
+        dynamic_custom_secret_names = {
+            _custom_secret_name(connection["id"])
+            for connection in _load_custom_connections(self._env)
+        } - set(secret_store.API_KEY_NAMES)
+        for name in (*secret_store.API_KEY_NAMES, *sorted(dynamic_custom_secret_names)):
             try:
                 secret_store.delete_secret(name)
                 if secret_store.get_keychain_secret(name):
@@ -11408,7 +12305,6 @@ class SettingsDialog(QDialog):
         for refresh in (
             getattr(self, "_refresh_chatgpt_status", None),
             getattr(self, "_refresh_github_status", None),
-            getattr(self, "_refresh_copilot_status", None),
         ):
             if callable(refresh):
                 try:
@@ -11568,8 +12464,8 @@ class SettingsDialog(QDialog):
             assistant_language,
         )
         _set(self._fields["SYSTEM_PROMPT_UTILITY"], system_prompt_utility)
-        chatgpt_system_prompt = self._fields["WISP_CODEX_SYSTEM_PROMPT"].toPlainText()  # type: ignore[attr-defined]
-        claude_system_prompt = self._fields["WISP_CLAUDE_SYSTEM_PROMPT"].toPlainText()  # type: ignore[attr-defined]
+        chatgpt_system_prompt = self._fields["OPENWAND_CODEX_SYSTEM_PROMPT"].toPlainText()  # type: ignore[attr-defined]
+        claude_system_prompt = self._fields["OPENWAND_CLAUDE_SYSTEM_PROMPT"].toPlainText()  # type: ignore[attr-defined]
         privacy_mode = str(self._fields["PRIVACY_MODE"].currentData() or "builtin")  # type: ignore[attr-defined]
 
         vals = {
@@ -11585,9 +12481,9 @@ class SettingsDialog(QDialog):
             "MEMORY_LLM_MODEL":    mem_m,
             "MEMORY_LLM_FALLBACKS": mem_f,
             "CHAT_TOOL_TRACE_UI": str(self._fields["CHAT_TOOL_TRACE_UI"].isChecked()),  # type: ignore[attr-defined]
-            "WISP_PLANNED_CHUNKING": str(self._fields["WISP_PLANNED_CHUNKING"].isChecked()),  # type: ignore[attr-defined]
-            "WISP_PLANNED_CHUNKING_CHUNKS": _get(self._fields["WISP_PLANNED_CHUNKING_CHUNKS"]),
-            "WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS": _get(self._fields["WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS"]),
+            "OPENWAND_PLANNED_CHUNKING": str(self._fields["OPENWAND_PLANNED_CHUNKING"].isChecked()),  # type: ignore[attr-defined]
+            "OPENWAND_PLANNED_CHUNKING_CHUNKS": _get(self._fields["OPENWAND_PLANNED_CHUNKING_CHUNKS"]),
+            "OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS": _get(self._fields["OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS"]),
             "CHAT_REASONING_EFFORT": _get(self._fields["CHAT_REASONING_EFFORT"]),
             "TTS_PROVIDER":      _get(self._fields["TTS_PROVIDER"]),
             "TTS_SPEAK_REPLIES": _get(self._fields["TTS_SPEAK_REPLIES"]),
@@ -11674,6 +12570,11 @@ class SettingsDialog(QDialog):
             "TRUST_PRIVACY_MODE": str(privacy_mode != "off"),
             "PRIVACY_REVIEW_BEFORE_SEND": str(self._fields["PRIVACY_REVIEW_BEFORE_SEND"].isChecked()),
             "PRIVACY_AI_ENABLED": str(privacy_mode == "advanced"),
+            "PRIVACY_HIDE_SECRETS": str(self._fields["PRIVACY_HIDE_SECRETS"].isChecked()),
+            "PRIVACY_HIDE_CONTACT_DETAILS": str(self._fields["PRIVACY_HIDE_CONTACT_DETAILS"].isChecked()),
+            "PRIVACY_HIDE_FINANCIAL_DETAILS": str(self._fields["PRIVACY_HIDE_FINANCIAL_DETAILS"].isChecked()),
+            "PRIVACY_HIDE_GOVERNMENT_IDS": str(self._fields["PRIVACY_HIDE_GOVERNMENT_IDS"].isChecked()),
+            "PRIVACY_HIDE_URLS": str(self._fields["PRIVACY_HIDE_URLS"].isChecked()),
             "ICON_AUTO_HIDE":    str(self._fields["ICON_AUTO_HIDE"].isChecked()),  # type: ignore
             "START_ON_LOGIN": str(self._fields["START_ON_LOGIN"].isChecked()),  # type: ignore
             "CHAT_AUTO_ELABORATE": str(self._fields["CHAT_AUTO_ELABORATE"].isChecked()),  # type: ignore
@@ -11700,18 +12601,35 @@ class SettingsDialog(QDialog):
             "TTS_PLAYBACK_RATE": _get(self._fields["TTS_PLAYBACK_RATE"]),
             "TTS_HOLD_PLAYBACK_RATE": _get(self._fields["TTS_HOLD_PLAYBACK_RATE"]),
             "SYSTEM_PROMPT_UTILITY": system_prompt_utility,
-            "WISP_CODEX_SYSTEM_PROMPT": chatgpt_system_prompt,
-            "WISP_CLAUDE_SYSTEM_PROMPT": claude_system_prompt,
+            "OPENWAND_CODEX_SYSTEM_PROMPT": chatgpt_system_prompt,
+            "OPENWAND_CLAUDE_SYSTEM_PROMPT": claude_system_prompt,
         }
         vals.update(self._snip_context_values())
         vals.update(theme_vals)
+        custom_connections = [
+            {
+                "id": str(row.get("connection_id") or "legacy"),
+                "alias": row["alias"].text().strip(),
+                "base_url": row["custom_address"].text().strip(),
+            }
+            for row in self._api_key_rows
+            if _get(row["provider"]).strip() == "custom"
+        ]
+        vals.update(_custom_connection_env_values(custom_connections))
+        # Keep the old singleton URL synchronized with the first row so older
+        # builds can still open a configuration saved by this version.
+        vals["CUSTOM_BASE_URL"] = (
+            custom_connections[0]["base_url"]
+            if custom_connections
+            else _get(self._fields["CUSTOM_BASE_URL"]).strip()
+        )
         connection_alias_keys = {
-            key for key in self._env if key.startswith("WISP_CONNECTION_ALIAS_")
+            key for key in self._env if key.startswith("OPENWAND_CONNECTION_ALIAS_")
         }
         vals.update({
-            f"WISP_CONNECTION_ALIAS_{_get(row['provider']).strip().upper()}": row["alias"].text().strip()
+            f"OPENWAND_CONNECTION_ALIAS_{_get(row['provider']).strip().upper()}": row["alias"].text().strip()
             for row in self._api_key_rows
-            if _get(row["provider"]).strip() and row["alias"].text().strip()
+            if _get(row["provider"]).strip() not in {"", "custom"} and row["alias"].text().strip()
         })
         selected_profile_id = self._selected_profile_id()
         vals["ACTIVE_PROFILE"] = selected_profile_id
@@ -11810,7 +12728,7 @@ class SettingsDialog(QDialog):
             vals,
         )
         startup_error = ""
-        if os.environ.get("WISP_LAUNCH_SMOKE_DISABLE_AUTOSTART_SYNC") != "1":
+        if os.environ.get("OPENWAND_LAUNCH_SMOKE_DISABLE_AUTOSTART_SYNC") != "1":
             try:
                 from core.system.autostart import sync_start_on_login
 
@@ -11826,6 +12744,7 @@ class SettingsDialog(QDialog):
             vals,
             remove_keys=set(secret_store.API_KEY_NAMES)
             | connection_alias_keys
+            | _custom_connection_env_keys(self._env)
             | {"CHAT_LLM_PROVIDER", "CHAT_LLM_MODEL", "CHAT_LLM_FALLBACKS", "TOOL_FILE_MODE"}
             | {key for key in self._env if key == "CALLER_COUNT" or key.startswith("CALLER_")}
             | remove_keys,
@@ -11835,7 +12754,7 @@ class SettingsDialog(QDialog):
                 self,
                 t("Could not update startup setting"),
                 t(
-                    "Your preference was saved, but Wisp could not update the operating system startup entry:\n\n{error}"
+                    "Your preference was saved, but OpenWand could not update the operating system startup entry:\n\n{error}"
                 ).format(error=startup_error),
             )
 
@@ -12106,16 +13025,9 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "meta-llama/Meta-Llama-3.1-70B-Instruct",
         "Qwen/Qwen2.5-72B-Instruct",
     ],
-    "ollama": [
-        "llama3.3",
-        "llama3.2",
-        "llama3.1",
-        "qwen3",
-        "deepseek-r1",
-        "mistral",
-        "codellama",
-        "gemma3",
-    ],
+    # Ollama is discovered live. Guessed defaults are actively misleading
+    # because they may not be installed on this computer.
+    "ollama": [],
     "custom": [],
 }
 
@@ -12186,7 +13098,9 @@ def _sep(visible: bool = False) -> QFrame:
 
 def _set(widget, value: str):
     """Set *value* on a combo/line/text-edit widget, honoring custom-value rules."""
-    if isinstance(widget, QComboBox):
+    if isinstance(widget, _FolderListEditor):
+        widget.setText(value)
+    elif isinstance(widget, QComboBox):
         if value == "auto" and widget.property("legacy_auto_means_on"):
             value = "on"
         idx = widget.findData(value)
@@ -12220,6 +13134,8 @@ def _set(widget, value: str):
 
 def _get(widget) -> str:
     """Return the current text/data value of a combo/line/text-edit widget."""
+    if isinstance(widget, _FolderListEditor):
+        return widget.text()
     if isinstance(widget, QComboBox):
         data = widget.currentData()
         return data if data is not None else widget.currentText()
@@ -12253,17 +13169,57 @@ def _seconds_str_to_ms(text, fallback_ms: int) -> str:
 
 def _desc_label(title: str, description: str) -> QLabel:
     """Handle desc label for UI settings panel dialog."""
-    lbl = QLabel(t(description))
-    lbl.setWordWrap(True)
-    lbl.setStyleSheet("color: palette(placeholder-text); font-size: 9pt;")
+    lbl = _FlexibleWrapLabel(t(description))
+    # Translations can need substantially more lines than the English source.
+    # A Preferred vertical policy lets QScrollArea pages compress a wrapped
+    # QLabel below its size hint, clipping the last lines into the next row.
+    # Minimum keeps the row content-sized while still allowing it to grow and
+    # makes the containing page scroll when the translated content is taller.
+    lbl.setProperty("description", True)
+    lbl.setMaximumWidth(640)
     return lbl
 
 
-def _tooltip_label(text: str, tooltip: str) -> QLabel:
+def _tooltip_label(text: str, tooltip: str, *, show_info: bool = True) -> QLabel:
     """Build a translated form/grid label that owns a settings tooltip."""
-    lbl = QLabel(t(text))
-    lbl.setToolTip(t(tooltip))
+    translated_text = t(text)
+    translated_tooltip = t(tooltip)
+    lbl = QLabel(f"{translated_text}  ⓘ" if show_info else translated_text)
+    lbl.setToolTip(translated_tooltip)
+    lbl.setProperty("_openwand_i18n_tooltip", tooltip)
+    if show_info:
+        lbl.setObjectName("settingsInfoLabel")
+        lbl.setCursor(Qt.CursorShape.WhatsThisCursor)
+        lbl.setAccessibleName(translated_text)
+        lbl.setAccessibleDescription(translated_tooltip)
+        lbl.setProperty("_openwand_info_source", text)
+    else:
+        lbl.setProperty("_openwand_i18n_text", text)
     return lbl
+
+
+def _checkbox_with_info(checkbox: QCheckBox, tooltip: str, field_name: str) -> QWidget:
+    """Place a checkbox beside an explicit hover-help icon."""
+    translated_tooltip = t(tooltip)
+    checkbox.setToolTip(translated_tooltip)
+
+    row = QWidget()
+    layout = QHBoxLayout(row)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(7)
+    layout.addWidget(checkbox)
+
+    info = QLabel("ⓘ")
+    info.setObjectName("settingsInfoLabel")
+    info.setToolTip(translated_tooltip)
+    info.setCursor(Qt.CursorShape.WhatsThisCursor)
+    info.setAccessibleName(checkbox.text())
+    info.setAccessibleDescription(translated_tooltip)
+    info.setProperty("_openwand_i18n_tooltip", tooltip)
+    info.setProperty("_openwand_info_for", field_name)
+    layout.addWidget(info)
+    layout.addStretch(1)
+    return row
 
 
 def _link_label(text: str, url: str) -> QLabel:
@@ -12416,7 +13372,7 @@ def _privacy_model_install_env() -> dict[str, str]:
             env["HF_TOKEN"] = token
 
     # The model is public, so authentication is an optimization rather than a
-    # requirement. Wisp owns the progress UI and reports real failures itself.
+    # requirement. OpenWand owns the progress UI and reports real failures itself.
     env["HF_HUB_VERBOSITY"] = "error"
     env["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
     env["HF_HUB_DISABLE_TELEMETRY"] = "1"
@@ -12435,7 +13391,7 @@ def _optional_install_plan_command(
     """Write a staged installer plan and return its command, cwd, and log paths.
 
     Every optional package install runs through the staged installer with
-    restart_apply, so pip never writes into the live package folder while Wisp
+    restart_apply, so pip never writes into the live package folder while OpenWand
     is running — a locked DLL can then no longer corrupt a working install.
     """
     from core import optional_deps, updater
@@ -12460,7 +13416,7 @@ def _optional_install_plan_command(
         "remove_artifacts": remove_artifacts or [],
         "reinstall": bool(reinstall),
         "restart_apply": True,
-        "wait_pid": updater.wisp_wait_pid(),
+        "wait_pid": updater.openwand_wait_pid(),
         "log_path": str(log_path),
         "status_path": str(status_path),
         "app_language": app_language,
@@ -12539,13 +13495,13 @@ def _failed_optional_install_message(status: dict[str, object] | None) -> str:
 
 
 def _optional_install_no_output_timeout_seconds() -> int:
-    """Return how long an optional installer may be silent before Wisp stops it.
+    """Return how long an optional installer may be silent before OpenWand stops it.
 
     A value of 0 disables the watchdog. Python package installs can be silent
     for several minutes while resolving or downloading large wheels, so the
     default is to keep reporting elapsed time instead of killing the installer.
     """
-    raw = os.environ.get("WISP_OPTIONAL_INSTALL_NO_OUTPUT_TIMEOUT_SECONDS", "0")
+    raw = os.environ.get("OPENWAND_OPTIONAL_INSTALL_NO_OUTPUT_TIMEOUT_SECONDS", "0")
     try:
         return max(0, int(float(raw)))
     except (TypeError, ValueError):
@@ -12601,7 +13557,7 @@ def _launch_terminal_command(
     *,
     cwd: Path,
     title: str,
-    failure_label: str = "Wisp installer",
+    failure_label: str = "OpenWand installer",
     environment: dict[str, str] | None = None,
 ) -> bool:
     """Launch a command in a user-visible terminal window."""
@@ -12611,9 +13567,9 @@ def _launch_terminal_command(
             quoted_cwd = subprocess.list2cmdline([str(cwd)])
             failure_prompt = (
                 "if errorlevel 1 ("
-                "set WISP_INSTALL_EXIT=!errorlevel! & "
+                "set OPENWAND_INSTALL_EXIT=!errorlevel! & "
                 "echo. & "
-                f"echo {_cmd_control_escape(failure_label)} failed with exit code !WISP_INSTALL_EXIT!. & "
+                f"echo {_cmd_control_escape(failure_label)} failed with exit code !OPENWAND_INSTALL_EXIT!. & "
                 "echo This window stayed open so you can copy the error above. & "
                 "echo Press any key to close this window. & "
                 "pause > nul"
@@ -12674,7 +13630,7 @@ def _terminal_shell_command(
     cwd: Path,
     title: str,
     *,
-    failure_label: str = "Wisp installer",
+    failure_label: str = "OpenWand installer",
     environment: dict[str, str] | None = None,
 ) -> str:
     """Return the shell body run inside a visible terminal."""
@@ -12804,7 +13760,95 @@ def _translate_status_message(message: str) -> str:
     text = str(message or "")
     if "\n" in text:
         return "\n".join(_translate_status_message(part) for part in text.splitlines())
+    cuda_failure = re.fullmatch(
+        r"Windows CUDA runtime is incomplete or unloadable(?:: (?P<files>.+))?",
+        text,
+    )
+    if cuda_failure:
+        files = cuda_failure.group("files")
+        if files:
+            return t("Windows CUDA runtime is incomplete or unloadable: {files}").format(
+                files=files
+            )
+        return t("Windows CUDA runtime is incomplete or unloadable")
+    route_result = re.match(
+        r"^(?P<mark>[✓✗]) (?P<label>Primary|Fallback (?P<index>\d+)) — "
+        r"(?P<provider>.+?) / (?P<model>.+?): (?P<detail>.+)$",
+        text,
+    )
+    if route_result:
+        groups = route_result.groupdict()
+        label = (
+            t("Primary")
+            if groups["label"] == "Primary"
+            else t("Fallback {index}").format(index=groups["index"])
+        )
+        detail = (
+            t("Passed")
+            if groups["detail"] == "OK"
+            else _translate_status_message(groups["detail"])
+        )
+        return t("{mark} {label} — {provider} / {model}: {detail}").format(
+            mark=groups["mark"],
+            label=label,
+            provider=groups["provider"],
+            model=groups["model"],
+            detail=detail,
+        )
+    fallback_summary = re.match(
+        r"^Primary works\. (?P<count>\d+) fallback\(s\) failed "
+        r"\((?P<fallbacks>.+)\) — fix or remove just those rows\.$",
+        text,
+    )
+    if fallback_summary:
+        fallback_labels = ", ".join(
+            t("Fallback {index}").format(index=match.group("index"))
+            if (match := re.fullmatch(r"Fallback (?P<index>\d+)", item.strip()))
+            else item.strip()
+            for item in fallback_summary.group("fallbacks").split(",")
+        )
+        return t(
+            "Primary works. {count} fallback(s) failed ({fallbacks}) — "
+            "fix or remove just those rows."
+        ).format(
+            count=fallback_summary.group("count"),
+            fallbacks=fallback_labels,
+        )
     dynamic_patterns: tuple[tuple[str, str], ...] = (
+        (
+            r"^(?P<route_name>Primary|Fallback \d+) route is missing provider or model\.$",
+            "{route_name} route is missing provider or model.",
+        ),
+        (
+            r"^(?P<route_name>Primary|Fallback \d+) route uses chatgpt but you are not logged in\.$",
+            "{route_name} route uses chatgpt but you are not logged in.",
+        ),
+        (
+            r"^(?P<route_name>Primary|Fallback \d+) route uses copilot but no Copilot token is stored and "
+            r"you are not signed in to GitHub\.$",
+            "{route_name} route uses copilot but no Copilot token is stored and you are not signed in to GitHub.",
+        ),
+        (
+            r"^(?P<route_name>Primary|Fallback \d+) route uses 'custom' but CUSTOM_BASE_URL is not set\.$",
+            "{route_name} route uses 'custom' but CUSTOM_BASE_URL is not set.",
+        ),
+        (
+            r"^(?P<route_name>Primary|Fallback \d+) route uses (?P<provider>.+), but its API key is not configured\.$",
+            "{route_name} route uses {provider}, but its API key is not configured.",
+        ),
+        (
+            r"^(?P<route_name>Primary|Fallback \d+) custom base URL is invalid: (?P<value>.+)$",
+            "{route_name} custom base URL is invalid: {value}",
+        ),
+        (
+            r"^Model '(?P<model>.+)' is not supported by the ChatGPT Codex endpoint\. "
+            r"Use one of: (?P<models>.+)$",
+            "Model '{model}' is not supported by the ChatGPT Codex endpoint. Use one of: {models}",
+        ),
+        (r"^No API key configured for (?P<provider>.+)$", "No API key configured for {provider}"),
+        (r"^Unknown provider: (?P<provider>.+)$", "Unknown provider: {provider}"),
+        (r"^Unknown vision provider: (?P<provider>.+)$", "Unknown vision provider: {provider}"),
+        (r"^Unknown LLM provider: (?P<provider>.+)$", "Unknown LLM provider: {provider}"),
         (r"^Logged in using (?P<method>.+)$", "Logged in using {method}"),
         (r"^LLM route configured: (?P<route>.+)\.$", "LLM route configured: {route}."),
         (r"^LLM route incomplete: (?P<route>.+)\.$", "LLM route incomplete: {route}."),
@@ -12812,6 +13856,7 @@ def _translate_status_message(message: str) -> str:
         (r"^STT model configured: (?P<model>.+)\. faster-whisper is installed\.$", "STT model configured: {model}. faster-whisper is installed."),
         (r"^STT model configured: (?P<model>.+), but faster-whisper is not installed\.$", "STT model configured: {model}, but faster-whisper is not installed."),
         (r"^STT model configured: (?P<model>.+), but STT verification failed: (?P<error>.+)$", "STT model configured: {model}, but STT verification failed: {error}"),
+        (r"^STT packages and runtime are verified for (?P<model>.+); the model loads on first use\.$", "STT packages and runtime are verified for {model}; the model loads on first use."),
         (r"^STT model configured: (?P<model>.+)\.$", "STT model configured: {model}."),
         (r"^(?P<count>\d+) hotkeys configured\.$", "{count} hotkeys configured."),
         (r"^Accessibility permission: (?P<value>.+)\.$", "Accessibility permission: {value}."),
@@ -12825,11 +13870,11 @@ def _translate_status_message(message: str) -> str:
         (r"^Kokoro package installed, but voice asset preparation failed: (?P<message>.+)$", "Kokoro package installed, but voice asset preparation failed: {message}"),
         (r"^Kokoro package installed; (?P<detail>.+)\.$", "Kokoro package installed; {detail}."),
         (r"^Kokoro package install failed: (?P<message>.+)$", "Kokoro package install failed: {message}"),
-        (r"^(?P<display_name>.+) package files match this Wisp release\.$", "{display_name} package files match this Wisp release."),
-        (r"^(?P<display_name>.+) package files do not match this Wisp release: (?P<message>.+)\.$", "{display_name} package files do not match this Wisp release: {message}."),
-        (r"^(?P<display_name>.+) packages are staged\. Click Restart app now to close Wisp and apply them\.$", "{display_name} packages are staged. Click Restart app now to close Wisp and apply them."),
-        (r"^(?P<display_name>.+) packages are staged\. Click Restart app now to close Wisp, replace locked files, verify the install, and reopen\.$", "{display_name} packages are staged. Click Restart app now to close Wisp, replace locked files, verify the install, and reopen."),
-        (r"^(?P<display_name>.+) packages stay staged and will be applied the next time Wisp restarts\.$", "{display_name} packages stay staged and will be applied the next time Wisp restarts."),
+        (r"^(?P<display_name>.+) package files match this OpenWand release\.$", "{display_name} package files match this OpenWand release."),
+        (r"^(?P<display_name>.+) package files do not match this OpenWand release: (?P<message>.+)\.$", "{display_name} package files do not match this OpenWand release: {message}."),
+        (r"^(?P<display_name>.+) packages are staged\. Click Restart app now to close OpenWand and apply them\.$", "{display_name} packages are staged. Click Restart app now to close OpenWand and apply them."),
+        (r"^(?P<display_name>.+) packages are staged\. Click Restart app now to close OpenWand, replace locked files, verify the install, and reopen\.$", "{display_name} packages are staged. Click Restart app now to close OpenWand, replace locked files, verify the install, and reopen."),
+        (r"^(?P<display_name>.+) packages stay staged and will be applied the next time OpenWand restarts\.$", "{display_name} packages stay staged and will be applied the next time OpenWand restarts."),
         (r"^ElevenLabs install failed: (?P<message>.+)$", "ElevenLabs install failed: {message}"),
         (r"^STT install failed: (?P<message>.+)$", "STT install failed: {message}"),
         (r"^STT package install failed: (?P<message>.+)$", "STT package install failed: {message}"),
@@ -12843,6 +13888,14 @@ def _translate_status_message(message: str) -> str:
         (r"^Installing ElevenLabs: (?P<detail>.+)\.$", "Installing ElevenLabs: {detail}."),
         (r"^Installing STT: (?P<detail>.+)\.$", "Installing STT: {detail}."),
         (r"^LLM route uses (?P<provider>.+) but you are not logged in\.$", "LLM route uses {provider} but you are not logged in."),
+        (
+            r"^Could not reach (?P<provider>ChatGPT|GitHub) to verify sign-in: (?P<error>.+)$",
+            "Could not reach {provider} to verify sign-in: {error}",
+        ),
+        (
+            r"^(?P<provider>ChatGPT|GitHub) sign-in check failed \(HTTP (?P<status>\d+)\)\.$",
+            "{provider} sign-in check failed (HTTP {status}).",
+        ),
     )
     for pattern, template in dynamic_patterns:
         match = re.match(pattern, text)
@@ -12850,12 +13903,24 @@ def _translate_status_message(message: str) -> str:
             groups = match.groupdict()
             if "message" in groups:
                 groups["message"] = _translate_status_message(groups["message"])
+            if "error" in groups:
+                groups["error"] = _translate_status_message(groups["error"])
             if "value" in groups:
                 groups["value"] = _translate_status_value(groups["value"])
             if "detail" in groups:
                 groups["detail"] = _translate_install_detail(groups["detail"])
             if "display_name" in groups:
                 groups["display_name"] = t(groups["display_name"])
+            if "route_name" in groups:
+                route_name = groups["route_name"]
+                fallback = re.fullmatch(r"Fallback (?P<index>\d+)", route_name)
+                groups["route_name"] = (
+                    t("Primary")
+                    if route_name == "Primary"
+                    else t("Fallback {index}").format(index=fallback.group("index"))
+                    if fallback
+                    else route_name
+                )
             return t(template).format(**groups)
     for prefix in (
         "Error reading status: ",
@@ -12870,7 +13935,10 @@ def _translate_status_message(message: str) -> str:
     ):
         if text.startswith(prefix):
             translated_prefix = t("Logged in • account ") if prefix == "Logged in - account " else t(prefix)
-            return translated_prefix + text[len(prefix):]
+            suffix = text[len(prefix):]
+            if prefix in {"Error reading status: ", "Keychain error: ", "Test failed: ", "Error: "}:
+                suffix = _translate_status_message(suffix)
+            return translated_prefix + suffix
     return t(text)
 
 
@@ -12897,7 +13965,13 @@ def _clear_settings_dialog(_obj=None) -> None:
         _settings_dialog = None
 
 
-def _open_settings_now(parent=None, on_apply=None, on_setup_check=None, extra_tools=None):
+def _open_settings_now(
+    parent=None,
+    on_apply=None,
+    on_setup_check=None,
+    extra_tools=None,
+    initial_page: str | None = None,
+):
     """Open settings now."""
     global _settings_dialog, _settings_open_pending
     _settings_open_pending = False
@@ -12929,11 +14003,19 @@ def _open_settings_now(parent=None, on_apply=None, on_setup_check=None, extra_to
     if _settings_dialog.isMinimized():
         _settings_dialog.showNormal()
     _settings_dialog.show()
+    if initial_page:
+        _settings_dialog.select_page(initial_page)
     _settings_dialog.raise_()
     _settings_dialog.activateWindow()
 
 
-def open_settings(parent=None, on_apply=None, on_setup_check=None, extra_tools=None):
+def open_settings(
+    parent=None,
+    on_apply=None,
+    on_setup_check=None,
+    extra_tools=None,
+    initial_page: str | None = None,
+):
     """Open settings."""
     global _settings_open_pending
     if _settings_open_pending:
@@ -12946,5 +14028,6 @@ def open_settings(parent=None, on_apply=None, on_setup_check=None, extra_tools=N
             on_apply=on_apply,
             on_setup_check=on_setup_check,
             extra_tools=extra_tools,
+            initial_page=initial_page,
         ),
     )

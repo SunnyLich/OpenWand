@@ -1,4 +1,4 @@
-"""Start an already-installed Ollama server when Wisp needs it.
+"""Start an already-installed Ollama server when OpenWand needs it.
 
 This deliberately does not install Ollama, pull models, or stop a process.  It
 only makes the existing local Ollama provider work without asking the user to
@@ -36,7 +36,7 @@ def resolve_ollama_base_url() -> str:
     """Resolve the OpenAI-compatible base URL of the Ollama server.
 
     Honors Ollama's own ``OLLAMA_HOST`` convention (host, host:port, or URL)
-    so Wisp's requests, the readiness probe, and an auto-started ``ollama
+    so OpenWand's requests, the readiness probe, and an auto-started ``ollama
     serve`` — which inherits the same environment — all agree on one endpoint.
     """
     raw = os.environ.get("OLLAMA_HOST", "").strip().rstrip("/")
@@ -162,13 +162,13 @@ def _begin_start(base_url: str | None) -> tuple[threading.Event, bool]:
         executable = find_ollama_executable()
         if executable is None:
             raise RuntimeError(
-                "Ollama is not running and Wisp could not find an installed Ollama application. "
+                "Ollama is not running and OpenWand could not find an installed Ollama application. "
                 "Install Ollama, then try again."
             )
         try:
             _start_ollama(executable)
         except OSError as exc:
-            raise RuntimeError(f"Wisp could not start Ollama from {executable}: {exc}") from exc
+            raise RuntimeError(f"OpenWand could not start Ollama from {executable}: {exc}") from exc
 
         ready = threading.Event()
         watcher = threading.Thread(
@@ -205,7 +205,7 @@ def ensure_ollama_running(
 
     if not _is_local_url(_api_probe_url(base_url)):
         raise RuntimeError(
-            f"Ollama at {base_url} is not responding. Wisp only auto-starts a local "
+            f"Ollama at {base_url} is not responding. OpenWand only auto-starts a local "
             "Ollama server, so start or check that server, then try again."
         )
 
@@ -214,6 +214,6 @@ def ensure_ollama_running(
         return launched
 
     raise RuntimeError(
-        "Wisp started Ollama, but its local server did not become ready in time. "
+        "OpenWand started Ollama, but its local server did not become ready in time. "
         "It may still be starting — try again in a moment, or open Ollama once to check it."
     )

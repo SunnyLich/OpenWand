@@ -161,6 +161,18 @@ def make_flow(
     return flow, native, ui, brain, audio
 
 
+@pytest.mark.parametrize("event", ["audio.playback.amplitude", "audio.live.amplitude"])
+def test_audio_amplitude_drives_overlay_without_blocking(event: str):
+    """Both generated and live speech use the same normalized visual meter."""
+    _flow, _native, ui, _brain, audio = make_flow()
+
+    audio.emit(event, {"amplitude": 0.64})
+
+    call = ui.last_call("ui.overlay.amplitude")
+    assert call["params"] == {"amplitude": 0.64}
+    assert call["wait"] is False
+
+
 def test_slow_response_notice_appears_only_after_the_deadline(monkeypatch):
     flow, _native, ui, _brain, _audio = make_flow()
     monkeypatch.setattr(flows_module, "_SLOW_RESPONSE_NOTICE_SECONDS", 0.01)
@@ -376,7 +388,7 @@ def test_safe_call_quiets_ui_worker_exit(caplog):
         def call(self, _method, _params=None, *, timeout=30.0, wait=True):
             raise RuntimeError("worker exited")
 
-    with caplog.at_level("ERROR", logger="wisp.runtime.flows"):
+    with caplog.at_level("ERROR", logger="openwand.runtime.flows"):
         result = flow._safe_call(ExitedUi(), "ui.reply.notice", {"text": "closing"}, timeout=1.0)
 
     assert result is None
@@ -391,7 +403,7 @@ def test_safe_call_still_logs_real_ui_failures(caplog):
         def call(self, _method, _params=None, *, timeout=30.0, wait=True):
             raise RuntimeError("render failed")
 
-    with caplog.at_level("ERROR", logger="wisp.runtime.flows"):
+    with caplog.at_level("ERROR", logger="openwand.runtime.flows"):
         result = flow._safe_call(BrokenUi(), "ui.reply.notice", {"text": "hello"}, timeout=1.0)
 
     assert result is None
@@ -1882,7 +1894,7 @@ def test_vscode_untitled_tab_previews_then_writes_to_captured_editor_target() ->
     brain = FakeWorker(
         stream_handlers={
             "brain.action.plan": action_plan_stream(
-                {"replacement_text": 'def greet(name):\n    return f"Hello, {name}!"\n\nprint(greet("Wisp"))'},
+                {"replacement_text": 'def greet(name):\n    return f"Hello, {name}!"\n\nprint(greet("OpenWand"))'},
                 "Created a small Python greeting example.",
             )
         }
@@ -2059,7 +2071,7 @@ def test_supported_app_custom_prompt_forces_disposition_then_exact_action_tool()
 
     def planned(params: dict[str, Any], on_event) -> dict[str, Any]:
         name = str(params.get("planning_tool_name") or "")
-        if name == "wisp_choose_app_response":
+        if name == "openwand_choose_app_response":
             arguments = {
                 "disposition": "action",
                 "capability_type": "browser.fill_form",
@@ -2089,7 +2101,7 @@ def test_supported_app_custom_prompt_forces_disposition_then_exact_action_tool()
 
     assert [
         call["params"]["planning_tool_name"] for call in brain.calls_for("brain.action.plan")
-    ] == ["wisp_choose_app_response", "browser_plan_fill_form"]
+    ] == ["openwand_choose_app_response", "browser_plan_fill_form"]
     assert native.calls_for("native.action.browser.form_apply")
     assert not native.calls_for("native.paste_text")
 
@@ -2129,7 +2141,7 @@ def test_supported_app_custom_information_prompt_forces_answer_disposition_witho
         )
 
     planner = brain.last_call("brain.action.plan")["params"]
-    assert planner["planning_tool_name"] == "wisp_choose_app_response"
+    assert planner["planning_tool_name"] == "openwand_choose_app_response"
     assert ui.last_call("ui.reply.chunk")["params"]["text"] == "This page is asking for contact information."
     assert not native.calls_for("native.action.browser.form_snapshot")
     assert not native.calls_for("native.action.browser.form_apply")
@@ -3064,10 +3076,11 @@ def test_read_selection_aloud_single_word_failure_finishes_reading_bubble(monkey
     assert not brain.calls_for("brain.query")
     assert audio.last_call("audio.tts.synthesize")["params"]["text"] == "word"
     assert not audio.calls_for("audio.play_file")
+    assert not ui.calls_for("ui.reply.reading")
+    assert ui.calls_for("ui.reply.labeled_text")[-1]["params"]["label"] == "Preparing speech"
     assert ui.calls_for("ui.reply.done")
     notice = ui.last_call("ui.reply.notice")["params"]["text"]
     assert notice.startswith("Could not read selected text aloud.")
-    assert "Runtime Status" in notice
 
 
 def test_closing_read_aloud_bubble_stops_tts_without_failure_notice(monkeypatch):
@@ -5636,6 +5649,42 @@ def test_rewrite_flow_pastes_back_to_original_pid():
     assert not native.calls_for("native.notify"), "successful paste should not notify"
 
 
+def test_rewrite_reuses_number_after_previous_proposal_finishes():
+    native = FakeWorker(
+        {
+            "native.context.snapshot": context_handler(
+                selected="rough sentence",
+                pid=777,
+                focus_token=9,
+            ),
+            "native.paste_text": lambda _params: {"ok": True},
+        }
+    )
+    brain = FakeWorker(
+        stream_handlers={"brain.rewrite": rewrite_stream("clear sentence", "Rewritten.")}
+    )
+
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, _native, ui, _brain, _audio = make_flow(native=native, brain=brain)
+        flow.begin_caller(0)
+        first = ui.last_call("ui.rewrite.annotation.show")["params"]
+        ui.emit(
+            "ui.rewrite.annotation.submitted",
+            {
+                "annotation_id": first["annotation_id"],
+                "comment": "Make it clear",
+                "include_document": False,
+            },
+        )
+        assert flow._rewrite_annotations[first["annotation_id"]].state == "proposal"
+
+        flow.begin_caller(0)
+        second = ui.last_call("ui.rewrite.annotation.show")["params"]
+
+    assert first["display_number"] == 1
+    assert second["display_number"] == 1
+
+
 def test_rewrite_hold_defers_calls_and_send_all_keeps_app_conversations_separate():
     snapshots = iter(
         (
@@ -6066,7 +6115,7 @@ def test_rewrite_other_ide_uses_the_same_exact_saved_file_boundary() -> None:
 
 
 def test_rewrite_undo_restores_original_text_in_original_app():
-    """The bubble undo action must target the exact app and selection Wisp edited."""
+    """The bubble undo action must target the exact app and selection OpenWand edited."""
     rows = [
         {
             "paste_back": True,
@@ -6116,7 +6165,7 @@ def test_rewrite_undo_restores_original_text_in_original_app():
         "original_text": "bad grammar",
         "replacement_text": "good grammar",
     }
-    assert ui.last_call("ui.reply.notice")["params"]["text"] == "Last Wisp edit undone."
+    assert ui.last_call("ui.reply.notice")["params"]["text"] == "Last OpenWand edit undone."
     assert flow._last_undoable_edit is None
 
 
@@ -6370,7 +6419,7 @@ def test_rewrite_warns_when_paste_succeeds_but_clipboard_restore_fails():
         _ui.emit("ui.intent.chosen", {"custom": "Rewrite"})
 
     notify = native.last_call("native.notify")["params"]
-    assert notify["title"] == "Wisp pasted the rewrite"
+    assert notify["title"] == "OpenWand pasted the rewrite"
     assert "couldn't restore your previous clipboard" in notify["message"]
 
 
@@ -7249,7 +7298,7 @@ def test_chat_request_uses_selected_codex_project(monkeypatch, tmp_path):
     _flow, _native, ui, brain, _audio = make_flow(brain=brain)
     monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "codex", raising=False)
     monkeypatch.setattr(config, "CHAT_CONVERSATION_OWNER", "agent", raising=False)
-    monkeypatch.setattr(config, "WISP_CODEX_WORKSPACE", str(tmp_path), raising=False)
+    monkeypatch.setattr(config, "OPENWAND_CODEX_WORKSPACE", str(tmp_path), raising=False)
 
     ui.emit(
         "ui.chat.request",
@@ -7434,7 +7483,7 @@ def test_chat_context_preview_keeps_requested_browser_on_while_detecting():
             "native.context.snapshot": lambda params: {
                 "selected_text": "",
                 "clipboard_text": "",
-                "active_app": {"name": "Wisp", "pid": 42, "bundle_id": "app.wisp"},
+                "active_app": {"name": "OpenWand", "pid": 42, "bundle_id": "app.openwand"},
                 "browser_url": "",
                 "browser_hwnd": 0,
                 "browser_content": "Detected browser page" if params.get("include_browser_content") else "",
@@ -7575,6 +7624,38 @@ def test_chat_request_forwards_live_file_activity_to_monitor_link():
     ]
     assert [event["phase"] for event in activity] == ["started", "completed"]
     assert activity[0]["relative_path"] == "notes.txt"
+
+
+def test_model_workspace_tool_event_opens_native_window_without_activation():
+    """Successful model workspace work opens its native viewer without stealing focus."""
+    endpoint = f"http://127.0.0.1:8765/?token={'t' * 32}"
+
+    def chat_stream(_params: dict[str, Any], on_event) -> dict[str, Any]:
+        on_event("model_tool.ui.request", {
+            "action": "show_virtual_workspace",
+            "endpoint": endpoint,
+            "tool": "virtual_workspace_write_text",
+        }, 1)
+        on_event("reply.done", {"text": "done"}, 1)
+        return {"text": "done"}
+
+    brain = FakeWorker(stream_handlers={"brain.chat": chat_stream})
+    ui = FakeWorker({"ui.show_virtual_workspace": lambda _params: {"shown": True}})
+    _flow, _native, ui, _brain, _audio = make_flow(ui=ui, brain=brain)
+
+    ui.emit("ui.chat.request", {
+        "request_id": "chat-workspace-window",
+        "messages": [{"role": "user", "content": "create a workspace file"}],
+    })
+
+    assert ui.last_call("ui.show_virtual_workspace")["params"] == {
+        "endpoint": endpoint,
+        "activate": False,
+    }
+    assert not [
+        call for call in ui.calls_for("ui.reply.notice")
+        if "workspace" in str(call["params"].get("text") or "").lower()
+    ]
 
 
 def test_chat_request_forwards_addon_text_annotations():
@@ -8075,12 +8156,17 @@ def test_settings_open_includes_live_addon_tools():
 
     ui.emit("ui.settings.open_requested", {})
 
-    assert ui.last_call("ui.show_settings")["params"]["extra_tools"] == [
+    params = ui.last_call("ui.show_settings")["params"]
+    assert params["extra_tools"] == [
         {
             "name": "mcp_example_echo",
             "description": "[MCP:example] Echo back text.",
         }
     ]
+    assert params["initial_page"] is None
+
+    ui.emit("ui.settings.open_requested", {"initial_page": "LLM"})
+    assert ui.last_call("ui.show_settings")["params"]["initial_page"] == "LLM"
 
 
 def test_addon_and_agent_tray_events_route_through_supervisor():
@@ -8124,7 +8210,7 @@ def test_addon_and_agent_tray_events_route_through_supervisor():
         {"addon_id": "demo", "action_id": "lookup", "enabled": False},
     )
     ui.emit("ui.addons.repair_environment", {"addon_id": "demo"})
-    ui.emit("ui.addons.install_archive", {"path": "/tmp/demo.wisp"})
+    ui.emit("ui.addons.install_archive", {"path": "/tmp/demo.openwand"})
     ui.emit("ui.addons.install_folder", {"path": "/tmp/demo-folder"})
     native.emit("native.hotkey", {"kind": "addon", "addon_id": "demo", "hotkey_id": "hk"})
     ui.emit("ui.agent.task_requested", {})
@@ -8141,7 +8227,7 @@ def test_addon_and_agent_tray_events_route_through_supervisor():
         "http://127.0.0.1:"
     )
     assert brain.last_call("brain.addons.repair_environment")["params"]["addon_id"] == "demo"
-    assert brain.last_call("brain.addons.install_archive")["params"]["path"] == "/tmp/demo.wisp"
+    assert brain.last_call("brain.addons.install_archive")["params"]["path"] == "/tmp/demo.openwand"
     assert brain.last_call("brain.addons.install_folder")["params"]["path"] == "/tmp/demo-folder"
     assert brain.last_call("brain.addons.run_hotkey")["params"]["hotkey_id"] == "hk"
     assert ui.calls_for("ui.reply.notice")
@@ -8195,7 +8281,7 @@ def test_addon_startup_notifications_reach_the_native_desktop_boundary():
 
     assert [call["params"] for call in native.calls_for("native.notify")] == [
         {"title": "Demo ready", "message": "The add-on loaded."},
-        {"title": "Wisp", "message": "ignored without a title"},
+        {"title": "OpenWand", "message": "ignored without a title"},
     ]
 
 

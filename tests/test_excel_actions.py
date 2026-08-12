@@ -221,8 +221,8 @@ def test_excel_execute_creates_table_and_chart_once_then_verifies() -> None:
     assert result is repeated
     assert result.status == "applied"
     assert result.created == (
-        {"kind": "table", "name": "WispTable"},
-        {"kind": "chart", "name": "WispChart"},
+        {"kind": "table", "name": "OpenWandTable"},
+        {"kind": "chart", "name": "OpenWandChart"},
     )
     assert len(result.verification) == 2
     assert excel.ActiveSheet.ListObjects.Count == 1
@@ -314,7 +314,7 @@ def test_excel_runtime_provider_builds_previews_and_verifies_execution() -> None
     capability = next(item for item in provider.capabilities(snapshot) if item.type == ADD_CHART)
     plan = provider.build_plan(
         capability,
-        {"source": "A1:C3", "name": "WispChart", "kind": "column", "title": "Revenue"},
+        {"source": "A1:C3", "name": "OpenWandChart", "kind": "column", "title": "Revenue"},
         snapshot,
         "",
     )

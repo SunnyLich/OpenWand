@@ -261,7 +261,7 @@ def build_pivot_summary_plan(
     row_field: str,
     value_field: str,
     aggregate: str,
-    output_sheet: str = "Wisp Summary",
+    output_sheet: str = "OpenWand Summary",
 ) -> ActionPlan:
     _header_index(snapshot, row_field)
     _header_index(snapshot, value_field)

@@ -1,4 +1,4 @@
-"""Contract tests for Wisp's live Codex and Claude harness bridge."""
+"""Contract tests for OpenWand's live Codex and Claude harness bridge."""
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +16,7 @@ from core.harness_clients import codex
 from core.harness_clients.base import HarnessEvent, HarnessResult, normalized_cwd
 from core.harness_clients.claude import _run_async
 from core.harness_clients.codex import CodexAppServerError, _Client, _start_turn
+from core.workspace_changes import WorkspaceChangeRecorder, restore_workspace_changes
 
 
 def _bare_codex_client(events: list[HarnessEvent], approval=True) -> _Client:
@@ -39,7 +40,7 @@ def test_normalized_cwd_uses_parent_for_file(tmp_path: Path) -> None:
 
 
 def test_codex_client_unavailable_is_reported_before_process_start(monkeypatch):
-    monkeypatch.delenv("WISP_CODEX_CLI", raising=False)
+    monkeypatch.delenv("OPENWAND_CODEX_CLI", raising=False)
     monkeypatch.setattr(codex.shutil, "which", lambda _name: None)
 
     with pytest.raises(CodexAppServerError, match="ChatGPT is unavailable"):
@@ -94,18 +95,18 @@ def test_codex_environment_isolates_state_without_mutating_parent(
     tmp_path: Path,
 ) -> None:
     personal_home = tmp_path / "personal-codex"
-    wisp_home = tmp_path / "wisp-codex"
+    openwand_home = tmp_path / "openwand-codex"
     monkeypatch.setenv("CODEX_HOME", str(personal_home))
     monkeypatch.setenv("CODEX_SQLITE_HOME", str(personal_home / "sqlite"))
-    monkeypatch.setenv("WISP_CODEX_HOME", str(wisp_home))
+    monkeypatch.setenv("OPENWAND_CODEX_HOME", str(openwand_home))
 
     environment = codex._codex_environment()
 
-    assert environment["CODEX_HOME"] == str(wisp_home.resolve())
-    assert environment["CODEX_SQLITE_HOME"] == str(wisp_home.resolve())
+    assert environment["CODEX_HOME"] == str(openwand_home.resolve())
+    assert environment["CODEX_SQLITE_HOME"] == str(openwand_home.resolve())
     assert os.environ["CODEX_HOME"] == str(personal_home)
     assert os.environ["CODEX_SQLITE_HOME"] == str(personal_home / "sqlite")
-    assert (wisp_home / "config.toml").read_text(encoding="utf-8") == 'history.persistence = "none"\n'
+    assert (openwand_home / "config.toml").read_text(encoding="utf-8") == 'history.persistence = "none"\n'
 
 
 def test_codex_app_server_receives_isolated_environment(
@@ -123,7 +124,7 @@ def test_codex_app_server_receives_isolated_environment(
             return 0
 
     monkeypatch.setattr(codex, "_codex_executable", lambda: "codex-test")
-    monkeypatch.setattr(codex, "_codex_environment", lambda: {"CODEX_HOME": "wisp-codex"})
+    monkeypatch.setattr(codex, "_codex_environment", lambda: {"CODEX_HOME": "openwand-codex"})
     monkeypatch.setattr(
         codex.subprocess,
         "Popen",
@@ -134,7 +135,7 @@ def test_codex_app_server_receives_isolated_environment(
     client.close()
 
     assert launched["command"] == ["codex-test", "app-server", "--listen", "stdio://"]
-    assert launched["env"] == {"CODEX_HOME": "wisp-codex"}
+    assert launched["env"] == {"CODEX_HOME": "openwand-codex"}
 
 
 def test_codex_streams_reasoning_and_reply_separately() -> None:
@@ -149,6 +150,41 @@ def test_codex_streams_reasoning_and_reply_separately() -> None:
         HarnessEvent(kind="reply", text="Fixed it."),
     ]
     assert client._reply_parts == ["Fixed it."]
+
+
+def test_codex_file_change_event_records_and_restores_the_real_file(tmp_path: Path) -> None:
+    target = tmp_path / "module.py"
+    target.write_text("before\n", encoding="utf-8")
+    client = _bare_codex_client([])
+    client._workspace_change_recorder = WorkspaceChangeRecorder(
+        tmp_path,
+        tmp_path / "backups",
+    )
+
+    client.handle({
+        "method": "item/started",
+        "params": {
+            "item": {
+                "id": "change-1",
+                "type": "fileChange",
+                "changes": [{
+                    "path": "module.py",
+                    "diff": "--- a/module.py\n+++ b/module.py\n@@\n-before\n+after",
+                }],
+            }
+        },
+    })
+    target.write_text("after\n", encoding="utf-8")
+
+    change_set = client._workspace_change_recorder.finish()
+    assert change_set["source"] == "harness_file_events"
+    assert change_set["files"][0]["path"] == "module.py"
+    assert change_set["files"][0]["added"] == 1
+    assert change_set["files"][0]["deleted"] == 1
+
+    result = restore_workspace_changes(change_set)
+    assert result == {"ok": True, "restored": 1}
+    assert target.read_text(encoding="utf-8") == "before\n"
 
 
 def test_codex_announces_model_thinking_when_the_user_message_starts() -> None:
@@ -541,7 +577,7 @@ def test_codex_prewarm_and_repeated_turns_reuse_one_app_server(monkeypatch, tmp_
 
     monkeypatch.setattr(codex, "_Client", Client)
     monkeypatch.setattr(codex, "_PERSISTENT_CLIENT", None)
-    monkeypatch.setattr("config.WISP_CODEX_SYSTEM_PROMPT", "ChatGPT-only rules.", raising=False)
+    monkeypatch.setattr("config.OPENWAND_CODEX_SYSTEM_PROMPT", "ChatGPT-only rules.", raising=False)
 
     assert codex.prewarm_codex(tmp_path) == {
         "ready": True,
@@ -656,9 +692,9 @@ def test_claude_streams_thinking_and_reply_without_repeating_final_blocks(
     sdk_types.PermissionResultDeny = PermissionResultDeny
     monkeypatch.setitem(sys.modules, "claude_agent_sdk", sdk)
     monkeypatch.setitem(sys.modules, "claude_agent_sdk.types", sdk_types)
-    monkeypatch.setattr("config.WISP_CLAUDE_MODEL", "claude-sonnet-5", raising=False)
-    monkeypatch.setattr("config.WISP_CLAUDE_SYSTEM_PROMPT", "Claude-only rules.", raising=False)
-    monkeypatch.setattr("config.WISP_CLAUDE_APPROVAL_MODE", "ask", raising=False)
+    monkeypatch.setattr("config.OPENWAND_CLAUDE_MODEL", "claude-sonnet-5", raising=False)
+    monkeypatch.setattr("config.OPENWAND_CLAUDE_SYSTEM_PROMPT", "Claude-only rules.", raising=False)
+    monkeypatch.setattr("config.OPENWAND_CLAUDE_APPROVAL_MODE", "ask", raising=False)
 
     events: list[HarnessEvent] = []
     result = asyncio.run(_run_async(

@@ -1,4 +1,4 @@
-"""Focusless live-editor transport for Wisp-managed VS Code instances."""
+"""Focusless live-editor transport for OpenWand-managed VS Code instances."""
 
 from __future__ import annotations
 
@@ -110,9 +110,9 @@ class VSCodeDevToolsAdapter:
             return vscode_targets[0]
         if not vscode_targets:
             raise RuntimeError(
-                "This VS Code window was not launched with Wisp's private editor API enabled."
+                "This VS Code window was not launched with OpenWand's private editor API enabled."
             )
-        raise RuntimeError("Wisp could not identify one unique managed VS Code editor window.")
+        raise RuntimeError("OpenWand could not identify one unique managed VS Code editor window.")
 
     def apply_text(
         self,
@@ -129,7 +129,7 @@ class VSCodeDevToolsAdapter:
         try:
             client.call("Runtime.enable")
             # DevTools input is delivered only to the active Electron page.
-            # In Wisp's isolated desktop this activates VS Code on that hidden
+            # In OpenWand's isolated desktop this activates VS Code on that hidden
             # desktop, never the user's visible desktop or physical cursor.
             client.call("Page.bringToFront")
             point = editor_point if isinstance(editor_point, dict) else {}

@@ -78,7 +78,7 @@ def scratch_dir(tag: str, *, fresh: bool = True) -> Path:
 
 
 def isolated_repo_root(tag: str) -> Path:
-    """Scratch WISP_REPO_ROOT with the user's .env copied in.
+    """Scratch OPENWAND_REPO_ROOT with the user's .env copied in.
 
     Children pointed here keep the user's provider settings (from .env; OS
     keychain secrets are machine-level and unaffected) while memory/, chats/
@@ -99,7 +99,7 @@ def env_overrides(
 ) -> dict[str, str]:
     """Env var overrides for children (WorkerSpec.env or subprocess env update).
 
-    WISP_REPO_ROOT redirects data (memory/, chats/, .env) to a scratch dir, but
+    OPENWAND_REPO_ROOT redirects data (memory/, chats/, .env) to a scratch dir, but
     in dev mode workers also resolve their *code* under it — so the real repo
     root and runtime/brain go on PYTHONPATH for imports to fall through to.
     """
@@ -113,7 +113,7 @@ def env_overrides(
         path_parts.append(existing)
     overrides["PYTHONPATH"] = os.pathsep.join(path_parts)
     if isolated_root is not None:
-        overrides["WISP_REPO_ROOT"] = str(isolated_root)
+        overrides["OPENWAND_REPO_ROOT"] = str(isolated_root)
     if offscreen_ui:
         overrides["QT_QPA_PLATFORM"] = "offscreen"
     if extra:

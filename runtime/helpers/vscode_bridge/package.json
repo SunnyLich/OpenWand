@@ -1,10 +1,10 @@
 {
-  "name": "wisp-vscode-bridge",
-  "displayName": "Wisp VS Code Bridge",
-  "description": "Private local bridge from Wisp to the supported VS Code editor API.",
+  "name": "openwand-vscode-bridge",
+  "displayName": "OpenWand VS Code Bridge",
+  "description": "Private local bridge from OpenWand to the supported VS Code editor API.",
   "version": "0.0.1",
   "private": true,
-  "publisher": "wisp-local",
+  "publisher": "openwand-local",
   "engines": {
     "vscode": "^1.80.0"
   },

@@ -75,7 +75,7 @@ class FakeUndoManager:
 def _load_helper(monkeypatch):
     monkeypatch.setitem(sys.modules, "uno", SimpleNamespace())
     helper = Path(__file__).resolve().parents[1] / "runtime" / "helpers" / "libreoffice_rewrite.py"
-    spec = importlib.util.spec_from_file_location("_wisp_test_libreoffice_rewrite", helper)
+    spec = importlib.util.spec_from_file_location("_openwand_test_libreoffice_rewrite", helper)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -141,7 +141,7 @@ def test_libreoffice_helper_applies_one_exact_writer_range(monkeypatch) -> None:
 
     assert result == {"ok": True, "status": "applied", "verification": True}
     assert container.text == "A clear sentence."
-    assert manager.contexts == ["Wisp: exact Rewrite"]
+    assert manager.contexts == ["OpenWand: exact Rewrite"]
 
 
 def test_flow_builds_libreoffice_rewrite_plan() -> None:

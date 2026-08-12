@@ -41,7 +41,7 @@ class SecretStoreTests(unittest.TestCase):
     def test_get_secret_prefers_keychain_over_env(self):
         fake = FakeKeyring()
         # Stored as the consolidated blob.
-        fake.set_password("python-ai-overlay", "__wisp_secrets__",
+        fake.set_password("python-ai-overlay", "__openwand_secrets__",
                           json.dumps({"OPENAI_API_KEY": "keychain-value"}))
         with patch.dict(sys.modules, {"keyring": fake}), patch.dict(
             "os.environ", {"OPENAI_API_KEY": "env-value"}
@@ -65,15 +65,30 @@ class SecretStoreTests(unittest.TestCase):
             self.assertEqual(secret_store.get_secret("OPENAI_API_KEY"), "legacy-openai")
             self.assertEqual(secret_store.get_secret("CARTESIA_API_KEY"), "legacy-cartesia")
             # Migrated into the single consolidated item.
-            blob = json.loads(fake.get_password("python-ai-overlay", "__wisp_secrets__"))
+            blob = json.loads(fake.get_password("python-ai-overlay", "__openwand_secrets__"))
             self.assertEqual(blob["OPENAI_API_KEY"], "legacy-openai")
             self.assertEqual(blob["CARTESIA_API_KEY"], "legacy-cartesia")
+
+    def test_wisp_consolidated_blob_is_moved_to_openwand(self):
+        fake = FakeKeyring()
+        fake.set_password(
+            "python-ai-overlay",
+            "__wisp_secrets__",
+            json.dumps({"OPENAI_API_KEY": "legacy-brand-key"}),
+        )
+
+        with patch.dict(sys.modules, {"keyring": fake}):
+            self.assertEqual(secret_store.get_secret("OPENAI_API_KEY"), "legacy-brand-key")
+
+        blob = json.loads(fake.get_password("python-ai-overlay", "__openwand_secrets__"))
+        self.assertEqual(blob, {"OPENAI_API_KEY": "legacy-brand-key"})
+        self.assertIsNone(fake.get_password("python-ai-overlay", "__wisp_secrets__"))
 
     def test_legacy_key_is_recovered_when_consolidated_blob_already_exists(self):
         fake = FakeKeyring()
         fake.set_password(
             "python-ai-overlay",
-            "__wisp_secrets__",
+            "__openwand_secrets__",
             json.dumps({"OPENAI_API_KEY": "stored-openai"}),
         )
         fake.set_password("python-ai-overlay", "google_api_key", "legacy-google")
@@ -83,7 +98,7 @@ class SecretStoreTests(unittest.TestCase):
             self.assertEqual(secret_store.get_secret("GOOGLE_API_KEY"), "legacy-google")
             self.assertEqual(secret_store.secret_source("GOOGLE_API_KEY"), "keychain")
 
-        blob = json.loads(fake.get_password("python-ai-overlay", "__wisp_secrets__"))
+        blob = json.loads(fake.get_password("python-ai-overlay", "__openwand_secrets__"))
         self.assertEqual(blob["OPENAI_API_KEY"], "stored-openai")
         self.assertEqual(blob["GOOGLE_API_KEY"], "legacy-google")
 
@@ -94,7 +109,7 @@ class SecretStoreTests(unittest.TestCase):
             secret_store.set_secret("GOOGLE_API_KEY", "g-b")
         # Both keys live in one item; no per-key items were created.
         self.assertIsNone(fake.get_password("python-ai-overlay", "openai_api_key"))
-        blob = json.loads(fake.get_password("python-ai-overlay", "__wisp_secrets__"))
+        blob = json.loads(fake.get_password("python-ai-overlay", "__openwand_secrets__"))
         self.assertEqual(blob, {"OPENAI_API_KEY": "sk-a", "GOOGLE_API_KEY": "g-b"})
         with patch.dict(sys.modules, {"keyring": fake}):
             self.assertEqual(secret_store.get_secret("OPENAI_API_KEY"), "sk-a")
@@ -116,13 +131,13 @@ class SecretStoreTests(unittest.TestCase):
             migrated = secret_store.migrate_env_secrets(env)
 
         self.assertEqual(migrated, ["OPENAI_API_KEY", "GOOGLE_API_KEY"])
-        blob = json.loads(fake.get_password("python-ai-overlay", "__wisp_secrets__"))
+        blob = json.loads(fake.get_password("python-ai-overlay", "__openwand_secrets__"))
         self.assertEqual(blob["OPENAI_API_KEY"], "sk-test")
         self.assertEqual(blob["GOOGLE_API_KEY"], "google-test")
 
     def test_secret_source_reports_keychain_env_or_none(self):
         fake = FakeKeyring()
-        fake.set_password("python-ai-overlay", "__wisp_secrets__",
+        fake.set_password("python-ai-overlay", "__openwand_secrets__",
                           json.dumps({"OPENAI_API_KEY": "keychain-value"}))
         with patch.dict(sys.modules, {"keyring": fake}), patch.dict(
             "os.environ", {"ANTHROPIC_API_KEY": "env-value", "GOOGLE_API_KEY": "google-env"}, clear=False

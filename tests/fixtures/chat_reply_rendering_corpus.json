@@ -1,0 +1,189 @@
+[
+  {
+    "id": "single-paragraph",
+    "markdown": "The migration completed successfully without changing your saved conversations.",
+    "visible": ["The migration completed successfully without changing your saved conversations."],
+    "tags": ["<p>"],
+    "editorial_lead": false
+  },
+  {
+    "id": "multiple-paragraphs",
+    "markdown": "The first paragraph explains the result.\n\nThe second adds an important qualification.\n\nThe final paragraph gives the next step.",
+    "visible": ["The first paragraph", "important qualification", "The final paragraph"],
+    "tags": ["<p>"],
+    "editorial_lead": false
+  },
+  {
+    "id": "editorial-lead-with-bullets",
+    "markdown": "Here’s what happened:\n\n- The package moved.\n- The saved value was restored.\n- The voice files remain intact.",
+    "visible": ["Here’s what happened:", "The package moved.", "The voice files remain intact."],
+    "tags": ["<hr style=", "<ul>", "<li>"],
+    "editorial_lead": true
+  },
+  {
+    "id": "ordinary-colon-sentence",
+    "markdown": "The reason is straightforward: the cached value was stale.\n\nRestart once to refresh it.",
+    "visible": ["The reason is straightforward:", "Restart once"],
+    "tags": ["<p>"],
+    "editorial_lead": false
+  },
+  {
+    "id": "heading-hierarchy",
+    "markdown": "# Release review\n\n## Findings\n\nThe build is healthy.\n\n### Follow-up\n\nMonitor the next deployment.",
+    "visible": ["Release review", "Findings", "The build is healthy.", "Follow-up"],
+    "tags": ["<h1>", "<h2>", "<h3>"],
+    "editorial_lead": false,
+    "review_note": "heading scale is too aggressive for ordinary chat"
+  },
+  {
+    "id": "unordered-list",
+    "markdown": "- Alpha\n- Beta\n- Gamma",
+    "visible": ["Alpha", "Beta", "Gamma"],
+    "tags": ["<ul>", "<li>"],
+    "editorial_lead": false
+  },
+  {
+    "id": "ordered-list-dot",
+    "markdown": "1. Back up the file.\n2. Install the update.\n3. Restart the app.",
+    "visible": ["Back up the file.", "Install the update.", "Restart the app."],
+    "tags": ["<ol>", "<li>"],
+    "editorial_lead": false
+  },
+  {
+    "id": "ordered-list-parenthesis",
+    "markdown": "1) Open Settings.\n2) Select Voice.\n3) Choose Repair.",
+    "visible": ["Open Settings.", "Select Voice.", "Choose Repair."],
+    "tags": ["<ol>", "<li>"],
+    "editorial_lead": false
+  },
+  {
+    "id": "task-list",
+    "markdown": "- [x] Tests completed\n- [ ] Restart pending\n- [ ] Confirm audio",
+    "visible": ["Tests completed", "Restart pending", "Confirm audio"],
+    "tags": ["<ul>", "<li style=", "☑", "☐"],
+    "editorial_lead": false
+  },
+  {
+    "id": "nested-list",
+    "markdown": "- Runtime\n  - Python package\n  - Voice model\n- Interface\n  - Chat window",
+    "visible": ["Runtime", "Python package", "Voice model", "Interface", "Chat window"],
+    "tags": ["<ul>", "<li>"],
+    "editorial_lead": false
+  },
+  {
+    "id": "mixed-inline-emphasis",
+    "markdown": "Use **Settings** to change the *active profile*, then verify `CHAT_LLM_MODEL`.",
+    "visible": ["Use Settings", "active profile", "CHAT_LLM_MODEL"],
+    "tags": ["<strong>", "<em>", "<code>"],
+    "editorial_lead": false
+  },
+  {
+    "id": "fenced-python-code",
+    "markdown": "Run this command:\n\n```python\nprint(\"hello\")\n```\n\nThen check the output.",
+    "visible": ["Run this command:", "print(\"hello\")", "Then check the output."],
+    "tags": ["<pre><code>"],
+    "editorial_lead": true,
+    "review_note": "colon heuristic adds an excessive divider before a code block"
+  },
+  {
+    "id": "tilde-code-fence",
+    "markdown": "Configuration:\n\n~~~toml\nenabled = true\nmodel = \"local\"\n~~~",
+    "visible": ["Configuration:", "enabled = true", "model = \"local\""],
+    "tags": ["<pre><code>"],
+    "editorial_lead": true,
+    "review_note": "colon heuristic adds an excessive divider before a code block"
+  },
+  {
+    "id": "aligned-table",
+    "markdown": "| Mode | Speed | Risk |\n|:---|:---:|---:|\n| Local | Fast | Low |\n| Cloud | Medium | Medium |",
+    "visible": ["Mode", "Speed", "Risk", "Local", "Cloud"],
+    "tags": ["<table", "<thead>", "<tbody>"],
+    "editorial_lead": false
+  },
+  {
+    "id": "markdown-and-bare-links",
+    "markdown": "Read the [setup guide](https://example.com/setup) or visit https://example.com/status.",
+    "visible": ["Read the setup guide", "example.com/status"],
+    "tags": ["<a href="],
+    "editorial_lead": false
+  },
+  {
+    "id": "windows-and-posix-paths",
+    "markdown": "Compare `C:\\Users\\sunny\\Documents\\config.json` with `/opt/openwand/config.json`.",
+    "visible": ["C:\\Users\\sunny\\Documents\\config.json", "/opt/openwand/config.json"],
+    "tags": ["<code>"],
+    "editorial_lead": false
+  },
+  {
+    "id": "blockquote",
+    "markdown": "> The operation is reversible.\n> Keep the backup until verification finishes.",
+    "visible": ["The operation is reversible.", "Keep the backup"],
+    "tags": ["<blockquote style="],
+    "editorial_lead": false
+  },
+  {
+    "id": "horizontal-rule",
+    "markdown": "Completed work\n\n---\n\nRemaining work",
+    "visible": ["Completed work", "Remaining work"],
+    "tags": ["<p>", "<hr style="],
+    "editorial_lead": false
+  },
+  {
+    "id": "simplified-chinese",
+    "markdown": "处理结果：\n\n- 已恢复语音设置。\n- 模型文件保持完整。\n\n请重新启动 OpenWand。",
+    "visible": ["处理结果：", "已恢复语音设置。", "模型文件保持完整。", "请重新启动 OpenWand。"],
+    "tags": ["<ul>", "<li>"],
+    "editorial_lead": false,
+    "known_gap": "full-width colon is inconsistent with the editorial-lead heuristic"
+  },
+  {
+    "id": "traditional-chinese",
+    "markdown": "檢查結果：\n\n1. 設定已儲存。\n2. 語音模型仍然完整。\n3. 重新啟動後再測試。",
+    "visible": ["檢查結果：", "設定已儲存。", "語音模型仍然完整。", "重新啟動後再測試。"],
+    "tags": ["<ol>", "<li>"],
+    "editorial_lead": false,
+    "known_gap": "full-width colon is inconsistent with the editorial-lead heuristic"
+  },
+  {
+    "id": "accented-french-and-spanish",
+    "markdown": "Résumé du contrôle:\n\n- L’audio a été réparé.\n- La configuración está sincronizada.\n- Próxima étape: redémarrer.",
+    "visible": ["Résumé du contrôle:", "L’audio a été réparé.", "La configuración está sincronizada.", "Próxima étape"],
+    "tags": ["<ul>"],
+    "editorial_lead": true
+  },
+  {
+    "id": "long-wrapping-content",
+    "markdown": "This deliberately long sentence checks whether a normal assistant reply wraps cleanly at narrow widths without introducing horizontal scrolling or hiding its final instruction, which must remain visible after several wrapped lines.\n\nFinal instruction: restart the application.",
+    "visible": ["This deliberately long sentence", "Final instruction: restart the application."],
+    "tags": ["<p>"],
+    "editorial_lead": false
+  },
+  {
+    "id": "malformed-markdown",
+    "markdown": "This **bold marker never closes.\n\nThe next paragraph and `inline code` must remain visible.",
+    "visible": ["bold marker never closes.", "The next paragraph", "inline code"],
+    "tags": ["<code>"],
+    "editorial_lead": false
+  },
+  {
+    "id": "inline-and-display-math",
+    "markdown": "Energy is $E=mc^2$.\n\n$$\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$\n\nThe equation remains part of the reply.",
+    "visible": ["Energy is", "The equation remains part of the reply."],
+    "tags": ["data:image/svg+xml;base64,"],
+    "editorial_lead": false
+  },
+  {
+    "id": "mixed-report",
+    "markdown": "## Verification\n\nThe repair completed with these results:\n\n- **Tests:** 27 passed\n- **Duration:** `0.21 s`\n\n| Component | State |\n|---|---|\n| STT | Ready |\n| TTS | Restart required |\n\nNext: restart OpenWand.",
+    "visible": ["Verification", "27 passed", "0.21 s", "Component", "STT", "Restart required", "Next: restart OpenWand."],
+    "tags": ["<h2>", "<ul>", "<strong>", "<code>", "<table"],
+    "editorial_lead": false
+  },
+  {
+    "id": "untrusted-html",
+    "markdown": "The literal text <script>alert('no')</script> must be visible but never executable.\n\nUse **safe rendering**.",
+    "visible": ["<script>alert('no')</script>", "Use safe rendering."],
+    "tags": ["&lt;script&gt;", "<strong>"],
+    "editorial_lead": false
+  }
+]

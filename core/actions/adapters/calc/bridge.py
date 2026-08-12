@@ -1,4 +1,4 @@
-"""Provision LibreOffice's persistent Wisp UNO connection."""
+"""Provision LibreOffice's persistent OpenWand UNO connection."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ _CONNECTION_ITEM_RE = re.compile(
     r"</prop>\s*</item>",
     flags=re.DOTALL,
 )
-_PIPE_RE = re.compile(r"pipe,name=(wisp_calc_[A-Za-z0-9_-]{16,80});urp")
-_PIPE_NAME_RE = re.compile(r"^wisp_calc_[A-Za-z0-9_-]{16,80}$")
+_PIPE_RE = re.compile(r"pipe,name=(openwand_calc_[A-Za-z0-9_-]{16,80});urp")
+_PIPE_NAME_RE = re.compile(r"^openwand_calc_[A-Za-z0-9_-]{16,80}$")
 _EMPTY_REGISTRY = """<?xml version="1.0" encoding="UTF-8"?>
 <oor:items xmlns:oor="http://openoffice.org/2001/registry" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 </oor:items>
@@ -25,7 +25,7 @@ _EMPTY_REGISTRY = """<?xml version="1.0" encoding="UTF-8"?>
 
 def libreoffice_user_profile() -> Path:
     """Return the current user's normal LibreOffice profile directory."""
-    override = str(os.environ.get("WISP_LIBREOFFICE_USER_PROFILE") or "").strip()
+    override = str(os.environ.get("OPENWAND_LIBREOFFICE_USER_PROFILE") or "").strip()
     if override:
         return Path(override).expanduser()
     appdata = str(os.environ.get("APPDATA") or "").strip()
@@ -68,7 +68,7 @@ def configure_calc_connection(
     pipe_name: str = "",
     profile: Path | None = None,
 ) -> dict[str, str | int | bool]:
-    """Persist Wisp's endpoint without replacing unrelated LibreOffice settings."""
+    """Persist OpenWand's endpoint without replacing unrelated LibreOffice settings."""
     profile_path = Path(profile) if profile is not None else libreoffice_user_profile()
     registry_path = profile_path / "registrymodifications.xcu"
     content = (
@@ -79,7 +79,7 @@ def configure_calc_connection(
     existing = _PIPE_RE.search(content)
     normalized_pipe = str(pipe_name or "").strip()
     if not normalized_pipe:
-        normalized_pipe = existing.group(1) if existing else f"wisp_calc_{secrets.token_hex(16)}"
+        normalized_pipe = existing.group(1) if existing else f"openwand_calc_{secrets.token_hex(16)}"
     endpoint = calc_connection_endpoint(normalized_pipe)
     item = (
         '<item oor:path="/org.openoffice.Setup/Office">'
@@ -105,7 +105,7 @@ def configure_calc_connection(
 
 
 def configured_calc_connection_pipe(profile: Path | None = None) -> str:
-    """Read Wisp's configured user-local endpoint, or an empty string when absent."""
+    """Read OpenWand's configured user-local endpoint, or an empty string when absent."""
     profile_path = Path(profile) if profile is not None else libreoffice_user_profile()
     registry_path = profile_path / "registrymodifications.xcu"
     if not registry_path.is_file():

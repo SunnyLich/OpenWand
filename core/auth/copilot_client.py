@@ -89,7 +89,7 @@ async def _ask_async(
         await client.start()
         session_options: dict = {
             "model": model or "gpt-4.1",
-            "session_id": session_id or f"wisp-{int(time.time() * 1000)}",
+            "session_id": session_id or f"openwand-{int(time.time() * 1000)}",
             "on_permission_request": _approve_permission if allow_tools else _deny_permission,
         }
         if not allow_tools:
@@ -163,7 +163,7 @@ def test_copilot_token() -> tuple[bool, str]:
     if not sdk_module:
         return False, (
             "Token is stored and the format looks usable, but github-copilot-sdk "
-            "is not installed yet. Install requirements, then test again."
+            "is not installed yet. Install requirements before using Copilot."
         )
 
     return True, (

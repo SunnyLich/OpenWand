@@ -260,7 +260,7 @@ class DevEnvironmentCheckTests(unittest.TestCase):
 
     def test_read_project_required_version_rejects_missing_pin(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            Path(tmp, "pyproject.toml").write_text('[project]\nname = "wisp"\n', encoding="utf-8")
+            Path(tmp, "pyproject.toml").write_text('[project]\nname = "openwand"\n', encoding="utf-8")
 
             with self.assertRaises(ValueError):
                 check_dev_environment.read_project_required_version(Path(tmp))

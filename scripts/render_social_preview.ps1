@@ -22,7 +22,7 @@ if (-not (Test-Path -LiteralPath $outputDirectory)) {
     New-Item -ItemType Directory -Path $outputDirectory | Out-Null
 }
 
-$profilePath = Join-Path ([System.IO.Path]::GetTempPath()) ("wisp-social-preview-" + [guid]::NewGuid().ToString("N"))
+$profilePath = Join-Path ([System.IO.Path]::GetTempPath()) ("openwand-social-preview-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $profilePath | Out-Null
 
 try {

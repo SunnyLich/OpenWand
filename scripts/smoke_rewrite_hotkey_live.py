@@ -1,8 +1,8 @@
-"""Exercise the running Wisp Rewrite flow through its real Windows hotkey.
+"""Exercise the running OpenWand Rewrite flow through its real Windows hotkey.
 
 This is intentionally a live smoke test: it creates a disposable RichEdit
 document, highlights text, presses the configured Rewrite shortcut, and waits
-for the running Wisp UI worker to create a new Comment popup.
+for the running OpenWand UI worker to create a new Comment popup.
 """
 
 from __future__ import annotations
@@ -38,10 +38,12 @@ WS_OVERLAPPEDWINDOW = 0x00CF0000
 ES_MULTILINE = 0x0004
 ES_AUTOVSCROLL = 0x0040
 VK_CONTROL = 0x11
+VK_MENU = 0x12
 VK_RETURN = 0x0D
 VK_SHIFT = 0x10
 KEYEVENTF_KEYUP = 0x0002
 PM_REMOVE = 0x0001
+PM_NOREMOVE = 0x0000
 
 
 def _visible_windows_with_title(user32, title: str) -> set[int]:
@@ -184,13 +186,15 @@ def _selection_offsets(user32, hwnd: int) -> tuple[int, int]:
 
 
 def _pump_for(user32, seconds: float) -> None:
-    """Keep the disposable window responsive to Wisp's cross-process reads."""
+    """Keep the disposable window responsive to OpenWand's cross-process reads."""
     message = wintypes.MSG()
     deadline = time.monotonic() + max(0.0, seconds)
     while time.monotonic() < deadline:
-        while user32.PeekMessageW(ctypes.byref(message), None, 0, 0, PM_REMOVE):
-            user32.TranslateMessage(ctypes.byref(message))
-            user32.DispatchMessageW(ctypes.byref(message))
+        # PeekMessage services synchronous cross-process SendMessage calls
+        # (used by UIA/native selection capture) before it returns. Do not
+        # dispatch arbitrary posted desktop traffic here: a shell-owned message
+        # can block DispatchMessage indefinitely during an automated run.
+        user32.PeekMessageW(ctypes.byref(message), None, 0, 0, PM_NOREMOVE)
         time.sleep(0.005)
 
 
@@ -203,11 +207,25 @@ def _force_foreground(user32, hwnd: int, focused_child: int) -> bool:
     try:
         if foreground_tid and foreground_tid != current_tid:
             attached = bool(user32.AttachThreadInput(current_tid, foreground_tid, True))
-        user32.ShowWindow(hwnd, SW_SHOW)
-        user32.BringWindowToTop(hwnd)
-        user32.SetForegroundWindow(hwnd)
-        user32.SetActiveWindow(hwnd)
-        user32.SetFocus(focused_child)
+        # A synthetic Alt release grants this explicitly user-authorized smoke
+        # process the same foreground handoff Windows gives an interactive app.
+        # SwitchToThisWindow then prevents the Codex shell from reclaiming focus
+        # between SetForegroundWindow and the Rewrite hotkey.
+        user32.keybd_event(VK_MENU, 0, 0, 0)
+        user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+        for _attempt in range(5):
+            user32.ShowWindow(hwnd, SW_SHOW)
+            try:
+                user32.SwitchToThisWindow(hwnd, True)
+            except Exception:
+                pass
+            user32.BringWindowToTop(hwnd)
+            user32.SetForegroundWindow(hwnd)
+            user32.SetActiveWindow(hwnd)
+            user32.SetFocus(focused_child)
+            if int(user32.GetForegroundWindow() or 0) == int(hwnd):
+                break
+            time.sleep(0.05)
     finally:
         if attached:
             user32.AttachThreadInput(current_tid, foreground_tid, False)
@@ -259,7 +277,7 @@ def main() -> int:
     parent = user32.CreateWindowExW(
         0,
         "STATIC",
-        "Wisp live Rewrite smoke document",
+        "OpenWand live Rewrite smoke document",
         WS_OVERLAPPEDWINDOW | WS_VISIBLE,
         140,
         140,
@@ -299,10 +317,10 @@ def main() -> int:
     try:
         if args.scroll_test:
             lines = [f"Line {index:02d}: ordinary scrolling test content." for index in range(30)]
-            lines[7] = "Line 07: a rough sentence selected for the live Wisp Rewrite test."
+            lines[7] = "Line 07: a rough sentence selected for the live OpenWand Rewrite test."
             source_text = "\r\n".join(lines)
         else:
-            source_text = "A rough sentence selected for the live Wisp Rewrite test."
+            source_text = "A rough sentence selected for the live OpenWand Rewrite test."
         selected_text = "rough sentence"
         selection_start = source_text.index(selected_text)
         selection_end = selection_start + len(selected_text)
@@ -385,6 +403,13 @@ def main() -> int:
                         )
                     break
                 _pump_for(user32, 0.04)
+            # The real interaction returns ownership to the source document
+            # after the comment is submitted. Keep the scroll lifecycle tied
+            # to that active source; otherwise focus-loss hiding is expected
+            # and a later scroll cannot legitimately restore the balloon.
+            _force_foreground(user32, int(parent), int(child))
+            user32.SetFocus(child)
+            _pump_for(user32, 0.15)
         elapsed_ms = round((time.monotonic() - started) * 1000, 1)
         scroll_result: dict[str, object] = {}
         if popup and args.scroll_test:
@@ -432,6 +457,12 @@ def main() -> int:
             while time.monotonic() < hidden_deadline and user32.IsWindowVisible(popup):
                 _pump_for(user32, 0.05)
             hidden_offscreen = not bool(user32.IsWindowVisible(popup))
+            hidden_screenshot = ""
+            if args.screenshot_dir and hidden_offscreen:
+                hidden_screenshot = _capture_window(
+                    int(parent),
+                    args.screenshot_dir / "rewrite-selection-offscreen-popup-hidden.png",
+                )
 
             user32.SendMessageW(child, EM_LINESCROLL, 0, -18)
             return_deadline = time.monotonic() + 4.0
@@ -443,6 +474,12 @@ def main() -> int:
                 if returned_visible
                 else ()
             )
+            returned_screenshot = ""
+            if args.screenshot_dir and returned_visible:
+                returned_screenshot = _capture_windows_region(
+                    (int(parent), popup),
+                    args.screenshot_dir / "rewrite-popup-returned-near-selection.png",
+                )
             moved_delta_y = moved_rect[1] - initial_rect[1]
             returned_delta_y = returned_rect[1] - initial_rect[1] if returned_rect else None
             scroll_result = {
@@ -453,9 +490,11 @@ def main() -> int:
                 "moved_popup_rect": moved_rect,
                 "moved_delta_y": moved_delta_y,
                 "hidden_when_selection_offscreen": hidden_offscreen,
+                "hidden_screenshot": hidden_screenshot,
                 "returned_visible": returned_visible,
                 "returned_popup_rect": returned_rect,
                 "returned_delta_y": returned_delta_y,
+                "returned_screenshot": returned_screenshot,
                 "moved_screenshot": moved_screenshot,
                 "verified": bool(
                     moved_delta_y <= -30

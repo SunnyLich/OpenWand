@@ -1,4 +1,4 @@
-"""Qt Linguist localization for Wisp's UI."""
+"""Qt Linguist localization for OpenWand's UI."""
 from __future__ import annotations
 
 import locale
@@ -39,7 +39,7 @@ _LANGUAGE_ALIASES = {
 }
 
 _SUPPORTED_LANGUAGES = {"en", "zh", "zh-Hant", "es", "fr"}
-_QT_CONTEXT = "Wisp"
+_QT_CONTEXT = "OpenWand"
 _QT_LOCALES_DIR = Path(__file__).with_name("locales") / "qt"
 COMBO_I18N_SOURCE_ROLE = 0x0100 + 1000
 _COMBO_ORIGINAL_TEXT_ROLE = COMBO_I18N_SOURCE_ROLE
@@ -82,7 +82,7 @@ def current_language() -> str:
 
 def _qt_catalog_path(code: str) -> Path:
     """Handle qt catalog path for UI i18n."""
-    return _QT_LOCALES_DIR / f"wisp_{code}.qm"
+    return _QT_LOCALES_DIR / f"openwand_{code}.qm"
 
 
 def set_language(language: str | None = None, app: Any = None) -> str:
@@ -144,7 +144,7 @@ def install(app: Any) -> None:
 
 def _original(obj: Any, prop_name: str, value: str) -> str:
     """Handle original for UI i18n."""
-    store_name = f"_wisp_i18n_{prop_name}"
+    store_name = f"_openwand_i18n_{prop_name}"
     try:
         original = obj.property(store_name)
         if original is None:
@@ -172,6 +172,13 @@ def _translate_action(action: Any) -> None:
     if not _is_qobject_valid(action):
         return
     try:
+        parent = action.parent()
+        if parent is None:
+            associated = action.associatedObjects()
+            if not any(_is_qobject_valid(owner) for owner in associated):
+                return
+        elif not _is_qobject_valid(parent):
+            return
         text = action.text()
     except Exception:
         return
@@ -219,7 +226,17 @@ def localize_widget_tree(root: Any) -> None:
             pass
         if isinstance(widget, QLabel):
             text = widget.text()
-            if text:
+            info_source = widget.property("_openwand_info_source")
+            if info_source:
+                translated = f"{t(str(info_source))}  ⓘ"
+                if widget.property("_openwand_info_small_bold"):
+                    translated = f"<small><b>{translated}</b></small>"
+                widget.setText(translated)
+                widget.setAccessibleName(t(str(info_source)))
+                tooltip_source = widget.property("_openwand_i18n_tooltip")
+                if tooltip_source:
+                    widget.setAccessibleDescription(t(str(tooltip_source)))
+            elif text:
                 widget.setText(t(_original(widget, "text", text)))
         elif isinstance(widget, QAbstractButton):
             text = widget.text()
@@ -248,7 +265,7 @@ def localize_widget_tree(root: Any) -> None:
                 text = widget.tabText(idx)
                 if not text:
                     continue
-                key = f"_wisp_i18n_tab_{idx}"
+                key = f"_openwand_i18n_tab_{idx}"
                 original = widget.property(key)
                 if original is None:
                     widget.setProperty(key, text)

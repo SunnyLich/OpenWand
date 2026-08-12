@@ -62,7 +62,7 @@ def test_prewarm_runs_one_inference_and_reuses_the_ready_runtime(monkeypatch):
     assert first["ready"] is True
     assert first["cached"] is False
     assert second == {"ready": True, "cached": True, "elapsed_seconds": 0.0}
-    assert calls == [("Wisp advanced privacy warmup.", "warmup")]
+    assert calls == [("OpenWand advanced privacy warmup.", "warmup")]
 
 
 def test_normal_detection_marks_the_model_as_already_warm(monkeypatch):

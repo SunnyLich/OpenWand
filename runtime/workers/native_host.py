@@ -1,4 +1,4 @@
-"""wisp-native worker: platform permissions, hotkeys, context, capture, clipboard."""
+"""openwand-native worker: platform permissions, hotkeys, context, capture, clipboard."""
 
 from __future__ import annotations
 
@@ -45,10 +45,10 @@ class _HotkeyHelper:
         self._stop_stale_helpers()
         env = os.environ.copy()
         env.setdefault("PYTHONUNBUFFERED", "1")
-        if "WISP_DATA_ROOT" not in env and "WISP_REPO_ROOT" not in env:
-            env["WISP_DATA_ROOT"] = str(data_root())
+        if "OPENWAND_DATA_ROOT" not in env and "OPENWAND_REPO_ROOT" not in env:
+            env["OPENWAND_DATA_ROOT"] = str(data_root())
         if addon_hotkeys:
-            env["WISP_ADDON_HOTKEYS"] = json.dumps(addon_hotkeys)
+            env["OPENWAND_ADDON_HOTKEYS"] = json.dumps(addon_hotkeys)
         self.proc = subprocess.Popen(
             [sys.executable, "-m", "runtime.workers.hotkey_helper"],
             stdin=subprocess.PIPE,
@@ -344,16 +344,38 @@ def _win_process_name(pid: int) -> str:
         return ""
 
 
-def _win_is_wisp_ui_window(hwnd: int) -> bool:
-    """Handle win is wisp ui window for runtime workers native host."""
+def _win_is_own_window_pid(pid: int) -> bool:
+    """Return whether *pid* belongs to this supervisor's process tree."""
+    pid = int(pid or 0)
+    if pid <= 0:
+        return False
+    own = {int(os.getpid())}
+    try:
+        supervisor_pid = int(os.environ.get("OPENWAND_SUPERVISOR_PID") or 0)
+    except ValueError:
+        supervisor_pid = 0
+    if supervisor_pid > 0:
+        own.add(supervisor_pid)
+    if pid in own:
+        return True
+    try:
+        import psutil
+
+        return any(int(parent.pid) in own for parent in psutil.Process(pid).parents())
+    except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
+        return False
+
+
+def _win_is_openwand_ui_window(hwnd: int) -> bool:
+    """Handle win is openwand ui window for runtime workers native host."""
     pid = _win_window_pid(hwnd)
     title = _win_window_title(hwnd).strip().lower()
     proc = _win_process_name(pid).strip().lower()
-    if pid == os.getpid():
+    if _win_is_own_window_pid(pid):
         return True
-    if proc == "wisp.exe":
+    if proc == "openwand.exe":
         return True
-    if proc in {"python.exe", "pythonw.exe"} and title in {"wisp", "wisp settings", "wisp memory"}:
+    if proc in {"python.exe", "pythonw.exe"} and title in {"openwand", "openwand settings", "openwand memory"}:
         return True
     return False
 
@@ -369,7 +391,7 @@ def _win_is_external_context_window(hwnd: int) -> bool:
         hwnd = int(hwnd)
         if not user32.IsWindow(hwnd) or not user32.IsWindowVisible(hwnd):
             return False
-        if _win_is_wisp_ui_window(hwnd):
+        if _win_is_openwand_ui_window(hwnd):
             return False
         return bool(_win_window_title(hwnd).strip())
     except Exception:
@@ -462,13 +484,13 @@ def _linux_process_name(pid: int) -> str:
 
 
 def _linux_is_own_window_pid(pid: int) -> bool:
-    """Return True when an X11 window's pid belongs to Wisp's own process tree."""
+    """Return True when an X11 window's pid belongs to OpenWand's own process tree."""
     pid = int(pid or 0)
     if pid <= 0:
         return False
     own = {int(os.getpid())}
     try:
-        supervisor_pid = int(os.environ.get("WISP_SUPERVISOR_PID") or 0)
+        supervisor_pid = int(os.environ.get("OPENWAND_SUPERVISOR_PID") or 0)
     except ValueError:
         supervisor_pid = 0
     if supervisor_pid > 0:
@@ -479,7 +501,7 @@ def _linux_is_own_window_pid(pid: int) -> bool:
         import psutil
 
         proc = psutil.Process(pid)
-        if str(proc.name() or "").strip().lower() == "wisp":
+        if str(proc.name() or "").strip().lower() == "openwand":
             return True
         ancestors = {int(parent.pid) for parent in proc.parents()}
     except Exception:
@@ -488,11 +510,11 @@ def _linux_is_own_window_pid(pid: int) -> bool:
 
 
 def _linux_context_window_id() -> int:
-    """Return the X11 window to read context from, skipping Wisp's own windows.
+    """Return the X11 window to read context from, skipping OpenWand's own windows.
 
     The icon overlay can hold X11 activation while the user works elsewhere,
-    so the raw _NET_ACTIVE_WINDOW may be Wisp itself. Mirror the Windows
-    correction: fall back to the topmost non-Wisp window in stacking order.
+    so the raw _NET_ACTIVE_WINDOW may be OpenWand itself. Mirror the Windows
+    correction: fall back to the topmost non-OpenWand window in stacking order.
     """
     global _last_context_window_debug
     if IS_WIN or IS_MAC:
@@ -826,7 +848,7 @@ _calc_automation_status: dict[str, Any] = {
 
 
 def calc_automation_prewarm(*, wait_for_startup: bool = False) -> dict[str, Any]:
-    """Provision and detect Wisp's persistent LibreOffice API endpoint."""
+    """Provision and detect OpenWand's persistent LibreOffice API endpoint."""
     global _calc_automation_status
     if not IS_WIN:
         _calc_automation_status = {
@@ -852,7 +874,7 @@ def calc_automation_prewarm(*, wait_for_startup: bool = False) -> dict[str, Any]
             libreoffice_processes.append(process)
             try:
                 command_line = " ".join(process.cmdline())
-                match = re.search(r"pipe,name=(wisp_calc_[A-Za-z0-9_-]{16,80});urp", command_line)
+                match = re.search(r"pipe,name=(openwand_calc_[A-Za-z0-9_-]{16,80});urp", command_line)
                 if match:
                     command_line_pipe = match.group(1)
             except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
@@ -877,8 +899,8 @@ def calc_automation_prewarm(*, wait_for_startup: bool = False) -> dict[str, Any]
         managed_pipe = configured_calc_connection_pipe() or command_line_pipe
         configured = configure_calc_connection(managed_pipe)
         managed_pipe = str(configured.get("pipe_name") or "")
-        os.environ.pop("WISP_CALC_UNO_PORT", None)
-        os.environ["WISP_CALC_UNO_PIPE"] = managed_pipe
+        os.environ.pop("OPENWAND_CALC_UNO_PORT", None)
+        os.environ["OPENWAND_CALC_UNO_PIPE"] = managed_pipe
 
         if libreoffice_processes and configured.get("changed") and not command_line_pipe:
             _calc_automation_status = {
@@ -931,7 +953,7 @@ def calc_automation_prewarm(*, wait_for_startup: bool = False) -> dict[str, Any]
             "pipe_name": managed_pipe,
             "transport": "uno_named_pipe_persisted",
         }
-    except Exception as exc:  # noqa: BLE001 - optional integration must not block Wisp startup
+    except Exception as exc:  # noqa: BLE001 - optional integration must not block OpenWand startup
         _calc_automation_status = {
             "available": False,
             "managed": False,
@@ -941,7 +963,7 @@ def calc_automation_prewarm(*, wait_for_startup: bool = False) -> dict[str, Any]
 
 
 def action_calc_status() -> dict[str, Any]:
-    """Refresh whether the active LibreOffice process loaded Wisp's endpoint."""
+    """Refresh whether the active LibreOffice process loaded OpenWand's endpoint."""
     return calc_automation_prewarm(wait_for_startup=True)
 
 
@@ -956,7 +978,7 @@ def _calc_api_snapshot(active_app: dict[str, Any]) -> dict[str, Any]:
     status = calc_automation_prewarm(wait_for_startup=True)
     if not status.get("available") or status.get("transport") != "uno_named_pipe_persisted":
         reason = str(status.get("reason") or "named_pipe_unavailable")
-        raise RuntimeError(f"Wisp's local Calc action pipe is unavailable ({reason}).")
+        raise RuntimeError(f"OpenWand's local Calc action pipe is unavailable ({reason}).")
     if _calc_selection_reader is None:
         _calc_selection_reader = CalcSelectionReader()
     target = _calc_selection_reader.inspect_target(app)
@@ -967,7 +989,7 @@ def _calc_api_snapshot(active_app: dict[str, Any]) -> dict[str, Any]:
     if expected_range and actual_range != expected_range:
         raise RuntimeError("The selected Calc range changed after the preview.")
 
-    pipe_name = str(status.get("pipe_name") or os.environ.get("WISP_CALC_UNO_PIPE") or "").strip()
+    pipe_name = str(status.get("pipe_name") or os.environ.get("OPENWAND_CALC_UNO_PIPE") or "").strip()
     libreoffice_python = Path(
         os.environ.get("LIBREOFFICE_PYTHON")
         or r"C:\Program Files\LibreOffice\program\python.exe"
@@ -1085,7 +1107,7 @@ def action_calc_apply(
         status = calc_automation_prewarm(wait_for_startup=True)
         if not status.get("available") or status.get("transport") != "uno_named_pipe_persisted":
             reason = str(status.get("reason") or "named_pipe_unavailable")
-            raise RuntimeError(f"Wisp's local Calc action pipe is unavailable ({reason}).")
+            raise RuntimeError(f"OpenWand's local Calc action pipe is unavailable ({reason}).")
         if _calc_api_selection_reader is None:
             _calc_api_selection_reader = _CalcApiSelectionReader()
         if _calc_action_adapter is None:
@@ -1102,12 +1124,12 @@ def action_calc_apply(
 
 
 def _run_libreoffice_rewrite_helper(arguments: list[str], *, timeout: float) -> dict[str, Any]:
-    """Run the fixed Writer/Impress UNO helper through Wisp's persisted pipe."""
+    """Run the fixed Writer/Impress UNO helper through OpenWand's persisted pipe."""
     status = calc_automation_prewarm(wait_for_startup=True)
     if not status.get("available") or status.get("transport") != "uno_named_pipe_persisted":
         reason = str(status.get("reason") or "named_pipe_unavailable")
-        raise RuntimeError(f"Wisp's local LibreOffice action pipe is unavailable ({reason}).")
-    pipe_name = str(status.get("pipe_name") or os.environ.get("WISP_CALC_UNO_PIPE") or "").strip()
+        raise RuntimeError(f"OpenWand's local LibreOffice action pipe is unavailable ({reason}).")
+    pipe_name = str(status.get("pipe_name") or os.environ.get("OPENWAND_CALC_UNO_PIPE") or "").strip()
     libreoffice_python = Path(
         os.environ.get("LIBREOFFICE_PYTHON")
         or r"C:\Program Files\LibreOffice\program\python.exe"
@@ -1207,7 +1229,7 @@ def action_vscode_snapshot(
             "error": "",
             "timing": {"total_ms": round((time.perf_counter() - started) * 1000, 3)},
         }
-    except Exception as exc:  # noqa: BLE001 - optional app integration must not block Wisp
+    except Exception as exc:  # noqa: BLE001 - optional app integration must not block OpenWand
         return {
             "ok": False,
             "snapshot": {},
@@ -1262,7 +1284,7 @@ def action_vscode_live_apply(
     editor_point: dict[str, Any] | None = None,
     confirmed: bool = False,
 ) -> dict[str, Any]:
-    """Apply one reviewed edit to a Wisp-managed live VS Code editor."""
+    """Apply one reviewed edit to a OpenWand-managed live VS Code editor."""
     if not confirmed:
         return {
             "ok": False,
@@ -1286,7 +1308,7 @@ def action_vscode_live_apply(
 
 
 def action_browser_form_snapshot(active_app: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Read safe editable fields from one Wisp-managed Chromium tab."""
+    """Read safe editable fields from one OpenWand-managed Chromium tab."""
     global _browser_action_adapter
     started = time.perf_counter()
     try:
@@ -1311,7 +1333,7 @@ def action_browser_form_snapshot(active_app: dict[str, Any] | None = None) -> di
 
 
 def action_browser_rewrite_snapshot(active_app: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Capture one exact editable selection in a Wisp-managed Chromium tab."""
+    """Capture one exact editable selection in a OpenWand-managed Chromium tab."""
     global _browser_rewrite_adapter
     try:
         from core.rewrite_browser import BrowserRewriteAdapter
@@ -1387,6 +1409,7 @@ def _selected_text_and_stale(
     active_pid: int | None = None,
     require_active_owner: bool = False,
     selection_dedupe_key: str = "",
+    allow_copy_after_empty_uia: bool = False,
 ) -> tuple[str, str]:
     """Return (live selected text, stale selection already auto-filled once).
 
@@ -1455,7 +1478,13 @@ def _selected_text_and_stale(
         if allow_clipboard_fallback:
             from core.capture import get_selected_text
 
-            return get_selected_text() or "", ""
+            return (
+                get_selected_text(
+                    allow_copy_after_empty_uia=bool(allow_copy_after_empty_uia),
+                )
+                or "",
+                "",
+            )
         if IS_WIN:
             from core.capture import _get_selected_text_uia
 
@@ -1728,12 +1757,26 @@ def context_snapshot(
         structured_calc_target = is_calc_app(active)
     except Exception:
         structured_calc_target = False
+    allow_copy_after_empty_uia = False
+    if IS_WIN:
+        try:
+            from core.actions.adapters.vscode import is_vscode_app
+
+            allow_copy_after_empty_uia = is_vscode_app(active)
+        except Exception:
+            allow_copy_after_empty_uia = False
 
     # Grab the focused text element first (before selection/clipboard work), while
     # the user's field is still focused, so a later rewrite can be written back
     # in place via Accessibility even if focus has since moved.
     if capture_focus and not structured_calc_target:
-        snapshot["focus_token"] = _capture_focus()
+        if allow_copy_after_empty_uia:
+            snapshot["focus_token"] = _capture_focus(
+                source_window_id=int(active.get("window_id") or 0),
+                search_window_documents=True,
+            )
+        else:
+            snapshot["focus_token"] = _capture_focus()
         if snapshot["focus_token"] and isinstance(_focus_cache.get("editor_point"), dict):
             snapshot["editor_point"] = dict(_focus_cache["editor_point"])
         if snapshot["focus_token"] and isinstance(_focus_cache.get("selection_rect"), dict):
@@ -1746,12 +1789,30 @@ def context_snapshot(
     snapshot["app_selection_deferred"] = defer_app_selection
     if include_selection and selection_kind != "paths" and not defer_app_selection:
         _s = time.monotonic()
-        snapshot["selected_text"], snapshot["stale_selected_text"] = _selected_text_and_stale(
-            allow_clipboard_fallback=True,
-            active_pid=int(active.get("pid") or 0),
-            require_active_owner=bool(require_active_selection_owner),
-            selection_dedupe_key=str(selection_dedupe_key or ""),
+        resolved_vscode_selection = bool(
+            allow_copy_after_empty_uia
+            and snapshot["focus_token"]
+            and _focus_cache.get("token") == snapshot["focus_token"]
+            and _focus_cache.get("kind") == "win-uia"
+            and not bool(_focus_cache.get("collapsed"))
+            and str(_focus_cache.get("selected_text") or "")
         )
+        if resolved_vscode_selection:
+            # The same exact Monaco range now supplies both text and geometry;
+            # do not synthesize Ctrl+C unless UIA failed to resolve that range.
+            snapshot["selected_text"] = str(_focus_cache["selected_text"])
+        else:
+            selection_options: dict[str, Any] = {
+                "allow_clipboard_fallback": True,
+                "active_pid": int(active.get("pid") or 0),
+                "require_active_owner": bool(require_active_selection_owner),
+                "selection_dedupe_key": str(selection_dedupe_key or ""),
+            }
+            if allow_copy_after_empty_uia:
+                selection_options["allow_copy_after_empty_uia"] = True
+            snapshot["selected_text"], snapshot["stale_selected_text"] = (
+                _selected_text_and_stale(**selection_options)
+            )
         if (
             not snapshot["selected_text"]
             and snapshot["focus_token"]
@@ -1762,25 +1823,62 @@ def context_snapshot(
             # Win32 even when Ctrl+C/clipboard selection capture is unavailable.
             snapshot["selected_text"] = str(_focus_cache.get("selected_text") or "")
         sel_dt = time.monotonic() - _s
-        if (
+        focus_state = _focus_anchor(int(snapshot.get("focus_token") or 0))
+        vscode_focus_matches = bool(
+            allow_copy_after_empty_uia
+            and focus_state.get("kind") == "win-uia"
+            and not bool(focus_state.get("collapsed"))
+            and bool(focus_state.get("range_context_bound"))
+            and str(focus_state.get("selected_text") or "") == snapshot["selected_text"]
+        )
+        should_retry_focus = bool(
             capture_focus
             and not structured_calc_target
-            and not snapshot["focus_token"]
             and snapshot["selected_text"]
-        ):
+            and (
+                not snapshot["focus_token"]
+                or (allow_copy_after_empty_uia and not vscode_focus_matches)
+            )
+        )
+        if should_retry_focus:
             # Chromium can expose the copied selection a few milliseconds
             # before its renderer publishes the corresponding UIA TextRange.
             # Copying does not move focus, so one bounded retry binds the same
             # user-selected range without guessing or targeting a new control.
-            deadline = time.monotonic() + 0.6
-            while not snapshot["focus_token"] and time.monotonic() < deadline:
-                snapshot["focus_token"] = _capture_focus()
-                if not snapshot["focus_token"]:
-                    time.sleep(0.05)
-            if snapshot["focus_token"] and isinstance(_focus_cache.get("editor_point"), dict):
-                snapshot["editor_point"] = dict(_focus_cache["editor_point"])
-            if snapshot["focus_token"] and isinstance(_focus_cache.get("selection_rect"), dict):
-                snapshot["selection_rect"] = dict(_focus_cache["selection_rect"])
+            deadline = time.monotonic() + 0.8
+            while time.monotonic() < deadline:
+                if allow_copy_after_empty_uia:
+                    snapshot["focus_token"] = _capture_focus(
+                        source_window_id=int(active.get("window_id") or 0),
+                        search_window_documents=True,
+                    )
+                    focus_state = _focus_anchor(int(snapshot.get("focus_token") or 0))
+                    if (
+                        focus_state.get("kind") == "win-uia"
+                        and not bool(focus_state.get("collapsed"))
+                        and bool(focus_state.get("range_context_bound"))
+                        and str(focus_state.get("selected_text") or "")
+                        == snapshot["selected_text"]
+                    ):
+                        break
+                else:
+                    snapshot["focus_token"] = _capture_focus()
+                    if snapshot["focus_token"]:
+                        break
+                time.sleep(0.05)
+            focus_state = _focus_anchor(int(snapshot.get("focus_token") or 0))
+            if allow_copy_after_empty_uia and not (
+                focus_state.get("kind") == "win-uia"
+                and not bool(focus_state.get("collapsed"))
+                and bool(focus_state.get("range_context_bound"))
+                and str(focus_state.get("selected_text") or "") == snapshot["selected_text"]
+            ):
+                snapshot["focus_token"] = 0
+                focus_state = {}
+            if isinstance(focus_state.get("editor_point"), dict):
+                snapshot["editor_point"] = dict(focus_state["editor_point"])
+            if isinstance(focus_state.get("selection_rect"), dict):
+                snapshot["selection_rect"] = dict(focus_state["selection_rect"])
     if capture_focus and IS_WIN:
         anchor = selection_anchor_resolve(
             focus_token=int(snapshot.get("focus_token") or 0),
@@ -2037,7 +2135,7 @@ def capture_fullscreen(path: str = "") -> dict[str, Any]:
     if not path:
         import tempfile
 
-        path = str(Path(tempfile.gettempdir()) / f"wisp-capture-{int(time.time() * 1000)}.png")
+        path = str(Path(tempfile.gettempdir()) / f"openwand-capture-{int(time.time() * 1000)}.png")
     if not IS_MAC:
         try:
             from core.capture import get_screen_snippet
@@ -2085,7 +2183,7 @@ def capture_region(path: str = "", region: dict[str, Any] | None = None) -> dict
     if not path:
         import tempfile
 
-        path = str(Path(tempfile.gettempdir()) / f"wisp-region-{int(time.time() * 1000)}.png")
+        path = str(Path(tempfile.gettempdir()) / f"openwand-region-{int(time.time() * 1000)}.png")
     normalized = _normalize_region(region)
     if normalized is None:
         return {
@@ -2224,9 +2322,42 @@ _MAX_NATIVE_EDIT_CHARS = 4_000_000
 
 _focus_seq = 0
 _focus_cache: dict[str, Any] = {}  # {"token": int, "kind": str, ...native objects}
+_focus_anchors: dict[int, dict[str, Any]] = {}
+_MAX_FOCUS_ANCHORS = 32
 
 
-def _capture_focus() -> int:
+def _remember_focus_anchor() -> None:
+    """Keep each captured rewrite target independent of later captures."""
+    token = int(_focus_cache.get("token") or 0)
+    if not token:
+        return
+    _focus_anchors[token] = dict(_focus_cache)
+    while len(_focus_anchors) > _MAX_FOCUS_ANCHORS:
+        _focus_anchors.pop(next(iter(_focus_anchors)))
+
+
+def _focus_anchor(focus_token: int) -> dict[str, Any]:
+    token = int(focus_token or 0)
+    if token and int(_focus_cache.get("token") or 0) == token:
+        return _focus_cache
+    return _focus_anchors.get(token, {})
+
+
+def selection_anchor_release(focus_token: int = 0) -> dict[str, Any]:
+    """Release one annotation's cached native target and geometry."""
+    token = int(focus_token or 0)
+    released = _focus_anchors.pop(token, None) is not None
+    if token and int(_focus_cache.get("token") or 0) == token:
+        _focus_cache.clear()
+        released = True
+    return {"ok": True, "released": released}
+
+
+def _capture_focus(
+    *,
+    source_window_id: int = 0,
+    search_window_documents: bool = False,
+) -> int:
     """Cache the hotkey-time text target for later paste-back."""
     if IS_MAC:
         return _ax_capture_focus()
@@ -2234,7 +2365,10 @@ def _capture_focus() -> int:
         edit_token = _win_edit_capture_focus()
         if edit_token:
             return edit_token
-        uia_token = _win_uia_capture_focus()
+        uia_token = _win_uia_capture_focus(
+            source_window_id=source_window_id,
+            search_window_documents=search_window_documents,
+        )
         return uia_token
     return 0
 
@@ -2380,7 +2514,7 @@ def _win_edit_selection_screen_rect(
         if folded_class.startswith("richedit"):
             # RichEdit 2.0+ writes a POINT through wParam and reads the character
             # index from lParam. Unlike GetCaretPos, this does not need to attach
-            # Wisp's thread or change focus.
+            # OpenWand's thread or change focus.
             user32.SendMessageW(hwnd, _EM_POSFROMCHAR, ctypes.byref(point), index)
         else:
             packed = int(user32.SendMessageW(hwnd, _EM_POSFROMCHAR, index, 0))
@@ -2425,6 +2559,7 @@ def _win_edit_capture_focus() -> int:
         f"native edit capture token={_focus_seq} class={snapshot.get('class_name')!r} "
         f"selection={snapshot.get('selection_start')}:{snapshot.get('selection_end')}"
     )
+    _remember_focus_anchor()
     return _focus_seq
 
 
@@ -2479,6 +2614,7 @@ def _ax_capture_focus() -> int:
         _focus_cache["token"] = _focus_seq
         _focus_cache["kind"] = "mac-ax"
         _focus_cache["element"] = focused
+        _remember_focus_anchor()
         _plog(f"ax capture token={_focus_seq} ok")
         return _focus_seq
     except Exception as exc:  # noqa: BLE001 - AX is best-effort
@@ -2486,7 +2622,11 @@ def _ax_capture_focus() -> int:
         return 0
 
 
-def _win_uia_capture_focus() -> int:
+def _win_uia_capture_focus(
+    *,
+    source_window_id: int = 0,
+    search_window_documents: bool = False,
+) -> int:
     """Cache the focused Windows UIA text range; return a token (0 on failure)."""
     global _focus_seq
     if not IS_WIN:
@@ -2501,29 +2641,19 @@ def _win_uia_capture_focus() -> int:
             "{ff48dba4-60ef-4201-aa87-54103eef594e}",
             interface=uiac.IUIAutomation,
         )
-        element = uia.GetFocusedElement()
-        raw_pattern = element.GetCurrentPattern(_UIA_TEXT_PATTERN_ID)
-        text_pattern = raw_pattern.QueryInterface(uiac.IUIAutomationTextPattern)
-        selections = text_pattern.GetSelection()
-        if selections.Length <= 0:
+        candidate = _win_uia_selection_candidate(
+            uia,
+            uiac,
+            source_window_id=source_window_id,
+            search_window_documents=search_window_documents,
+        )
+        if not candidate:
             _plog("uia capture: focused element has no text selection")
             return 0
-        text_range = selections.GetElement(0)
-        start_endpoint = getattr(
-            uiac,
-            "TextPatternRangeEndpoint_Start",
-            _UIA_TEXT_PATTERN_RANGE_ENDPOINT_START,
-        )
-        end_endpoint = getattr(
-            uiac,
-            "TextPatternRangeEndpoint_End",
-            _UIA_TEXT_PATTERN_RANGE_ENDPOINT_END,
-        )
-        collapsed = False
-        try:
-            collapsed = text_range.CompareEndpoints(start_endpoint, text_range, end_endpoint) == 0
-        except Exception:
-            pass
+        element = candidate["element"]
+        text_pattern = candidate["text_pattern"]
+        text_range = candidate["range"]
+        collapsed = bool(candidate["collapsed"])
         _focus_seq += 1
         _focus_cache.clear()
         _focus_cache["token"] = _focus_seq
@@ -2531,22 +2661,142 @@ def _win_uia_capture_focus() -> int:
         _focus_cache["element"] = element
         _focus_cache["range"] = text_range
         _focus_cache["collapsed"] = collapsed
+        _focus_cache["selection_source"] = str(candidate["source"])
+        _focus_cache["selected_text"] = str(candidate["selected_text"])
         _focus_cache.update(_win_uia_range_context(text_pattern, text_range))
         _focus_cache.update(_win_capture_background_input_target(element))
         selection_rect = _win_uia_selection_screen_rect(text_range)
         if selection_rect:
             _focus_cache["selection_rect"] = selection_rect
+            _focus_cache["last_selection_rect"] = dict(selection_rect)
         editor_point = _win_uia_editor_client_point(
             text_range,
             int(_focus_cache.get("root_hwnd") or 0),
         )
         if editor_point:
             _focus_cache["editor_point"] = editor_point
-        _plog(f"uia capture token={_focus_seq} collapsed={collapsed} ok")
+        _remember_focus_anchor()
+        _plog(
+            f"uia capture token={_focus_seq} collapsed={collapsed} "
+            f"source={candidate['source']} ok"
+        )
         return _focus_seq
     except Exception as exc:  # noqa: BLE001 - UIA is best-effort
         _plog(f"uia capture raised {type(exc).__name__}: {exc}")
         return 0
+
+
+def _win_uia_selection_candidate(
+    uia: Any,
+    uiac: Any,
+    *,
+    source_window_id: int = 0,
+    search_window_documents: bool = False,
+) -> dict[str, Any]:
+    """Resolve the real selected TextRange behind Chromium/Monaco focus proxies."""
+    focused = uia.GetFocusedElement()
+    elements: list[tuple[str, Any]] = [("focused", focused)]
+    if search_window_documents:
+        # Monaco often puts UIA keyboard focus on its textarea/proxy while the
+        # enclosing Document owns the visible editor selection. Prefer the
+        # nearest ancestor before considering another visible split editor.
+        try:
+            walker = uia.RawViewWalker
+            current = focused
+            for _depth in range(24):
+                current = walker.GetParentElement(current)
+                if current is None:
+                    break
+                elements.append(("focused-ancestor", current))
+        except Exception:
+            pass
+        if source_window_id:
+            try:
+                root = uia.ElementFromHandle(int(source_window_id))
+                descendants = getattr(uiac, "TreeScope_Descendants", 4)
+                keyboard_focus_property = getattr(
+                    uiac,
+                    "UIA_HasKeyboardFocusPropertyId",
+                    30008,
+                )
+                focused_descendants = root.FindAll(
+                    descendants,
+                    uia.CreatePropertyCondition(keyboard_focus_property, True),
+                )
+                # An exact-window focused descendant beats GetFocusedElement:
+                # Chromium can return its RootWebArea or another desktop's
+                # provider while Monaco's native-edit-context owns the caret.
+                window_focused = [
+                    ("window-focused", focused_descendants.GetElement(index))
+                    for index in range(min(int(focused_descendants.Length or 0), 16))
+                ]
+                elements = window_focused + elements
+                control_type_property = getattr(uiac, "UIA_ControlTypePropertyId", 30003)
+                document_type = getattr(uiac, "UIA_DocumentControlTypeId", 50030)
+                documents = root.FindAll(
+                    descendants,
+                    uia.CreatePropertyCondition(control_type_property, document_type),
+                )
+                for index in range(min(int(documents.Length or 0), 32)):
+                    document = documents.GetElement(index)
+                    try:
+                        if bool(document.CurrentIsOffscreen):
+                            continue
+                    except Exception:
+                        pass
+                    elements.append(("window-document", document))
+            except Exception:
+                pass
+
+    start_endpoint = getattr(
+        uiac,
+        "TextPatternRangeEndpoint_Start",
+        _UIA_TEXT_PATTERN_RANGE_ENDPOINT_START,
+    )
+    end_endpoint = getattr(
+        uiac,
+        "TextPatternRangeEndpoint_End",
+        _UIA_TEXT_PATTERN_RANGE_ENDPOINT_END,
+    )
+    collapsed_fallback: dict[str, Any] = {}
+    for source, element in elements:
+        try:
+            raw_pattern = element.GetCurrentPattern(_UIA_TEXT_PATTERN_ID)
+            text_pattern = raw_pattern.QueryInterface(uiac.IUIAutomationTextPattern)
+            selections = text_pattern.GetSelection()
+        except Exception:
+            continue
+        for index in range(int(selections.Length or 0)):
+            try:
+                live_range = selections.GetElement(index)
+                try:
+                    # Chromium's GetSelection range keeps some geometry tied to
+                    # the provider's current selection. A later user selection
+                    # can therefore move or invalidate an existing bubble's
+                    # anchor. Clone the endpoints while selection A is current
+                    # so each annotation remains bound to its original text.
+                    text_range = live_range.Clone()
+                except Exception:
+                    text_range = live_range
+                collapsed = (
+                    text_range.CompareEndpoints(start_endpoint, text_range, end_endpoint) == 0
+                )
+                selected_text = "" if collapsed else str(text_range.GetText(-1) or "")
+            except Exception:
+                continue
+            candidate = {
+                "element": element,
+                "text_pattern": text_pattern,
+                "range": text_range,
+                "collapsed": collapsed,
+                "selected_text": selected_text,
+                "source": source,
+            }
+            if not collapsed:
+                return candidate
+            if not collapsed_fallback:
+                collapsed_fallback = candidate
+    return collapsed_fallback
 
 
 def _win_uia_range_context(text_pattern: Any, text_range: Any) -> dict[str, Any]:
@@ -2583,6 +2833,106 @@ def _win_uia_range_context(text_pattern: Any, text_range: Any) -> dict[str, Any]
     except Exception as exc:  # noqa: BLE001 - older controls may expose only selection
         _plog(f"uia range context unavailable: {type(exc).__name__}: {exc}")
         return {}
+
+
+def _win_vscode_select_captured_context(
+    _text_pattern: Any,
+    *,
+    document_prefix: str,
+    selected_text: str,
+) -> bool:
+    """Select captured A in VS Code by its immutable line/column, not live B."""
+    if not IS_WIN or not selected_text:
+        return False
+    try:
+        import keyboard  # type: ignore
+
+        normalized_prefix = str(document_prefix or "").replace("\r\n", "\n").replace("\r", "\n")
+        normalized_selected = str(selected_text).replace("\r\n", "\n").replace("\r", "\n")
+        def position(value: str) -> tuple[int, int]:
+            line = value.count("\n") + 1
+            column_text = value.rsplit("\n", 1)[-1]
+            column = len(column_text.encode("utf-16-le", errors="surrogatepass")) // 2 + 1
+            return line, column
+
+        def go_to(value: str) -> None:
+            line, column = position(value)
+            keyboard.send("ctrl+g")
+            time.sleep(0.18)
+            keyboard.write(f"{line}:{column}", delay=0.01)
+            keyboard.send("enter")
+            time.sleep(0.18)
+
+        def chord(second_key: str) -> None:
+            keyboard.send("ctrl+k")
+            time.sleep(0.08)
+            keyboard.send(f"ctrl+{second_key}")
+            time.sleep(0.18)
+
+        clipboard_before = str(clipboard_get().get("text") or "")
+        try:
+            for attempt in range(3):
+                go_to(normalized_prefix)
+                chord("b")  # editor.action.setSelectionAnchor
+                go_to(f"{normalized_prefix}{normalized_selected}")
+                chord("k")  # editor.action.selectFromAnchorToCursor
+
+                sentinel = f"openwand-selection-check-{os.getpid()}-{time.monotonic_ns()}"
+                if not clipboard_set(sentinel).get("ok"):
+                    return False
+                keyboard.send("ctrl+c")
+                deadline = time.monotonic() + 0.45
+                while time.monotonic() < deadline:
+                    actual = str(clipboard_get().get("text") or "")
+                    normalized_actual = actual.replace("\r\n", "\n").replace("\r", "\n")
+                    if normalized_actual == normalized_selected:
+                        return True
+                    if actual != sentinel:
+                        break
+                    time.sleep(0.03)
+                if attempt < 2:
+                    time.sleep(0.08)
+            return False
+        finally:
+            clipboard_set(clipboard_before)
+    except Exception:
+        return False
+
+
+def _win_uia_current_selection_matches_cached(state: dict[str, Any]) -> bool | None:
+    """Return whether the provider's live selection is still this annotation's range."""
+    if not IS_WIN or state.get("kind") != "win-uia":
+        return None
+    try:
+        import comtypes.gen.UIAutomationClient as uiac  # type: ignore
+
+        element = state.get("element")
+        raw_pattern = element.GetCurrentPattern(_UIA_TEXT_PATTERN_ID)
+        text_pattern = raw_pattern.QueryInterface(uiac.IUIAutomationTextPattern)
+        selections = text_pattern.GetSelection()
+        if int(selections.Length or 0) <= 0:
+            return False
+        current = selections.GetElement(0)
+        cached = state.get("range")
+        if cached is None:
+            return None
+        start_endpoint = getattr(
+            uiac,
+            "TextPatternRangeEndpoint_Start",
+            _UIA_TEXT_PATTERN_RANGE_ENDPOINT_START,
+        )
+        end_endpoint = getattr(
+            uiac,
+            "TextPatternRangeEndpoint_End",
+            _UIA_TEXT_PATTERN_RANGE_ENDPOINT_END,
+        )
+        return bool(
+            current.CompareEndpoints(start_endpoint, cached, start_endpoint) == 0
+            and current.CompareEndpoints(end_endpoint, cached, end_endpoint) == 0
+        )
+    except Exception:
+        return None
+    return None
 
 
 def _win_uia_editor_client_point(text_range: Any, root_hwnd: int) -> dict[str, float]:
@@ -2624,7 +2974,10 @@ def _win_uia_selection_screen_rect(text_range: Any) -> dict[str, float]:
         rectangles: list[tuple[float, float, float, float]] = []
         for index in range(0, len(values) - 3, 4):
             left, top, width, height = (float(values[index + offset]) for offset in range(4))
-            if width > 0 and height > 0:
+            # Chromium clips an offscreen Monaco selection to a 1-2 px sliver
+            # at the viewport edge. It is not a visible text line and must not
+            # keep the popup pinned to the editor border while the user scrolls.
+            if width > 0 and height >= 4.0:
                 rectangles.append((left, top, width, height))
         if not rectangles:
             return {}
@@ -2765,13 +3118,14 @@ def selection_anchor_resolve(
     exact_source = ""
     exact_viewport_hwnd = source_hwnd
     token = int(focus_token or 0)
-    if token and _focus_cache.get("token") == token:
-        kind = str(_focus_cache.get("kind") or "")
+    state = _focus_anchor(token)
+    if state:
+        kind = str(state.get("kind") or "")
         exact_rect: dict[str, Any] | None = None
         if kind == "win-edit":
-            exact_viewport_hwnd = int(_focus_cache.get("input_hwnd") or source_hwnd)
-            geometry_range = _focus_cache.get("geometry_range")
-            class_name = str(_focus_cache.get("class_name") or "")
+            exact_viewport_hwnd = int(state.get("input_hwnd") or source_hwnd)
+            geometry_range = state.get("geometry_range")
+            class_name = str(state.get("class_name") or "")
             if geometry_range is not None:
                 exact_source = "uia"
                 exact_rect = _win_uia_selection_screen_rect(geometry_range)
@@ -2780,23 +3134,34 @@ def selection_anchor_resolve(
                 # pointer-based EM_POSFROMCHAR does not marshal reliably across
                 # processes, so never treat its zeroed POINT as valid geometry.
                 exact_source = "native-edit"
-                document_text = str(_focus_cache.get("document_text") or "")
+                document_text = str(state.get("document_text") or "")
                 document_units = len(document_text.encode("utf-16-le", errors="surrogatepass")) // 2
                 exact_rect = _win_edit_selection_screen_rect(
-                    int(_focus_cache.get("input_hwnd") or 0),
+                    int(state.get("input_hwnd") or 0),
                     class_name=class_name,
-                    selection_end=int(_focus_cache.get("selection_end") or 0),
+                    selection_end=int(state.get("selection_end") or 0),
                     document_units=document_units,
                 )
         elif kind == "win-uia":
-            exact_viewport_hwnd = int(_focus_cache.get("input_hwnd") or source_hwnd)
+            exact_viewport_hwnd = int(state.get("input_hwnd") or source_hwnd)
             exact_source = "uia"
-            exact_rect = _win_uia_selection_screen_rect(_focus_cache.get("range"))
+            selection_matches = (
+                _win_uia_current_selection_matches_cached(state) if refresh else None
+            )
+            if selection_matches is False:
+                # Chromium only exposes bounding rectangles for its current
+                # selection. Keep this annotation on selection A's last exact
+                # rectangle instead of letting a later selection B move it.
+                exact_rect = dict(state.get("last_selection_rect") or {})
+            else:
+                exact_rect = _win_uia_selection_screen_rect(state.get("range"))
+                if exact_rect:
+                    state["last_selection_rect"] = dict(exact_rect)
         if exact_source:
             candidates.append((exact_source, exact_rect, True, exact_viewport_hwnd))
             # During scrolling, an exact range with no on-screen rectangle means
             # it moved out of view. Never replace it with the current caret or
-            # mouse, which now belong to Wisp's popup.
+            # mouse, which now belong to OpenWand's popup.
             if refresh and not _win_valid_selection_anchor(
                 exact_rect,
                 source_window_id=exact_viewport_hwnd,
@@ -2817,10 +3182,14 @@ def selection_anchor_resolve(
             source_window_id=viewport_hwnd,
         )
         if rect:
-            _plog(
-                f"selection anchor source={source} refresh={refresh} "
-                f"token={token} rect={rect}"
-            )
+            # Initial resolution is useful diagnostic context. Refreshes are
+            # intentionally quiet: a visible popup polls frequently and the UI
+            # worker emits one aggregate anchor summary when that popup closes.
+            if not refresh:
+                _plog(
+                    f"selection anchor source={source} refresh={refresh} "
+                    f"token={token} rect={rect}"
+                )
             return {
                 "ok": True,
                 "visible": True,
@@ -2828,7 +3197,8 @@ def selection_anchor_resolve(
                 "exact": bool(exact),
                 "selection_rect": rect,
             }
-    _plog(f"selection anchor unavailable refresh={refresh} token={token}")
+    if not refresh:
+        _plog(f"selection anchor unavailable refresh={refresh} token={token}")
     return {"ok": False, "visible": False, "source": "unavailable", "selection_rect": {}}
 
 
@@ -2895,11 +3265,12 @@ def _win_post_text_to_cached_target(token: int, text: str) -> dict[str, Any]:
     """Post text to the captured input HWND without focus, cursor, or clipboard changes."""
     if not IS_WIN:
         return {"ok": False, "method": "win-post-message", "error": "not windows"}
-    if not token or _focus_cache.get("token") != token or _focus_cache.get("kind") != "win-uia":
+    state = _focus_anchor(token)
+    if not state or state.get("kind") != "win-uia":
         return {"ok": False, "method": "win-post-message", "error": "stale or missing focus token"}
-    input_hwnd = int(_focus_cache.get("input_hwnd") or 0)
-    root_hwnd = int(_focus_cache.get("root_hwnd") or 0)
-    expected_pid = int(_focus_cache.get("target_pid") or 0)
+    input_hwnd = int(state.get("input_hwnd") or 0)
+    root_hwnd = int(state.get("root_hwnd") or 0)
+    expected_pid = int(state.get("target_pid") or 0)
     if not input_hwnd:
         return {"ok": False, "method": "win-post-message", "error": "no captured background input window"}
     try:
@@ -2918,19 +3289,19 @@ def _win_post_text_to_cached_target(token: int, text: str) -> dict[str, Any]:
             return {"ok": False, "method": "win-post-message", "error": "captured input process changed"}
 
         foreground_before = int(user32.GetForegroundWindow() or 0)
-        text_range = _focus_cache.get("range")
+        text_range = state.get("range")
         verification_pattern = None
         expected_after = ""
-        if bool(_focus_cache.get("range_context_bound")):
+        if bool(state.get("range_context_bound")):
             try:
                 import comtypes.gen.UIAutomationClient as uiac  # type: ignore
 
-                element = _focus_cache.get("element")
+                element = state.get("element")
                 raw_pattern = element.GetCurrentPattern(_UIA_TEXT_PATTERN_ID)
                 verification_pattern = raw_pattern.QueryInterface(uiac.IUIAutomationTextPattern)
-                prefix = str(_focus_cache.get("document_prefix") or "")
-                selected = str(_focus_cache.get("selected_text") or "")
-                suffix = str(_focus_cache.get("document_suffix") or "")
+                prefix = str(state.get("document_prefix") or "")
+                selected = str(state.get("selected_text") or "")
+                suffix = str(state.get("document_suffix") or "")
                 current_document = str(verification_pattern.DocumentRange.GetText(-1) or "")
                 current_selection = str(text_range.GetText(-1) or "")
                 if current_document != f"{prefix}{selected}{suffix}" or current_selection != selected:
@@ -2980,7 +3351,7 @@ def _win_post_text_to_cached_target(token: int, text: str) -> dict[str, Any]:
                 if text_pattern is None:
                     import comtypes.gen.UIAutomationClient as uiac  # type: ignore
 
-                    element = _focus_cache.get("element")
+                    element = state.get("element")
                     raw_pattern = element.GetCurrentPattern(_UIA_TEXT_PATTERN_ID)
                     text_pattern = raw_pattern.QueryInterface(uiac.IUIAutomationTextPattern)
                 deadline = time.monotonic() + 0.5
@@ -3062,9 +3433,10 @@ def _ax_apply_selected_text(token: int, text: str) -> dict[str, Any]:
     """Replace the cached element's selected text in place. Best-effort."""
     if not IS_MAC:
         return {"ok": False, "error": "not macos"}
-    if not token or _focus_cache.get("token") != token or _focus_cache.get("kind") not in {"mac-ax", None}:
+    state = _focus_anchor(token)
+    if not state or state.get("kind") not in {"mac-ax", None}:
         return {"ok": False, "error": "stale or missing focus token"}
-    element = _focus_cache.get("element")
+    element = state.get("element")
     if element is None:
         return {"ok": False, "error": "no cached element"}
     try:
@@ -3093,7 +3465,7 @@ def _win_uia_apply_selected_text(
 
     Posting replacement text as individual ``WM_CHAR`` messages is unsafe: an
     editor may accept only part of the sequence, leaving words at opposite ends
-    of the old selection before Wisp can detect failure. One clipboard paste is
+    of the old selection before OpenWand can detect failure. One clipboard paste is
     the only generic Windows path used here, and success requires the complete
     editable document to match the expected result.
     """
@@ -3110,14 +3482,15 @@ def _win_edit_apply_selected_text(token: int, text: str) -> dict[str, Any]:
     method = "win-richedit"
     if not IS_WIN:
         return {"ok": False, "method": method, "error": "not windows"}
-    if not token or _focus_cache.get("token") != token or _focus_cache.get("kind") != "win-edit":
+    state = _focus_anchor(token)
+    if not state or state.get("kind") != "win-edit":
         return {"ok": False, "method": method, "error": "stale or missing focus token"}
-    input_hwnd = int(_focus_cache.get("input_hwnd") or 0)
+    input_hwnd = int(state.get("input_hwnd") or 0)
     before = _win_edit_control_snapshot(input_hwnd)
     if not before:
         return {"ok": False, "method": method, "error": "the WordPad text control is unavailable"}
     identity_fields = ("root_hwnd", "target_pid", "class_name")
-    if any(before.get(field) != _focus_cache.get(field) for field in identity_fields):
+    if any(before.get(field) != state.get(field) for field in identity_fields):
         return {"ok": False, "method": method, "error": "the WordPad text control changed", "stale": True}
     freshness_fields = (
         "document_text",
@@ -3125,7 +3498,7 @@ def _win_edit_apply_selected_text(token: int, text: str) -> dict[str, Any]:
         "selection_end",
         "selected_text",
     )
-    if any(before.get(field) != _focus_cache.get(field) for field in freshness_fields):
+    if any(before.get(field) != state.get(field) for field in freshness_fields):
         return {
             "ok": False,
             "method": method,
@@ -3182,30 +3555,31 @@ def _win_foreground_paste_to_cached_target(
     """Temporarily focus one freshness-bound UIA range, paste, and verify it."""
     if not IS_WIN:
         return {"ok": False, "method": "win-uia-foreground-paste", "error": "not windows"}
-    if not token or _focus_cache.get("token") != token or _focus_cache.get("kind") != "win-uia":
+    state = _focus_anchor(token)
+    if not state or state.get("kind") != "win-uia":
         return {
             "ok": False,
             "method": "win-uia-foreground-paste",
             "error": "stale or missing focus token",
         }
-    if not bool(_focus_cache.get("range_context_bound")):
+    if not bool(state.get("range_context_bound")):
         return {
             "ok": False,
             "method": "win-uia-foreground-paste",
             "error": "the selected control did not expose a freshness-bound text range",
         }
-    element = _focus_cache.get("element")
-    text_range = _focus_cache.get("range")
-    root_hwnd = int(_focus_cache.get("root_hwnd") or 0)
+    element = state.get("element")
+    text_range = state.get("range")
+    root_hwnd = int(state.get("root_hwnd") or 0)
     if element is None or text_range is None or not root_hwnd:
         return {
             "ok": False,
             "method": "win-uia-foreground-paste",
             "error": "the captured browser selection is no longer available",
         }
-    prefix = str(_focus_cache.get("document_prefix") or "")
-    selected = str(_focus_cache.get("selected_text") or "")
-    suffix = str(_focus_cache.get("document_suffix") or "")
+    prefix = str(state.get("document_prefix") or "")
+    selected = str(state.get("selected_text") or "")
+    suffix = str(state.get("document_suffix") or "")
     expected_before = f"{prefix}{selected}{suffix}"
     expected_after = f"{prefix}{text}{suffix}"
     foreground_before = int(ctypes.windll.user32.GetForegroundWindow() or 0)
@@ -3227,13 +3601,28 @@ def _win_foreground_paste_to_cached_target(
                 stale=True,
             )
             return result
-        text_range.Select()
+        process_name = _win_process_name(int(state.get("target_pid") or 0)).casefold()
+        vscode_target = process_name in {
+            "code.exe",
+            "code - insiders.exe",
+            "cursor.exe",
+            "windsurf.exe",
+        }
+        if not vscode_target:
+            text_range.Select()
         element.SetFocus()
         if not _win_restore_foreground(root_hwnd):
             result["error"] = "the original browser window could not be focused"
             return result
         if int(ctypes.windll.user32.GetForegroundWindow() or 0) != root_hwnd:
             result["error"] = "the original browser window was not confirmed"
+            return result
+        if vscode_target and not _win_vscode_select_captured_context(
+            text_pattern,
+            document_prefix=prefix,
+            selected_text=selected,
+        ):
+            result["error"] = "VS Code could not reselect the original captured text"
             return result
         if not clipboard_set(text).get("ok"):
             result.update(error="clipboard write failed", clipboard_ok=False)
@@ -3249,6 +3638,30 @@ def _win_foreground_paste_to_cached_target(
                 verified = True
                 break
             time.sleep(0.05)
+        if not verified and vscode_target:
+            # Monaco can publish the successful edit before Chromium refreshes
+            # TextPattern.DocumentRange. Confirm the actual editor text at A
+            # through the same selection-and-copy check used above.
+            verified = _win_vscode_select_captured_context(
+                text_pattern,
+                document_prefix=prefix,
+                selected_text=text,
+            )
+            if verified:
+                send_keys("right")
+        rolled_back = False
+        if not verified:
+            # Chromium can redirect a stale TextRange to its current selection.
+            # Never leave that unverified mutation behind: undo it while the
+            # exact target editor is still foreground and prove the original
+            # document came back before returning failure.
+            send_keys("ctrl+z")
+            rollback_deadline = time.monotonic() + 1.25
+            while time.monotonic() < rollback_deadline:
+                if str(text_pattern.DocumentRange.GetText(-1) or "") == expected_before:
+                    rolled_back = True
+                    break
+                time.sleep(0.05)
         result.update(
             ok=verified,
             activated=True,
@@ -3256,8 +3669,15 @@ def _win_foreground_paste_to_cached_target(
             keystroke_sent=True,
             clipboard_ok=True,
             text_verified=verified,
-            target_pid=int(_focus_cache.get("target_pid") or 0),
-            error="" if verified else "the browser did not expose the expected rewritten text",
+            target_pid=int(state.get("target_pid") or 0),
+            rolled_back=rolled_back,
+            error=(
+                ""
+                if verified
+                else "the editor changed the wrong range and rollback was verified"
+                if rolled_back
+                else "the editor did not expose the expected rewritten text and rollback failed"
+            ),
         )
         return result
     except Exception as exc:  # noqa: BLE001 - return a safe copy-only failure
@@ -3399,7 +3819,8 @@ def paste_text(
         )
 
         if focus_token:
-            if _focus_cache.get("kind") == "win-edit":
+            state = _focus_anchor(int(focus_token))
+            if state.get("kind") == "win-edit":
                 uia = _win_edit_apply_selected_text(int(focus_token), text)
             else:
                 uia = _win_uia_apply_selected_text(
@@ -3494,20 +3915,21 @@ def paste_text(
 
 def _focus_cached_edit_target(token: int) -> bool:
     """Best-effort focus of the exact text control captured for paste-back."""
-    if not token or _focus_cache.get("token") != token:
+    state = _focus_anchor(token)
+    if not state:
         return False
     expected_kinds = {"mac-ax"} if IS_MAC else {"win-uia", "win-edit"} if IS_WIN else set()
-    if expected_kinds and _focus_cache.get("kind") not in expected_kinds:
+    if expected_kinds and state.get("kind") not in expected_kinds:
         return False
-    if IS_WIN and _focus_cache.get("kind") == "win-edit":
-        input_hwnd = int(_focus_cache.get("input_hwnd") or 0)
-        root_hwnd = int(_focus_cache.get("root_hwnd") or 0)
+    if IS_WIN and state.get("kind") == "win-edit":
+        input_hwnd = int(state.get("input_hwnd") or 0)
+        root_hwnd = int(state.get("root_hwnd") or 0)
         if not input_hwnd or not ctypes.windll.user32.IsWindow(input_hwnd):
             return False
         _win_restore_foreground(root_hwnd)
         ctypes.windll.user32.SetFocus(input_hwnd)
         return True
-    element = _focus_cache.get("element")
+    element = state.get("element")
     if element is None:
         return False
     try:
@@ -3604,7 +4026,7 @@ def undo_edit(
     }
 
 
-def notify(title: str = "Wisp", message: str = "") -> dict[str, Any]:
+def notify(title: str = "OpenWand", message: str = "") -> dict[str, Any]:
     """Post a system notification (Notification Center) so the supervisor can
     surface paste-back status without writing into the reply bubble."""
     if IS_MAC:
@@ -3613,7 +4035,7 @@ def notify(title: str = "Wisp", message: str = "") -> dict[str, Any]:
 
             script = (
                 f"display notification {_json.dumps(message or '')} "
-                f"with title {_json.dumps(title or 'Wisp')}"
+                f"with title {_json.dumps(title or 'OpenWand')}"
             )
             result = subprocess.run(
                 ["/usr/bin/osascript", "-e", script],
@@ -3741,6 +4163,7 @@ HANDLERS = {
     "native.context.snapshot": context_snapshot,
     "native.context.app_selection": context_app_selection,
     "native.selection.anchor.resolve": selection_anchor_resolve,
+    "native.selection.anchor.release": selection_anchor_release,
     "native.action.calc.status": action_calc_status,
     "native.action.calc.snapshot": action_calc_snapshot,
     "native.action.calc.apply": action_calc_apply,

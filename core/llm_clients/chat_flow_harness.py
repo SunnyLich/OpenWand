@@ -15,9 +15,9 @@ from core.llm_clients.chat_tool_loop import (
     ChatModelTurn,
     ChatToolLoop,
     ChatToolRequest,
-    WispObservation,
-    WispToolCall,
-    WispToolResult,
+    OpenWandObservation,
+    OpenWandToolCall,
+    OpenWandToolResult,
 )
 
 
@@ -43,8 +43,8 @@ class ChatFlowTrace:
     scenario: str
     prompt: str
     tools_offered: list[str]
-    tool_calls: list[WispToolCall]
-    observations: list[WispObservation]
+    tool_calls: list[OpenWandToolCall]
+    observations: list[OpenWandObservation]
     final_text: str
     final_status: str
     progress_chunks: list[str] = field(default_factory=list)
@@ -105,13 +105,13 @@ class ChatFlowRunner(Protocol):
 class ScriptedModelStep:
     """One deterministic fake-model step for harness tests and dry runs."""
 
-    tool_calls: list[WispToolCall] = field(default_factory=list)
+    tool_calls: list[OpenWandToolCall] = field(default_factory=list)
     final: str = ""
     status: str = "continue"
     progress: str = ""
 
 
-ToolFixtureQueue = list[WispToolResult | str]
+ToolFixtureQueue = list[OpenWandToolResult | str]
 ToolFixtureMap = dict[str, ToolFixtureQueue]
 ScenarioFixtures = dict[str, ToolFixtureQueue | ToolFixtureMap]
 
@@ -128,7 +128,7 @@ class FakeToolExecutor:
             else:
                 self._fixtures[name] = list(results)
 
-    def execute(self, call: WispToolCall) -> WispToolResult:
+    def execute(self, call: OpenWandToolCall) -> OpenWandToolResult:
         """Execute one fake tool call."""
         fixture = self._fixtures.get(call.name)
         if isinstance(fixture, dict):
@@ -143,9 +143,9 @@ class FakeToolExecutor:
             queue = fixture or []
             value = queue.pop(0) if queue else f"{call.name} completed."
             self._fixtures[call.name] = queue
-        if isinstance(value, WispToolResult):
+        if isinstance(value, OpenWandToolResult):
             return replace(value, call_id=call.id, name=call.name)
-        return WispToolResult(
+        return OpenWandToolResult(
             call_id=call.id,
             name=call.name,
             ok=True,
@@ -153,7 +153,7 @@ class FakeToolExecutor:
         )
 
 
-def _fixture_key(call: WispToolCall) -> str:
+def _fixture_key(call: OpenWandToolCall) -> str:
     """Return a stable fixture key for a tool call."""
     if "path" in call.arguments:
         path = str(call.arguments.get("path") or "").replace("\\", "/")
@@ -174,8 +174,8 @@ class ScriptedChatLoopModel(ChatLoopModel):
     def next_turn(
         self,
         _request: ChatToolRequest,
-        _observations: list[WispObservation],
-        _tool_calls: list[WispToolCall],
+        _observations: list[OpenWandObservation],
+        _tool_calls: list[OpenWandToolCall],
     ) -> ChatModelTurn:
         """Return the next scripted model turn."""
         if not self._steps:
@@ -628,7 +628,7 @@ def synthetic_live_fixtures() -> dict[str, ScenarioFixtures]:
                 "path=app.py": ["from config import SETTINGS_PATH, SETTINGS_STORAGE\n"],
                 "path=README.md": ["Synthetic project README.\n"],
                 "*": [
-                    WispToolResult(
+                    OpenWandToolResult(
                         call_id="fixture_missing",
                         name="read_file",
                         ok=False,
@@ -640,7 +640,7 @@ def synthetic_live_fixtures() -> dict[str, ScenarioFixtures]:
         "synthetic_tool_recovery": {
             "read_file": {
                 "path=notes.md": [
-                    WispToolResult(
+                    OpenWandToolResult(
                         call_id="fixture_missing",
                         name="read_file",
                         ok=False,
@@ -652,7 +652,7 @@ def synthetic_live_fixtures() -> dict[str, ScenarioFixtures]:
                 ],
                 "path=README.md": ["README: see docs/notes.md for project notes."],
                 "*": [
-                    WispToolResult(
+                    OpenWandToolResult(
                         call_id="fixture_missing",
                         name="read_file",
                         ok=False,

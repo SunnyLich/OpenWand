@@ -20,7 +20,7 @@ _STYLES = {
     "executive_blue": {"background": (20, 48, 86), "foreground": (245, 249, 255), "font": "Aptos Display"},
     "warm_minimal": {"background": (250, 244, 234), "foreground": (66, 48, 38), "font": "Aptos"},
 }
-_STYLE_TAG = "WISP_STYLE_PRESET"
+_STYLE_TAG = "OPENWAND_STYLE_PRESET"
 
 
 class PowerPointComClient:
@@ -153,7 +153,7 @@ def _active_powerpoint_application() -> Any:
         pythoncom.CoInitialize()
         return win32com.client.GetActiveObject("PowerPoint.Application")
     except Exception as exc:
-        raise ActionUnavailableError("Open the target PowerPoint presentation before using Wisp.") from exc
+        raise ActionUnavailableError("Open the target PowerPoint presentation before using OpenWand.") from exc
 
 
 def _slide_payload(slide: Any) -> dict[str, Any]:

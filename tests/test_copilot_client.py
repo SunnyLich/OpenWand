@@ -10,6 +10,38 @@ from core.auth import copilot_client
 
 
 class CopilotClientBridgeTests(unittest.TestCase):
+    def test_readiness_check_reports_local_states_without_claiming_connectivity(self):
+        with patch("core.auth.copilot_auth.get_effective_token", return_value=None):
+            ok, message = copilot_client.test_copilot_token()
+        self.assertFalse(ok)
+        self.assertIn("No Copilot token", message)
+
+        with patch("core.auth.copilot_auth.get_effective_token", return_value="bad"), patch(
+            "core.auth.copilot_auth.validate_token_format",
+            return_value=(False, "Token format is invalid"),
+        ):
+            ok, message = copilot_client.test_copilot_token()
+        self.assertFalse(ok)
+        self.assertEqual(message, "Token format is invalid")
+
+        with patch("core.auth.copilot_auth.get_effective_token", return_value="github_pat_test"), patch(
+            "core.auth.copilot_auth.validate_token_format",
+            return_value=(True, "ok"),
+        ), patch("core.auth.copilot_client._available_sdk_module", return_value=None):
+            ok, message = copilot_client.test_copilot_token()
+        self.assertFalse(ok)
+        self.assertIn("github-copilot-sdk", message)
+        self.assertNotIn("connection", message.casefold())
+
+        with patch("core.auth.copilot_auth.get_effective_token", return_value="github_pat_test"), patch(
+            "core.auth.copilot_auth.validate_token_format",
+            return_value=(True, "ok"),
+        ), patch("core.auth.copilot_client._available_sdk_module", return_value="copilot"):
+            ok, message = copilot_client.test_copilot_token()
+        self.assertTrue(ok)
+        self.assertIn("SDK module 'copilot' is available", message)
+        self.assertNotIn("connected", message.casefold())
+
     def test_client_options_preserve_environment_and_set_state_home(self):
         options = copilot_client._client_options("github_pat_test")
 

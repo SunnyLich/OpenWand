@@ -1,4 +1,4 @@
-"""Reusable nested file tree for Wisp-owned workspaces."""
+"""Reusable nested file tree for OpenWand-owned workspaces."""
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
@@ -19,13 +19,15 @@ from PySide6.QtWidgets import (
 )
 
 from ui.i18n import t
+from ui.shared.theme import theme_colors
 
 PATH_ROLE = int(Qt.ItemDataRole.UserRole)
 KIND_ROLE = PATH_ROLE + 1
 CHANGE_ROLE = PATH_ROLE + 2
 
-AGENT_CREATED_COLOR = QColor("#4da3ff")
-AGENT_EDITED_COLOR = QColor("#f59e0b")
+_TREE_COLORS = theme_colors()
+AGENT_CREATED_COLOR = QColor(_TREE_COLORS["accent"])
+AGENT_EDITED_COLOR = QColor(_TREE_COLORS["accent_fill"])
 AGENT_DELETED_COLOR = QColor("#ef4444")
 
 _CREATED = {"created", "new", "agent-created", "agent_created"}
@@ -50,6 +52,7 @@ class WorkspaceFileTree(QTreeWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
+        colors = theme_colors()
         self.setHeaderHidden(True)
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.setUniformRowHeights(False)
@@ -61,11 +64,11 @@ class WorkspaceFileTree(QTreeWidget):
         self.setIconSize(QSize(18, 18))
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setStyleSheet(
-            "QTreeWidget { background: #11151f; border: 0; color: #e6e9f2; "
+            f"QTreeWidget {{ background: {colors['surface']}; border: 0; color: {colors['text']}; "
             "padding: 6px 5px; outline: 0; }"
             "QTreeWidget::item { min-height: 28px; border-radius: 4px; padding: 1px 4px; }"
-            "QTreeWidget::item:hover { background: #202532; }"
-            "QTreeWidget::item:selected { background: #3b3560; color: #ffffff; }"
+            f"QTreeWidget::item:hover {{ background: {colors['raised']}; }}"
+            f"QTreeWidget::item:selected {{ background: {colors['button_pressed']}; color: {colors['accent']}; }}"
             "QTreeWidget::branch { background: transparent; }"
         )
         self._items_by_path: dict[str, QTreeWidgetItem] = {}
@@ -81,7 +84,7 @@ class WorkspaceFileTree(QTreeWidget):
         """Attach the real session folder used by user-invoked system actions."""
         self._workspace_root = str(root or "")
         if self._root_item is not None:
-            self._root_item.setToolTip(0, self._workspace_root or t("Wisp Shared Workspace"))
+            self._root_item.setToolTip(0, self._workspace_root or t("OpenWand Shared Workspace"))
 
     def set_entries(self, entries: Iterable[Mapping[str, Any]]) -> None:
         """Replace the flat snapshot while preserving user navigation state."""
@@ -113,7 +116,7 @@ class WorkspaceFileTree(QTreeWidget):
             root_item.setFont(0, root_font)
             root_item.setSizeHint(0, QSize(0, 30))
             root_item.setExpanded(True)
-            root_item.setToolTip(0, self._workspace_root or t("Wisp Shared Workspace"))
+            root_item.setToolTip(0, self._workspace_root or t("OpenWand Shared Workspace"))
             self.addTopLevelItem(root_item)
             self._root_item = root_item
             for path in sorted(
@@ -408,9 +411,9 @@ class WorkspaceFileTree(QTreeWidget):
         if color is not None:
             item.setForeground(0, color)
         tooltip = {
-            "created": t("Created by Wisp"),
-            "edited": t("Edited by Wisp"),
-            "deleted": t("Deleted by Wisp"),
+            "created": t("Created by OpenWand"),
+            "edited": t("Edited by OpenWand"),
+            "deleted": t("Deleted by OpenWand"),
         }.get(change)
         if tooltip:
             item.setToolTip(0, tooltip)
@@ -418,7 +421,7 @@ class WorkspaceFileTree(QTreeWidget):
             font = item.font(0)
             font.setStrikeOut(True)
             item.setFont(0, font)
-            item.setToolTip(0, t("Deleted by Wisp · no longer in the workspace"))
+            item.setToolTip(0, t("Deleted by OpenWand · no longer in the workspace"))
 
 
 def _normalize_change(value: Any) -> str:

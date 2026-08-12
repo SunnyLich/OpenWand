@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import time
+
+import pytest
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtTest import QSignalSpy, QTest
 
@@ -28,7 +31,7 @@ def test_enter_submits_then_collapses_to_balloon(qapp) -> None:
     assert list(submitted.at(0)) == ["a1", "Make this clearer", False]
     assert popup.state == "processing"
     assert popup._stack.currentWidget() is popup._balloon
-    assert popup._balloon_button.text() == "1"
+    assert popup._balloon_number.text() == "1"
     popup.remove()
 
 
@@ -49,6 +52,46 @@ def test_ctrl_enter_forces_document_context(qapp) -> None:
     popup.remove()
 
 
+def test_composer_retries_activation_until_focus_is_stable(qapp, monkeypatch) -> None:
+    popup = RewriteAnnotationPopup(annotation_id="focus-guard", selected_text="old words")
+    popup.show_composer()
+    popup._stop_composer_focus_claim()
+    focus_samples = iter((False, True, True, True))
+    activations: list[bool] = []
+
+    monkeypatch.setattr(popup, "_composer_has_keyboard_focus", lambda: next(focus_samples))
+    monkeypatch.setattr(popup, "_activate_composer", lambda: activations.append(True))
+    popup._focus_claim_started = time.monotonic()
+    popup._focus_claim_timer.start()
+
+    for _ in range(4):
+        popup._focus_claim_tick()
+
+    assert len(activations) == 1
+    assert popup._focus_claim_attempts >= 1
+    assert not popup._focus_claim_timer.isActive()
+    popup.remove()
+
+
+def test_composer_focus_guard_stops_after_user_switches_apps(qapp, monkeypatch) -> None:
+    popup = RewriteAnnotationPopup(annotation_id="focus-switch", selected_text="old words")
+    popup.show_composer()
+    popup._stop_composer_focus_claim()
+    monkeypatch.setattr(popup, "_source_window_state", lambda: (False, None))
+    monkeypatch.setattr(
+        popup,
+        "_activate_composer",
+        lambda: pytest.fail("focus guard must not steal focus from another application"),
+    )
+    popup._focus_claim_started = time.monotonic()
+    popup._focus_claim_timer.start()
+
+    popup._focus_claim_tick()
+
+    assert not popup._focus_claim_timer.isActive()
+    popup.remove()
+
+
 def test_processing_balloon_shows_its_comment_number(qapp) -> None:
     popup = RewriteAnnotationPopup(
         annotation_id="numbered",
@@ -56,9 +99,13 @@ def test_processing_balloon_shows_its_comment_number(qapp) -> None:
         selected_text="old words",
     )
 
-    popup.show_processing()
+    popup.show_processing(display_number=7)
+    popup.show()
+    qapp.processEvents()
 
-    assert popup._balloon_button.text() == "3"
+    assert popup._balloon_number.text() == "7"
+    assert not popup.mask().contains(QPoint(0, 0))
+    assert popup.mask().contains(QPoint(popup.width() // 2, popup.height() // 2))
     popup.remove()
 
 
@@ -241,6 +288,80 @@ def test_accept_and_decline_hide_proposals_immediately(qapp) -> None:
     declined_popup.remove()
 
 
+def test_rewrite_text_and_popup_visibility_stay_in_lockstep(qapp) -> None:
+    """Every rewrite state must show or hide its text and top-level popup together."""
+    popup = RewriteAnnotationPopup(
+        annotation_id="visibility-lifecycle",
+        selected_text="This are rough.",
+    )
+    accepted = QSignalSpy(popup.accept_requested)
+    declined = QSignalSpy(popup.declined)
+
+    try:
+        assert popup.isHidden()
+
+        popup.show_composer()
+        qapp.processEvents()
+        assert popup.isVisible()
+        assert popup._comment.isVisible()
+        assert popup._stack.currentWidget() is popup._panel
+        assert popup._diff.isHidden()
+
+        popup._comment.setPlainText("Make this clearer")
+        popup._send.click()
+        qapp.processEvents()
+        assert popup.isVisible()
+        assert popup.state == "processing"
+        assert popup._stack.currentWidget() is popup._balloon
+        assert popup._balloon_button.isVisible()
+        assert not popup._comment.isVisible()
+
+        popup.show_proposal("This is clear.")
+        qapp.processEvents()
+        assert popup.isVisible()
+        assert popup._stack.currentWidget() is popup._panel
+        assert popup._diff.isVisible()
+        assert popup.replacement_text == "This is clear."
+        assert "clear" in popup._diff.text()
+        assert not popup._balloon_button.isVisible()
+
+        popup._accept.click()
+        qapp.processEvents()
+        assert accepted.count() == 1
+        assert popup.isHidden()
+        assert not popup._diff.isVisible()
+
+        # A failed native apply can restore the same proposal.  The containing
+        # popup must return with it instead of leaving detached/stale text.
+        popup.show_proposal("This is clear.")
+        qapp.processEvents()
+        assert popup.isVisible()
+        assert popup._diff.isVisible()
+
+        popup._decline.click()
+        qapp.processEvents()
+        assert declined.count() == 1
+        assert popup.isHidden()
+        assert not popup._diff.isVisible()
+
+        # Reusing the annotation for another comment must not reveal the old
+        # proposal while the composer reappears.
+        popup.show_composer()
+        qapp.processEvents()
+        assert popup.isVisible()
+        assert popup._comment.isVisible()
+        assert popup._diff.isHidden()
+
+        popup.remove()
+        qapp.processEvents()
+        assert popup.isHidden()
+    finally:
+        try:
+            popup.remove()
+        except RuntimeError:
+            pass
+
+
 def test_selection_anchor_follows_source_window_movement(qapp) -> None:
     popup = RewriteAnnotationPopup(
         annotation_id="a9",
@@ -262,9 +383,12 @@ def test_selection_anchor_follows_scroll_and_hides_when_offscreen(qapp) -> None:
         selected_text="selected words",
         selection_rect={"left": 100, "top": 120, "width": 80, "height": 20},
     )
-    popup.show_composer()
+    popup.show_proposal("replacement words")
     qapp.processEvents()
     first = popup.pos()
+    assert popup.isVisible()
+    assert popup._diff.isVisible()
+    assert "replacement" in popup._diff.text()
 
     popup.update_selection_anchor(
         {"left": 100, "top": 200, "width": 80, "height": 20},
@@ -272,10 +396,13 @@ def test_selection_anchor_follows_scroll_and_hides_when_offscreen(qapp) -> None:
     )
     qapp.processEvents()
     assert popup.y() == first.y() + 80
+    assert popup.isVisible()
+    assert popup._diff.isVisible()
 
     popup.update_selection_anchor(None, visible=False)
     qapp.processEvents()
     assert not popup.isVisible()
+    assert not popup._diff.isVisible()
 
     popup.update_selection_anchor(
         {"left": 100, "top": 140, "width": 80, "height": 20},
@@ -283,6 +410,8 @@ def test_selection_anchor_follows_scroll_and_hides_when_offscreen(qapp) -> None:
     )
     qapp.processEvents()
     assert popup.isVisible()
+    assert popup._diff.isVisible()
+    assert "replacement" in popup._diff.text()
     assert popup.y() == 128
     popup.remove()
 
@@ -306,12 +435,13 @@ def test_processing_balloon_follows_scroll_hides_and_reappears(qapp) -> None:
     qapp.processEvents()
     assert popup.state == "processing"
     assert popup._stack.currentWidget() is popup._balloon
-    assert popup._balloon_button.text() == "4"
+    assert popup._balloon_number.text() == "4"
     assert popup.y() == first.y() - 80
 
     popup.update_selection_anchor(None, visible=False)
     qapp.processEvents()
     assert not popup.isVisible()
+    assert not popup._balloon_button.isVisible()
 
     popup.update_selection_anchor(
         {"left": 180, "top": 220, "width": 90, "height": 20},
@@ -319,7 +449,43 @@ def test_processing_balloon_follows_scroll_hides_and_reappears(qapp) -> None:
     )
     qapp.processEvents()
     assert popup.isVisible()
+    assert popup._balloon_button.isVisible()
     assert popup.state == "processing"
     assert popup._stack.currentWidget() is popup._balloon
     assert popup.y() == first.y() - 40
+    popup.remove()
+
+
+def test_popup_and_text_hide_when_source_loses_focus_then_reappear_together(qapp, monkeypatch) -> None:
+    """Clicking another window hides the whole annotation until its source is active again."""
+    popup = RewriteAnnotationPopup(
+        annotation_id="source-focus-lifecycle",
+        selected_text="selected words",
+        source_window_id=101,
+        selection_rect={"left": 220, "top": 240, "width": 90, "height": 20},
+    )
+    states = iter(
+        (
+            (True, QRect(100, 100, 900, 700)),
+            (False, QRect(100, 100, 900, 700)),
+            (True, QRect(100, 100, 900, 700)),
+        )
+    )
+    monkeypatch.setattr(popup, "_source_window_state", lambda: next(states))
+
+    popup.show_proposal("replacement words")
+    qapp.processEvents()
+    assert popup.isVisible()
+    assert popup._diff.isVisible()
+
+    popup._sync_to_source_window()
+    qapp.processEvents()
+    assert not popup.isVisible()
+    assert not popup._diff.isVisible()
+
+    popup._sync_to_source_window()
+    qapp.processEvents()
+    assert popup.isVisible()
+    assert popup._diff.isVisible()
+    assert "replacement" in popup._diff.text()
     popup.remove()

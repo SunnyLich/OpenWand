@@ -105,8 +105,8 @@ def test_stderr_sink_merges_chained_tracebacks(runtime_log):
 def test_stderr_sink_classifies_plain_lines(runtime_log):
     """Single lines map onto info/warning/error severities."""
     sink = runtime_log.stderr_sink("ui")
-    sink("[WARNING] wisp.ui_host: bubble notice: mic unplugged")
-    sink("[ERROR] wisp.ui_host: something broke")
+    sink("[WARNING] openwand.ui_host: bubble notice: mic unplugged")
+    sink("[ERROR] openwand.ui_host: something broke")
     sink("plain progress line")
 
     severities = [event["severity"] for event in runtime_log.snapshot()]
@@ -148,7 +148,7 @@ def test_publisher_failure_disables_publishing(runtime_log):
 
 def test_logging_handler_captures_exceptions_with_traceback(runtime_log):
     """Supervisor log records land in the event log, tracebacks included."""
-    logger = logging.getLogger("wisp.test.runtime_log_handler")
+    logger = logging.getLogger("openwand.test.runtime_log_handler")
     logger.propagate = False
     logger.setLevel(logging.INFO)  # the supervisor root logger runs at INFO
     handler = RuntimeLogHandler(runtime_log)
@@ -173,7 +173,7 @@ def test_logging_handler_captures_exceptions_with_traceback(runtime_log):
 
 def test_logging_handler_skips_worker_stderr_echoes(runtime_log):
     """Worker stderr echoed via logging must not double-ingest."""
-    logger = logging.getLogger("wisp.worker_stderr")
+    logger = logging.getLogger("openwand.worker_stderr")
     old_propagate, old_level = logger.propagate, logger.level
     logger.propagate = False
     logger.setLevel(logging.INFO)  # ensure the record reaches the handler

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from addons import formatted_replies
@@ -17,11 +20,24 @@ DECISION_HTML = (
 )
 
 
+def _chat_formatter_setting(_addon, key, default=None):
+    if key == "formatting_method":
+        return "Model-generated layout"
+    if key == "formatter_model":
+        return "OpenWand Chat model"
+    return default
+
+
 def test_formatter_contract_accepts_decision_vocabulary_and_rejects_script() -> None:
     assert sanitize_formatted_html(DECISION_HTML) == DECISION_HTML
     with pytest.raises(FormatContractError):
         sanitize_formatted_html(
             '<article class="formatted-reply"><script>alert(1)</script></article>'
+        )
+    with pytest.raises(FormatContractError):
+        sanitize_formatted_html(
+            '<article class="formatted-reply"><details><summary>More</summary>'
+            '<p>A paragraph must not be collapsed.</p></details></article>'
         )
 
 
@@ -42,15 +58,103 @@ def test_ui_revalidates_fragment_and_builds_network_isolated_document() -> None:
         )
 
 
+def test_builtin_formatter_converts_chat_structure_without_an_llm_call(monkeypatch) -> None:
+    canonical = (
+        "# Plan\n\n"
+        "1. Use **AI-02**.\n"
+        "2. Review after 7 days.\n\n"
+        "| Item | Value |\n| --- | --- |\n| Risk | 42% |\n\n"
+        "```python\nprint('done')\n```"
+    )
+    monkeypatch.setattr(
+        formatted_replies,
+        "addon_setting",
+        lambda _addon, _key, default=None: default,
+    )
+
+    result = formatted_replies.run_message_action(
+        "format-reply",
+        {"text": canonical, "user_prompt": "Show the plan."},
+    )
+
+    assert result["status"] == "Formatted"
+    assert "llm" not in result
+    assert result["provider"] == "openwand"
+    assert result["model"] == "built-in renderer"
+    assert result["token_usage"] == {
+        "formatting_input_estimate": 0,
+        "formatting_output_estimate": 0,
+        "verification_input_estimate": 0,
+        "verification_output_estimate": 0,
+    }
+    fragment = result["presentation"]["html"]
+    assert 'class="reply-opening"' in fragment
+    assert 'class="steps"' in fragment
+    assert 'class="table-wrap"' in fragment
+    assert "<pre><code>print('done')</code></pre>" in fragment
+    assert sanitize_presentation_html(fragment) == fragment
+
+
+def test_builtin_formatter_uses_rich_layouts_for_recognized_markdown(monkeypatch) -> None:
+    canonical = (
+        "# Deployment recommendation\n\n"
+        "> **Warning:** Check available memory.\n\n"
+        "## Options\n\n"
+        "### Cloud\n\n**Fastest**\n\n- Best quality.\n\n"
+        "### Local\n\n**Private**\n\n- Works offline.\n\n"
+        "## Measurements\n\n"
+        "- **Latency:** 1.2 seconds\n"
+        "- **Success:** 98 percent\n\n"
+        "## Steps\n\n"
+        "1. Enable it.\n2. Review it.\n\n"
+        "## Decision\n\n"
+        "- **Decision:** Cloud first\n"
+        "- **Review:** After upgrade"
+    )
+    monkeypatch.setattr(
+        formatted_replies,
+        "addon_setting",
+        lambda _addon, _key, default=None: default,
+    )
+
+    action = formatted_replies.get_message_actions({"role": "assistant"})[0]
+    result = formatted_replies.run_message_action("format-reply", {"text": canonical})
+    fragment = result["presentation"]["html"]
+
+    assert action["auto"] is True
+    assert 'class="caution"' in fragment
+    assert 'class="two-column comparison"' in fragment
+    assert 'class="tag-row"' in fragment
+    assert 'class="metric-grid"' in fragment
+    assert 'class="step-number" aria-hidden="true"' in fragment
+    assert 'class="decision-ticket"' in fragment
+    assert sanitize_presentation_html(fragment) == fragment
+
+
+def test_builtin_formatter_accepts_the_complete_reply_rendering_corpus() -> None:
+    cases = json.loads(
+        (Path(__file__).parent / "fixtures" / "chat_reply_rendering_corpus.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert len(cases) == 26
+    for case in cases:
+        fragment = formatted_replies.builtin_formatted_html(case["markdown"])
+        assert sanitize_presentation_html(fragment) == fragment, case["id"]
+
+
 def test_addon_keeps_canonical_reply_and_records_separate_formatting_tokens(monkeypatch) -> None:
-    monkeypatch.setattr(formatted_replies, "addon_setting", lambda _addon, key, default=None: default)
+    import config
+
+    monkeypatch.setattr(formatted_replies, "addon_setting", _chat_formatter_setting)
     started = formatted_replies.run_message_action(
         "format-reply",
         {"text": "Choose AI-02. Risk is 42%.", "user_prompt": "What should we choose?"},
     )
     assert started["state"]["canonical"] == "Choose AI-02. Risk is 42%."
     assert started["llm"]["route"] == "chat"
-    assert started["llm"]["model"] == ""
+    assert started["llm"]["model"] == config.CHAT_LLM_MODEL
     completed = formatted_replies.resume_message_action(
         "format-reply",
         {
@@ -74,6 +178,8 @@ def test_addon_keeps_canonical_reply_and_records_separate_formatting_tokens(monk
 
 def test_addon_can_use_chat_route_without_changing_original_writer(monkeypatch) -> None:
     def setting(_addon, key, default=None):
+        if key == "formatting_method":
+            return "Model-generated layout"
         return "Chat route" if key == "formatter_route" else default
 
     monkeypatch.setattr(formatted_replies, "addon_setting", setting)
@@ -88,6 +194,7 @@ def test_addon_can_use_chat_route_without_changing_original_writer(monkeypatch) 
 def test_addon_local_model_is_an_explicit_personal_choice(monkeypatch) -> None:
     def setting(_addon, key, default=None):
         values = {
+            "formatting_method": "Model-generated layout",
             "formatter_model": "Local (Ollama)",
             "formatter_local_model": "personal-local:latest",
         }
@@ -185,7 +292,7 @@ def test_format_failure_keeps_quiet_diagnostic_on_the_message(qapp) -> None:
 
 
 def test_addon_repairs_once_then_rejects_changed_protected_value(monkeypatch) -> None:
-    monkeypatch.setattr(formatted_replies, "addon_setting", lambda _addon, key, default=None: default)
+    monkeypatch.setattr(formatted_replies, "addon_setting", _chat_formatter_setting)
     started = formatted_replies.run_message_action(
         "format-reply",
         {"text": "Choose AI-02. Risk is 42%.", "user_prompt": "Choose."},
@@ -219,8 +326,48 @@ def test_addon_repairs_once_then_rejects_changed_protected_value(monkeypatch) ->
     assert "presentation" not in completed
 
 
+def test_addon_rejects_formatted_reply_that_drops_plain_prose_paragraphs(monkeypatch) -> None:
+    """Ordinary prose is protected even when it has no number, path, or identifier."""
+    monkeypatch.setattr(
+        formatted_replies,
+        "addon_setting",
+        _chat_formatter_setting,
+    )
+    canonical = (
+        "The first paragraph explains what happened in plain language.\n\n"
+        "The second paragraph contains an important qualification.\n\n"
+        "The third paragraph gives the final recommendation."
+    )
+    started = formatted_replies.run_message_action(
+        "format-reply",
+        {"text": canonical, "user_prompt": "Format this reply."},
+    )
+    missing_paragraphs = (
+        '<article class="formatted-reply"><p>'
+        "The first paragraph explains what happened in plain language."
+        "</p></article>"
+    )
+
+    repairing = formatted_replies.resume_message_action(
+        "format-reply",
+        {"state": started["state"], "text": missing_paragraphs},
+    )
+    assert repairing["status"].startswith("Repairing format")
+    assert "paragraphs were removed" in repairing["llm"]["prompt"]
+
+    rejected = formatted_replies.resume_message_action(
+        "format-reply",
+        {"state": repairing["state"], "text": missing_paragraphs},
+    )
+    assert "Original kept" in rejected["status"]
+    assert "paragraphs were removed" in rejected["error_detail"]
+    assert "presentation" not in rejected
+
+
 def test_addon_repairs_local_model_contract_errors_once(monkeypatch) -> None:
     def setting(_addon, key, default=None):
+        if key == "formatting_method":
+            return "Model-generated layout"
         if key == "formatter_model":
             return "Local (Ollama)"
         return default
@@ -253,7 +400,7 @@ def test_addon_repairs_local_model_contract_errors_once(monkeypatch) -> None:
 def test_addon_repair_preserves_svg_source_and_accumulates_formatting_tokens(monkeypatch) -> None:
     from addons.formatted_replies.formatter_contract import protected_code_blocks, protected_tokens
 
-    monkeypatch.setattr(formatted_replies, "addon_setting", lambda _addon, key, default=None: default)
+    monkeypatch.setattr(formatted_replies, "addon_setting", _chat_formatter_setting)
     canonical = (
         '```svg\n<svg xmlns="http://www.w3.org/2000/svg">'
         '<path d="M1 2 3"/></svg>\n```'
@@ -299,7 +446,7 @@ def test_addon_repair_preserves_svg_source_and_accumulates_formatting_tokens(mon
 
 def test_markdown_list_numbers_are_structure_but_numeric_content_stays_protected(monkeypatch) -> None:
     """Converting 1./2. to an HTML ordered list must not create a false failure."""
-    monkeypatch.setattr(formatted_replies, "addon_setting", lambda _addon, key, default=None: default)
+    monkeypatch.setattr(formatted_replies, "addon_setting", _chat_formatter_setting)
     canonical = "1. Clear the desk.\n2. Review after 7 days.\n\n```text\nRule 3 stays exact.\n```"
     started = formatted_replies.run_message_action(
         "format-reply",
@@ -334,6 +481,8 @@ def test_markdown_list_numbers_are_structure_but_numeric_content_stays_protected
 
 def test_optional_verification_is_a_second_separately_counted_operation(monkeypatch) -> None:
     def setting(_addon, key, default=None):
+        if key == "formatting_method":
+            return "Model-generated layout"
         return True if key == "verify_meaning" else default
 
     monkeypatch.setattr(formatted_replies, "addon_setting", setting)
@@ -413,6 +562,120 @@ def test_chat_message_action_persists_presentation_beside_canonical_text(qapp) -
     window.close()
 
 
+def test_chat_shows_formatter_model_only_in_action_hover(qapp) -> None:
+    """Formatting model information must not add controls beneath the reply."""
+    from PySide6.QtWidgets import QLabel, QPushButton
+
+    from ui.chat_window import ChatWindow
+
+    conversations = [{
+        "id": "model-visible",
+        "messages": [
+            {"id": "u1", "role": "user", "content": "Format it."},
+            {"id": "a1", "role": "assistant", "content": "Keep both paragraphs.\n\nKeep this too."},
+        ],
+    }]
+    action = {
+        "addon_id": "formatted-replies",
+        "id": "format-reply",
+        "label": "Format",
+        "role": "assistant",
+        "presentation": True,
+        "auto": False,
+        "provider": "chatgpt",
+        "model": "gpt-5.4-mini",
+    }
+    window = ChatWindow(
+        conversations,
+        lambda _messages: iter(()),
+        on_addon_message_action=lambda _payload: None,
+        on_addon_settings=lambda _addon_id: None,
+        addon_message_actions=[action],
+    )
+    try:
+        window.show()
+        qapp.processEvents()
+        format_button = next(
+            button
+            for button in window.findChildren(QPushButton)
+            if button.objectName() == "addonMessageActionButton"
+        )
+        assert format_button.toolTip() == "Format this reply using gpt-5.4-mini"
+
+        window.apply_addon_message_action_result(
+            conversation_id="model-visible",
+            message_id="a1",
+            addon_id="formatted-replies",
+            action_id="format-reply",
+            result={
+                "status": "Formatted",
+                "provider": "chatgpt",
+                "model": "gpt-5.4-mini",
+                "presentation": {
+                    "html": (
+                        '<article class="formatted-reply"><p>Keep both paragraphs.</p>'
+                        '<p>Keep this too.</p></article>'
+                    ),
+                },
+            },
+        )
+        qapp.processEvents()
+
+        assert window.findChild(QLabel, "formattedReplyModel") is None
+        assert window.findChild(QPushButton, "formattedReplyModelSettings") is None
+        assert conversations[0]["messages"][1]["content"] == (
+            "Keep both paragraphs.\n\nKeep this too."
+        )
+    finally:
+        window.close()
+
+
+def test_formatted_chat_composer_shows_exact_chat_model_and_settings_shortcut(
+    qapp,
+    monkeypatch,
+) -> None:
+    """The footer names the active model and offers an accurate change action."""
+    from PySide6.QtWidgets import QLabel, QPushButton
+
+    import config
+    from ui.chat_window import ChatWindow
+
+    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "openwand", raising=False)
+    monkeypatch.setattr(config, "CHAT_LLM_MODEL", "gpt-5.5-exact", raising=False)
+    opened: list[bool] = []
+    window = ChatWindow(
+        [{"id": "footer-model", "messages": []}],
+        lambda _messages: iter(()),
+        on_model_settings=lambda: opened.append(True),
+        addon_message_actions=[{
+            "addon_id": "formatted-replies",
+            "id": "format-reply",
+            "label": "Format",
+            "role": "assistant",
+            "presentation": True,
+        }],
+    )
+    try:
+        window.show()
+        qapp.processEvents()
+        label = window.findChild(QLabel, "chatExactModel")
+        assert label is not None and label.text() == "gpt-5.5-exact"
+        assert label.parentWidget() is window._attach_btn.parentWidget()
+        assert label.x() > window._attach_btn.x()
+        assert not any(
+            item.text() == "Models can make mistakes."
+            for item in window.findChildren(QLabel)
+        )
+        change_model = window.findChild(QPushButton, "chatModelSettings")
+        assert change_model is not None and change_model.text() == "Change model"
+        assert change_model.parentWidget() is window._attach_btn.parentWidget()
+        assert change_model.x() > label.x()
+        change_model.click()
+        assert opened == [True]
+    finally:
+        window.close()
+
+
 def test_format_and_original_toggle_stay_in_the_same_chat_window(qapp) -> None:
     from PySide6.QtCore import QPoint, Qt
     from PySide6.QtTest import QTest
@@ -449,14 +712,22 @@ def test_format_and_original_toggle_stay_in_the_same_chat_window(qapp) -> None:
         qapp.processEvents()
         original_top_levels = set(qapp.topLevelWidgets())
 
+        visible_message_menus = [
+            button
+            for button in window.findChildren(QPushButton)
+            if button.accessibleName() == "Message options" and button.isVisible()
+        ]
+        assert len(visible_message_menus) == 2
+
         assistant_view = next(
             view for view in window.findChildren(_MessageTextView)
             if view._presentation == "assistant"
         )
         message_wrapper = assistant_view.parentWidget()
-        page_container = window._stack.currentWidget().widget()
-        left_inset = message_wrapper.mapTo(page_container, QPoint(0, 0)).x()
-        assert 16 <= left_inset <= 40
+        column_row = message_wrapper.parentWidget()
+        left_inset = message_wrapper.mapTo(column_row, QPoint(0, 0)).x()
+        assert abs(message_wrapper.width() - round(column_row.width() * 0.7)) <= 3
+        assert abs(left_inset - round(column_row.width() * 0.15)) <= 3
 
         format_button = next(
             button for button in window.findChildren(QPushButton)
@@ -546,6 +817,83 @@ def test_rich_presentation_uses_text_fallback_when_webengine_load_fails(qapp) ->
         assert fallback.isVisible()
         assert "Visible preview\nExpected body text." in fallback.toPlainText()
         assert view.height() > 48
+    finally:
+        view.close()
+        view.deleteLater()
+        qapp.processEvents()
+
+
+def test_rich_presentation_stale_web_height_cannot_clip_trailing_paragraphs(qapp) -> None:
+    """A short early Chromium measurement must not hide the final prose section."""
+    from ui.addon_presentations import QWebEngineView, RichPresentationView
+
+    if QWebEngineView is None:
+        pytest.skip("QtWebEngine is not installed")
+    fragment = (
+        '<article class="formatted-reply">'
+        '<section class="reply-section"><h2>What happened</h2>'
+        '<p>The first paragraph explains the result in detail.</p>'
+        '<ul><li>One important finding.</li><li>Another important finding.</li></ul>'
+        '</section><section class="reply-section">'
+        '<p>The next-to-last paragraph contains translated status information.</p>'
+        '<p>The final paragraph contains the restart and repair instructions.</p>'
+        '</section></article>'
+    )
+    view = RichPresentationView(
+        fragment,
+        {
+            "bg": "#212121",
+            "text": "#eeeeee",
+            "muted": "#aaaaaa",
+            "line": "#3c3c3c",
+            "accent": "#d8a145",
+        },
+        15,
+    )
+    try:
+        view.resize(420, 48)
+        semantic_floor = view._fallback_content_height()
+        view._apply_web_height(80)
+        qapp.processEvents()
+
+        assert semantic_floor > 80
+        assert view.height() >= semantic_floor
+        assert "The final paragraph contains the restart" in (
+            view._web_fallback_view.toPlainText()
+        )
+    finally:
+        view.close()
+        view.deleteLater()
+        qapp.processEvents()
+
+
+def test_parallel_presentation_does_not_keep_an_estimated_blank_tail(qapp) -> None:
+    from ui.addon_presentations import QWebEngineView, RichPresentationView
+
+    if QWebEngineView is None:
+        pytest.skip("QtWebEngine is not installed")
+    fragment = (
+        '<article class="formatted-reply"><div class="two-column">'
+        '<section><h2>Cloud</h2><p>Fast.</p></section>'
+        '<section><h2>Local</h2><p>Private.</p></section>'
+        "</div></article>"
+    )
+    view = RichPresentationView(
+        fragment,
+        {
+            "bg": "#212121",
+            "text": "#eeeeee",
+            "muted": "#aaaaaa",
+            "line": "#3c3c3c",
+            "accent": "#d8a145",
+        },
+        15,
+    )
+    try:
+        view.resize(760, 48)
+        assert view._estimated_web_height() > 48
+        view._apply_web_height(92)
+        assert view.height() == 96
     finally:
         view.close()
         view.deleteLater()
@@ -730,7 +1078,7 @@ def test_addon_enable_switches_chat_ui_and_disable_restores_original(qapp, monke
         window.update_addon_message_actions([action])
         qapp.processEvents()
         assert window._formatted_replies_ui_enabled is True
-        assert chat_module._BG == "#151722"
+        assert chat_module._BG == "#1c1e26"
         assert window._input.toPlainText() == "unsent draft"
         assert window._stack.currentWidget().findChild(RichPresentationView) is not None
 
@@ -749,7 +1097,7 @@ def test_addon_enable_switches_chat_ui_and_disable_restores_original(qapp, monke
         chat_module._refresh_chat_palette(False)
 
 
-def test_chat_first_paint_uses_addon_owned_light_palette(qapp, monkeypatch) -> None:
+def test_chat_first_paint_uses_shared_light_palette(qapp, monkeypatch) -> None:
     import config
     from ui import chat_window as chat_module
     from ui.chat_window import ChatWindow
@@ -770,8 +1118,8 @@ def test_chat_first_paint_uses_addon_owned_light_palette(qapp, monkeypatch) -> N
     )
     try:
         assert window._formatted_replies_ui_enabled is True
-        assert chat_module._BG == "#f1f7f6"
-        assert chat_module._ACCENT == "#116f65"
+        assert chat_module._BG == "#f2efe6"
+        assert chat_module._ACCENT == "#a06c10"
     finally:
         window.close()
         chat_module._refresh_chat_palette(False)

@@ -39,11 +39,11 @@ _RESIZE_MARGIN = 6
 def _title_bar_qss(c: dict[str, str]) -> str:
     """Handle title bar qss for UI shared framed."""
     return f"""
-#wispTitleBar {{
+#openwandTitleBar {{
     background: {c["bg"]};
     border-bottom: 1px solid {c["border"]};
 }}
-#wispTitleText {{
+#openwandTitleText {{
     color: {c["text"]};
     font-size: 10pt;
     font-weight: 600;
@@ -111,7 +111,7 @@ class _TitleBar(QWidget):
         super().__init__(window)
         self._window = window
         self._theming = False
-        self.setObjectName("wispTitleBar")
+        self.setObjectName("openwandTitleBar")
         # A plain QWidget subclass ignores its stylesheet `background` unless it
         # is told to paint a styled background — without this the bar shows the
         # palette/parent colour and our theming has no visible effect.
@@ -124,7 +124,7 @@ class _TitleBar(QWidget):
         lay.setSpacing(0)
 
         self._title = QLabel(window.windowTitle(), self)
-        self._title.setObjectName("wispTitleText")
+        self._title.setObjectName("openwandTitleText")
         lay.addWidget(self._title)
         lay.addStretch(1)
 
@@ -259,7 +259,7 @@ class _WindowChrome(QObject):
         self._installed = True
 
         content = QWidget(w)
-        content.setObjectName("wispWindowContent")
+        content.setObjectName("openwandWindowContent")
         content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         content.setLayout(old_layout)  # re-host the window's real content
 
@@ -323,7 +323,7 @@ def install_window_chrome(window: QWidget) -> None:
     Safe to call once per top-level window, in its ``__init__`` (before it is
     shown). The chrome attaches itself to the window's lifetime.
     """
-    if getattr(window, "_wisp_window_chrome", None) is not None:
+    if getattr(window, "_openwand_window_chrome", None) is not None:
         return
     window.setWindowFlag(Qt.WindowType.Window, True)
-    window._wisp_window_chrome = _WindowChrome(window)  # type: ignore[attr-defined]
+    window._openwand_window_chrome = _WindowChrome(window)  # type: ignore[attr-defined]

@@ -8,6 +8,7 @@ import io
 import json
 import logging
 import os
+import subprocess
 import sys
 import textwrap
 import threading
@@ -18,16 +19,16 @@ from pathlib import Path
 import pytest
 
 from runtime.supervisor import ipc as supervisor_ipc
-from runtime.supervisor.ipc import WispSupervisor, WorkerClient, WorkerError, WorkerSpec, default_specs
+from runtime.supervisor.ipc import OpenWandSupervisor, WorkerClient, WorkerError, WorkerSpec, default_specs
 
 pytestmark = pytest.mark.workflow
 
 
 def _worker(module: str, role: str, name: str | None = None, env: dict[str, str] | None = None) -> WorkerClient:
     merged_env = {
-        "WISP_BRAIN_FAKE_LLM": "1",
-        "CHAT_EXECUTION_MODE": "wisp",
-        "CHAT_CONVERSATION_OWNER": "wisp",
+        "OPENWAND_BRAIN_FAKE_LLM": "1",
+        "CHAT_EXECUTION_MODE": "openwand",
+        "CHAT_CONVERSATION_OWNER": "openwand",
         "PRIVACY_MODE": "builtin",
         **(env or {}),
     }
@@ -54,27 +55,27 @@ def test_begin_shutdown_blocks_every_future_worker_spawn(monkeypatch):
     assert spawned == []
 
 
-def _app_supervisor(tmp_path) -> WispSupervisor:
+def _app_supervisor(tmp_path) -> OpenWandSupervisor:
     """Create the same worker process set the app supervisor starts."""
     specs = default_specs()
     for name, spec in specs.items():
         spec.env = {
             **spec.env,
-            "WISP_BRAIN_FAKE_LLM": "1",
-            "CHAT_EXECUTION_MODE": "wisp",
-            "CHAT_CONVERSATION_OWNER": "wisp",
+            "OPENWAND_BRAIN_FAKE_LLM": "1",
+            "CHAT_EXECUTION_MODE": "openwand",
+            "CHAT_CONVERSATION_OWNER": "openwand",
             "PRIVACY_MODE": "builtin",
-            "WISP_RUN_LOG_DIR": str(tmp_path),
+            "OPENWAND_RUN_LOG_DIR": str(tmp_path),
         }
         if name == "ui":
             spec.env["QT_QPA_PLATFORM"] = "offscreen"
-            spec.env["WISP_UI_FREEZE_THRESHOLD_SECONDS"] = "2.5"
-            spec.env["WISP_UI_FREEZE_WATCHDOG_INTERVAL_SECONDS"] = "0.25"
-    return WispSupervisor(specs)
+            spec.env["OPENWAND_UI_FREEZE_THRESHOLD_SECONDS"] = "2.5"
+            spec.env["OPENWAND_UI_FREEZE_WATCHDOG_INTERVAL_SECONDS"] = "0.25"
+    return OpenWandSupervisor(specs)
 
 
 def test_managed_process_snapshot_excludes_detached_installers(monkeypatch):
-    """Only Wisp-owned helpers join the final process-tree cleanup."""
+    """Only OpenWand-owned helpers join the final process-tree cleanup."""
 
     class FakeProcess:
         def __init__(self, pid, command, children=()):
@@ -89,20 +90,101 @@ def test_managed_process_snapshot_excludes_detached_installers(monkeypatch):
             assert recursive is False
             return list(self._children)
 
-    addon = FakeProcess(13, ["Wisp.exe", "-m", "core.addon_host"])
-    helper = FakeProcess(12, ["Wisp.exe", "-m", "runtime.workers.hotkey_helper"], [addon])
-    installer_probe = FakeProcess(15, ["Wisp.exe", "-m", "runtime.workers.optional_deps_probe"])
+    addon = FakeProcess(13, ["OpenWand.exe", "-m", "core.addon_host"])
+    helper = FakeProcess(12, ["OpenWand.exe", "-m", "runtime.workers.hotkey_helper"], [addon])
+    installer_probe = FakeProcess(15, ["OpenWand.exe", "-m", "runtime.workers.optional_deps_probe"])
     installer = FakeProcess(
         14,
-        ["Wisp.exe", "-m", "runtime.workers.optional_speech_installer"],
+        ["OpenWand.exe", "-m", "runtime.workers.optional_speech_installer"],
         [installer_probe],
     )
-    root = FakeProcess(11, ["Wisp.exe", "-m", "runtime.workers.native_host"], [helper, installer])
+    interpreter = FakeProcess(
+        16,
+        ["python.exe", "-m", "runtime.workers.native_host"],
+        [helper, installer],
+    )
+    root = FakeProcess(11, [".venv/python.exe", "-m", "runtime.workers.native_host"], [interpreter])
     monkeypatch.setattr(supervisor_ipc.psutil, "Process", lambda pid: {11: root}[pid])
 
     snapshot = supervisor_ipc._snapshot_managed_processes([11])
 
-    assert [process.pid for process in snapshot] == [11, 12, 13]
+    assert [process.pid for process in snapshot] == [11, 16, 12, 13]
+
+
+def test_full_worker_tree_exits_when_supervisor_process_dies(tmp_path: Path) -> None:
+    """A hard supervisor crash must leave none of its real worker tree behind."""
+    repo_root = Path(__file__).resolve().parents[2]
+    supervisor_script = """
+import json
+import os
+import time
+import psutil
+
+from runtime.supervisor.ipc import OpenWandSupervisor, default_specs
+
+shared_env = {
+    "OPENWAND_DATA_ROOT": os.environ["OPENWAND_TEST_DATA_ROOT"],
+    "OPENWAND_RUN_LOG_DIR": os.environ["OPENWAND_TEST_LOG_ROOT"],
+    "QT_QPA_PLATFORM": "offscreen",
+    "OPENWAND_BRAIN_FAKE_LLM": "1",
+    "CHAT_EXECUTION_MODE": "openwand",
+    "CHAT_CONVERSATION_OWNER": "openwand",
+    "PRIVACY_MODE": "builtin",
+    "TTS_PROVIDER": "none",
+    "OPENWAND_ONBOARDING_COMPLETE": "True",
+}
+specs = default_specs()
+for spec in specs.values():
+    spec.env = {**spec.env, **shared_env}
+supervisor = OpenWandSupervisor(specs)
+results = supervisor.start_all()
+process = psutil.Process(os.getpid())
+owned_pids = [child.pid for child in process.children(recursive=True)]
+print(
+    "OPENWAND_CRASH_TREE=" + json.dumps(
+        {
+            "owned_pids": owned_pids,
+            "roles": sorted(results),
+            "worker_pids": sorted(result["pid"] for result in results.values()),
+        }
+    ),
+    flush=True,
+)
+time.sleep(1.0)
+os._exit(23)
+"""
+    env = os.environ.copy()
+    env["OPENWAND_TEST_DATA_ROOT"] = str(tmp_path / "data")
+    env["OPENWAND_TEST_LOG_ROOT"] = str(tmp_path / "logs")
+
+    started = time.monotonic()
+    crashed = subprocess.run(
+        [sys.executable, "-c", supervisor_script],
+        cwd=repo_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=45,
+        check=False,
+    )
+
+    assert crashed.returncode == 23
+    payload_line = next(
+        line for line in crashed.stdout.splitlines() if line.startswith("OPENWAND_CRASH_TREE=")
+    )
+    payload = json.loads(payload_line.removeprefix("OPENWAND_CRASH_TREE="))
+    tracked_pids = set(payload["owned_pids"]) | set(payload["worker_pids"])
+    assert payload["roles"] == ["audio", "brain", "native", "ui"]
+    assert len(payload["worker_pids"]) == 4
+    assert tracked_pids
+    deadline = time.monotonic() + 10
+    survivors = tracked_pids
+    while survivors and time.monotonic() < deadline:
+        survivors = {pid for pid in survivors if supervisor_ipc.psutil.pid_exists(pid)}
+        if survivors:
+            time.sleep(0.1)
+    assert survivors == set()
+    assert time.monotonic() - started < 45
 
 
 def test_force_stop_managed_processes_terminates_then_kills_survivors(monkeypatch):
@@ -167,7 +249,7 @@ def test_supervisor_shutdown_continues_after_one_worker_raises(monkeypatch):
             if self.fail:
                 raise RuntimeError("stuck worker")
 
-    supervisor = object.__new__(WispSupervisor)
+    supervisor = object.__new__(OpenWandSupervisor)
     supervisor.workers = {
         "first": FakeWorker("first", 31, fail=True),
         "second": FakeWorker("second", 32),
@@ -203,7 +285,7 @@ def test_supervisor_shutdown_never_snapshots_an_exited_worker_pid(monkeypatch):
         def shutdown(self):
             shutdowns.append(self.name)
 
-    supervisor = object.__new__(WispSupervisor)
+    supervisor = object.__new__(OpenWandSupervisor)
     supervisor.workers = {
         "already-exited": FakeWorker("already-exited", 41, alive=False),
         "still-live": FakeWorker("still-live", 42, alive=True),
@@ -239,7 +321,7 @@ def test_supervisor_shutdown_can_skip_managed_process_audit(monkeypatch):
         def shutdown(self):
             shutdowns.append("worker")
 
-    supervisor = object.__new__(WispSupervisor)
+    supervisor = object.__new__(OpenWandSupervisor)
     supervisor.workers = {"worker": FakeWorker()}
     monkeypatch.setattr(
         supervisor_ipc,
@@ -295,7 +377,7 @@ def test_supervisor_startup_failure_matrix_cleans_every_partial_worker(monkeypat
             def shutdown(self, shutdowns=shutdowns):
                 shutdowns.append(self.name)
 
-        supervisor = object.__new__(WispSupervisor)
+        supervisor = object.__new__(OpenWandSupervisor)
         supervisor.workers = {
             "native": FakeWorker("native"),
             "ui": FakeWorker("ui", failure),
@@ -308,7 +390,7 @@ def test_supervisor_startup_failure_matrix_cleans_every_partial_worker(monkeypat
 
 
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 not installed")
-def test_wisp_supervisor_starts_real_app_worker_process_set(tmp_path, runtime_state_guard):
+def test_openwand_supervisor_starts_real_app_worker_process_set(tmp_path, runtime_state_guard):
     """The app architecture starts UI/native/brain/audio as separate workers."""
     supervisor = _app_supervisor(tmp_path)
     for name, worker in supervisor.workers.items():
@@ -390,7 +472,7 @@ def test_audio_worker_synthesizes_playable_wav_over_ipc(tmp_path):
     worker = _worker(
         "runtime.workers.audio_host",
         "audio",
-        env={"WISP_RUN_LOG_DIR": str(tmp_path)},
+        env={"OPENWAND_RUN_LOG_DIR": str(tmp_path)},
     )
     try:
         result = worker.call(
@@ -469,8 +551,8 @@ def test_slow_addon_bootstrap_returns_early_then_pushes_real_ipc_snapshot(tmp_pa
         "runtime.workers.brain_host",
         "brain",
         env={
-            "WISP_ADDONS_DIR": str(tmp_path / "addons"),
-            "WISP_ADDON_STORE": str(tmp_path / "addons.json"),
+            "OPENWAND_ADDONS_DIR": str(tmp_path / "addons"),
+            "OPENWAND_ADDON_STORE": str(tmp_path / "addons.json"),
         },
     )
     changed = threading.Event()
@@ -594,9 +676,9 @@ def test_real_addon_tools_flow_from_addon_host_through_brain_policy(tmp_path):
         "runtime.workers.brain_host",
         "brain",
         env={
-            "WISP_ADDONS_DIR": str(tmp_path / "addons"),
-            "WISP_ADDON_STORE": str(tmp_path / "addons.json"),
-            "WISP_RUN_LOG_DIR": str(tmp_path / "logs"),
+            "OPENWAND_ADDONS_DIR": str(tmp_path / "addons"),
+            "OPENWAND_ADDON_STORE": str(tmp_path / "addons.json"),
+            "OPENWAND_RUN_LOG_DIR": str(tmp_path / "logs"),
         },
     )
     flow = FlowController(
@@ -674,10 +756,10 @@ def test_settings_persist_and_reload_across_real_workers(tmp_path, monkeypatch):
     original_loaded_keys = set(config._LOADED_DOTENV_KEYS)
     original_settings_env = settings_env.ENV_PATH
     shared_env = {
-        "WISP_REPO_ROOT": str(tmp_path),
-        "WISP_ADDONS_DIR": str(tmp_path / "addons"),
-        "WISP_ADDON_STORE": str(tmp_path / "addons.json"),
-        "WISP_RUN_LOG_DIR": str(tmp_path / "logs"),
+        "OPENWAND_REPO_ROOT": str(tmp_path),
+        "OPENWAND_ADDONS_DIR": str(tmp_path / "addons"),
+        "OPENWAND_ADDON_STORE": str(tmp_path / "addons.json"),
+        "OPENWAND_RUN_LOG_DIR": str(tmp_path / "logs"),
         "PYTHONPATH": os.pathsep.join([str(repo), str(repo / "runtime" / "brain")]),
     }
     native = _worker("runtime.workers.native_host", "native", env=shared_env)
@@ -953,8 +1035,8 @@ def test_real_bubble_stop_click_cancels_real_brain_query_over_ipc(tmp_path, monk
     import config
     from runtime.supervisor.flows import FlowController, PendingInvocation
 
-    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "wisp")
-    monkeypatch.setattr(config, "CHAT_CONVERSATION_OWNER", "wisp")
+    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "openwand")
+    monkeypatch.setattr(config, "CHAT_CONVERSATION_OWNER", "openwand")
 
     class BoundaryWorker:
         def __init__(self):
@@ -967,8 +1049,8 @@ def test_real_bubble_stop_click_cancels_real_brain_query_over_ipc(tmp_path, monk
             self.events.setdefault(event, []).append(handler)
 
     shared_env = {
-        "WISP_RUN_LOG_DIR": str(tmp_path / "logs"),
-        "WISP_BRAIN_FAKE_LLM_DELAY": "0.02",
+        "OPENWAND_RUN_LOG_DIR": str(tmp_path / "logs"),
+        "OPENWAND_BRAIN_FAKE_LLM_DELAY": "0.02",
     }
     ui = _worker(
         "runtime.workers.ui_host",
@@ -976,7 +1058,7 @@ def test_real_bubble_stop_click_cancels_real_brain_query_over_ipc(tmp_path, monk
         env={
             **shared_env,
             "QT_QPA_PLATFORM": "offscreen",
-            "WISP_UI_DEBUG_METHODS": "1",
+            "OPENWAND_UI_DEBUG_METHODS": "1",
         },
     )
     brain = _worker("runtime.workers.brain_host", "brain", env=shared_env)
@@ -1051,16 +1133,16 @@ def test_real_bubble_stop_click_cancels_real_brain_query_over_ipc(tmp_path, monk
 
 
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 not installed")
-def test_real_intent_ui_routes_keep_in_wisp_and_rewrite_paste_back(tmp_path, monkeypatch):
+def test_real_intent_ui_routes_keep_in_openwand_and_rewrite_paste_back(tmp_path, monkeypatch):
     """Typing in the real picker drives both production branches and only rewrite pastes."""
     import config
     from runtime.supervisor.flows import FlowController
 
-    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "wisp")
-    monkeypatch.setattr(config, "CHAT_CONVERSATION_OWNER", "wisp")
+    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "openwand")
+    monkeypatch.setattr(config, "CHAT_CONVERSATION_OWNER", "openwand")
     callers = [
         {
-            "label": "Keep in Wisp",
+            "label": "Keep in OpenWand",
             "paste_back": False,
             "context_ambient": False,
             "context_documents_mode": "off",
@@ -1118,8 +1200,8 @@ def test_real_intent_ui_routes_keep_in_wisp_and_rewrite_paste_back(tmp_path, mon
 
     repo = Path(__file__).resolve().parents[2]
     shared_env = {
-        "WISP_DATA_ROOT": str(tmp_path / "data"),
-        "WISP_RUN_LOG_DIR": str(tmp_path / "logs"),
+        "OPENWAND_DATA_ROOT": str(tmp_path / "data"),
+        "OPENWAND_RUN_LOG_DIR": str(tmp_path / "logs"),
         "PYTHONPATH": os.pathsep.join([str(repo), str(repo / "runtime" / "brain")]),
     }
     ui = _worker(
@@ -1128,7 +1210,7 @@ def test_real_intent_ui_routes_keep_in_wisp_and_rewrite_paste_back(tmp_path, mon
         env={
             **shared_env,
             "QT_QPA_PLATFORM": "offscreen",
-            "WISP_UI_DEBUG_METHODS": "1",
+            "OPENWAND_UI_DEBUG_METHODS": "1",
         },
     )
     brain = _worker("runtime.workers.brain_host", "brain", env=shared_env)
@@ -1181,8 +1263,8 @@ def test_real_intent_failure_shows_recovery_recommendation_in_reply_bubble(tmp_p
     import config
     from runtime.supervisor.flows import FlowController
 
-    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "wisp")
-    monkeypatch.setattr(config, "CHAT_CONVERSATION_OWNER", "wisp")
+    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "openwand")
+    monkeypatch.setattr(config, "CHAT_CONVERSATION_OWNER", "openwand")
     monkeypatch.setattr(
         config,
         "CALLER_ROWS",
@@ -1238,11 +1320,11 @@ def test_real_intent_failure_shows_recovery_recommendation_in_reply_bubble(tmp_p
         "runtime.workers.ui_host",
         "ui",
         env={
-            "WISP_DATA_ROOT": str(tmp_path / "data"),
-            "WISP_RUN_LOG_DIR": str(tmp_path / "logs"),
+            "OPENWAND_DATA_ROOT": str(tmp_path / "data"),
+            "OPENWAND_RUN_LOG_DIR": str(tmp_path / "logs"),
             "PYTHONPATH": os.pathsep.join([str(repo), str(repo / "runtime" / "brain")]),
             "QT_QPA_PLATFORM": "offscreen",
-            "WISP_UI_DEBUG_METHODS": "1",
+            "OPENWAND_UI_DEBUG_METHODS": "1",
         },
     )
     native = BoundaryWorker()
@@ -1354,7 +1436,7 @@ def test_live_file_edit_crosses_real_brain_approval_boundary(tmp_path):
         "runtime.workers.brain_host",
         "brain",
         env={
-            "WISP_REPO_ROOT": str(tmp_path),
+            "OPENWAND_REPO_ROOT": str(tmp_path),
             "PYTHONPATH": os.pathsep.join([str(repo), str(repo / "runtime" / "brain")]),
         },
     )
@@ -1443,7 +1525,7 @@ def test_real_brain_worker_file_tool_settings_reload(tmp_path):
         "runtime.workers.brain_host",
         "brain",
         env={
-            "WISP_REPO_ROOT": str(tmp_path),
+            "OPENWAND_REPO_ROOT": str(tmp_path),
             "PYTHONPATH": os.pathsep.join([str(repo), str(repo / "runtime" / "brain")]),
         },
     )
@@ -1476,7 +1558,7 @@ def test_brain_worker_memory_crud_persists_over_ipc(tmp_path):
         "runtime.workers.brain_host",
         "brain",
         env={
-            "WISP_REPO_ROOT": str(tmp_path),
+            "OPENWAND_REPO_ROOT": str(tmp_path),
             "PYTHONPATH": os.pathsep.join([str(repo), str(repo / "runtime" / "brain")]),
         },
     )
@@ -1531,8 +1613,8 @@ def test_memory_ui_events_persist_across_real_brain_restart(tmp_path):
 
     repo = Path(__file__).resolve().parents[2]
     shared_env = {
-        "WISP_REPO_ROOT": str(tmp_path),
-        "WISP_RUN_LOG_DIR": str(tmp_path / "logs"),
+        "OPENWAND_REPO_ROOT": str(tmp_path),
+        "OPENWAND_RUN_LOG_DIR": str(tmp_path / "logs"),
         "PYTHONPATH": os.pathsep.join([str(repo), str(repo / "runtime" / "brain")]),
     }
     ui = _worker(
@@ -1541,7 +1623,7 @@ def test_memory_ui_events_persist_across_real_brain_restart(tmp_path):
         env={
             **shared_env,
             "QT_QPA_PLATFORM": "offscreen",
-            "WISP_UI_DEBUG_METHODS": "1",
+            "OPENWAND_UI_DEBUG_METHODS": "1",
         },
     )
     brain = _worker("runtime.workers.brain_host", "brain", env=shared_env)
@@ -1647,7 +1729,7 @@ def test_worker_stderr_log_file_is_created_in_run_log_dir(tmp_path):
     worker = _worker(
         "runtime.workers.native_host",
         "native",
-        env={"WISP_RUN_LOG_DIR": str(tmp_path)},
+        env={"OPENWAND_RUN_LOG_DIR": str(tmp_path)},
     )
     try:
         result = worker.call("ping", timeout=10)
@@ -1791,12 +1873,12 @@ def test_ui_worker_freeze_watchdog_writes_log(tmp_path):
         env={
             **os.environ,
             "QT_QPA_PLATFORM": "offscreen",
-            "WISP_RUN_LOG_DIR": str(tmp_path),
-            "WISP_UI_DEBUG_METHODS": "1",
-            "WISP_UI_FREEZE_THRESHOLD_SECONDS": "0.1",
-            "WISP_UI_FREEZE_WATCHDOG_INTERVAL_SECONDS": "0.05",
-            "WISP_UI_FREEZE_LOG_COOLDOWN_SECONDS": "0.1",
-            "WISP_UI_SLOW_DISPATCH_SECONDS": "0.1",
+            "OPENWAND_RUN_LOG_DIR": str(tmp_path),
+            "OPENWAND_UI_DEBUG_METHODS": "1",
+            "OPENWAND_UI_FREEZE_THRESHOLD_SECONDS": "0.1",
+            "OPENWAND_UI_FREEZE_WATCHDOG_INTERVAL_SECONDS": "0.05",
+            "OPENWAND_UI_FREEZE_LOG_COOLDOWN_SECONDS": "0.1",
+            "OPENWAND_UI_SLOW_DISPATCH_SECONDS": "0.1",
         },
     )
     try:
@@ -1847,9 +1929,9 @@ def test_ui_worker_show_settings_does_not_block_event_loop(tmp_path):
         env={
             **os.environ,
             "QT_QPA_PLATFORM": "offscreen",
-            "WISP_RUN_LOG_DIR": str(tmp_path),
-            "WISP_UI_FREEZE_THRESHOLD_SECONDS": "2.5",
-            "WISP_UI_FREEZE_WATCHDOG_INTERVAL_SECONDS": "0.25",
+            "OPENWAND_RUN_LOG_DIR": str(tmp_path),
+            "OPENWAND_UI_FREEZE_THRESHOLD_SECONDS": "2.5",
+            "OPENWAND_UI_FREEZE_WATCHDOG_INTERVAL_SECONDS": "0.25",
         },
     )
     try:
@@ -1879,9 +1961,9 @@ def test_ui_worker_show_memory_does_not_crash_or_block_event_loop(tmp_path):
         env={
             **os.environ,
             "QT_QPA_PLATFORM": "offscreen",
-            "WISP_RUN_LOG_DIR": str(tmp_path),
-            "WISP_UI_FREEZE_THRESHOLD_SECONDS": "2.5",
-            "WISP_UI_FREEZE_WATCHDOG_INTERVAL_SECONDS": "0.25",
+            "OPENWAND_RUN_LOG_DIR": str(tmp_path),
+            "OPENWAND_UI_FREEZE_THRESHOLD_SECONDS": "2.5",
+            "OPENWAND_UI_FREEZE_WATCHDOG_INTERVAL_SECONDS": "0.25",
         },
     )
     try:
@@ -1917,9 +1999,9 @@ def test_ui_worker_bubble_clear_does_not_import_audio_or_freeze(tmp_path):
         env={
             **os.environ,
             "QT_QPA_PLATFORM": "offscreen",
-            "WISP_RUN_LOG_DIR": str(tmp_path),
-            "WISP_UI_FREEZE_THRESHOLD_SECONDS": "2.5",
-            "WISP_UI_FREEZE_WATCHDOG_INTERVAL_SECONDS": "0.25",
+            "OPENWAND_RUN_LOG_DIR": str(tmp_path),
+            "OPENWAND_UI_FREEZE_THRESHOLD_SECONDS": "2.5",
+            "OPENWAND_UI_FREEZE_WATCHDOG_INTERVAL_SECONDS": "0.25",
         },
     )
     try:

@@ -1,4 +1,4 @@
-"""Run the personal OS verification suite for Wisp.
+"""Run the personal OS verification suite for OpenWand.
 
 This is an orchestration script, not a pytest test. It runs the regular Python
 suite, a Qt GUI smoke pass, and any platform-specific checks that only make

@@ -1,8 +1,8 @@
-"""Wisp Virtual Workspace addon.
+"""OpenWand Virtual Workspace addon.
 
-This is a clean-room Wisp addon with no external runtime dependencies.  Its
+This is a clean-room OpenWand addon with no external runtime dependencies.  Its
 model tools are constrained to an addon-owned directory and its viewer is
-local, authenticated, and explicitly opened by the user.
+local, authenticated, and opened automatically when model file work begins.
 """
 from __future__ import annotations
 
@@ -38,9 +38,15 @@ def on_shutdown() -> None:
     _controller.stop()
 
 
-def _open_viewer() -> dict[str, str]:
-    _controller.start()
-    return {"virtual_workspace_url": _controller.viewer_url}
+def _with_viewer_request(result: dict[str, Any]) -> dict[str, Any]:
+    """Attach an internal UI request that is stripped before the model sees it."""
+    return {
+        **result,
+        "_openwand_ui_request": {
+            "action": "show_virtual_workspace",
+            "endpoint": _controller.viewer_url,
+        },
+    }
 
 
 def _pause() -> None:
@@ -56,11 +62,9 @@ def _stop() -> None:
 
 
 def get_tray_actions() -> list[dict[str, Any]]:
-    """Expose explicit user actions; only Open reveals the secret viewer URL."""
+    """Expose running-session controls; opening is automatic on model file work."""
     status = _controller.status()
-    actions: list[dict[str, Any]] = [
-        {"label": "Open Virtual Workspace", "callback": _open_viewer},
-    ]
+    actions: list[dict[str, Any]] = []
     if status["status"] == "running":
         if status["paused"]:
             actions.append({"label": "Resume Virtual Workspace", "callback": _resume})
@@ -80,10 +84,10 @@ def _json_result(call: Any, *args: Any, **kwargs: Any) -> str:
 
 def _start(_inputs: dict[str, Any]) -> str:
     result = _controller.start()
-    safe = {
+    safe = _with_viewer_request({
         **result,
-        "message": "The virtual workspace is ready. The user can view it from Wisp's tray menu.",
-    }
+        "message": "The virtual workspace is ready and its window is opening.",
+    })
     return json.dumps(safe, ensure_ascii=False)
 
 
@@ -101,7 +105,11 @@ def _create_folder(inputs: dict[str, Any]) -> str:
             "ok": False,
             "error": "Model file changes are disabled in the Virtual Workspace addon settings.",
         })
-    return _json_result(_controller.create_folder, str(inputs.get("path") or ""))
+    try:
+        result = _controller.create_folder(str(inputs.get("path") or ""))
+        return json.dumps(_with_viewer_request(result), ensure_ascii=False)
+    except WorkspaceError as exc:
+        return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
 
 
 def _write_text(inputs: dict[str, Any]) -> str:
@@ -110,11 +118,14 @@ def _write_text(inputs: dict[str, Any]) -> str:
             "ok": False,
             "error": "Model file changes are disabled in the Virtual Workspace addon settings.",
         })
-    return _json_result(
-        _controller.write_text,
-        str(inputs.get("path") or ""),
-        str(inputs.get("text") or ""),
-    )
+    try:
+        result = _controller.write_text(
+            str(inputs.get("path") or ""),
+            str(inputs.get("text") or ""),
+        )
+        return json.dumps(_with_viewer_request(result), ensure_ascii=False)
+    except WorkspaceError as exc:
+        return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
 
 
 def _stop_tool(_inputs: dict[str, Any]) -> str:
@@ -138,7 +149,7 @@ def get_tools() -> list[dict[str, Any]]:
     return [
         {
             "name": "virtual_workspace_start",
-            "description": "Start Wisp's isolated addon workspace and its local activity viewer.",
+            "description": "Start OpenWand's isolated addon workspace and its local activity viewer.",
             "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
             "executor": _start,
         },

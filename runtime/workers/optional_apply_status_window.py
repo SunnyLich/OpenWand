@@ -34,22 +34,22 @@ def _translate_detail(detail: str) -> str:
 def _translate_status_message(message: str) -> str:
     text = str(message or "")
     patterns: tuple[tuple[str, str], ...] = (
-        (r"^(?P<display_name>.+) staged install is waiting for Wisp to close\.$", "{display_name} staged install is waiting for Wisp to close."),
+        (r"^(?P<display_name>.+) staged install is waiting for OpenWand to close\.$", "{display_name} staged install is waiting for OpenWand to close."),
         (r"^(?P<display_name>.+) staged install is applying package files\.$", "{display_name} staged install is applying package files."),
         (r"^(?P<display_name>.+) staged install is verifying package files\.$", "{display_name} staged install is verifying package files."),
         (r"^(?P<display_name>.+) staged install failed: (?P<message>.+)$", "{display_name} staged install failed: {message}"),
-        (r"^(?P<display_name>.+) packages are staged\. Click Restart app now to close Wisp and apply them\.$", "{display_name} packages are staged. Click Restart app now to close Wisp and apply them."),
-        (r"^(?P<display_name>.+) packages are staged\. Click Restart app now to close Wisp, replace locked files, verify the install, and reopen\.$", "{display_name} packages are staged. Click Restart app now to close Wisp, replace locked files, verify the install, and reopen."),
-        (r"^(?P<display_name>.+) packages stay staged and will be applied the next time Wisp restarts\.$", "{display_name} packages stay staged and will be applied the next time Wisp restarts."),
+        (r"^(?P<display_name>.+) packages are staged\. Click Restart app now to close OpenWand and apply them\.$", "{display_name} packages are staged. Click Restart app now to close OpenWand and apply them."),
+        (r"^(?P<display_name>.+) packages are staged\. Click Restart app now to close OpenWand, replace locked files, verify the install, and reopen\.$", "{display_name} packages are staged. Click Restart app now to close OpenWand, replace locked files, verify the install, and reopen."),
+        (r"^(?P<display_name>.+) packages stay staged and will be applied the next time OpenWand restarts\.$", "{display_name} packages stay staged and will be applied the next time OpenWand restarts."),
         (r"^(?P<display_name>.+) installed and model ready: (?P<summary>.+)\.$", "{display_name} installed and model ready: {summary}."),
-        (r"^(?P<display_name>.+) package files match this Wisp release\.$", "{display_name} package files match this Wisp release."),
-        (r"^(?P<display_name>.+) package files do not match this Wisp release: (?P<message>.+)\.$", "{display_name} package files do not match this Wisp release: {message}."),
+        (r"^(?P<display_name>.+) package files match this OpenWand release\.$", "{display_name} package files match this OpenWand release."),
+        (r"^(?P<display_name>.+) package files do not match this OpenWand release: (?P<message>.+)\.$", "{display_name} package files do not match this OpenWand release: {message}."),
         (r"^STT package installed; downloading or loading Whisper model (?P<model>.+)\.$", "STT package installed; downloading or loading Whisper model {model}."),
         (
             r"^STT model (?P<model>.+) is still downloading or loading after (?P<elapsed>.+)\. "
-            r"The first download can be large; Wisp will report an error if verification times out\.$",
+            r"The first download can be large; OpenWand will report an error if verification times out\.$",
             "STT model {model} is still downloading or loading after {elapsed}. "
-            "The first download can be large; Wisp will report an error if verification times out.",
+            "The first download can be large; OpenWand will report an error if verification times out.",
         ),
         (r"^STT package installed, but model download/load failed: (?P<message>.+)$", "STT package installed, but model download/load failed: {message}"),
         (r"^Kokoro package installed; (?P<detail>.+)\.$", "Kokoro package installed; {detail}."),
@@ -68,7 +68,7 @@ def _translate_status_message(message: str) -> str:
 
 
 class ApplyStatusWindow(QDialog):
-    """Poll installer status/log files while Wisp is closed."""
+    """Poll installer status/log files while OpenWand is closed."""
 
     def __init__(self, *, display_name: str, status_path: Path, log_path: Path | None = None) -> None:
         super().__init__()
@@ -78,7 +78,7 @@ class ApplyStatusWindow(QDialog):
         self._last_log_text = ""
         self._finished = False
         self._started_at = time.monotonic()
-        self.setWindowTitle(t("Wisp {display_name} apply").format(display_name=display_name))
+        self.setWindowTitle(t("OpenWand {display_name} apply").format(display_name=display_name))
         enable_standard_window_controls(self)
         self._build_ui()
         fit_window_to_screen(self, preferred_width=720, preferred_height=440)

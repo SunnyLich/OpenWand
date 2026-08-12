@@ -1,4 +1,4 @@
-"""wisp-ui worker: the only process allowed to own PySide6 widgets."""
+"""openwand-ui worker: the only process allowed to own PySide6 widgets."""
 
 from __future__ import annotations
 
@@ -34,8 +34,9 @@ from ui.agent.activity_i18n import (
     translate_agent_status,
 )
 from ui.i18n import localize_widget_tree, t
+from ui.shared.theme import is_dark_mode, theme_colors
 
-log = logging.getLogger("wisp.ui_host")
+log = logging.getLogger("openwand.ui_host")
 
 _CHAT_AUTO_ELABORATE_MAX_CHARS = 500
 
@@ -47,7 +48,7 @@ def _configure_linux_ui_platform(
 ) -> str:
     """Choose a placement-capable Qt backend for the floating Linux overlay.
 
-    A Wayland client cannot position its own top-level windows, while Wisp's
+    A Wayland client cannot position its own top-level windows, while OpenWand's
     icon, speech bubble, and context panel are deliberately positioned overlay
     windows. When XWayland is present, Qt's XCB backend provides the required
     placement contract. The native capture worker remains a separate process
@@ -60,7 +61,7 @@ def _configure_linux_ui_platform(
     if not (platform or sys.platform).startswith("linux"):
         return ""
 
-    preference = str(env.get("WISP_UI_PLATFORM") or "auto").strip().lower()
+    preference = str(env.get("OPENWAND_UI_PLATFORM") or "auto").strip().lower()
     if preference in {"wayland", "native-wayland"}:
         return ""
     if preference in {"xcb", "x11", "xwayland"}:
@@ -223,6 +224,14 @@ def _translate_health_text(text: str) -> str:
         (r"^LLM route configured: (?P<route>.+)\.$", "LLM route configured: {route}."),
         (r"^LLM route incomplete: (?P<route>.+)\.$", "LLM route incomplete: {route}."),
         (r"^TTS provider configured: (?P<provider>.+)\.$", "TTS provider configured: {provider}."),
+        (
+            r"^STT model configured: (?P<model>.+), but STT verification failed: (?P<error>.+)$",
+            "STT model configured: {model}, but STT verification failed: {error}",
+        ),
+        (
+            r"^STT packages and runtime are verified for (?P<model>.+); the model loads on first use\.$",
+            "STT packages and runtime are verified for {model}; the model loads on first use.",
+        ),
         (r"^STT model configured: (?P<model>.+)\.$", "STT model configured: {model}."),
         (r"^(?P<count>\d+) hotkeys configured\.$", "{count} hotkeys configured."),
         (r"^(?P<label>.+) worker responded\.$", "{label} worker responded."),
@@ -240,9 +249,22 @@ def _translate_health_text(text: str) -> str:
             groups = match.groupdict()
             if "message" in groups:
                 groups["message"] = _translate_health_text(groups["message"])
+            if "error" in groups:
+                groups["error"] = _translate_health_text(groups["error"])
             if "value" in groups:
                 groups["value"] = _translate_health_value(groups["value"])
             return t(template).format(**groups)
+    cuda_failure = re.fullmatch(
+        r"Windows CUDA runtime is incomplete or unloadable(?:: (?P<files>.+))?",
+        value,
+    )
+    if cuda_failure:
+        files = cuda_failure.group("files")
+        if files:
+            return t("Windows CUDA runtime is incomplete or unloadable: {files}").format(
+                files=files
+            )
+        return t("Windows CUDA runtime is incomplete or unloadable")
     return t(value)
 
 
@@ -250,8 +272,20 @@ def _translate_health_text(text: str) -> str:
 # detail. Translate the prefix via the catalog and keep the detail verbatim, the
 # same way _translate_health_text handles dynamic health rows.
 _NOTICE_DYNAMIC_PATTERNS: tuple[tuple[str, str], ...] = (
+    (
+        r"^Health issue: (?P<name>[^:]+): (?P<message>.+)$",
+        "Health issue: {name}: {message}",
+    ),
     (r"^LLM request failed: (?P<message>.+)$", "LLM request failed: {message}"),
     (r"^Rewrite failed: (?P<message>.+)$", "Rewrite failed: {message}"),
+    (
+        r"^OpenWand couldn't safely read that app selection: (?P<error>.+)$",
+        "OpenWand couldn't safely read that app selection: {error}",
+    ),
+    (
+        r"^Rewrite proposal was not safe to apply: (?P<error>.+)$",
+        "Rewrite proposal was not safe to apply: {error}",
+    ),
     (r"^Dictation failed: (?P<message>.+)$", "Dictation failed: {message}"),
     (r"^Couldn't start recording: (?P<message>.+)$", "Couldn't start recording: {message}"),
     (r"^Couldn't start dictation: (?P<message>.+)$", "Couldn't start dictation: {message}"),
@@ -350,6 +384,10 @@ def _translate_notice_line(line: str) -> str:
             groups = match.groupdict()
             if groups.get("status"):
                 groups["status"] = t(groups["status"])
+            if groups.get("name"):
+                groups["name"] = _translate_health_text(groups["name"])
+            if groups.get("message"):
+                groups["message"] = _translate_health_text(groups["message"])
             return t(template).format(**groups)
     translated = translate_action_text(line)
     return translated if translated != line else t(line)
@@ -437,8 +475,8 @@ def _live_file_approval_summary(params: dict[str, Any]) -> tuple[str, str, str]:
     plus = sum(1 for line in diff.splitlines() if line.startswith("+") and not line.startswith("+++"))
     minus = sum(1 for line in diff.splitlines() if line.startswith("-") and not line.startswith("---"))
     lines = [
-        t("Wisp wants permission to modify a local file."),
-        t("Why: Files is set to ask before write, so Wisp needs approval before changing disk."),
+        t("OpenWand wants permission to modify a local file."),
+        t("Why: Files is set to ask before write, so OpenWand needs approval before changing disk."),
     ]
     if action:
         lines.append(f"{t('Tool:')} {action}")
@@ -462,7 +500,7 @@ def _live_file_approval_summary(params: dict[str, Any]) -> tuple[str, str, str]:
 
 def _ui_log_dir() -> Path:
     """Handle ui log dir for runtime workers UI host."""
-    configured = os.environ.get("WISP_RUN_LOG_DIR")
+    configured = os.environ.get("OPENWAND_RUN_LOG_DIR")
     if configured:
         root = Path(configured)
     else:
@@ -498,9 +536,9 @@ class QtFreezeWatchdog:
         from PySide6.QtCore import QTimer
 
         self._status_fn = status_fn
-        self._threshold = float(os.environ.get("WISP_UI_FREEZE_THRESHOLD_SECONDS", "2.5"))
-        self._interval = float(os.environ.get("WISP_UI_FREEZE_WATCHDOG_INTERVAL_SECONDS", "0.5"))
-        self._cooldown = max(self._threshold, float(os.environ.get("WISP_UI_FREEZE_LOG_COOLDOWN_SECONDS", "10.0")))
+        self._threshold = float(os.environ.get("OPENWAND_UI_FREEZE_THRESHOLD_SECONDS", "2.5"))
+        self._interval = float(os.environ.get("OPENWAND_UI_FREEZE_WATCHDOG_INTERVAL_SECONDS", "0.5"))
+        self._cooldown = max(self._threshold, float(os.environ.get("OPENWAND_UI_FREEZE_LOG_COOLDOWN_SECONDS", "10.0")))
         self._last_beat = time.monotonic()
         self._last_log = 0.0
         self._grace_until = 0.0
@@ -513,7 +551,7 @@ class QtFreezeWatchdog:
         self._timer.timeout.connect(self.beat)
         self._timer.start()
         app.aboutToQuit.connect(self.stop)
-        self._thread = threading.Thread(target=self._run, name="wisp-ui-freeze-watchdog", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="openwand-ui-freeze-watchdog", daemon=True)
         self._thread.start()
 
     def beat(self) -> None:
@@ -592,7 +630,7 @@ class QtFreezeWatchdog:
             ]
             tmp_path.write_text("".join(body), encoding="utf-8")
             tmp_path.replace(path)
-            print(f"[wisp-ui] watchdog wrote {path}", file=sys.stderr, flush=True)
+            print(f"[openwand-ui] watchdog wrote {path}", file=sys.stderr, flush=True)
         except Exception:
             log.exception("failed writing UI watchdog log")
 
@@ -720,6 +758,8 @@ def _make_live_agent_item(
     QPen,
     QPointF,
     Qt,
+    SpeakingRippleGraphicsItem,
+    doll_assets_dir,
 ):
     """Create live agent item."""
     class _MacLiveAgentItem(QGraphicsItemGroup):
@@ -727,6 +767,7 @@ def _make_live_agent_item(
         WIDTH = 220
         HEIGHT = 150
         TEXT_WIDTH = 196
+        ACTIVITY_VFX_SIZE = 250
         GRIP = 16
         MIN_SCALE = 0.6
         MAX_SCALE = 2.2
@@ -761,27 +802,30 @@ def _make_live_agent_item(
             self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemSendsGeometryChanges, True)
             self.setZValue(5 if active or selected else 3)
 
-            border = "#2f80ed" if active else "#7aa7df"
-            fill = "#eaf4ff" if active else "#ffffff"
+            colors = theme_colors()
+            border = colors["accent"] if active else colors["border"]
+            fill = colors["accent_soft"] if active else colors["surface"]
             if selected:
-                border = "#1f6fd1"
-                fill = "#dceeff"
+                border = colors["accent_fill"]
+                fill = colors["accent_strong"]
 
+            self.activity_vfx = None
             if active:
-                for offset, alpha in ((-10, 62), (-5, 42), (0, 24)):
-                    glow = QGraphicsEllipseItem(
-                        offset,
-                        offset + 1,
-                        self.WIDTH - offset * 2,
-                        self.HEIGHT - offset * 2,
-                    )
-                    glow.setBrush(QBrush(QColor(47, 128, 237, alpha)))
-                    glow.setPen(QPen(Qt.PenStyle.NoPen))
-                    self.addToGroup(glow)
+                self.activity_vfx = SpeakingRippleGraphicsItem(self.ACTIVITY_VFX_SIZE)
+                self.activity_vfx.set_vfx_sources(str(doll_assets_dir / "vfx"))
+                self.activity_vfx.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+                self.activity_vfx.setPos(
+                    (self.WIDTH - self.ACTIVITY_VFX_SIZE) / 2,
+                    (self.HEIGHT - self.ACTIVITY_VFX_SIZE) / 2,
+                )
+                self.activity_vfx.setZValue(-2)
+                self.activity_vfx.start()
+                self.addToGroup(self.activity_vfx)
 
             shadow = QGraphicsEllipseItem(4, 6, self.WIDTH, self.HEIGHT)
-            shadow.setBrush(QBrush(QColor(86, 105, 135, 34)))
+            shadow.setBrush(QBrush(QColor(0, 0, 0, 64)))
             shadow.setPen(QPen(Qt.PenStyle.NoPen))
+            shadow.setZValue(-1)
             self.addToGroup(shadow)
 
             node = QGraphicsRectItem(0, 0, self.WIDTH, self.HEIGHT)
@@ -790,7 +834,7 @@ def _make_live_agent_item(
             self.addToGroup(node)
 
             name_item = QGraphicsTextItem(name)
-            name_item.setDefaultTextColor(QColor("#172033"))
+            name_item.setDefaultTextColor(QColor(colors["text"]))
             name_item.setFont(QFont("Segoe UI", 9, QFont.Weight.DemiBold))
             name_item.setTextWidth(self.TEXT_WIDTH)
             name_item.setPos(12, 10)
@@ -798,7 +842,7 @@ def _make_live_agent_item(
             self.addToGroup(name_item)
 
             role_item = QGraphicsTextItem(role)
-            role_item.setDefaultTextColor(QColor("#5f7088"))
+            role_item.setDefaultTextColor(QColor(colors["text_dim"]))
             role_item.setFont(QFont("Segoe UI", 8))
             role_item.setTextWidth(self.TEXT_WIDTH)
             role_item.setPos(12, 32)
@@ -806,7 +850,7 @@ def _make_live_agent_item(
             self.addToGroup(role_item)
 
             status_item = QGraphicsTextItem(_mac_status_text(status or "Waiting"))
-            status_item.setDefaultTextColor(QColor("#24405f" if active else "#667085"))
+            status_item.setDefaultTextColor(QColor(colors["accent"] if active else colors["label"]))
             status_item.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold if active else QFont.Weight.Normal))
             status_item.setTextWidth(self.TEXT_WIDTH)
             status_item.setPos(12, 54)
@@ -814,7 +858,7 @@ def _make_live_agent_item(
             self.addToGroup(status_item)
 
             objective_item = QGraphicsTextItem(objective or t("No current objective"))
-            objective_item.setDefaultTextColor(QColor("#344054"))
+            objective_item.setDefaultTextColor(QColor(colors["label"]))
             objective_item.setFont(QFont("Segoe UI", 7))
             objective_item.setTextWidth(self.TEXT_WIDTH)
             objective_item.setPos(12, 78)
@@ -822,7 +866,7 @@ def _make_live_agent_item(
             self.addToGroup(objective_item)
 
             health_item = QGraphicsTextItem(health)
-            health_item.setDefaultTextColor(QColor("#697586"))
+            health_item.setDefaultTextColor(QColor(colors["text_dim"]))
             health_item.setFont(QFont("Segoe UI", 7))
             health_item.setTextWidth(self.TEXT_WIDTH)
             health_item.setPos(12, 122)
@@ -831,7 +875,7 @@ def _make_live_agent_item(
 
             grip = QGraphicsRectItem(self.WIDTH - self.GRIP, self.HEIGHT - self.GRIP, self.GRIP, self.GRIP)
             grip.setBrush(QBrush(QColor(border)))
-            grip.setPen(QPen(QColor("#ffffff"), 1))
+            grip.setPen(QPen(QColor(colors["on_accent"]), 1))
             grip.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self.addToGroup(grip)
 
@@ -931,6 +975,9 @@ class MacAgentRunDialog:
             QWidget,
         )
 
+        from core.system.paths import DOLL_ASSETS_DIR
+        from ui.openwand_icon import SpeakingRippleGraphicsItem
+
         self._host = host
         self._spec = dict(spec or {})
         self._paused = False
@@ -964,6 +1011,8 @@ class MacAgentRunDialog:
             QPen,
             QPointF,
             Qt,
+            SpeakingRippleGraphicsItem,
+            DOLL_ASSETS_DIR,
         )
         fit_graphics_view = _make_fit_graphics_view(QGraphicsView, Qt)
         self._agent_roles = self._agent_roles_from_spec(self._spec)
@@ -1015,10 +1064,11 @@ class MacAgentRunDialog:
         self.completion_banner.hide()
         root.addWidget(self.completion_banner)
 
+        colors = theme_colors()
         self.approval_panel = QFrame()
         self.approval_panel.setStyleSheet(
-            "QFrame { background: #fff3d6; border: 1px solid #f59e0b; border-radius: 6px; }"
-            "QLabel { color: #3a2500; background: transparent; font-weight: 600; }"
+            f"QFrame {{ background: {colors['accent_soft']}; border: 1px solid {colors['accent']}; border-radius: 6px; }}"
+            f"QLabel {{ color: {colors['text']}; background: transparent; font-weight: 600; }}"
         )
         approval_row = QHBoxLayout(self.approval_panel)
         approval_row.setContentsMargins(10, 8, 10, 8)
@@ -1038,7 +1088,9 @@ class MacAgentRunDialog:
         self.meeting_scene = QGraphicsScene(self.dialog)
         self.meeting_view = fit_graphics_view(self.meeting_scene)
         self.meeting_view.setMinimumSize(280, 220)
-        self.meeting_view.setStyleSheet("QGraphicsView { background: #edf3fa; border: 1px solid #c2ccda; }")
+        self.meeting_view.setStyleSheet(
+            f"QGraphicsView {{ background: {colors['bg']}; border: 1px solid {colors['border']}; }}"
+        )
         meeting_splitter = QSplitter(Qt.Orientation.Horizontal)
         meeting_splitter.setChildrenCollapsible(False)
 
@@ -1233,11 +1285,17 @@ class MacAgentRunDialog:
 
     def _show_completion_banner(self, title: str, detail: str, kind: str) -> None:
         """Show a prominent completion banner at the top of the run window."""
-        styles = {
-            "success": ("#dcfce7", "#16a34a", "#14532d"),
-            "failed": ("#fee2e2", "#dc2626", "#7f1d1d"),
-            "cancelled": ("#e5e7eb", "#6b7280", "#111827"),
+        dark_styles = {
+            "success": ("#173124", "#42b883", "#bce8cf"),
+            "failed": ("#351d1b", "#c4553d", "#f0c0b6"),
+            "cancelled": ("#22262b", "#5f574f", "#b8b4ac"),
         }
+        light_styles = {
+            "success": ("#e3ecdf", "#557a4c", "#31472d"),
+            "failed": ("#f0ddd5", "#a3391c", "#6e2816"),
+            "cancelled": ("#e7e2d5", "#d1c9b7", "#6c6659"),
+        }
+        styles = dark_styles if is_dark_mode() else light_styles
         bg, border, text = styles.get(kind, styles["success"])
         self.completion_banner.setStyleSheet(
             f"QFrame#agentCompletionBanner {{ background: {bg}; border: 3px solid {border}; border-radius: 8px; }}"
@@ -1539,23 +1597,28 @@ class MacAgentRunDialog:
 
     def _draw_live_meeting(self) -> None:
         """Handle draw live meeting for mac agent run dialog."""
+        colors = theme_colors()
         self.meeting_scene.clear()
         self.meeting_scene.setSceneRect(0, 0, 1080, 560)
 
         bg = self._QPainterPath()
         bg.addRoundedRect(10, 10, 1060, 540, 16, 16)
-        self.meeting_scene.addPath(bg, self._QPen(self._QColor("#cfd9e6"), 1), self._QBrush(self._QColor("#edf3fa")))
+        self.meeting_scene.addPath(
+            bg,
+            self._QPen(self._QColor(colors["border"]), 1),
+            self._QBrush(self._QColor(colors["bg"])),
+        )
 
         table = self._QPainterPath()
         table.addRoundedRect(445, 230, 190, 100, 24, 24)
         self.meeting_scene.addPath(
             table,
-            self._QPen(self._QColor("#9fb2c8"), 1.5),
-            self._QBrush(self._QColor("#dbe6f2")),
+            self._QPen(self._QColor(colors["accent"]), 1.5),
+            self._QBrush(self._QColor(colors["raised"])),
         )
 
         title = self.meeting_scene.addText(t("Agent Meeting"), self._QFont("Segoe UI", 11, self._QFont.Weight.DemiBold))
-        title.setDefaultTextColor(self._QColor("#26384f"))
+        title.setDefaultTextColor(self._QColor(colors["accent"]))
         title.setTextWidth(150)
         title.setPos(465, 267)
         title.setAcceptedMouseButtons(self._Qt.MouseButton.NoButton)
@@ -1618,7 +1681,8 @@ class MacAgentRunDialog:
         sx, sy = source
         tx, ty = target
         sx_edge, sy_edge, tx_edge, ty_edge = self._live_edge_points(sx, sy, tx, ty)
-        pen = self._QPen(self._QColor("#2f80ed"), 2.3)
+        accent = self._QColor(theme_colors()["accent_fill"])
+        pen = self._QPen(accent, 2.3)
         self.meeting_scene.addLine(sx_edge, sy_edge, tx_edge, ty_edge, pen)
         dx, dy = tx_edge - sx_edge, ty_edge - sy_edge
         length = max(1.0, math.hypot(dx, dy))
@@ -1632,7 +1696,7 @@ class MacAgentRunDialog:
         path.lineTo(bx + px * size * 0.55, by + py * size * 0.55)
         path.lineTo(bx - px * size * 0.55, by - py * size * 0.55)
         path.closeSubpath()
-        self.meeting_scene.addPath(path, self._QPen(self._QColor("#2f80ed")), self._QBrush(self._QColor("#2f80ed")))
+        self.meeting_scene.addPath(path, self._QPen(accent), self._QBrush(accent))
 
     def _live_edge_points(self, sx: float, sy: float, tx: float, ty: float) -> tuple[float, float, float, float]:
         """Handle live edge points for mac agent run dialog."""
@@ -2071,7 +2135,11 @@ class QtProtocolHost:
         self._snip = None
         self._bubble = None
         self._rewrite_annotations: dict[str, Any] = {}
+        self._rewrite_anchor_stats: dict[str, dict[str, Any]] = {}
         self._chat = None
+        self._chat_message_actions_cache: list[dict[str, Any]] = []
+        self._chat_message_actions_ready = False
+        self._pending_chat_show_new: bool | None = None
         self._memory = None
         self._memory_viewer = None
         self._addons_dialog = None
@@ -2108,7 +2176,7 @@ class QtProtocolHost:
         self._pump.timeout.connect(self._drain)
         self._pump.start()
 
-        self._reader = threading.Thread(target=self._read_loop, name="wisp-ui-stdin", daemon=True)
+        self._reader = threading.Thread(target=self._read_loop, name="openwand-ui-stdin", daemon=True)
         self._reader.start()
 
     def _send(self, obj: dict[str, Any]) -> None:
@@ -2257,7 +2325,7 @@ class QtProtocolHost:
                 result = self._dispatch(method_name, params)
             finally:
                 elapsed = time.monotonic() - self._active_dispatch_started
-                slow_threshold = float(os.environ.get("WISP_UI_SLOW_DISPATCH_SECONDS", "1.0"))
+                slow_threshold = float(os.environ.get("OPENWAND_UI_SLOW_DISPATCH_SECONDS", "1.0"))
                 if elapsed >= slow_threshold:
                     self._write_slow_dispatch_log(method_name, elapsed)
                 self._active_dispatch_method = ""
@@ -2297,7 +2365,7 @@ class QtProtocolHost:
                 encoding="utf-8",
             )
             tmp_path.replace(path)
-            print(f"[wisp-ui] slow dispatch wrote {path}", file=sys.stderr, flush=True)
+            print(f"[openwand-ui] slow dispatch wrote {path}", file=sys.stderr, flush=True)
         except Exception:
             log.exception("failed writing UI slow-dispatch log")
 
@@ -2314,18 +2382,18 @@ class QtProtocolHost:
             }
         if method == "boundary.status":
             return boundary_status("ui")
-        if method == "ui.debug.block_event_loop" and os.environ.get("WISP_UI_DEBUG_METHODS"):
+        if method == "ui.debug.block_event_loop" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
             seconds = max(0.0, min(10.0, float(params.get("seconds") or 0.0)))
             time.sleep(seconds)
             return {"blocked_seconds": seconds}
-        if method == "ui.debug.memory.add" and os.environ.get("WISP_UI_DEBUG_METHODS"):
+        if method == "ui.debug.memory.add" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
             self._memory_manager().add_fact_manual(
                 str(params.get("text") or ""),
                 str(params.get("category") or "general"),
                 str(params.get("project") or ""),
             )
             return {"emitted": True}
-        if method == "ui.debug.memory.update" and os.environ.get("WISP_UI_DEBUG_METHODS"):
+        if method == "ui.debug.memory.update" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
             self._memory_manager().update_fact(
                 str(params.get("id") or params.get("fact_id") or ""),
                 str(params.get("text") or ""),
@@ -2333,10 +2401,10 @@ class QtProtocolHost:
                 params.get("project"),
             )
             return {"emitted": True}
-        if method == "ui.debug.memory.delete" and os.environ.get("WISP_UI_DEBUG_METHODS"):
+        if method == "ui.debug.memory.delete" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
             self._memory_manager().delete_fact(str(params.get("id") or params.get("fact_id") or ""))
             return {"emitted": True}
-        if method == "ui.debug.tray.trigger" and os.environ.get("WISP_UI_DEBUG_METHODS"):
+        if method == "ui.debug.tray.trigger" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
             from PySide6.QtCore import QTimer
 
             overlay = self._ensure_overlay()
@@ -2353,11 +2421,11 @@ class QtProtocolHost:
             label = action.text()
             QTimer.singleShot(0, action.trigger)
             return {"triggered": True, "label": label}
-        if method == "ui.debug.provider_badge.click" and os.environ.get("WISP_UI_DEBUG_METHODS"):
+        if method == "ui.debug.provider_badge.click" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
             overlay = self._ensure_overlay()
             overlay._provider_badge.click()
             return {"clicked": True, "provider": overlay._provider_badge_mode()}
-        if method == "ui.debug.bubble.stop.click" and os.environ.get("WISP_UI_DEBUG_METHODS"):
+        if method == "ui.debug.bubble.stop.click" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
             from PySide6.QtCore import Qt
             from PySide6.QtTest import QTest
 
@@ -2374,14 +2442,14 @@ class QtProtocolHost:
                 "close_cancels": close_cancels,
                 "visible_after": bool(bubble.isVisible()),
             }
-        if method == "ui.debug.bubble.snapshot" and os.environ.get("WISP_UI_DEBUG_METHODS"):
+        if method == "ui.debug.bubble.snapshot" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
             bubble = self._ensure_bubble()
             return {
                 "visible": bool(bubble.isVisible()),
                 "text": str(getattr(bubble, "_full_text", "") or ""),
                 "close_cancels": bool(getattr(bubble, "_close_cancels", False)),
             }
-        if method == "ui.debug.intent.submit" and os.environ.get("WISP_UI_DEBUG_METHODS"):
+        if method == "ui.debug.intent.submit" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
             from PySide6.QtCore import Qt
             from PySide6.QtTest import QTest
 
@@ -2399,10 +2467,10 @@ class QtProtocolHost:
             QTest.keyClick(overlay._input_line, Qt.Key.Key_Return)
             return {"submitted": True, "text": text}
         if method == "ui.debug.shell.close_aux_windows" and os.environ.get(
-            "WISP_UI_DEBUG_METHODS"
+            "OPENWAND_UI_DEBUG_METHODS"
         ):
             return self._debug_close_aux_windows()
-        if method == "ui.debug.shell.snapshot" and os.environ.get("WISP_UI_DEBUG_METHODS"):
+        if method == "ui.debug.shell.snapshot" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
             from PySide6.QtWidgets import QApplication
 
             overlay = self._ensure_overlay()
@@ -2432,7 +2500,7 @@ class QtProtocolHost:
                 ),
                 "visible_window_titles": [widget.windowTitle() for widget in visible],
             }
-        if method == "ui.debug.settings.action" and os.environ.get("WISP_UI_DEBUG_METHODS"):
+        if method == "ui.debug.settings.action" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
             return self._debug_settings_action(**params)
         if method == "ui.reload_config":
             return self._reload_config()
@@ -2466,6 +2534,8 @@ class QtProtocolHost:
             return self._show_snip()
         if method == "ui.overlay.state":
             return self._overlay_state(**params)
+        if method == "ui.overlay.amplitude":
+            return self._overlay_amplitude(**params)
         if method == "ui.reply.reset":
             return self._reply_reset()
         if method == "ui.reply.thinking":
@@ -2530,6 +2600,10 @@ class QtProtocolHost:
             return self._chat_capture_context(**params)
         if method == "ui.chat.capture_cancelled":
             return self._chat_capture_cancelled(**params)
+        if method == "ui.chat.message_actions":
+            return self._chat_message_actions(**params)
+        if method == "ui.chat.message_action_result":
+            return self._chat_message_action_result(**params)
         if method == "ui.chat.add_conversation":
             return self._chat_add_conversation(**params)
         if method == "ui.chat.begin_conversation":
@@ -2556,6 +2630,10 @@ class QtProtocolHost:
             return self._show_memory(**params)
         if method == "ui.show_addons":
             return self._show_addons(**params)
+        if method == "ui.show_addon_settings":
+            return self._show_specific_addon_settings(**params)
+        if method == "ui.show_addon_settings":
+            return self._show_specific_addon_settings(**params)
         if method == "ui.addons.tray_actions":
             return self._set_addon_tray_actions(**params)
         if method == "ui.show_virtual_workspace":
@@ -2670,21 +2748,26 @@ class QtProtocolHost:
         self,
         actions: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """Publish enabled addon actions into Wisp's native tray menu."""
+        """Publish enabled addon actions into OpenWand's native tray menu."""
         overlay = self._ensure_overlay()
         normalized = list(actions or [])
         overlay.set_addon_tray_actions(normalized)
         return {"ok": True, "count": len(normalized)}
 
-    def _show_virtual_workspace(self, endpoint: str = "") -> dict[str, Any]:
-        """Show the addon workspace in a real Wisp-owned Qt window."""
+    def _show_virtual_workspace(
+        self,
+        endpoint: str = "",
+        activate: bool = True,
+    ) -> dict[str, Any]:
+        """Show the addon workspace in a real OpenWand-owned Qt window."""
         from ui.virtual_workspace_window import VirtualWorkspaceWindow, _validated_endpoint
 
         base_url, _token = _validated_endpoint(endpoint)
         existing = getattr(self, "_virtual_workspace_window", None)
         if existing is not None and existing.isVisible() and existing.endpoint_base == base_url:
-            existing.raise_()
-            existing.activateWindow()
+            if activate:
+                existing.raise_()
+                existing.activateWindow()
             return {"shown": True, "reused": True, "native": True}
         if existing is not None:
             existing.close()
@@ -2701,9 +2784,14 @@ class QtProtocolHost:
                 self._virtual_workspace_window = None
 
         window.destroyed.connect(_clear)
+        if not activate:
+            from PySide6.QtCore import Qt
+
+            window.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         window.show()
-        window.raise_()
-        window.activateWindow()
+        if activate:
+            window.raise_()
+            window.activateWindow()
         return {"shown": True, "reused": False, "native": True}
 
     def _start_virtual_workspace_task(self, objective: str, scope_folder: str) -> None:
@@ -2747,7 +2835,7 @@ class QtProtocolHost:
             "title": title,
             "objective": (
                 clean_objective
-                + "\n\nWork only inside the assigned Wisp Virtual Workspace. "
+                + "\n\nWork only inside the assigned OpenWand Virtual Workspace. "
                 "Use only the tools listed in the agent prompt. For a new file, call "
                 "create_file with a concrete relative path and the complete content. "
                 "Use create_file_base64 only for short binary content. The workspace can preview "
@@ -2789,7 +2877,7 @@ class QtProtocolHost:
                 "Follow the user's exact requested filenames. Keep an explicit checklist of requested "
                 "targets and never invent support files. When the user explicitly requests several "
                 "independent files or multiple file tool calls in one response, include all of those "
-                "file calls in that response; Wisp will display and apply each completed call as it "
+                "file calls in that response; OpenWand will display and apply each completed call as it "
                 "arrives. After successful writes, do not list or read files unless the user explicitly "
                 "requested verification. A successful file tool result verifies the exact written "
                 "content; do not spend another turn reading it unless the user explicitly requested "
@@ -2937,6 +3025,17 @@ class QtProtocolHost:
             selection_rect=selection_rect,
         )
         self._rewrite_annotations[key] = popup
+        self._rewrite_anchor_stats[key] = {
+            "started_at": time.monotonic(),
+            "refreshes": 0,
+            "visible_samples": 0,
+            "hidden_samples": 0,
+            "position_changes": 0,
+            "visibility_changes": 0,
+            "source_counts": {},
+            "last_rect": self._rewrite_anchor_rect_key(selection_rect),
+            "last_visible": True,
+        }
 
         popup.submitted.connect(
             lambda item_id, comment, include_document: self.emit(
@@ -2987,13 +3086,13 @@ class QtProtocolHost:
                 {"annotation_id": item_id},
             )
         )
-        popup.destroyed.connect(
-            lambda *_args, item_id=key, instance=popup: (
-                self._rewrite_annotations.pop(item_id, None)
-                if self._rewrite_annotations.get(item_id) is instance
-                else None
-            )
-        )
+        def _destroyed(*_args, item_id: str = key, instance=popup) -> None:
+            if self._rewrite_annotations.get(item_id) is not instance:
+                return
+            self._rewrite_annotations.pop(item_id, None)
+            self._finish_rewrite_anchor_stats(item_id, instance)
+
+        popup.destroyed.connect(_destroyed)
         popup.show_composer()
         result = {
             "created": True,
@@ -3010,13 +3109,21 @@ class QtProtocolHost:
         log.info("rewrite annotation popup show: %s", result)
         return result
 
-    def _rewrite_annotation_processing(self, annotation_id: str = "") -> dict[str, Any]:
+    def _rewrite_annotation_processing(
+        self,
+        annotation_id: str = "",
+        display_number: int | None = None,
+    ) -> dict[str, Any]:
         """Collapse an annotation into its no-close processing balloon."""
         popup = self._rewrite_annotations.get(str(annotation_id or ""))
         if popup is None:
             return {"updated": False, "reason": "not_found"}
-        popup.show_processing()
-        return {"updated": True, "state": "processing"}
+        popup.show_processing(display_number=display_number)
+        return {
+            "updated": True,
+            "state": "processing",
+            "display_number": popup.display_number,
+        }
 
     def _rewrite_annotation_proposal(
         self,
@@ -3054,7 +3161,26 @@ class QtProtocolHost:
                 "height": popup.height(),
             },
         }
-        log.info("rewrite annotation anchor update: annotation=%s result=%r", annotation_id, result)
+        stats = self._rewrite_anchor_stats.get(str(annotation_id or ""))
+        if stats is not None:
+            requested_visible = bool(visible)
+            rect_key = self._rewrite_anchor_rect_key(selection_rect)
+            stats["refreshes"] += 1
+            if requested_visible:
+                stats["visible_samples"] += 1
+            else:
+                stats["hidden_samples"] += 1
+            if requested_visible != bool(stats.get("last_visible")):
+                stats["visibility_changes"] += 1
+            stats["last_visible"] = requested_visible
+            previous_rect = stats.get("last_rect")
+            if rect_key is not None:
+                if previous_rect is not None and rect_key != previous_rect:
+                    stats["position_changes"] += 1
+                stats["last_rect"] = rect_key
+            source_key = str(source or "unknown")
+            source_counts = stats["source_counts"]
+            source_counts[source_key] = int(source_counts.get(source_key, 0)) + 1
         return result
 
     def _rewrite_annotation_failure(
@@ -3066,7 +3192,7 @@ class QtProtocolHost:
         popup = self._rewrite_annotations.get(str(annotation_id or ""))
         if popup is None:
             return {"updated": False, "reason": "not_found"}
-        popup.show_failure(str(message or ""))
+        popup.show_failure(_translate_notice_text(str(message or "")))
         return {"updated": True, "state": "failed"}
 
     def _rewrite_annotation_remove(self, annotation_id: str = "") -> dict[str, Any]:
@@ -3079,7 +3205,50 @@ class QtProtocolHost:
             popup.remove()
         except RuntimeError:
             pass
+        self._finish_rewrite_anchor_stats(key, popup)
         return {"removed": True, "annotation_id": key}
+
+    @staticmethod
+    def _rewrite_anchor_rect_key(
+        value: dict[str, float] | None,
+    ) -> tuple[float, float, float, float] | None:
+        """Return a stable comparison key for one screen-space selection rect."""
+        if not isinstance(value, dict):
+            return None
+        try:
+            return tuple(
+                round(float(value[name]), 3)
+                for name in ("left", "top", "width", "height")
+            )
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return None
+
+    def _finish_rewrite_anchor_stats(self, key: str, popup: Any) -> None:
+        """Write one compact anchor summary after a popup's lifecycle ends."""
+        stats = self._rewrite_anchor_stats.pop(str(key or ""), None)
+        if stats is None:
+            return
+        source_counts = stats.get("source_counts") or {}
+        sources = ",".join(
+            f"{source}:{count}"
+            for source, count in sorted(source_counts.items())
+        ) or "none"
+        started_at = float(stats.get("started_at") or time.monotonic())
+        lifetime_ms = max(0, round((time.monotonic() - started_at) * 1000))
+        log.info(
+            "rewrite anchor summary: annotation=%s lifetime_ms=%d refreshes=%d "
+            "visible=%d hidden=%d position_changes=%d visibility_changes=%d "
+            "sources=%s final_state=%s",
+            key,
+            lifetime_ms,
+            int(stats.get("refreshes") or 0),
+            int(stats.get("visible_samples") or 0),
+            int(stats.get("hidden_samples") or 0),
+            int(stats.get("position_changes") or 0),
+            int(stats.get("visibility_changes") or 0),
+            sources,
+            str(getattr(popup, "state", "unknown") or "unknown"),
+        )
 
     def _rewrite_held_count(self, count: int = 0) -> dict[str, Any]:
         """Keep the shared Send all comments control in sync with held state."""
@@ -3330,7 +3499,7 @@ class QtProtocolHost:
             return None
 
     def _win_is_capture_window(self, hwnd: int) -> bool:
-        """Return whether hwnd looks like a user app window, not Wisp chrome."""
+        """Return whether hwnd looks like a user app window, not OpenWand chrome."""
         if sys.platform != "win32" or not hwnd:
             return False
         try:
@@ -3350,7 +3519,7 @@ class QtProtocolHost:
             return False
 
     def _win_top_external_window(self) -> int:
-        """Return the top visible non-Wisp window on Windows."""
+        """Return the top visible non-OpenWand window on Windows."""
         if sys.platform != "win32":
             return 0
         try:
@@ -3372,10 +3541,10 @@ class QtProtocolHost:
         return 0
 
     def _mac_snip_app_region(self) -> dict[str, int] | None:
-        """Return the frontmost non-Wisp macOS window bounds, if available."""
+        """Return the frontmost non-OpenWand macOS window bounds, if available."""
         if sys.platform != "darwin":
             return None
-        if os.environ.get("WISP_MACOS_UI_QUARTZ_SNIP_APP_REGION") != "1":
+        if os.environ.get("OPENWAND_MACOS_UI_QUARTZ_SNIP_APP_REGION") != "1":
             return None
         try:
             import Quartz  # type: ignore
@@ -3413,6 +3582,14 @@ class QtProtocolHost:
             overlay.show()
             overlay.raise_()
         return {"state": state}
+
+    def _overlay_amplitude(self, amplitude: float = 0.0) -> dict[str, Any]:
+        """Deliver a normalized playback level to the animated OpenWand mark."""
+        value = max(0.0, min(1.0, float(amplitude or 0.0)))
+        self._ensure_overlay()
+        if self._overlay_signals is not None:
+            self._overlay_signals.set_mouth_amp.emit(value)
+        return {"amplitude": value}
 
     def _reply_reset(self) -> dict[str, Any]:
         """Handle reply reset for qt protocol host."""
@@ -3743,15 +3920,15 @@ class QtProtocolHost:
         """Read the independent history namespace from the active chat route."""
         import config
 
-        mode = str(getattr(config, "CHAT_EXECUTION_MODE", "wisp") or "wisp").strip().lower()
+        mode = str(getattr(config, "CHAT_EXECUTION_MODE", "openwand") or "openwand").strip().lower()
         owner = str(
-            getattr(config, "CHAT_CONVERSATION_OWNER", "wisp") or "wisp"
+            getattr(config, "CHAT_CONVERSATION_OWNER", "openwand") or "openwand"
         ).strip().lower()
-        return mode if owner == "agent" and mode in {"codex", "claude"} else "wisp"
+        return mode if owner == "agent" and mode in {"codex", "claude"} else "openwand"
 
     def _intent_conversation_scope(self) -> str:
         """Return this UI host's current independent history namespace."""
-        return str(getattr(self, "_conversation_scope_key", "wisp") or "wisp")
+        return str(getattr(self, "_conversation_scope_key", "openwand") or "openwand")
 
     def _intent_conversation_namespace_label(self) -> str:
         """Return a compact visible label for provider-owned overlay history."""
@@ -3791,7 +3968,7 @@ class QtProtocolHost:
         try:
             from core.conversation_store import store as conversation_store
             scope = self._intent_conversation_scope()
-            if scope == "wisp":
+            if scope == "openwand":
                 return conversation_store.add_project(name)
             return conversation_store.add_project(name, conversation_scope=scope)
         except Exception:
@@ -4035,7 +4212,7 @@ class QtProtocolHost:
         import config
         from core.conversation_store import store as conversation_store
 
-        provider = str(getattr(config, "CHAT_EXECUTION_MODE", "wisp") or "wisp").strip().lower()
+        provider = str(getattr(config, "CHAT_EXECUTION_MODE", "openwand") or "openwand").strip().lower()
         sessions = conv.get("harness_sessions")
         if provider in {"codex", "claude"} and isinstance(sessions, dict):
             session = sessions.get(provider)
@@ -4689,7 +4866,7 @@ class QtProtocolHost:
             and not self._conversation_matches_intent_scope(self._all_conversations[idx])
             and not bool((harness or {}).get("clear_session"))
         ):
-            # A route switch (native Wisp -> Codex/Claude or back) must never
+            # A route switch (native OpenWand -> Codex/Claude or back) must never
             # append into the other route's conversation.
             idx = None
         if idx is not None and 0 <= idx < len(self._all_conversations):
@@ -5103,6 +5280,11 @@ class QtProtocolHost:
         """Show chat."""
         from ui.chat_window import ChatWindow
 
+        if self._chat is None and not getattr(self, "_chat_message_actions_ready", True):
+            pending = getattr(self, "_pending_chat_show_new", None)
+            self._pending_chat_show_new = bool(force_new or pending)
+            self.emit("ui.chat.message_actions.requested", {})
+            return {"shown": False, "pending_actions": True}
         if self._chat is not None:
             if force_new:
                 self._chat.start_new_conversation()
@@ -5116,6 +5298,7 @@ class QtProtocolHost:
             self._chat.raise_()
             self._chat.activateWindow()
             self._chat.request_context_preview()
+            self.emit("ui.chat.message_actions.requested", {})
             return {"shown": True, "reused": True}
         start_new = force_new or not self._all_conversations
         from core.conversation_store import store as conversation_store
@@ -5140,12 +5323,28 @@ class QtProtocolHost:
                 on_select=self._set_active_conversation,
                 on_context_preview=lambda payload: self.emit("ui.chat.context_preview", payload),
                 on_context_capture=self._chat_context_capture_requested,
+                on_addon_message_action=lambda payload: self.emit(
+                    "ui.chat.message_action.requested",
+                    payload,
+                ),
+                on_addon_settings=lambda addon_id: self.emit(
+                    "ui.addons.open_requested",
+                    {"addon_id": addon_id},
+                ),
+                on_model_settings=lambda: self.emit(
+                    "ui.settings.open_requested",
+                    {"initial_page": "LLM"},
+                ),
+                addon_message_actions=list(
+                    getattr(self, "_chat_message_actions_cache", []) or []
+                ),
                 auto_message=auto_message or None,
             )
             self._chat.destroyed.connect(lambda: setattr(self, "_chat", None))
             self._chat.show()
             self._chat.raise_()
             self._chat.activateWindow()
+            self.emit("ui.chat.message_actions.requested", {})
         finally:
             if watchdog is not None:
                 watchdog.beat()
@@ -5212,7 +5411,36 @@ class QtProtocolHost:
         self._chat.activateWindow()
         return result if isinstance(result, dict) else {"cancelled": bool(result)}
 
-    def _show_settings(self, extra_tools: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    def _chat_message_actions(self, actions: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        """Refresh addon actions shown beneath stored chat messages."""
+        normalized = [dict(item) for item in (actions or []) if isinstance(item, dict)]
+        self._chat_message_actions_cache = normalized
+        self._chat_message_actions_ready = True
+        pending_show = getattr(self, "_pending_chat_show_new", None)
+        self._pending_chat_show_new = None
+        if self._chat is None and pending_show is not None:
+            result = self._show_chat(force_new=bool(pending_show))
+            return {
+                "updated": True,
+                "count": len(normalized),
+                "chat": result,
+            }
+        if self._chat is None:
+            return {"updated": False, "reason": "no_chat"}
+        self._chat.update_addon_message_actions(normalized)
+        return {"updated": True, "count": len(normalized)}
+
+    def _chat_message_action_result(self, **payload: Any) -> dict[str, Any]:
+        """Apply an addon presentation result to its canonical message."""
+        if self._chat is None:
+            return {"updated": False, "reason": "no_chat"}
+        return self._chat.apply_addon_message_action_result(**payload)
+
+    def _show_settings(
+        self,
+        extra_tools: list[dict[str, Any]] | None = None,
+        initial_page: str | None = None,
+    ) -> dict[str, Any]:
         """Show settings."""
         from PySide6.QtCore import QTimer
 
@@ -5229,6 +5457,7 @@ class QtProtocolHost:
                     on_apply=self._settings_applied,
                     on_setup_check=lambda: self.emit("ui.health.requested", {"source": "settings"}),
                     extra_tools=extra_tools or [],
+                    initial_page=initial_page,
                 )
             except Exception:
                 traceback.print_exc()
@@ -5506,7 +5735,7 @@ class QtProtocolHost:
         events: list[dict[str, Any]] | None = None,
     ) -> str:
         """Format the full runtime status (workers + events) as plain text."""
-        lines = [f"Wisp runtime status - {time.strftime('%Y-%m-%d %H:%M:%S')}"]
+        lines = [f"OpenWand runtime status - {time.strftime('%Y-%m-%d %H:%M:%S')}"]
         if log_dir:
             lines.append(f"Log directory: {log_dir}")
         lines.append("")
@@ -5867,7 +6096,7 @@ class QtProtocolHost:
         dialog.setModal(True)
         layout = QVBoxLayout(dialog)
         heading = QLabel(
-            t("Wisp found {count} private item(s). Review the redacted request before sending.").format(
+            t("OpenWand found {count} private item(s). Review the redacted request before sending.").format(
                 count=int(count or len(items or []))
             )
         )
@@ -6013,7 +6242,7 @@ class QtProtocolHost:
         subtitle = QLabel(
             t(
                 "Addons are Python packages in the add-ons folder. "
-                "Portable builds create this folder next to Wisp.exe when possible."
+                "Portable builds create this folder next to OpenWand.exe when possible."
             )
         )
         subtitle.setWordWrap(True)
@@ -6072,6 +6301,38 @@ class QtProtocolHost:
         dialog.activateWindow()
         return {"shown": True, "reused": reused}
 
+    def _show_specific_addon_settings(
+        self,
+        addon: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Open one addon's settings directly from a contextual shortcut."""
+        item = addon if isinstance(addon, dict) else {}
+        addon_id = str(item.get("id") or "").strip()
+        if not addon_id:
+            return {"shown": False, "reason": "addon_not_found"}
+        self._show_addon_settings_dialog(
+            addon_id,
+            str(item.get("name") or addon_id),
+            list(item.get("settings") or []),
+        )
+        return {"shown": True}
+
+    def _show_specific_addon_settings(
+        self,
+        addon: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Open one addon's settings directly from a contextual shortcut."""
+        item = addon if isinstance(addon, dict) else {}
+        addon_id = str(item.get("id") or "").strip()
+        if not addon_id:
+            return {"shown": False, "reason": "addon_not_found"}
+        self._show_addon_settings_dialog(
+            addon_id,
+            str(item.get("name") or addon_id),
+            list(item.get("settings") or []),
+        )
+        return {"shown": True}
+
     def _install_addon_archive_dialog(self) -> None:
         """Install addon archive dialog."""
         from PySide6.QtWidgets import QFileDialog
@@ -6080,7 +6341,7 @@ class QtProtocolHost:
             self._addons_dialog,
             t("Install Addon Archive"),
             "",
-            t("Wisp Addons (*.wisp *.zip)"),
+            t("OpenWand Addons (*.openwand *.zip)"),
         )
         if archive:
             self.emit("ui.addons.install_archive", {"path": archive})
@@ -6637,7 +6898,7 @@ def main() -> int:
     os.chdir(root)
     selected_platform = _configure_linux_ui_platform()
     os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.screen=false")
-    os.environ.setdefault("WISP_MACOS_PY_UI_HOST", "1")
+    os.environ.setdefault("OPENWAND_MACOS_PY_UI_HOST", "1")
     real_out = _protect_stdout()
 
     from PySide6.QtWidgets import QApplication
@@ -6661,7 +6922,7 @@ def main() -> int:
         traceback.print_exc()
 
     host = QtProtocolHost(app, real_out)
-    app._wisp_runtime_ui_host = host
+    app._openwand_runtime_ui_host = host
     try:
         from ui.runtime_log_bridge import set_emitter
 

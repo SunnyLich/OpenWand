@@ -1,0 +1,31 @@
+OpenWand Writer overlay anchoring
+Context line 01. Scroll testing keeps the document deterministic.
+Context line 02. The selected phrase is farther down the document.
+Context line 03. The overlay must stay beside its source text.
+Context line 04. It must not float over unrelated content.
+Context line 05. Leaving the source window hides the overlay.
+A rough sentence is selected for the live Writer Rewrite test.
+Context line 07. More content follows the selected phrase.
+Context line 08. Page scrolling can move the phrase offscreen.
+Context line 09. The popup and its text must disappear together.
+Context line 10. Returning to the phrase restores both.
+Context line 11. No stale proposal may remain elsewhere.
+Context line 12. The anchor must remain bound to the original selection.
+Context line 13. This is ordinary filler for the scroll test.
+Context line 14. This is ordinary filler for the scroll test.
+Context line 15. This is ordinary filler for the scroll test.
+Context line 16. This is ordinary filler for the scroll test.
+Context line 17. This is ordinary filler for the scroll test.
+Context line 18. This is ordinary filler for the scroll test.
+Context line 19. This is ordinary filler for the scroll test.
+Context line 20. This is ordinary filler for the scroll test.
+Context line 21. This is ordinary filler for the scroll test.
+Context line 22. This is ordinary filler for the scroll test.
+Context line 23. This is ordinary filler for the scroll test.
+Context line 24. This is ordinary filler for the scroll test.
+Context line 25. This is ordinary filler for the scroll test.
+Context line 26. This is ordinary filler for the scroll test.
+Context line 27. This is ordinary filler for the scroll test.
+Context line 28. This is ordinary filler for the scroll test.
+Context line 29. This is ordinary filler for the scroll test.
+Context line 30. This is ordinary filler for the scroll test.

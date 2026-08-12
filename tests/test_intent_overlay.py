@@ -302,7 +302,7 @@ def test_unavailable_provider_action_is_visible_but_cannot_fire(qapp):
             "capability_type": "email.create_draft@1",
             "planning_tool": "email_plan_create_draft",
             "available": False,
-            "unavailable_reason": "Connect this account to Wisp first",
+            "unavailable_reason": "Connect this account to OpenWand first",
         }],
     }
     overlay = intent_overlay.IntentOverlay(caller_idx=0, action_provider=provider)
@@ -311,7 +311,7 @@ def test_unavailable_provider_action_is_visible_but_cannot_fire(qapp):
     try:
         row = overlay._rows[0]
         assert row["label"] == "Create email draft"
-        assert row["hint"] == "Connect this account to Wisp first"
+        assert row["hint"] == "Connect this account to OpenWand first"
         assert row["available"] is False
 
         overlay._select(0, drop_trigger_key=False)
@@ -684,7 +684,7 @@ def test_intent_overlay_key_debug_avoids_prompt_text(monkeypatch, capsys):
         )
 
         err = capsys.readouterr().err
-        assert "[wisp-intent]" in err
+        assert "[openwand-intent]" in err
         assert "text=printable-len:1" in err
         assert " a " not in err
     finally:
@@ -835,6 +835,63 @@ def test_intent_overlay_close_emits_cancelled_once(qapp):
     finally:
         config.CALLER_ROWS[:] = old_rows
         _close_overlay_if_valid(overlay, qapp)
+
+
+def test_intent_text_and_popup_disappear_together_after_choose_or_cancel(qapp, monkeypatch):
+    """The picker shell must close when its visible choice text is resolved."""
+    import shiboken6
+
+    import config
+    import ui.intent_overlay as intent_overlay
+
+    old_rows = list(config.CALLER_ROWS)
+    config.CALLER_ROWS[:] = [
+        {
+            "intents": [
+                {
+                    "key": "f",
+                    "label": "Fix selected code",
+                    "prompt": "Fix the selected code.",
+                }
+            ],
+            "custom_key": "s",
+        }
+    ]
+    monkeypatch.setattr(intent_overlay, "_IS_WIN", False)
+
+    chosen: list[tuple[str, str]] = []
+    picker = intent_overlay.IntentOverlay(caller_idx=0)
+    picker.intent_chosen.connect(lambda glyph, prompt: chosen.append((glyph, prompt)))
+    try:
+        picker.show()
+        qapp.processEvents()
+        assert picker.isVisible()
+        assert picker._rows[0]["label"] == "Fix selected code"
+
+        picker._selection_pending_idx = 0
+        picker._fire(0)
+        qapp.processEvents()
+        assert chosen == [("F", "Fix the selected code.")]
+        assert not shiboken6.isValid(picker) or not picker.isVisible()
+    finally:
+        _close_overlay_if_valid(picker, qapp)
+
+    cancelled: list[bool] = []
+    picker = intent_overlay.IntentOverlay(caller_idx=0)
+    picker.cancelled.connect(lambda: cancelled.append(True))
+    try:
+        picker.show()
+        qapp.processEvents()
+        assert picker.isVisible()
+        assert any(row["label"] == "Fix selected code" for row in picker._rows)
+
+        picker._cancel()
+        qapp.processEvents()
+        assert cancelled == [True]
+        assert not shiboken6.isValid(picker) or not picker.isVisible()
+    finally:
+        config.CALLER_ROWS[:] = old_rows
+        _close_overlay_if_valid(picker, qapp)
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
@@ -1734,7 +1791,7 @@ def test_intent_overlay_frozen_linux_avoids_keyboard_grabs(monkeypatch):
     monkeypatch.setattr(intent_overlay, "_IS_MAC", False)
     monkeypatch.setattr(intent_overlay, "_IS_LINUX", True)
     monkeypatch.setattr(intent_overlay.sys, "frozen", True, raising=False)
-    monkeypatch.delenv("WISP_LINUX_QT_KEYBOARD_GRAB", raising=False)
+    monkeypatch.delenv("OPENWAND_LINUX_QT_KEYBOARD_GRAB", raising=False)
     monkeypatch.setattr(QWidget, "grabKeyboard", grab_keyboard)
     monkeypatch.setattr(QWidget, "releaseKeyboard", release_keyboard)
     config.CALLER_ROWS[:] = [
@@ -1791,7 +1848,7 @@ def test_intent_overlay_frozen_linux_custom_prompt_avoids_keyboard_grabs(monkeyp
     monkeypatch.setattr(intent_overlay, "_IS_MAC", False)
     monkeypatch.setattr(intent_overlay, "_IS_LINUX", True)
     monkeypatch.setattr(intent_overlay.sys, "frozen", True, raising=False)
-    monkeypatch.delenv("WISP_LINUX_QT_KEYBOARD_GRAB", raising=False)
+    monkeypatch.delenv("OPENWAND_LINUX_QT_KEYBOARD_GRAB", raising=False)
     monkeypatch.setattr(QWidget, "grabKeyboard", grab_keyboard)
     monkeypatch.setattr(QWidget, "releaseKeyboard", release_keyboard)
     config.CALLER_ROWS[:] = [{"intents": [], "custom_key": "s"}]

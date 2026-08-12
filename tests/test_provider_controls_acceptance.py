@@ -72,7 +72,7 @@ def _config_key(provider: str, control: str) -> str:
         "reasoning": "REASONING_SUMMARY",
         "approval": "APPROVAL_MODE",
     }[control]
-    return f"WISP_{'CLAUDE' if provider == 'claude' else 'CODEX'}_{suffix}"
+    return f"OPENWAND_{'CLAUDE' if provider == 'claude' else 'CODEX'}_{suffix}"
 
 
 def _prepare_isolated_provider_env(
@@ -85,7 +85,7 @@ def _prepare_isolated_provider_env(
     import config
     import ui.harness_controls as controls
 
-    prefix = f"WISP_{'CLAUDE' if provider == 'claude' else 'CODEX'}"
+    prefix = f"OPENWAND_{'CLAUDE' if provider == 'claude' else 'CODEX'}"
     for suffix in _CONFIG_SUFFIXES:
         monkeypatch.delenv(f"{prefix}_{suffix}", raising=False)
     env_file = tmp_path / ".env"
@@ -218,7 +218,7 @@ def test_every_provider_control_choice_persists_through_real_save(
         live_value = getattr(config, key)
         assert live_value is bool(expected) if control == "fast" else live_value == expected
         expected_keys = sorted(
-            f"WISP_{'CLAUDE' if provider == 'claude' else 'CODEX'}_{suffix}"
+            f"OPENWAND_{'CLAUDE' if provider == 'claude' else 'CODEX'}_{suffix}"
             for suffix in _CONFIG_SUFFIXES
         )
         assert applied == [expected_keys]
@@ -275,7 +275,7 @@ def test_floating_provider_badge_opens_and_saves_real_controls(
         assert getattr(config, key) == model
         assert applied == [{
             "changed_keys": sorted(
-                f"WISP_{'CLAUDE' if provider == 'claude' else 'CODEX'}_{suffix}"
+                f"OPENWAND_{'CLAUDE' if provider == 'claude' else 'CODEX'}_{suffix}"
                 for suffix in _CONFIG_SUFFIXES
             ),
             "source": "harness_controls",
@@ -426,20 +426,20 @@ def test_every_claude_control_choice_reaches_real_sdk_options(
     monkeypatch.setattr(claude, "_claude_executable", lambda **_kwargs: "")
 
     settings: dict[str, object] = {
-        "WISP_CLAUDE_MODEL": "",
-        "WISP_CLAUDE_FAST_MODE": False,
-        "WISP_CLAUDE_REASONING_EFFORT": "high",
-        "WISP_CLAUDE_REASONING_SUMMARY": "summarized",
-        "WISP_CLAUDE_APPROVAL_MODE": "ask",
-        "WISP_CLAUDE_SYSTEM_PROMPT": "",
+        "OPENWAND_CLAUDE_MODEL": "",
+        "OPENWAND_CLAUDE_FAST_MODE": False,
+        "OPENWAND_CLAUDE_REASONING_EFFORT": "high",
+        "OPENWAND_CLAUDE_REASONING_SUMMARY": "summarized",
+        "OPENWAND_CLAUDE_APPROVAL_MODE": "ask",
+        "OPENWAND_CLAUDE_SYSTEM_PROMPT": "",
     }
     settings[
         {
-            "model": "WISP_CLAUDE_MODEL",
-            "fast": "WISP_CLAUDE_FAST_MODE",
-            "effort": "WISP_CLAUDE_REASONING_EFFORT",
-            "reasoning": "WISP_CLAUDE_REASONING_SUMMARY",
-            "approval": "WISP_CLAUDE_APPROVAL_MODE",
+            "model": "OPENWAND_CLAUDE_MODEL",
+            "fast": "OPENWAND_CLAUDE_FAST_MODE",
+            "effort": "OPENWAND_CLAUDE_REASONING_EFFORT",
+            "reasoning": "OPENWAND_CLAUDE_REASONING_SUMMARY",
+            "approval": "OPENWAND_CLAUDE_APPROVAL_MODE",
         }[control]
     ] = value
     for key, configured in settings.items():
@@ -494,7 +494,7 @@ def test_provider_workspace_selection_runtime_matrix(
     selected = tmp_path / "selected"
     selected.mkdir()
     raw = {"auto": "", "valid": str(selected), "missing": str(tmp_path / "missing")}[workspace_state]
-    key = "WISP_CLAUDE_WORKSPACE" if provider == "claude" else "WISP_CODEX_WORKSPACE"
+    key = "OPENWAND_CLAUDE_WORKSPACE" if provider == "claude" else "OPENWAND_CODEX_WORKSPACE"
     monkeypatch.setattr(config, key, raw, raising=False)
 
     result = _configured_harness_workspace(provider)

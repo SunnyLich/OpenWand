@@ -215,7 +215,7 @@ def test_preview_escapes_exact_slide_content_and_is_host_sanitizer_safe() -> Non
     assert "&lt;strong&gt;results&lt;/strong&gt;" in preview.html
     assert "Â" not in preview.html
     assert "action-focus-preview" in preview.html
-    assert all(text not in preview.html for text in ("Ready to review", "Nothing has changed", "Apply rechecks", "Wisp will"))
+    assert all(text not in preview.html for text in ("Ready to review", "Nothing has changed", "Apply rechecks", "OpenWand will"))
     assert sanitize_presentation_html(preview.html) == preview.html
 
 
@@ -362,4 +362,4 @@ def test_presentation_picker_exposes_live_desktop_and_gates_web_bridges() -> Non
         "presentation.restyle_slide",
         "presentation.speaker_notes",
     }
-    assert all("authenticated Wisp API bridge" in reason for reason in unavailable.values())
+    assert all("authenticated OpenWand API bridge" in reason for reason in unavailable.values())

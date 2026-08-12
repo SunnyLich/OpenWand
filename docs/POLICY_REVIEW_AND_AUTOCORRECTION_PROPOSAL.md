@@ -3,7 +3,7 @@
 Status: exploration proposal  
 Recorded: 2026-07-30  
 Scope: AI-generated natural-language and structured output  
-Evidence baseline: Wisp experiments AI-02, AI-03, and AI-04 from 2026-07-28  
+Evidence baseline: OpenWand experiments AI-02, AI-03, and AI-04 from 2026-07-28
 Strategic relationship: this proposal preserves decision-register item AI-14. AI-14 bans withholding a response because a semantic classifier considers it wrong; this proposal instead lets semantic findings become bounded revision instructions for the original writer before delivery.
 
 ## Executive view
@@ -75,7 +75,7 @@ Use authoritative tools when a claim depends on mutable external state, such as 
 
 Use semantic reviewers for context-sensitive questions such as unsupported implications, misleading phrasing, tone, incomplete explanations, contradictory claims, brand requirements, and policy interpretation.
 
-For Wisp's current strategy, semantic findings may be returned to the original writer as bounded revision instructions before delivery. This is a self-review and editing step, not a semantic hard-block boundary. A reviewer does not gain authority to suppress a response merely because it reports high confidence. If one revision does not resolve an uncertain finding, ordinary Wisp output should not enter an endless loop or be silently withheld; a consequential managed workflow may instead route the unresolved case to human review.
+For OpenWand's current strategy, semantic findings may be returned to the original writer as bounded revision instructions before delivery. This is a self-review and editing step, not a semantic hard-block boundary. A reviewer does not gain authority to suppress a response merely because it reports high confidence. If one revision does not resolve an uncertain finding, ordinary OpenWand output should not enter an endless loop or be silently withheld; a consequential managed workflow may instead route the unresolved case to human review.
 
 ### Retrieval
 
@@ -286,7 +286,7 @@ Targets should be preregistered from the consequence of each rule, not chosen af
 
 ## Product recommendation
 
-Proceed with the idea as a measured review-and-repair experiment, not yet as a security guarantee or a broad Wisp feature.
+Proceed with the idea as a measured review-and-repair experiment, not yet as a security guarantee or a broad OpenWand feature.
 
 The most promising initial product is a hybrid policy compiler and correction coordinator for one high-volume workflow. The safest initial architecture is deterministic-first, tool-verified where facts are mutable, bounded semantic revision by the original writer, minimal-diff editing, full revalidation, version binding, and human escalation for consequential uncertainty.
 

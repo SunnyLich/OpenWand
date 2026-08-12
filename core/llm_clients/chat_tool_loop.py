@@ -1,6 +1,6 @@
 """Provider-neutral chat tool loop contracts.
 
-These types are intentionally small and behavior-light. They give Wisp one
+These types are intentionally small and behavior-light. They give OpenWand one
 internal shape for chat tool calls/results before provider-specific adapters
 translate to or from OpenAI Responses, Anthropic, or OpenAI-compatible payloads.
 """
@@ -29,7 +29,7 @@ class ChatToolRequest:
 
 
 @dataclass(frozen=True)
-class WispToolCall:
+class OpenWandToolCall:
     """One normalized tool call requested by a model."""
 
     id: str
@@ -39,7 +39,7 @@ class WispToolCall:
 
 
 @dataclass(frozen=True)
-class WispToolResult:
+class OpenWandToolResult:
     """One normalized tool result returned to a model."""
 
     call_id: str
@@ -51,10 +51,10 @@ class WispToolResult:
 
 
 @dataclass(frozen=True)
-class WispObservation:
+class OpenWandObservation:
     """A compact observation generated after one or more tool calls."""
 
-    tool_results: list[WispToolResult]
+    tool_results: list[OpenWandToolResult]
     summary: str
     remaining_budget: dict[str, Any] = field(default_factory=dict)
 
@@ -65,8 +65,8 @@ class ChatLoopFinal:
 
     text: str
     status: str
-    observations: list[WispObservation] = field(default_factory=list)
-    tool_calls: list[WispToolCall] = field(default_factory=list)
+    observations: list[OpenWandObservation] = field(default_factory=list)
+    tool_calls: list[OpenWandToolCall] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -74,7 +74,7 @@ class ChatLoopFinal:
 class ChatModelTurn:
     """One normalized model turn returned to the neutral loop."""
 
-    tool_calls: list[WispToolCall] = field(default_factory=list)
+    tool_calls: list[OpenWandToolCall] = field(default_factory=list)
     final_text: str = ""
     status: str = "continue"
     progress: str = ""
@@ -96,8 +96,8 @@ class ChatLoopModel(Protocol):
     def next_turn(
         self,
         request: ChatToolRequest,
-        observations: list[WispObservation],
-        tool_calls: list[WispToolCall],
+        observations: list[OpenWandObservation],
+        tool_calls: list[OpenWandToolCall],
     ) -> ChatModelTurn:
         """Return the next normalized model turn."""
 
@@ -105,7 +105,7 @@ class ChatLoopModel(Protocol):
 class ChatToolExecutor(Protocol):
     """Tool executor interface consumed by the neutral loop."""
 
-    def execute(self, call: WispToolCall) -> WispToolResult:
+    def execute(self, call: OpenWandToolCall) -> OpenWandToolResult:
         """Execute one normalized tool call."""
 
 
@@ -123,8 +123,8 @@ class ChatToolLoop:
         executor: ChatToolExecutor,
     ) -> ChatLoopFinal:
         """Run the neutral tool loop until final text, block, or budget exhaustion."""
-        observations: list[WispObservation] = []
-        tool_calls: list[WispToolCall] = []
+        observations: list[OpenWandObservation] = []
+        tool_calls: list[OpenWandToolCall] = []
         progress_chunks: list[str] = []
         metadata: dict[str, Any] = {"completion_gate_missed": False}
         gate_nudges: set[str] = set()
@@ -135,12 +135,12 @@ class ChatToolLoop:
             if turn.progress:
                 progress_chunks.append(turn.progress)
             if turn.tool_calls:
-                results: list[WispToolResult] = []
+                results: list[OpenWandToolResult] = []
                 for call in turn.tool_calls:
                     tool_calls.append(call)
                     if tool_call_count >= max(0, self.config.max_tool_calls):
                         results.append(
-                            WispToolResult(
+                            OpenWandToolResult(
                                 call_id=call.id,
                                 name=call.name,
                                 ok=False,
@@ -155,7 +155,7 @@ class ChatToolLoop:
                     tool_call_count += 1
                     results.append(executor.execute(call))
                 observations.append(
-                    WispObservation(
+                    OpenWandObservation(
                         tool_results=results,
                         summary=self._observation_summary(results),
                         remaining_budget={
@@ -169,7 +169,7 @@ class ChatToolLoop:
                 if self.config.completion_gate and gate_message and gate_message not in gate_nudges:
                     gate_nudges.add(gate_message)
                     observations.append(
-                        WispObservation(
+                        OpenWandObservation(
                             tool_results=[],
                             summary=gate_message,
                             remaining_budget={
@@ -205,7 +205,7 @@ class ChatToolLoop:
         )
 
     @staticmethod
-    def _observation_summary(results: Sequence[WispToolResult]) -> str:
+    def _observation_summary(results: Sequence[OpenWandToolResult]) -> str:
         """Build a compact observation summary."""
         if not results:
             return "No tool results."
@@ -218,8 +218,8 @@ class ChatToolLoop:
     def _completion_gate_message(
         self,
         request: ChatToolRequest,
-        tool_calls: list[WispToolCall],
-        observations: list[WispObservation],
+        tool_calls: list[OpenWandToolCall],
+        observations: list[OpenWandObservation],
         final_text: str = "",
     ) -> str:
         """Return a completion nudge when final text skipped obvious available work."""
@@ -317,7 +317,7 @@ def _available_tool_names(request: ChatToolRequest) -> set[str]:
     return names
 
 
-def _successful_tool_names(observations: list[WispObservation]) -> set[str]:
+def _successful_tool_names(observations: list[OpenWandObservation]) -> set[str]:
     """Return tool names with at least one successful result."""
     names: set[str] = set()
     for observation in observations:
@@ -327,7 +327,7 @@ def _successful_tool_names(observations: list[WispObservation]) -> set[str]:
     return names
 
 
-def _failed_tool_names(observations: list[WispObservation]) -> set[str]:
+def _failed_tool_names(observations: list[OpenWandObservation]) -> set[str]:
     """Return tool names with at least one failed result."""
     names: set[str] = set()
     for observation in observations:
@@ -337,7 +337,7 @@ def _failed_tool_names(observations: list[WispObservation]) -> set[str]:
     return names
 
 
-def _latest_result_hit_tool_budget(observations: list[WispObservation]) -> bool:
+def _latest_result_hit_tool_budget(observations: list[OpenWandObservation]) -> bool:
     """Return whether the latest tool observation includes a budget-skipped call."""
     for observation in reversed(observations):
         if not observation.tool_results:
@@ -349,7 +349,7 @@ def _latest_result_hit_tool_budget(observations: list[WispObservation]) -> bool:
     return False
 
 
-def _has_successful_evidence(prompt: str, observations: list[WispObservation]) -> bool:
+def _has_successful_evidence(prompt: str, observations: list[OpenWandObservation]) -> bool:
     """Return whether previous successful tool output likely contains answer evidence."""
     if _looks_like_file_context_request(prompt):
         return "read_file" in _successful_tool_names(observations)
@@ -379,7 +379,7 @@ def _looks_like_budget_or_retry_answer(text: str) -> bool:
     )
 
 
-def _successful_read_after_latest_list(observations: list[WispObservation]) -> bool:
+def _successful_read_after_latest_list(observations: list[OpenWandObservation]) -> bool:
     """Return whether read_file succeeded after the latest successful list_files."""
     latest_list_index = -1
     for index, observation in enumerate(observations):

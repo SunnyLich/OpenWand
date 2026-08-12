@@ -12,7 +12,7 @@ def disable_env_proxy_lookup() -> bool:
     """Avoid macOS SystemConfiguration proxy lookup inside worker threads."""
     return (
         macos_safety.safe_mode_enabled()
-        and os.environ.get("WISP_MACOS_TRUST_ENV_PROXIES") != "1"
+        and os.environ.get("OPENWAND_MACOS_TRUST_ENV_PROXIES") != "1"
     )
 
 

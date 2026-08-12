@@ -14,7 +14,7 @@ Usage on the Mac:
 
     ./.venv/bin/python scripts/macos_helper_selftest.py
 
-(The WISP_MACOS_HELPER flag is not required here — the client always spawns the
+(The OPENWAND_MACOS_HELPER flag is not required here — the client always spawns the
 worker; the flag only governs whether core.stt delegates to it.)
 """
 from __future__ import annotations

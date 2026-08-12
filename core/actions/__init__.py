@@ -1,4 +1,4 @@
-"""Typed, preview-first app action contracts for Wisp."""
+"""Typed, preview-first app action contracts for OpenWand."""
 
 from core.actions.contracts import (
     ActionCapability,

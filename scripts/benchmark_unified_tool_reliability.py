@@ -24,7 +24,7 @@ from core.llm_clients.chat_flow_harness import (  # noqa: E402
 from core.llm_clients.chat_tool_loop import (  # noqa: E402
     ChatToolLoop,
     ChatToolLoopConfig,
-    WispToolResult,  # noqa: E402
+    OpenWandToolResult,  # noqa: E402
 )
 from core.llm_clients.harness_grading import (  # noqa: E402
     ExpectedTool,
@@ -220,7 +220,7 @@ def reliability_fixtures() -> dict[str, ScenarioFixtures]:
         "read_file": {
             "path=app.py": ["GREETING = 'hi'\nprint(GREETING)\n"],
             "*": [
-                WispToolResult(
+                OpenWandToolResult(
                     call_id="fixture_missing",
                     name="read_file",
                     ok=False,

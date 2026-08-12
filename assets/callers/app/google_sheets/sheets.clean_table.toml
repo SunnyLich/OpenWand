@@ -5,4 +5,4 @@ capability = "google_sheets.format_table@1"
 planner = "spreadsheet_plan_format_table"
 access = ["internet"]
 available = false
-unavailable_reason = "This app's authenticated Wisp API bridge is not connected yet"
+unavailable_reason = "This app's authenticated OpenWand API bridge is not connected yet"

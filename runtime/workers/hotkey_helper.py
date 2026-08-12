@@ -20,8 +20,8 @@ from runtime.bootstrap import configure_paths
 
 # A dedicated, easy-to-read log so hotkey behaviour can be inspected on a remote
 # Mac without digging through worker stderr. Tail it with:
-#   tail -f ~/wisp-hotkey-debug.log
-_DEBUG_LOG = os.path.expanduser("~/wisp-hotkey-debug.log")
+#   tail -f ~/openwand-hotkey-debug.log
+_DEBUG_LOG = os.path.expanduser("~/openwand-hotkey-debug.log")
 
 
 def _dbg(msg: str) -> None:
@@ -136,7 +136,7 @@ def _become_ui_element() -> bool:
 # Carbon RegisterEventHotKey only delivers to the *console* session, so it never
 # fires over RDP/VNC into a virtual session (e.g. a rented MacinCloud host, where
 # on_console is False). A CGEventTap, by contrast, observes keystrokes inside our
-# own session -- the WISP_HOTKEY_DEBUG monitor proved this works there. This
+# own session -- the OPENWAND_HOTKEY_DEBUG monitor proved this works there. This
 # backend reuses that proven listen-only tap, but matches each keyDown against
 # the configured hotkeys and emits the same events the Carbon backend would.
 #
@@ -240,7 +240,7 @@ def _hotkey_specs_from_config(config: Any) -> list[tuple[str, str, dict]]:
         if combo:
             specs.append((combo, kind, {}))
     try:
-        addon_hotkeys = json.loads(os.environ.get("WISP_ADDON_HOTKEYS") or "[]")
+        addon_hotkeys = json.loads(os.environ.get("OPENWAND_ADDON_HOTKEYS") or "[]")
     except Exception:
         addon_hotkeys = []
     if isinstance(addon_hotkeys, list):
@@ -358,7 +358,7 @@ def _install_hotkey_tap(
             tap = _create_tap(Quartz.kCGEventTapOptionListenOnly)
         if not tap:
             _dbg("hotkey tap: CGEventTapCreate returned NULL "
-                 "(grant Input Monitoring + Accessibility to the Python/Wisp process).")
+                 "(grant Input Monitoring + Accessibility to the Python/OpenWand process).")
             return False
         if not swallowing:
             _dbg("hotkey tap: active tap unavailable (grant Accessibility to swallow "
@@ -404,7 +404,7 @@ _DEBUG_KEY_TAP: Any = None
 def _install_debug_key_monitor() -> bool:
     """Log the keycode of EVERY key press the process can see (opt-in).
 
-    Enable with WISP_HOTKEY_DEBUG=1. Answers "is the app hearing my keystrokes
+    Enable with OPENWAND_HOTKEY_DEBUG=1. Answers "is the app hearing my keystrokes
     at all?" -- independent of whether any hotkey matches. Listen-only Quartz
     tap reading only the raw keycode + flags on the main run loop, so it cannot
     swallow or modify events (it can't cause a stuck modifier).
@@ -530,7 +530,7 @@ def main() -> int:
     elif diagnostics.get("on_console") is False:
         _dbg("session is NOT on-console (remote / fast-user-switched) -- "
              "hotkeys may not receive keystrokes.")
-    if os.environ.get("WISP_HOTKEY_DEBUG") == "1":
+    if os.environ.get("OPENWAND_HOTKEY_DEBUG") == "1":
         _install_debug_key_monitor()
     write_lock = threading.Lock()
     stop = threading.Event()
@@ -593,8 +593,8 @@ def main() -> int:
 
         # Carbon only fires on the console session. Off-console (RDP/VNC into a
         # virtual session, e.g. a rented MacinCloud host) fall back to a tap that
-        # observes keys inside our own session. Forceable with WISP_HOTKEY_TAP=1.
-        forced_tap = os.environ.get("WISP_HOTKEY_TAP") == "1"
+        # observes keys inside our own session. Forceable with OPENWAND_HOTKEY_TAP=1.
+        forced_tap = os.environ.get("OPENWAND_HOTKEY_TAP") == "1"
         use_tap = forced_tap or diagnostics.get("on_console") is False
         tap_active = False
         if use_tap:

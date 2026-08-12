@@ -30,7 +30,7 @@ since auto-install is now the default.)
 The built app lands at:
 
 ```text
-dist\Wisp\Wisp.exe
+dist\OpenWand\OpenWand.exe
 ```
 
 Use `-SkipInstall` if dependencies are already installed:
@@ -52,18 +52,18 @@ Notes:
   seeded into the writable `addons` folder on first launch. Existing addon
   folders are left untouched so user addon configuration, such as MCP Bridge
   `servers.json`, is preserved.
-- Portable builds create an `addons` folder next to `Wisp.exe` when that folder
+- Portable builds create an `addons` folder next to `OpenWand.exe` when that folder
   is writable. Drop addon folders there, or use **Addon Manager > Install
   archive/folder**. If the executable lives in a read-only install location,
-  Wisp falls back to the user data addon folder shown by **Open addons folder**.
-- Windows builds place `Uninstall Wisp.bat` beside `Wisp.exe`. Double-click it
-  after closing Wisp to preview the exact Wisp-owned paths that will be removed,
+  OpenWand falls back to the user data addon folder shown by **Open addons folder**.
+- Windows builds place `Uninstall OpenWand.bat` beside `OpenWand.exe`. Double-click it
+  after closing OpenWand to preview the exact OpenWand-owned paths that will be removed,
   confirm permanent removal, and run the same validated uninstaller available in
-  **Settings > App > Uninstall Wisp**.
+  **Settings > App > Uninstall OpenWand**.
 - The packaged executable starts the same supervisor worker runtime as the
   launchers.
 - Packaged no-console runs keep runtime logs under `build_logs/`; the latest
-  folder is written to `build_logs/latest_wisp_runtime.txt`. From the tray menu,
+  folder is written to `build_logs/latest_openwand_runtime.txt`. From the tray menu,
   open `Runtime Status` to see worker pids and running/stopped state plus the
   live aggregated event log: worker stderr (tracebacks grouped into one
   expandable "encountered an error" entry), supervisor logs, bubble notices,
@@ -73,19 +73,19 @@ Notes:
   dependency environments and Settings > Voice installs for optional speech
   packages such as STT/faster-whisper, Kokoro, or ElevenLabs. The Windows build script stages
   `uv.exe` into `tools\uv.exe` before PyInstaller runs, installing `uv` into the
-  build Python first if needed, and PyInstaller bundles it with Wisp. If you
+  build Python first if needed, and PyInstaller bundles it with OpenWand. If you
   build without the script, place `uv.exe` at `bin\uv.exe` or `tools\uv.exe`
   before running PyInstaller.
 - Packaged builds deliberately exclude faster-whisper, CTranslate2, PyAV,
   ONNX Runtime, and the ElevenLabs SDK. Releases therefore stay small; speech
-  providers have one authoritative pinned installation under Wisp's
+  providers have one authoritative pinned installation under OpenWand's
   user-writable `python_packages` directory, created or repaired by
   Settings > Voice > Install STT; packages present in the build environment do
   not become a second bundled STT backend. The build scripts also filter the
   installer-owned native STT wheels from their temporary build requirements,
   avoiding downloads that PyInstaller would discard.
 - `pip` is used in the build environment but is deliberately excluded from
-  packaged Wisp releases. Bundled `uv` is the only package installer used by a
+  packaged OpenWand releases. Bundled `uv` is the only package installer used by a
   frozen app; source checkouts retain their normal `pip` fallback.
 - If packaging fails on a missing required dependency, rerun without
   `-SkipInstall` so the build script can install it into `.venv-build`.
@@ -108,20 +108,20 @@ Create a `v`-prefixed release tag that matches the current
 `pyproject.toml` version:
 
 ```powershell
-git tag v0.10.2
-git push origin v0.10.2
+git tag v0.11
+git push origin v0.11
 ```
 
 Tags without the `v` prefix do not trigger release builds.
 
 The workflow builds:
 
-- Windows: `Wisp-<tag>-windows-x64.zip`
-- macOS: `Wisp-<tag>-macos-<arch>.zip`
-- Linux: `Wisp-<tag>-linux-x64.tar.gz`
+- Windows: `OpenWand-<tag>-windows-x64.zip`
+- macOS: `OpenWand-<tag>-macos-<arch>.zip`
+- Linux: `OpenWand-<tag>-linux-x64.tar.gz`
 
 After all platform jobs finish, the workflow creates or updates a draft GitHub
-Release and uploads `wisp-release-manifest.json` plus `SHA256SUMS.txt`. The
+Release and uploads `openwand-release-manifest.json` plus `SHA256SUMS.txt`. The
 Settings update button uses the manifest to find the newest build for the
 current platform, verify the SHA256 hash, download the matching artifact, and
 then apply it through a small helper process when the user chooses **Apply

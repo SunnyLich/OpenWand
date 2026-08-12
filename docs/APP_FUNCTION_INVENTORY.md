@@ -1,4 +1,4 @@
-# Wisp App Function Inventory
+# OpenWand App Function Inventory
 
 Snapshot: 2026-07-20
 
@@ -10,9 +10,9 @@ The checkboxes are inventory/test-map entries. An unchecked box does **not** mea
 
 ## 1. Launch, setup, and desktop shell
 
-- [ ] Launch the packaged Wisp app. [1][2][3][4][5][6][7][8][9]
-- [ ] Launch Wisp from the source checkout and development launchers. [10][11][12][13][14][15][16][17][18]
-- [ ] Prevent a second Wisp instance from running at the same time. [19][20][21][22][23][24][25][26][27]
+- [ ] Launch the packaged OpenWand app. [1][2][3][4][5][6][7][8][9]
+- [ ] Launch OpenWand from the source checkout and development launchers. [10][11][12][13][14][15][16][17][18]
+- [ ] Prevent a second OpenWand instance from running at the same time. [19][20][21][22][23][24][25][26][27]
 - [ ] Run first-start setup and dependency checks. [28][29][30][31][32][33][34][35][36]
 - [ ] Show the guided profile/setup wizard again from Settings. [37][38][39][40][41][42]
 - [ ] Move backward and forward through setup steps. [43][44][45][46][47][48]
@@ -26,10 +26,10 @@ The checkboxes are inventory/test-map entries. An unchecked box does **not** mea
 - [ ] Open a new chat automatically when setup finishes. [92][93][94][95][96][97][98]
 - [ ] Show first-use guidance for trying the main shortcut. [99][100][101][102][103][104]
 - [ ] Start the UI, brain/model, audio, and platform workers. [105][106][107][108][109][110][111]
-- [ ] Display a floating always-on-top Wisp icon. [112][113][114][115][116][117][118]
+- [ ] Display a floating always-on-top OpenWand icon. [112][113][114][115][116][117][118]
 - [ ] Show idle, listening, thinking, and speaking icon states. [119][120][121][122][123][124]
 - [ ] Drag the floating icon to another screen position. [125][126][127][128][129][130][131]
-- [ ] Auto-hide the icon when Wisp is inactive. [132][133][134][135][136][137][138]
+- [ ] Auto-hide the icon when OpenWand is inactive. [132][133][134][135][136][137][138]
 - [ ] Show or hide the icon from the tray menu. [139][140][141][142][143][144][145]
 - [ ] Open the most recent chat from the tray menu. [146][147][148][149][150]
 - [ ] Open Memory from the tray menu. [151][152][153][154][155]
@@ -37,9 +37,9 @@ The checkboxes are inventory/test-map entries. An unchecked box does **not** mea
 - [ ] Open Settings from the tray menu. [164][165][166][167][168]
 - [ ] Open ChatGPT or Claude controls from the provider badge. [169][170][171][172][173]
 - [ ] Open runtime status where the platform worker host supports it. [174][175][176][177][178][179][180][181][182]
-- [ ] Quit Wisp from the tray menu. [183][184][185][186][187]
-- [ ] Start Wisp automatically when the user signs in. [188][189][190][191][192][193][194][195][196]
-- [ ] Shut workers down cleanly when Wisp exits. [197][198][199][200][201][202][203][204][205]
+- [ ] Quit OpenWand from the tray menu. [183][184][185][186][187]
+- [ ] Start OpenWand automatically when the user signs in. [188][189][190][191][192][193][194][195][196]
+- [ ] Shut workers down cleanly when OpenWand exits. [197][198][199][200][201][202][203][204][205]
 
 ## 2. Main ask, explain, fix, and rewrite actions
 
@@ -59,7 +59,7 @@ The checkboxes are inventory/test-map entries. An unchecked box does **not** mea
 - [ ] Automatically close an abandoned intent picker after its configured timeout. [292][293][294][295]
 - [ ] Keep the intent picker open until a choice is made by setting timeout to zero. [296][297][298][299]
 - [ ] Paste a rewrite result back into the application that originally had focus. [300][301][302][303][304]
-- [ ] Keep an answer in Wisp without pasting it back. [305][306][307][308][309][310][311]
+- [ ] Keep an answer in OpenWand without pasting it back. [305][306][307][308][309][310][311]
 - [ ] Run localized built-in intent labels and prompts for supported assistant languages. [312][313][314][315][316][317]
 - [ ] Stream the model response instead of waiting for the entire answer. [318][319][320][321][322][323][324]
 - [ ] Route a request through the selected primary model and configured fallbacks. [325][326][327][328][329][330][331]
@@ -105,7 +105,7 @@ The checkboxes are inventory/test-map entries. An unchecked box does **not** mea
 - [ ] Remove one context item without clearing the rest. [524][525][526][527][528][529][530]
 - [ ] Re-enable a context source that was removed or turned off. [531][532][533][534][535][536][537]
 - [ ] Paste clipboard items into the intent overlay as context. [538][539][540][541][542]
-- [ ] Drop files or images onto Wisp as context. [543][544][545][546][547][548]
+- [ ] Drop files or images onto OpenWand as context. [543][544][545][546][547][548]
 - [ ] Preview enabled context before sending. [549][550][551][552][553][554][555]
 - [ ] Show context-source state and token estimates where available. [556][557][558][559][560]
 - [ ] Toggle context sources with the numbered overlay keys. [561][562][563][564][565][566]
@@ -216,16 +216,16 @@ The checkboxes are inventory/test-map entries. An unchecked box does **not** mea
 
 ## 8. External ChatGPT and Claude conversations
 
-- [ ] Pull local ChatGPT/Codex and Claude Code transcripts into Wisp. [1171][1172][1173][1174][1175][1176][1177][1178][1179]
+- [ ] Pull local ChatGPT/Codex and Claude Code transcripts into OpenWand. [1171][1172][1173][1174][1175][1176][1177][1178][1179]
 - [ ] Report imported, updated, and unchanged transcript counts. [1180][1181][1182][1183][1184][1185][1186][1187][1188]
-- [ ] Keep Wisp, ChatGPT, and Claude conversation namespaces distinct. [1189][1190][1191][1192][1193][1194][1195][1196][1197]
-- [ ] Continue a conversation using Wisp's own model engine. [1198][1199][1200][1201][1202][1203][1204][1205][1206]
+- [ ] Keep OpenWand, ChatGPT, and Claude conversation namespaces distinct. [1189][1190][1191][1192][1193][1194][1195][1196][1197]
+- [ ] Continue a conversation using OpenWand's own model engine. [1198][1199][1200][1201][1202][1203][1204][1205][1206]
 - [ ] Continue a conversation using the selected ChatGPT/Codex or Claude agent. [1207][1208][1209][1210][1211][1212][1213][1214][1215]
-- [ ] Choose whether continued messages belong to Wisp or the selected agent. [1216][1217][1218][1219][1220][1221][1222][1223][1224]
-- [ ] Push new Wisp turns back into their source transcript after confirmation. [1225][1226][1227][1228][1229][1230][1231][1232][1233]
+- [ ] Choose whether continued messages belong to OpenWand or the selected agent. [1216][1217][1218][1219][1220][1221][1222][1223][1224]
+- [ ] Push new OpenWand turns back into their source transcript after confirmation. [1225][1226][1227][1228][1229][1230][1231][1232][1233]
 - [ ] Create a backup before editing an external transcript. [1234][1235][1236][1237][1238][1239][1240][1241][1242]
-- [ ] Export a Wisp conversation as a new ChatGPT conversation. [1243][1244][1245][1246][1247][1248][1249][1250][1251]
-- [ ] Export a Wisp conversation as a new Claude conversation. [1252][1253][1254][1255][1256][1257][1258][1259][1260]
+- [ ] Export a OpenWand conversation as a new ChatGPT conversation. [1243][1244][1245][1246][1247][1248][1249][1250][1251]
+- [ ] Export a OpenWand conversation as a new Claude conversation. [1252][1253][1254][1255][1256][1257][1258][1259][1260]
 - [ ] Open provider controls from the floating provider badge. [1261][1262][1263][1264][1265][1266][1267][1268][1269]
 - [ ] Select provider-default or explicit agent model. [1270][1271][1272][1273][1274][1275][1276][1277][1278]
 - [ ] Choose or automatically detect the agent project/workspace folder. [1279][1280][1281][1282][1283][1284][1285][1286][1287]
@@ -246,8 +246,8 @@ The checkboxes are inventory/test-map entries. An unchecked box does **not** mea
 - [ ] Check GitHub sign-in status. [1374][1375][1376][1377][1378]
 - [ ] Sign out of GitHub. [1379][1380][1381][1382]
 - [ ] Override the GitHub OAuth client ID and scopes. [1383][1384][1385][1386][1387][1388][1389]
-- [ ] Connect and clear GitHub Copilot credentials. [1390][1391][1392][1393]
-- [ ] Test the GitHub Copilot connection. [1394][1395][1396][1397][1398]
+- [ ] Store and clear GitHub Copilot provider credentials. [1390][1391][1392][1393]
+- [ ] Check GitHub Copilot credential readiness through the app API. [1394][1395][1396][1397][1398]
 - [ ] Add a provider connection. [1399][1400][1401][1402][1403][1404]
 - [ ] Give a connection an alias. [1405][1406][1407][1408][1409][1410]
 - [ ] Store API keys in the operating-system keychain. [1411][1412][1413][1414][1415][1416]
@@ -256,7 +256,7 @@ The checkboxes are inventory/test-map entries. An unchecked box does **not** mea
 - [ ] Filter All, Cloud, or Local/custom connections. [1430][1431][1432][1433][1434]
 - [ ] Expand or collapse large connection lists. [1435][1436][1437][1438][1439]
 - [ ] Configure a custom OpenAI-compatible base URL and API key. [1440][1441][1442][1443][1444][1445]
-- [ ] Pick a saved custom endpoint from the Endpoints menu. [1446][1447][1448][1449][1450][1451]
+- [ ] Choose a preset or custom provider endpoint. [1446][1447][1448][1449][1450][1451]
 - [ ] Use an existing local Ollama installation and auto-start its server when needed. [1452][1453][1454][1455][1456][1457][1458]
 - [ ] Use an LM Studio or other OpenAI-compatible endpoint through Custom. [1459][1460][1461][1462][1463][1464][1465]
 - [ ] Refresh model names from providers that support model listing. [1466][1467][1468][1469][1470]
@@ -308,9 +308,9 @@ The checkboxes are inventory/test-map entries. An unchecked box does **not** mea
 - [ ] Temporarily cool down a failing route before retrying it later. [1740][1741][1742][1743][1744][1745][1746]
 - [ ] Adapt to provider differences such as streaming, tools, images, token parameters, and reasoning controls. [1747][1748][1749][1750][1751][1752][1753]
 - [ ] Show warnings when a chosen model/provider cannot satisfy an enabled capability. [1754][1755][1756][1757][1758][1759][1760]
-- [ ] Use Wisp, ChatGPT, or Claude Agent as the conversation execution engine. [1761][1762][1763][1764][1765][1766][1767]
-- [ ] Choose Wisp or the selected agent as conversation owner. [1768][1769][1770][1771][1772][1773][1774]
-- [ ] Edit separate system prompts for Wisp, ChatGPT, and Claude conversations. [1775][1776][1777][1778][1779][1780][1781]
+- [ ] Use OpenWand, ChatGPT, or Claude Agent as the conversation execution engine. [1761][1762][1763][1764][1765][1766][1767]
+- [ ] Choose OpenWand or the selected agent as conversation owner. [1768][1769][1770][1771][1772][1773][1774]
+- [ ] Edit separate system prompts for OpenWand, ChatGPT, and Claude conversations. [1775][1776][1777][1778][1779][1780][1781]
 
 ## 11. Text to speech, speech to text, dictation, and live voice
 
@@ -345,8 +345,8 @@ The checkboxes are inventory/test-map entries. An unchecked box does **not** mea
 - [ ] Install live-voice support. [2038][2039][2040][2041][2042][2043][2044]
 - [ ] Start and stop a hands-free Gemini Live conversation. [2045][2046][2047][2048][2049][2050][2051][2052][2053][2054]
 - [ ] Display live user and assistant transcripts. [2055][2056][2057][2058][2059][2060][2061][2062][2063][2064]
-- [ ] Interrupt Wisp by speaking over it when full duplex is enabled. [2065][2066][2067][2068][2069][2070][2071][2072][2073][2074]
-- [ ] Pause the microphone while Wisp speaks in speaker/half-duplex mode. [2075][2076][2077][2078][2079][2080][2081][2082][2083][2084]
+- [ ] Interrupt OpenWand by speaking over it when full duplex is enabled. [2065][2066][2067][2068][2069][2070][2071][2072][2073][2074]
+- [ ] Pause the microphone while OpenWand speaks in speaker/half-duplex mode. [2075][2076][2077][2078][2079][2080][2081][2082][2083][2084]
 - [ ] Choose the live-conversation provider, model, and voice. [2085][2086][2087][2088][2089][2090][2091][2092][2093][2094]
 
 ## 12. Memory
@@ -432,7 +432,7 @@ The checkboxes are inventory/test-map entries. An unchecked box does **not** mea
 - [ ] Let add-ons add Settings fields. [2583][2584][2585][2586][2587][2588][2589][2590]
 - [ ] Let add-ons perform capped auxiliary LLM actions. [2591][2592][2593][2594][2595][2596][2597][2598]
 - [ ] Discover configured MCP servers and expose their tools through the bridge. [2599][2600][2601][2602][2603][2604][2605][2606]
-- [ ] Expose Wisp context MCP operations for selected text, clipboard, active window, browser page, and screen snip. [2607][2608][2609][2610][2611][2612]
+- [ ] Expose OpenWand context MCP operations for selected text, clipboard, active window, browser page, and screen snip. [2607][2608][2609][2610][2611][2612]
 
 ## 16. Multi-agent tasks
 
@@ -499,7 +499,7 @@ The checkboxes are inventory/test-map entries. An unchecked box does **not** mea
 - [ ] Set bubble display/auto-hide delay and scroll snap delay. [3060][3061][3062][3063][3064][3065][3066]
 - [ ] Choose app UI language: system, English, Chinese, Traditional Chinese, Spanish, or French. [3067][3068][3069][3070][3071][3072]
 - [ ] Choose assistant reply language or match the user's language. [3073][3074][3075][3076][3077][3078]
-- [ ] Edit separate Wisp, ChatGPT, and Claude system prompts. [3079][3080][3081][3082][3083][3084][3085]
+- [ ] Edit separate OpenWand, ChatGPT, and Claude system prompts. [3079][3080][3081][3082][3083][3084][3085]
 
 ## 18. Optional installer controls
 
@@ -508,12 +508,12 @@ The checkboxes are inventory/test-map entries. An unchecked box does **not** mea
 - [ ] Copy the installer log. [3096][3097][3098][3099][3100]
 - [ ] Open the installer log folder. [3101][3102][3103][3104]
 - [ ] Close the installer after it finishes. [3105][3106][3107][3108][3109][3110][3111]
-- [ ] Restart Wisp immediately when an installed component requires restart. [3112][3113][3114]
+- [ ] Restart OpenWand immediately when an installed component requires restart. [3112][3113][3114]
 - [ ] Retain a log/status file for failed or interrupted optional installs. [3115][3116][3117][3118][3119][3120][3121]
 
 ## 19. Updates, diagnostics, uninstall, and resilience
 
-- [ ] Show the installed Wisp version. [3122][3123][3124][3125][3126][3127][3128][3129][3130]
+- [ ] Show the installed OpenWand version. [3122][3123][3124][3125][3126][3127][3128][3129][3130]
 - [ ] Check GitHub Releases for a newer packaged build. [3131][3132][3133][3134][3135][3136][3137]
 - [ ] Download and apply a packaged update through the update flow. [3138][3139][3140][3141][3142][3143][3144]
 - [ ] Pull the latest `origin/main` for a supported source checkout. [3145][3146][3147][3148][3149][3150][3151]
@@ -526,9 +526,9 @@ The checkboxes are inventory/test-map entries. An unchecked box does **not** mea
 - [ ] Show runtime status for supported worker-host configurations. [3196][3197][3198][3199][3200][3201][3202][3203][3204]
 - [ ] Recover or recommend action after worker/model/audio failures. [3205][3206][3207][3208][3209]
 - [ ] Confirm the exact uninstall plan before removal. [3210][3211][3212][3213][3214][3215][3216][3217][3218]
-- [ ] Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and Wisp-owned local AI assets. [3219][3220][3221][3222][3223][3224][3225]
+- [ ] Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and OpenWand-owned local AI assets. [3219][3220][3221][3222][3223][3224][3225]
 - [ ] Remove a source checkout only when that checkout is explicitly included in the confirmed uninstall plan. [3226][3227][3228][3229][3230][3231][3232]
-- [ ] Run the uninstaller as a detached self-removing process after Wisp closes. [3233][3234][3235][3236][3237][3238][3239]
+- [ ] Run the uninstaller as a detached self-removing process after OpenWand closes. [3233][3234][3235][3236][3237][3238][3239]
 
 ## 20. Cross-platform desktop integration
 
@@ -556,10 +556,10 @@ Each reference belongs to one specific function. Similar wording under different
 
 Coverage marker: **[x]** means a test directly triggers this numbered failure path and asserts its result. A plain numbered cause has no direct failure-path assertion found. **[T###]** points to the exact test below. Happy-path and merely related tests do not count.
 
-### Launch the packaged Wisp app.
+### Launch the packaged OpenWand app.
 
-- [1] The Wisp installation is missing.
-- [2] The Wisp installation is corrupt.
+- [1] The OpenWand installation is missing.
+- [2] The OpenWand installation is corrupt.
 - [3] The required runtime is missing.
 - [4] The required runtime is corrupt.
 - [5] A stale instance lock remains.
@@ -568,10 +568,10 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [8] Startup is interrupted.
 - [9] Shutdown is interrupted.
 
-### Launch Wisp from the source checkout and development launchers.
+### Launch OpenWand from the source checkout and development launchers.
 
-- [10] The Wisp installation is missing.
-- [11] The Wisp installation is corrupt.
+- [10] The OpenWand installation is missing.
+- [11] The OpenWand installation is corrupt.
 - [12] The required runtime is missing.
 - [13] The required runtime is corrupt.
 - [14] A stale instance lock remains.
@@ -580,10 +580,10 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [17] Startup is interrupted.
 - [18] Shutdown is interrupted.
 
-### Prevent a second Wisp instance from running at the same time.
+### Prevent a second OpenWand instance from running at the same time.
 
-- [19] The Wisp installation is missing.
-- [20] The Wisp installation is corrupt.
+- [19] The OpenWand installation is missing.
+- [20] The OpenWand installation is corrupt.
 - [21] The required runtime is missing.
 - [22] The required runtime is corrupt.
 - [23] A stale instance lock remains.
@@ -594,8 +594,8 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 
 ### Run first-start setup and dependency checks.
 
-- [28] The Wisp installation is missing.
-- [29] The Wisp installation is corrupt.
+- [28] The OpenWand installation is missing.
+- [29] The OpenWand installation is corrupt.
 - [x] [30] The required runtime is missing. [T002]
 - [x] [31] The required runtime is corrupt. [T003]
 - [32] A stale instance lock remains.
@@ -715,7 +715,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [110] Required OS permission is absent.
 - [111] A worker crashes during initialization.
 
-### Display a floating always-on-top Wisp icon.
+### Display a floating always-on-top OpenWand icon.
 
 - [112] The widget is hidden.
 - [113] The widget was destroyed.
@@ -744,7 +744,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [130] The UI thread is blocked.
 - [131] The window manager rejects the behavior.
 
-### Auto-hide the icon when Wisp is inactive.
+### Auto-hide the icon when OpenWand is inactive.
 
 - [132] The widget is hidden.
 - [133] The widget was destroyed.
@@ -809,8 +809,8 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 
 ### Open runtime status where the platform worker host supports it.
 
-- [174] The Wisp installation is missing.
-- [175] The Wisp installation is corrupt.
+- [174] The OpenWand installation is missing.
+- [175] The OpenWand installation is corrupt.
 - [176] The required runtime is missing.
 - [177] The required runtime is corrupt.
 - [178] A stale instance lock remains.
@@ -819,7 +819,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [181] Startup is interrupted.
 - [182] Shutdown is interrupted.
 
-### Quit Wisp from the tray menu.
+### Quit OpenWand from the tray menu.
 
 - [183] The desktop lacks tray support.
 - [184] The tray icon was not created.
@@ -827,10 +827,10 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [186] The UI target required by this function is unavailable.
 - [187] The UI worker is unresponsive.
 
-### Start Wisp automatically when the user signs in.
+### Start OpenWand automatically when the user signs in.
 
-- [188] The Wisp installation is missing.
-- [189] The Wisp installation is corrupt.
+- [188] The OpenWand installation is missing.
+- [189] The OpenWand installation is corrupt.
 - [190] The required runtime is missing.
 - [191] The required runtime is corrupt.
 - [192] A stale instance lock remains.
@@ -839,10 +839,10 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [195] Startup is interrupted.
 - [196] Shutdown is interrupted.
 
-### Shut workers down cleanly when Wisp exits.
+### Shut workers down cleanly when OpenWand exits.
 
-- [197] The Wisp installation is missing.
-- [198] The Wisp installation is corrupt.
+- [197] The OpenWand installation is missing.
+- [198] The OpenWand installation is corrupt.
 - [199] The required runtime is missing.
 - [200] The required runtime is corrupt.
 - [201] A stale instance lock remains.
@@ -998,7 +998,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [303] Another app overwrites the clipboard.
 - [304] Accessibility permission is missing.
 
-### Keep an answer in Wisp without pasting it back.
+### Keep an answer in OpenWand without pasting it back.
 
 - [305] Required user input is empty.
 - [306] Required context is empty.
@@ -1356,7 +1356,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [541] Another app overwrites the clipboard.
 - [542] Accessibility permission is missing.
 
-### Drop files or images onto Wisp as context.
+### Drop files or images onto OpenWand as context.
 
 - [543] The image payload is missing.
 - [544] The image is unreadable.
@@ -2281,7 +2281,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [1169] The configured tool fails.
 - [1170] Persistence is interrupted.
 
-### Pull local ChatGPT/Codex and Claude Code transcripts into Wisp.
+### Pull local ChatGPT/Codex and Claude Code transcripts into OpenWand.
 
 - [1171] The external client is unavailable.
 - [1172] The external session is unavailable.
@@ -2305,7 +2305,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [1187] Backup fails.
 - [1188] The provider rejects the operation.
 
-### Keep Wisp, ChatGPT, and Claude conversation namespaces distinct.
+### Keep OpenWand, ChatGPT, and Claude conversation namespaces distinct.
 
 - [1189] The external client is unavailable.
 - [1190] The external session is unavailable.
@@ -2317,7 +2317,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [1196] Backup fails.
 - [1197] The provider rejects the operation.
 
-### Continue a conversation using Wisp's own model engine.
+### Continue a conversation using OpenWand's own model engine.
 
 - [1198] The external client is unavailable.
 - [1199] The external session is unavailable.
@@ -2341,7 +2341,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [1214] Backup fails.
 - [1215] The provider rejects the operation.
 
-### Choose whether continued messages belong to Wisp or the selected agent.
+### Choose whether continued messages belong to OpenWand or the selected agent.
 
 - [1216] The external client is unavailable.
 - [1217] The external session is unavailable.
@@ -2353,7 +2353,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [1223] Backup fails.
 - [1224] The provider rejects the operation.
 
-### Push new Wisp turns back into their source transcript after confirmation.
+### Push new OpenWand turns back into their source transcript after confirmation.
 
 - [1225] The external client is unavailable.
 - [1226] The external session is unavailable.
@@ -2377,7 +2377,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [1241] Backup fails.
 - [1242] The provider rejects the operation.
 
-### Export a Wisp conversation as a new ChatGPT conversation.
+### Export a OpenWand conversation as a new ChatGPT conversation.
 
 - [1243] The external client is unavailable.
 - [1244] The external session is unavailable.
@@ -2389,7 +2389,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [1250] Backup fails.
 - [x] [1251] The provider rejects the operation. [T032]
 
-### Export a Wisp conversation as a new Claude conversation.
+### Export a OpenWand conversation as a new Claude conversation.
 
 - [1252] The external client is unavailable.
 - [1253] The external session is unavailable.
@@ -2581,20 +2581,20 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [1388] Requested scopes are rejected.
 - [1389] The returned token cannot be stored.
 
-### Connect and clear GitHub Copilot credentials.
+### Store and clear GitHub Copilot provider credentials.
 
 - [1390] The local credential store is locked.
 - [1391] The local credential store is unavailable.
 - [1392] The local token cannot be removed.
 - [1393] Local and provider session state diverge.
 
-### Test the GitHub Copilot connection.
+### Check GitHub Copilot credential readiness through the app API.
 
-- [1394] Credentials.
-- [1395] Network access.
-- [1396] Provider availability.
-- [1397] The account lacks a required permission.
-- [1398] The provider API is incompatible.
+- [1394] The stored credential is missing or malformed.
+- [1395] The Copilot SDK is unavailable.
+- [1396] The credential store cannot be read.
+- [1397] Route authorization can only be determined by an actual model request.
+- [1398] A readiness result is not proof of provider connectivity.
 
 ### Add a provider connection.
 
@@ -2667,7 +2667,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [1444] The account lacks permission.
 - [1445] The setting cannot be saved.
 
-### Pick a saved custom endpoint from the Endpoints menu.
+### Choose a preset or custom provider endpoint.
 
 - [1446] A value required by this function is invalid.
 - [1447] The OS keychain is unavailable.
@@ -3120,7 +3120,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [x] [1759] The requested capability is unsupported. [T010]
 - [1760] Every fallback fails.
 
-### Use Wisp, ChatGPT, or Claude Agent as the conversation execution engine.
+### Use OpenWand, ChatGPT, or Claude Agent as the conversation execution engine.
 
 - [1761] The conversation store is locked.
 - [1762] The conversation store is corrupt.
@@ -3130,7 +3130,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [1766] The configured tool fails.
 - [1767] Persistence is interrupted.
 
-### Choose Wisp or the selected agent as conversation owner.
+### Choose OpenWand or the selected agent as conversation owner.
 
 - [1768] The conversation store is locked.
 - [1769] The conversation store is corrupt.
@@ -3140,7 +3140,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [1773] The configured tool fails.
 - [1774] Persistence is interrupted.
 
-### Edit separate system prompts for Wisp, ChatGPT, and Claude conversations.
+### Edit separate system prompts for OpenWand, ChatGPT, and Claude conversations.
 
 - [1775] The conversation store is locked.
 - [1776] The conversation store is corrupt.
@@ -3526,7 +3526,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [2063] The selected model is unsupported.
 - [2064] The selected device is unsupported.
 
-### Interrupt Wisp by speaking over it when full duplex is enabled.
+### Interrupt OpenWand by speaking over it when full duplex is enabled.
 
 - [2065] The optional runtime is missing.
 - [2066] A required model asset is missing.
@@ -3539,7 +3539,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [2073] The selected model is unsupported.
 - [2074] The selected device is unsupported.
 
-### Pause the microphone while Wisp speaks in speaker/half-duplex mode.
+### Pause the microphone while OpenWand speaks in speaker/half-duplex mode.
 
 - [2075] The optional runtime is missing.
 - [2076] A required model asset is missing.
@@ -4293,7 +4293,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [2605] The MCP server is unavailable.
 - [2606] The MCP protocol is unavailable.
 
-### Expose Wisp context MCP operations for selected text, clipboard, active window, browser page, and screen snip.
+### Expose OpenWand context MCP operations for selected text, clipboard, active window, browser page, and screen snip.
 
 - [x] [2607] Nothing is selected. [T066]
 - [2608] Focus moved.
@@ -4948,7 +4948,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [3077] The pending change is discarded before persistence.
 - [3078] The required application restart does not occur.
 
-### Edit separate Wisp, ChatGPT, and Claude system prompts.
+### Edit separate OpenWand, ChatGPT, and Claude system prompts.
 
 - [3079] The conversation store is locked.
 - [3080] The conversation store is corrupt.
@@ -4999,7 +4999,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [3110] The installer returns invalid status.
 - [3111] The installer is cancelled.
 
-### Restart Wisp immediately when an installed component requires restart.
+### Restart OpenWand immediately when an installed component requires restart.
 
 - [3112] The install did not become restart-ready.
 - [3113] The replacement process cannot launch.
@@ -5015,7 +5015,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [3120] The installer returns invalid status.
 - [3121] The installer is cancelled.
 
-### Show the installed Wisp version.
+### Show the installed OpenWand version.
 
 - [3122] A required file is unavailable.
 - [3123] Required network access is unavailable.
@@ -5151,7 +5151,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [3217] Bundling cleanup fails for this function.
 - [3218] Update-apply cleanup fails.
 
-### Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and Wisp-owned local AI assets.
+### Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and OpenWand-owned local AI assets.
 
 - [3219] A target required by this function is missing.
 - [3220] A target required by this function is locked.
@@ -5171,7 +5171,7 @@ Coverage marker: **[x]** means a test directly triggers this numbered failure pa
 - [3231] Another process is using the files.
 - [3232] Cleanup only partly completes.
 
-### Run the uninstaller as a detached self-removing process after Wisp closes.
+### Run the uninstaller as a detached self-removing process after OpenWand closes.
 
 - [3233] A target required by this function is missing.
 - [3234] A target required by this function is locked.
@@ -5336,7 +5336,7 @@ Directly covered failure causes: **132 / 3,296**. The remaining **3,164** causes
 - [T062] [tests/test_agent_runner.py](../tests/test_agent_runner.py)::`ScopedWorkspaceTests::test_resolve_rejects_path_escape`
 - [T063] [tests/test_agent_runner.py](../tests/test_agent_runner.py)::`AgentRunnerTests::test_llm_auth_failure_stops_instead_of_retrying`
 - [T064] [tests/test_agent_runner.py](../tests/test_agent_runner.py)::`ParallelWorkRoundTests::test_same_file_write_is_leased_to_exactly_one_agent`
-- [T065] [tests/test_uninstaller.py](../tests/test_uninstaller.py)::`test_standalone_worker_refuses_while_another_wisp_process_is_running`
+- [T065] [tests/test_uninstaller.py](../tests/test_uninstaller.py)::`test_standalone_worker_refuses_while_another_openwand_process_is_running`
 - [T066] [tests/test_mcp_context_server.py](../tests/test_mcp_context_server.py)::`test_selected_text_empty_is_friendly`
 - [T067] [tests/test_mcp_context_server.py](../tests/test_mcp_context_server.py)::`test_self_check_names_missing_dependency`
 - [T068] [tests/runtime/test_flows.py](../tests/runtime/test_flows.py)::`test_read_selection_aloud_without_selection_shows_notice`

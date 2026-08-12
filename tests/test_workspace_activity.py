@@ -10,7 +10,7 @@ from PySide6.QtTest import QTest
 from ui import virtual_workspace_window as workspace_window_mod
 from ui import workspace_activity as activity_mod
 from ui.workspace_activity import (
-    WISP_ACTIVITY_STYLE,
+    OPENWAND_ACTIVITY_STYLE,
     WorkspaceActivityItem,
     WorkspaceActivityList,
 )
@@ -142,8 +142,8 @@ def test_plain_text_and_dark_style_hooks(qapp) -> None:
     assert item.detail == "<script>not executable</script>"
     assert item.property("activityKind") == "tool"
     assert item.property("activityStatus") == "failed"
-    assert "workspaceActivityItem" in WISP_ACTIVITY_STYLE
-    assert 'activityStatus="failed"' in WISP_ACTIVITY_STYLE
+    assert "workspaceActivityItem" in OPENWAND_ACTIVITY_STYLE
+    assert 'activityStatus="failed"' in OPENWAND_ACTIVITY_STYLE
     item.deleteLater()
 
 

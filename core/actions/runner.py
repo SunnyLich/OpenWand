@@ -2,7 +2,7 @@
 
 The runner deliberately knows nothing about Gmail, Office, browsers, or editor
 APIs.  Runtime providers own those details and expose the small protocol below.
-This keeps safety sequencing identical as Wisp adds more applications.
+This keeps safety sequencing identical as OpenWand adds more applications.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from core.actions.registry import ActionRegistry
 
 @dataclass(frozen=True, slots=True)
 class PlannedToolCall:
-    """Validated output from Wisp's forced model-planning boundary."""
+    """Validated output from OpenWand's forced model-planning boundary."""
 
     tool_name: str
     arguments: dict[str, Any]

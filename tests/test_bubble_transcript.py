@@ -77,6 +77,96 @@ def test_bubble_cycles_listening_transcript_progress_answer_warning_and_error_st
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_recording_bubble_is_translated_and_uses_accent_color():
+    """Push-to-talk status uses the active locale and the golden status accent."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    import config
+    from ui import i18n
+    from ui.bubble import SpeechBubble, _css_color
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    old_language = getattr(config, "APP_LANGUAGE", "")
+    config.APP_LANGUAGE = "zh-Hant"
+    i18n.set_language("zh-Hant", app=app)
+    bubble = SpeechBubble()
+
+    try:
+        bubble.show_listening()
+
+        assert bubble._text_view.toPlainText() == "正在錄音 — 放開即可傳送"
+        rendered = bubble._line_segments_html()
+        assert f"color:{_css_color(bubble._read_word_color)}" in rendered
+
+        bubble.show_notice("Ordinary notice", timeout_ms=0)
+        assert bubble._listening is False
+    finally:
+        bubble.deleteLater()
+        config.APP_LANGUAGE = old_language
+        i18n.set_language(old_language or None, app=app)
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_bubble_text_and_container_appear_disappear_and_reappear_together():
+    """Visible text must never leave an empty shell, or outlive a hidden shell."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ui.bubble import SpeechBubble
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    bubble = SpeechBubble()
+    try:
+        assert bubble.isHidden()
+        assert bubble._text_view.isHidden()
+
+        bubble.show_notice("First visible notice", timeout_ms=0)
+        app.processEvents()
+        assert bubble.isVisible()
+        assert bubble._text_view.isVisible()
+        assert "First visible notice" in bubble._text_view.toPlainText()
+
+        bubble.clear()
+        app.processEvents()
+        assert bubble.isHidden()
+        assert bubble._text_view.isHidden()
+        assert bubble._full_text == ""
+        assert bubble._text_view.toPlainText() == ""
+
+        # Empty content must not resurrect an empty painted bubble.
+        bubble.show_notice("   ", timeout_ms=0)
+        app.processEvents()
+        assert bubble.isHidden()
+        assert bubble._text_view.isHidden()
+
+        bubble.show_notice("Second visible notice", timeout_ms=1)
+        app.processEvents()
+        assert bubble.isVisible()
+        assert bubble._text_view.isVisible()
+        assert "Second visible notice" in bubble._text_view.toPlainText()
+        assert "First visible notice" not in bubble._text_view.toPlainText()
+
+        # Exercise the deterministic timeout callback instead of sleeping.
+        bubble._on_hide_timer()
+        app.processEvents()
+        assert bubble.isHidden()
+        assert not bubble._text_view.isVisible()
+
+        bubble.show_notice("Visible again", timeout_ms=0)
+        app.processEvents()
+        assert bubble.isVisible()
+        assert bubble._text_view.isVisible()
+        assert "Visible again" in bubble._text_view.toPlainText()
+        assert "Second visible notice" not in bubble._text_view.toPlainText()
+    finally:
+        bubble.clear()
+        bubble.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_reply_close_control_click_emits_stop_and_clears_the_bubble():
     """The visible close/stop control must invoke the reply cancellation callback."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -1330,6 +1420,32 @@ def test_compact_table_highlight_reaches_final_visible_word():
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_bubble_renders_latex_as_typeset_svg_math():
+    """The bubble uses real math layout without breaking reveal indexes."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ui.bubble import SpeechBubble
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    bubble = SpeechBubble()
+
+    try:
+        bubble.append_chunk(r"Result: $x_1 = \frac{-b \pm \sqrt{b^2-4ac}}{2a}$")
+        rendered = bubble._text_view.toHtml()
+
+        assert "data:image/svg+xml;base64," in rendered
+        assert bubble._math_renders
+        assert any(r"\frac" in expression for expression, _display, _source in bubble._math_renders.values())
+        assert bubble._line_h > bubble._fm.height()
+        assert bubble._full_text.startswith("Result: $x_1")
+        assert len(bubble._pending_words) > 0
+    finally:
+        bubble.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_bubble_font_size_applies_without_changing_width():
     """Verify bubble text size can change independently from bubble width."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -1564,7 +1680,7 @@ def test_live_captions_interleave_roles_with_prefixed_lines():
         bubble.append_live_transcript("user", "never mind")  # barge-in
 
         assert bubble._full_text == (
-            "You ▸ hello there \nWisp ▸ hi, how can I help?\nYou ▸ never mind"
+            "You ▸ hello there \nOpenWand ▸ hi, how can I help?\nYou ▸ never mind"
         )
         # captions reveal instantly, not at reading WPM
         assert bubble._revealed_count == len(bubble._pending_words)

@@ -225,8 +225,39 @@ def _custom_patterns() -> tuple[RedactionPattern, ...]:
     return tuple(patterns)
 
 
+_CATEGORY_SETTING = {
+    "private_key": "PRIVACY_HIDE_SECRETS",
+    "url_credential": "PRIVACY_HIDE_SECRETS",
+    "api_key": "PRIVACY_HIDE_SECRETS",
+    "bearer_token": "PRIVACY_HIDE_SECRETS",
+    "credential": "PRIVACY_HIDE_SECRETS",
+    "email": "PRIVACY_HIDE_CONTACT_DETAILS",
+    "phone": "PRIVACY_HIDE_CONTACT_DETAILS",
+    "iban": "PRIVACY_HIDE_FINANCIAL_DETAILS",
+    "card_number": "PRIVACY_HIDE_FINANCIAL_DETAILS",
+    "account_number": "PRIVACY_HIDE_FINANCIAL_DETAILS",
+    "ssn": "PRIVACY_HIDE_GOVERNMENT_IDS",
+    "passport": "PRIVACY_HIDE_GOVERNMENT_IDS",
+    "drivers_license": "PRIVACY_HIDE_GOVERNMENT_IDS",
+    "url": "PRIVACY_HIDE_URLS",
+}
+
+
+def _category_enabled(category: str) -> bool:
+    """Return whether the user enabled this built-in redaction category."""
+    setting = _CATEGORY_SETTING.get(category)
+    if not setting:
+        return True
+    try:
+        import config
+
+        return bool(getattr(config, setting, True))
+    except Exception:
+        return True
+
+
 def iter_patterns(*, include_custom: bool = True) -> Iterable[RedactionPattern]:
-    yield from REDACTION_PATTERNS
+    yield from (pattern for pattern in REDACTION_PATTERNS if _category_enabled(pattern.category))
     if include_custom:
         yield from _custom_patterns()
 

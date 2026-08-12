@@ -1,4 +1,4 @@
-# Windows developer setup script for creating the pinned Wisp virtual environment.
+# Windows developer setup script for creating the pinned OpenWand virtual environment.
 param(
     [switch]$UseGlobalPython
 )

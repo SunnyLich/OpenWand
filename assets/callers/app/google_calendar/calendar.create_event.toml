@@ -5,4 +5,4 @@ capability = "calendar.create_event@1"
 planner = "calendar_plan_create_event"
 access = ["internet"]
 available = false
-unavailable_reason = "Connect this account to Wisp before using account API actions"
+unavailable_reason = "Connect this account to OpenWand before using account API actions"

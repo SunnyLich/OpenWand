@@ -47,7 +47,7 @@ def test_released_speech_tester_compensates_for_v090_silent_float16_failure() ->
     script = (ROOT / "tools" / "test_released_speech.ps1").read_text(encoding="utf-8")
 
     assert "v0.9.0 swallowed an exception from the second warm-up" in script
-    assert '$sttFloat16VerificationProbe = Invoke-WispProbe' in script
+    assert '$sttFloat16VerificationProbe = Invoke-OpenWandProbe' in script
     assert '@("stt-model-status", $optionalRoot, $Model, "cuda", "float16")' in script
     assert "sttModelProbe.stderr_tail" in script
 
@@ -68,7 +68,7 @@ def test_released_speech_tester_skips_model_when_cuda_runtime_is_unavailable() -
     script = (ROOT / "tools" / "test_released_speech.ps1").read_text(encoding="utf-8")
 
     dll_gate = script.index("$modelBlockedByCudaDlls =")
-    model_probe = script.index('$sttModelProbe = Invoke-WispProbe `')
+    model_probe = script.index('$sttModelProbe = Invoke-OpenWandProbe `')
     assert dll_gate < model_probe
     assert 'if ($modelBlockedByCudaDlls)' in script
     assert "Skipping model warm-up because required CUDA DLLs are unavailable" in script
@@ -78,7 +78,7 @@ def test_released_speech_tester_skips_model_when_cuda_runtime_is_unavailable() -
 def test_released_speech_tester_refuses_vram_contaminated_runs() -> None:
     script = (ROOT / "tools" / "test_released_speech.ps1").read_text(encoding="utf-8")
 
-    preflight = script.index('Write-Host "Result: WISP_PREFLIGHT_BLOCKED"')
+    preflight = script.index('Write-Host "Result: OPENWAND_PREFLIGHT_BLOCKED"')
     model_probe = script.index('Write-Host "Running packaged STT import probe..."')
     assert preflight < model_probe
     assert 'Write-Host "No model probe was started."' in script
@@ -100,5 +100,5 @@ def test_released_speech_tester_only_outputs_to_the_terminal() -> None:
     script = (ROOT / "tools" / "test_released_speech.ps1").read_text(encoding="utf-8")
 
     assert "Set-Content" not in script
-    assert "wisp-speech-diagnostic-" not in script
+    assert "openwand-speech-diagnostic-" not in script
     assert 'Write-Host "No report files were created by this tester."' in script

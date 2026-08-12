@@ -9,9 +9,9 @@
     {
       "reference": 1,
       "function_id": "F001",
-      "function": "Launch the packaged Wisp app.",
-      "cause": "The Wisp installation is missing.",
-      "fault_family": "the_wisp_installation_is_missing",
+      "function": "Launch the packaged OpenWand app.",
+      "cause": "The OpenWand installation is missing.",
+      "fault_family": "the_openwand_installation_is_missing",
       "status": "verified",
       "shared_boundary": "launch_install_runtime_integrity_boundary",
       "evidence_ids": [],
@@ -22,9 +22,9 @@
     {
       "reference": 2,
       "function_id": "F001",
-      "function": "Launch the packaged Wisp app.",
-      "cause": "The Wisp installation is corrupt.",
-      "fault_family": "the_wisp_installation_is_corrupt",
+      "function": "Launch the packaged OpenWand app.",
+      "cause": "The OpenWand installation is corrupt.",
+      "fault_family": "the_openwand_installation_is_corrupt",
       "status": "verified",
       "shared_boundary": "launch_install_runtime_integrity_boundary",
       "evidence_ids": [],
@@ -35,7 +35,7 @@
     {
       "reference": 3,
       "function_id": "F001",
-      "function": "Launch the packaged Wisp app.",
+      "function": "Launch the packaged OpenWand app.",
       "cause": "The required runtime is missing.",
       "fault_family": "the_required_runtime_is_missing",
       "status": "verified",
@@ -48,7 +48,7 @@
     {
       "reference": 4,
       "function_id": "F001",
-      "function": "Launch the packaged Wisp app.",
+      "function": "Launch the packaged OpenWand app.",
       "cause": "The required runtime is corrupt.",
       "fault_family": "the_required_runtime_is_corrupt",
       "status": "verified",
@@ -61,7 +61,7 @@
     {
       "reference": 5,
       "function_id": "F001",
-      "function": "Launch the packaged Wisp app.",
+      "function": "Launch the packaged OpenWand app.",
       "cause": "A stale instance lock remains.",
       "fault_family": "a_stale_instance_lock_remains",
       "status": "verified",
@@ -74,7 +74,7 @@
     {
       "reference": 6,
       "function_id": "F001",
-      "function": "Launch the packaged Wisp app.",
+      "function": "Launch the packaged OpenWand app.",
       "cause": "Required OS permission is absent.",
       "fault_family": "required_os_permission_is_absent",
       "status": "verified",
@@ -87,7 +87,7 @@
     {
       "reference": 7,
       "function_id": "F001",
-      "function": "Launch the packaged Wisp app.",
+      "function": "Launch the packaged OpenWand app.",
       "cause": "A worker crashes.",
       "fault_family": "a_worker_crashes",
       "status": "verified",
@@ -102,7 +102,7 @@
     {
       "reference": 8,
       "function_id": "F001",
-      "function": "Launch the packaged Wisp app.",
+      "function": "Launch the packaged OpenWand app.",
       "cause": "Startup is interrupted.",
       "fault_family": "startup_is_interrupted",
       "status": "verified",
@@ -115,7 +115,7 @@
     {
       "reference": 9,
       "function_id": "F001",
-      "function": "Launch the packaged Wisp app.",
+      "function": "Launch the packaged OpenWand app.",
       "cause": "Shutdown is interrupted.",
       "fault_family": "shutdown_is_interrupted",
       "status": "verified",
@@ -128,9 +128,9 @@
     {
       "reference": 10,
       "function_id": "F002",
-      "function": "Launch Wisp from the source checkout and development launchers.",
-      "cause": "The Wisp installation is missing.",
-      "fault_family": "the_wisp_installation_is_missing",
+      "function": "Launch OpenWand from the source checkout and development launchers.",
+      "cause": "The OpenWand installation is missing.",
+      "fault_family": "the_openwand_installation_is_missing",
       "status": "verified",
       "shared_boundary": "launch_install_runtime_integrity_boundary",
       "evidence_ids": [],
@@ -141,9 +141,9 @@
     {
       "reference": 11,
       "function_id": "F002",
-      "function": "Launch Wisp from the source checkout and development launchers.",
-      "cause": "The Wisp installation is corrupt.",
-      "fault_family": "the_wisp_installation_is_corrupt",
+      "function": "Launch OpenWand from the source checkout and development launchers.",
+      "cause": "The OpenWand installation is corrupt.",
+      "fault_family": "the_openwand_installation_is_corrupt",
       "status": "verified",
       "shared_boundary": "launch_install_runtime_integrity_boundary",
       "evidence_ids": [],
@@ -154,7 +154,7 @@
     {
       "reference": 12,
       "function_id": "F002",
-      "function": "Launch Wisp from the source checkout and development launchers.",
+      "function": "Launch OpenWand from the source checkout and development launchers.",
       "cause": "The required runtime is missing.",
       "fault_family": "the_required_runtime_is_missing",
       "status": "verified",
@@ -167,7 +167,7 @@
     {
       "reference": 13,
       "function_id": "F002",
-      "function": "Launch Wisp from the source checkout and development launchers.",
+      "function": "Launch OpenWand from the source checkout and development launchers.",
       "cause": "The required runtime is corrupt.",
       "fault_family": "the_required_runtime_is_corrupt",
       "status": "verified",
@@ -180,7 +180,7 @@
     {
       "reference": 14,
       "function_id": "F002",
-      "function": "Launch Wisp from the source checkout and development launchers.",
+      "function": "Launch OpenWand from the source checkout and development launchers.",
       "cause": "A stale instance lock remains.",
       "fault_family": "a_stale_instance_lock_remains",
       "status": "verified",
@@ -193,7 +193,7 @@
     {
       "reference": 15,
       "function_id": "F002",
-      "function": "Launch Wisp from the source checkout and development launchers.",
+      "function": "Launch OpenWand from the source checkout and development launchers.",
       "cause": "Required OS permission is absent.",
       "fault_family": "required_os_permission_is_absent",
       "status": "verified",
@@ -206,7 +206,7 @@
     {
       "reference": 16,
       "function_id": "F002",
-      "function": "Launch Wisp from the source checkout and development launchers.",
+      "function": "Launch OpenWand from the source checkout and development launchers.",
       "cause": "A worker crashes.",
       "fault_family": "a_worker_crashes",
       "status": "verified",
@@ -219,7 +219,7 @@
     {
       "reference": 17,
       "function_id": "F002",
-      "function": "Launch Wisp from the source checkout and development launchers.",
+      "function": "Launch OpenWand from the source checkout and development launchers.",
       "cause": "Startup is interrupted.",
       "fault_family": "startup_is_interrupted",
       "status": "verified",
@@ -232,7 +232,7 @@
     {
       "reference": 18,
       "function_id": "F002",
-      "function": "Launch Wisp from the source checkout and development launchers.",
+      "function": "Launch OpenWand from the source checkout and development launchers.",
       "cause": "Shutdown is interrupted.",
       "fault_family": "shutdown_is_interrupted",
       "status": "verified",
@@ -245,9 +245,9 @@
     {
       "reference": 19,
       "function_id": "F003",
-      "function": "Prevent a second Wisp instance from running at the same time.",
-      "cause": "The Wisp installation is missing.",
-      "fault_family": "the_wisp_installation_is_missing",
+      "function": "Prevent a second OpenWand instance from running at the same time.",
+      "cause": "The OpenWand installation is missing.",
+      "fault_family": "the_openwand_installation_is_missing",
       "status": "verified",
       "shared_boundary": "launch_install_runtime_integrity_boundary",
       "evidence_ids": [],
@@ -258,9 +258,9 @@
     {
       "reference": 20,
       "function_id": "F003",
-      "function": "Prevent a second Wisp instance from running at the same time.",
-      "cause": "The Wisp installation is corrupt.",
-      "fault_family": "the_wisp_installation_is_corrupt",
+      "function": "Prevent a second OpenWand instance from running at the same time.",
+      "cause": "The OpenWand installation is corrupt.",
+      "fault_family": "the_openwand_installation_is_corrupt",
       "status": "verified",
       "shared_boundary": "launch_install_runtime_integrity_boundary",
       "evidence_ids": [],
@@ -271,7 +271,7 @@
     {
       "reference": 21,
       "function_id": "F003",
-      "function": "Prevent a second Wisp instance from running at the same time.",
+      "function": "Prevent a second OpenWand instance from running at the same time.",
       "cause": "The required runtime is missing.",
       "fault_family": "the_required_runtime_is_missing",
       "status": "verified",
@@ -284,7 +284,7 @@
     {
       "reference": 22,
       "function_id": "F003",
-      "function": "Prevent a second Wisp instance from running at the same time.",
+      "function": "Prevent a second OpenWand instance from running at the same time.",
       "cause": "The required runtime is corrupt.",
       "fault_family": "the_required_runtime_is_corrupt",
       "status": "verified",
@@ -297,7 +297,7 @@
     {
       "reference": 23,
       "function_id": "F003",
-      "function": "Prevent a second Wisp instance from running at the same time.",
+      "function": "Prevent a second OpenWand instance from running at the same time.",
       "cause": "A stale instance lock remains.",
       "fault_family": "a_stale_instance_lock_remains",
       "status": "verified",
@@ -310,7 +310,7 @@
     {
       "reference": 24,
       "function_id": "F003",
-      "function": "Prevent a second Wisp instance from running at the same time.",
+      "function": "Prevent a second OpenWand instance from running at the same time.",
       "cause": "Required OS permission is absent.",
       "fault_family": "required_os_permission_is_absent",
       "status": "verified",
@@ -323,7 +323,7 @@
     {
       "reference": 25,
       "function_id": "F003",
-      "function": "Prevent a second Wisp instance from running at the same time.",
+      "function": "Prevent a second OpenWand instance from running at the same time.",
       "cause": "A worker crashes.",
       "fault_family": "a_worker_crashes",
       "status": "verified",
@@ -336,7 +336,7 @@
     {
       "reference": 26,
       "function_id": "F003",
-      "function": "Prevent a second Wisp instance from running at the same time.",
+      "function": "Prevent a second OpenWand instance from running at the same time.",
       "cause": "Startup is interrupted.",
       "fault_family": "startup_is_interrupted",
       "status": "verified",
@@ -349,7 +349,7 @@
     {
       "reference": 27,
       "function_id": "F003",
-      "function": "Prevent a second Wisp instance from running at the same time.",
+      "function": "Prevent a second OpenWand instance from running at the same time.",
       "cause": "Shutdown is interrupted.",
       "fault_family": "shutdown_is_interrupted",
       "status": "verified",
@@ -363,8 +363,8 @@
       "reference": 28,
       "function_id": "F004",
       "function": "Run first-start setup and dependency checks.",
-      "cause": "The Wisp installation is missing.",
-      "fault_family": "the_wisp_installation_is_missing",
+      "cause": "The OpenWand installation is missing.",
+      "fault_family": "the_openwand_installation_is_missing",
       "status": "verified",
       "shared_boundary": "first_start_install_integrity_boundary",
       "evidence_ids": [],
@@ -376,8 +376,8 @@
       "reference": 29,
       "function_id": "F004",
       "function": "Run first-start setup and dependency checks.",
-      "cause": "The Wisp installation is corrupt.",
-      "fault_family": "the_wisp_installation_is_corrupt",
+      "cause": "The OpenWand installation is corrupt.",
+      "fault_family": "the_openwand_installation_is_corrupt",
       "status": "verified",
       "shared_boundary": "first_start_install_integrity_boundary",
       "evidence_ids": [],
@@ -1461,7 +1461,7 @@
     {
       "reference": 112,
       "function_id": "F017",
-      "function": "Display a floating always-on-top Wisp icon.",
+      "function": "Display a floating always-on-top OpenWand icon.",
       "cause": "The widget is hidden.",
       "fault_family": "the_widget_is_hidden",
       "status": "verified",
@@ -1474,7 +1474,7 @@
     {
       "reference": 113,
       "function_id": "F017",
-      "function": "Display a floating always-on-top Wisp icon.",
+      "function": "Display a floating always-on-top OpenWand icon.",
       "cause": "The widget was destroyed.",
       "fault_family": "the_widget_was_destroyed",
       "status": "verified",
@@ -1488,7 +1488,7 @@
     {
       "reference": 114,
       "function_id": "F017",
-      "function": "Display a floating always-on-top Wisp icon.",
+      "function": "Display a floating always-on-top OpenWand icon.",
       "cause": "Another window consumes input.",
       "fault_family": "another_window_consumes_input",
       "status": "verified",
@@ -1501,7 +1501,7 @@
     {
       "reference": 115,
       "function_id": "F017",
-      "function": "Display a floating always-on-top Wisp icon.",
+      "function": "Display a floating always-on-top OpenWand icon.",
       "cause": "Saved window geometry is stale.",
       "fault_family": "saved_window_geometry_is_stale",
       "status": "verified",
@@ -1514,7 +1514,7 @@
     {
       "reference": 116,
       "function_id": "F017",
-      "function": "Display a floating always-on-top Wisp icon.",
+      "function": "Display a floating always-on-top OpenWand icon.",
       "cause": "The window is positioned off-screen.",
       "fault_family": "the_window_is_positioned_off_screen",
       "status": "verified",
@@ -1527,7 +1527,7 @@
     {
       "reference": 117,
       "function_id": "F017",
-      "function": "Display a floating always-on-top Wisp icon.",
+      "function": "Display a floating always-on-top OpenWand icon.",
       "cause": "The UI thread is blocked.",
       "fault_family": "the_ui_thread_is_blocked",
       "status": "verified",
@@ -1540,7 +1540,7 @@
     {
       "reference": 118,
       "function_id": "F017",
-      "function": "Display a floating always-on-top Wisp icon.",
+      "function": "Display a floating always-on-top OpenWand icon.",
       "cause": "The window manager rejects the behavior.",
       "fault_family": "the_window_manager_rejects_the_behavior",
       "status": "verified",
@@ -1723,7 +1723,7 @@
     {
       "reference": 132,
       "function_id": "F020",
-      "function": "Auto-hide the icon when Wisp is inactive.",
+      "function": "Auto-hide the icon when OpenWand is inactive.",
       "cause": "The widget is hidden.",
       "fault_family": "the_widget_is_hidden",
       "status": "verified",
@@ -1736,7 +1736,7 @@
     {
       "reference": 133,
       "function_id": "F020",
-      "function": "Auto-hide the icon when Wisp is inactive.",
+      "function": "Auto-hide the icon when OpenWand is inactive.",
       "cause": "The widget was destroyed.",
       "fault_family": "the_widget_was_destroyed",
       "status": "verified",
@@ -1750,7 +1750,7 @@
     {
       "reference": 134,
       "function_id": "F020",
-      "function": "Auto-hide the icon when Wisp is inactive.",
+      "function": "Auto-hide the icon when OpenWand is inactive.",
       "cause": "Another window consumes input.",
       "fault_family": "another_window_consumes_input",
       "status": "verified",
@@ -1763,7 +1763,7 @@
     {
       "reference": 135,
       "function_id": "F020",
-      "function": "Auto-hide the icon when Wisp is inactive.",
+      "function": "Auto-hide the icon when OpenWand is inactive.",
       "cause": "Saved window geometry is stale.",
       "fault_family": "saved_window_geometry_is_stale",
       "status": "verified",
@@ -1776,7 +1776,7 @@
     {
       "reference": 136,
       "function_id": "F020",
-      "function": "Auto-hide the icon when Wisp is inactive.",
+      "function": "Auto-hide the icon when OpenWand is inactive.",
       "cause": "The window is positioned off-screen.",
       "fault_family": "the_window_is_positioned_off_screen",
       "status": "verified",
@@ -1789,7 +1789,7 @@
     {
       "reference": 137,
       "function_id": "F020",
-      "function": "Auto-hide the icon when Wisp is inactive.",
+      "function": "Auto-hide the icon when OpenWand is inactive.",
       "cause": "The UI thread is blocked.",
       "fault_family": "the_ui_thread_is_blocked",
       "status": "verified",
@@ -1802,7 +1802,7 @@
     {
       "reference": 138,
       "function_id": "F020",
-      "function": "Auto-hide the icon when Wisp is inactive.",
+      "function": "Auto-hide the icon when OpenWand is inactive.",
       "cause": "The window manager rejects the behavior.",
       "fault_family": "the_window_manager_rejects_the_behavior",
       "status": "verified",
@@ -2272,8 +2272,8 @@
       "reference": 174,
       "function_id": "F027",
       "function": "Open runtime status where the platform worker host supports it.",
-      "cause": "The Wisp installation is missing.",
-      "fault_family": "the_wisp_installation_is_missing",
+      "cause": "The OpenWand installation is missing.",
+      "fault_family": "the_openwand_installation_is_missing",
       "status": "verified",
       "shared_boundary": "launch_install_runtime_integrity_boundary",
       "evidence_ids": [],
@@ -2285,8 +2285,8 @@
       "reference": 175,
       "function_id": "F027",
       "function": "Open runtime status where the platform worker host supports it.",
-      "cause": "The Wisp installation is corrupt.",
-      "fault_family": "the_wisp_installation_is_corrupt",
+      "cause": "The OpenWand installation is corrupt.",
+      "fault_family": "the_openwand_installation_is_corrupt",
       "status": "verified",
       "shared_boundary": "launch_install_runtime_integrity_boundary",
       "evidence_ids": [],
@@ -2388,7 +2388,7 @@
     {
       "reference": 183,
       "function_id": "F028",
-      "function": "Quit Wisp from the tray menu.",
+      "function": "Quit OpenWand from the tray menu.",
       "cause": "The desktop lacks tray support.",
       "fault_family": "the_desktop_lacks_tray_support",
       "status": "verified",
@@ -2401,7 +2401,7 @@
     {
       "reference": 184,
       "function_id": "F028",
-      "function": "Quit Wisp from the tray menu.",
+      "function": "Quit OpenWand from the tray menu.",
       "cause": "The tray icon was not created.",
       "fault_family": "the_tray_icon_was_not_created",
       "status": "verified",
@@ -2414,7 +2414,7 @@
     {
       "reference": 185,
       "function_id": "F028",
-      "function": "Quit Wisp from the tray menu.",
+      "function": "Quit OpenWand from the tray menu.",
       "cause": "The tray action callback was not created.",
       "fault_family": "the_tray_action_callback_was_not_created",
       "status": "verified",
@@ -2427,7 +2427,7 @@
     {
       "reference": 186,
       "function_id": "F028",
-      "function": "Quit Wisp from the tray menu.",
+      "function": "Quit OpenWand from the tray menu.",
       "cause": "The UI target required by this function is unavailable.",
       "fault_family": "the_ui_target_required_by_this_function_is_unavailable",
       "status": "verified",
@@ -2440,7 +2440,7 @@
     {
       "reference": 187,
       "function_id": "F028",
-      "function": "Quit Wisp from the tray menu.",
+      "function": "Quit OpenWand from the tray menu.",
       "cause": "The UI worker is unresponsive.",
       "fault_family": "the_ui_worker_is_unresponsive",
       "status": "verified",
@@ -2453,9 +2453,9 @@
     {
       "reference": 188,
       "function_id": "F029",
-      "function": "Start Wisp automatically when the user signs in.",
-      "cause": "The Wisp installation is missing.",
-      "fault_family": "the_wisp_installation_is_missing",
+      "function": "Start OpenWand automatically when the user signs in.",
+      "cause": "The OpenWand installation is missing.",
+      "fault_family": "the_openwand_installation_is_missing",
       "status": "verified",
       "shared_boundary": "launch_install_runtime_integrity_boundary",
       "evidence_ids": [],
@@ -2466,9 +2466,9 @@
     {
       "reference": 189,
       "function_id": "F029",
-      "function": "Start Wisp automatically when the user signs in.",
-      "cause": "The Wisp installation is corrupt.",
-      "fault_family": "the_wisp_installation_is_corrupt",
+      "function": "Start OpenWand automatically when the user signs in.",
+      "cause": "The OpenWand installation is corrupt.",
+      "fault_family": "the_openwand_installation_is_corrupt",
       "status": "verified",
       "shared_boundary": "launch_install_runtime_integrity_boundary",
       "evidence_ids": [],
@@ -2479,7 +2479,7 @@
     {
       "reference": 190,
       "function_id": "F029",
-      "function": "Start Wisp automatically when the user signs in.",
+      "function": "Start OpenWand automatically when the user signs in.",
       "cause": "The required runtime is missing.",
       "fault_family": "the_required_runtime_is_missing",
       "status": "verified",
@@ -2492,7 +2492,7 @@
     {
       "reference": 191,
       "function_id": "F029",
-      "function": "Start Wisp automatically when the user signs in.",
+      "function": "Start OpenWand automatically when the user signs in.",
       "cause": "The required runtime is corrupt.",
       "fault_family": "the_required_runtime_is_corrupt",
       "status": "verified",
@@ -2505,7 +2505,7 @@
     {
       "reference": 192,
       "function_id": "F029",
-      "function": "Start Wisp automatically when the user signs in.",
+      "function": "Start OpenWand automatically when the user signs in.",
       "cause": "A stale instance lock remains.",
       "fault_family": "a_stale_instance_lock_remains",
       "status": "verified",
@@ -2518,7 +2518,7 @@
     {
       "reference": 193,
       "function_id": "F029",
-      "function": "Start Wisp automatically when the user signs in.",
+      "function": "Start OpenWand automatically when the user signs in.",
       "cause": "Required OS permission is absent.",
       "fault_family": "required_os_permission_is_absent",
       "status": "verified",
@@ -2531,7 +2531,7 @@
     {
       "reference": 194,
       "function_id": "F029",
-      "function": "Start Wisp automatically when the user signs in.",
+      "function": "Start OpenWand automatically when the user signs in.",
       "cause": "A worker crashes.",
       "fault_family": "a_worker_crashes",
       "status": "verified",
@@ -2544,7 +2544,7 @@
     {
       "reference": 195,
       "function_id": "F029",
-      "function": "Start Wisp automatically when the user signs in.",
+      "function": "Start OpenWand automatically when the user signs in.",
       "cause": "Startup is interrupted.",
       "fault_family": "startup_is_interrupted",
       "status": "verified",
@@ -2557,7 +2557,7 @@
     {
       "reference": 196,
       "function_id": "F029",
-      "function": "Start Wisp automatically when the user signs in.",
+      "function": "Start OpenWand automatically when the user signs in.",
       "cause": "Shutdown is interrupted.",
       "fault_family": "shutdown_is_interrupted",
       "status": "verified",
@@ -2570,9 +2570,9 @@
     {
       "reference": 197,
       "function_id": "F030",
-      "function": "Shut workers down cleanly when Wisp exits.",
-      "cause": "The Wisp installation is missing.",
-      "fault_family": "the_wisp_installation_is_missing",
+      "function": "Shut workers down cleanly when OpenWand exits.",
+      "cause": "The OpenWand installation is missing.",
+      "fault_family": "the_openwand_installation_is_missing",
       "status": "verified",
       "shared_boundary": "launch_install_runtime_integrity_boundary",
       "evidence_ids": [],
@@ -2583,9 +2583,9 @@
     {
       "reference": 198,
       "function_id": "F030",
-      "function": "Shut workers down cleanly when Wisp exits.",
-      "cause": "The Wisp installation is corrupt.",
-      "fault_family": "the_wisp_installation_is_corrupt",
+      "function": "Shut workers down cleanly when OpenWand exits.",
+      "cause": "The OpenWand installation is corrupt.",
+      "fault_family": "the_openwand_installation_is_corrupt",
       "status": "verified",
       "shared_boundary": "launch_install_runtime_integrity_boundary",
       "evidence_ids": [],
@@ -2596,7 +2596,7 @@
     {
       "reference": 199,
       "function_id": "F030",
-      "function": "Shut workers down cleanly when Wisp exits.",
+      "function": "Shut workers down cleanly when OpenWand exits.",
       "cause": "The required runtime is missing.",
       "fault_family": "the_required_runtime_is_missing",
       "status": "verified",
@@ -2609,7 +2609,7 @@
     {
       "reference": 200,
       "function_id": "F030",
-      "function": "Shut workers down cleanly when Wisp exits.",
+      "function": "Shut workers down cleanly when OpenWand exits.",
       "cause": "The required runtime is corrupt.",
       "fault_family": "the_required_runtime_is_corrupt",
       "status": "verified",
@@ -2622,7 +2622,7 @@
     {
       "reference": 201,
       "function_id": "F030",
-      "function": "Shut workers down cleanly when Wisp exits.",
+      "function": "Shut workers down cleanly when OpenWand exits.",
       "cause": "A stale instance lock remains.",
       "fault_family": "a_stale_instance_lock_remains",
       "status": "verified",
@@ -2635,7 +2635,7 @@
     {
       "reference": 202,
       "function_id": "F030",
-      "function": "Shut workers down cleanly when Wisp exits.",
+      "function": "Shut workers down cleanly when OpenWand exits.",
       "cause": "Required OS permission is absent.",
       "fault_family": "required_os_permission_is_absent",
       "status": "verified",
@@ -2648,7 +2648,7 @@
     {
       "reference": 203,
       "function_id": "F030",
-      "function": "Shut workers down cleanly when Wisp exits.",
+      "function": "Shut workers down cleanly when OpenWand exits.",
       "cause": "A worker crashes.",
       "fault_family": "a_worker_crashes",
       "status": "verified",
@@ -2663,7 +2663,7 @@
     {
       "reference": 204,
       "function_id": "F030",
-      "function": "Shut workers down cleanly when Wisp exits.",
+      "function": "Shut workers down cleanly when OpenWand exits.",
       "cause": "Startup is interrupted.",
       "fault_family": "startup_is_interrupted",
       "status": "verified",
@@ -2676,7 +2676,7 @@
     {
       "reference": 205,
       "function_id": "F030",
-      "function": "Shut workers down cleanly when Wisp exits.",
+      "function": "Shut workers down cleanly when OpenWand exits.",
       "cause": "Shutdown is interrupted.",
       "fault_family": "shutdown_is_interrupted",
       "status": "verified",
@@ -3985,7 +3985,7 @@
     {
       "reference": 305,
       "function_id": "F047",
-      "function": "Keep an answer in Wisp without pasting it back.",
+      "function": "Keep an answer in OpenWand without pasting it back.",
       "cause": "Required user input is empty.",
       "fault_family": "required_user_input_is_empty",
       "status": "verified",
@@ -3998,7 +3998,7 @@
     {
       "reference": 306,
       "function_id": "F047",
-      "function": "Keep an answer in Wisp without pasting it back.",
+      "function": "Keep an answer in OpenWand without pasting it back.",
       "cause": "Required context is empty.",
       "fault_family": "required_context_is_empty",
       "status": "verified",
@@ -4011,7 +4011,7 @@
     {
       "reference": 307,
       "function_id": "F047",
-      "function": "Keep an answer in Wisp without pasting it back.",
+      "function": "Keep an answer in OpenWand without pasting it back.",
       "cause": "The configured route fails.",
       "fault_family": "the_configured_route_fails",
       "status": "verified",
@@ -4024,7 +4024,7 @@
     {
       "reference": 308,
       "function_id": "F047",
-      "function": "Keep an answer in Wisp without pasting it back.",
+      "function": "Keep an answer in OpenWand without pasting it back.",
       "cause": "The network request fails.",
       "fault_family": "the_network_request_fails",
       "status": "verified",
@@ -4037,7 +4037,7 @@
     {
       "reference": 309,
       "function_id": "F047",
-      "function": "Keep an answer in Wisp without pasting it back.",
+      "function": "Keep an answer in OpenWand without pasting it back.",
       "cause": "The request is cancelled.",
       "fault_family": "the_request_is_cancelled",
       "status": "verified",
@@ -4050,7 +4050,7 @@
     {
       "reference": 310,
       "function_id": "F047",
-      "function": "Keep an answer in Wisp without pasting it back.",
+      "function": "Keep an answer in OpenWand without pasting it back.",
       "cause": "The result cannot be rendered.",
       "fault_family": "the_result_cannot_be_rendered",
       "status": "verified",
@@ -4063,7 +4063,7 @@
     {
       "reference": 311,
       "function_id": "F047",
-      "function": "Keep an answer in Wisp without pasting it back.",
+      "function": "Keep an answer in OpenWand without pasting it back.",
       "cause": "The result cannot be pasted into the target application.",
       "fault_family": "the_result_cannot_be_pasted_into_the_target_application",
       "status": "verified",
@@ -7156,7 +7156,7 @@
     {
       "reference": 543,
       "function_id": "F087",
-      "function": "Drop files or images onto Wisp as context.",
+      "function": "Drop files or images onto OpenWand as context.",
       "cause": "The image payload is missing.",
       "fault_family": "the_image_payload_is_missing",
       "status": "verified",
@@ -7169,7 +7169,7 @@
     {
       "reference": 544,
       "function_id": "F087",
-      "function": "Drop files or images onto Wisp as context.",
+      "function": "Drop files or images onto OpenWand as context.",
       "cause": "The image is unreadable.",
       "fault_family": "the_image_is_unreadable",
       "status": "verified",
@@ -7182,7 +7182,7 @@
     {
       "reference": 545,
       "function_id": "F087",
-      "function": "Drop files or images onto Wisp as context.",
+      "function": "Drop files or images onto OpenWand as context.",
       "cause": "The image exceeds the size limit.",
       "fault_family": "the_image_exceeds_the_size_limit",
       "status": "verified",
@@ -7197,7 +7197,7 @@
     {
       "reference": 546,
       "function_id": "F087",
-      "function": "Drop files or images onto Wisp as context.",
+      "function": "Drop files or images onto OpenWand as context.",
       "cause": "The image encoding is invalid.",
       "fault_family": "the_image_encoding_is_invalid",
       "status": "verified",
@@ -7210,7 +7210,7 @@
     {
       "reference": 547,
       "function_id": "F087",
-      "function": "Drop files or images onto Wisp as context.",
+      "function": "Drop files or images onto OpenWand as context.",
       "cause": "The route lacks image support.",
       "fault_family": "the_route_lacks_image_support",
       "status": "verified",
@@ -7223,7 +7223,7 @@
     {
       "reference": 548,
       "function_id": "F087",
-      "function": "Drop files or images onto Wisp as context.",
+      "function": "Drop files or images onto OpenWand as context.",
       "cause": "The provider rejects the format.",
       "fault_family": "the_provider_rejects_the_format",
       "status": "verified",
@@ -15432,7 +15432,7 @@
     {
       "reference": 1171,
       "function_id": "F186",
-      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into Wisp.",
+      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into OpenWand.",
       "cause": "The external client is unavailable.",
       "fault_family": "the_external_client_is_unavailable",
       "status": "verified",
@@ -15445,7 +15445,7 @@
     {
       "reference": 1172,
       "function_id": "F186",
-      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into Wisp.",
+      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into OpenWand.",
       "cause": "The external session is unavailable.",
       "fault_family": "the_external_session_is_unavailable",
       "status": "verified",
@@ -15458,7 +15458,7 @@
     {
       "reference": 1173,
       "function_id": "F186",
-      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into Wisp.",
+      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into OpenWand.",
       "cause": "External authentication is invalid.",
       "fault_family": "external_authentication_is_invalid",
       "status": "verified",
@@ -15471,7 +15471,7 @@
     {
       "reference": 1174,
       "function_id": "F186",
-      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into Wisp.",
+      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into OpenWand.",
       "cause": "The external workspace is invalid.",
       "fault_family": "the_external_workspace_is_invalid",
       "status": "verified",
@@ -15484,7 +15484,7 @@
     {
       "reference": 1175,
       "function_id": "F186",
-      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into Wisp.",
+      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into OpenWand.",
       "cause": "The external transcript path changed.",
       "fault_family": "the_external_transcript_path_changed",
       "status": "verified",
@@ -15497,7 +15497,7 @@
     {
       "reference": 1176,
       "function_id": "F186",
-      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into Wisp.",
+      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into OpenWand.",
       "cause": "The external transcript format changed.",
       "fault_family": "the_external_transcript_format_changed",
       "status": "verified",
@@ -15510,7 +15510,7 @@
     {
       "reference": 1177,
       "function_id": "F186",
-      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into Wisp.",
+      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into OpenWand.",
       "cause": "Files are locked.",
       "fault_family": "files_are_locked",
       "status": "verified",
@@ -15523,7 +15523,7 @@
     {
       "reference": 1178,
       "function_id": "F186",
-      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into Wisp.",
+      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into OpenWand.",
       "cause": "Backup fails.",
       "fault_family": "backup_fails",
       "status": "verified",
@@ -15536,7 +15536,7 @@
     {
       "reference": 1179,
       "function_id": "F186",
-      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into Wisp.",
+      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into OpenWand.",
       "cause": "The provider rejects the operation.",
       "fault_family": "the_provider_rejects_the_operation",
       "status": "verified",
@@ -15666,7 +15666,7 @@
     {
       "reference": 1189,
       "function_id": "F188",
-      "function": "Keep Wisp, ChatGPT, and Claude conversation namespaces distinct.",
+      "function": "Keep OpenWand, ChatGPT, and Claude conversation namespaces distinct.",
       "cause": "The external client is unavailable.",
       "fault_family": "the_external_client_is_unavailable",
       "status": "verified",
@@ -15679,7 +15679,7 @@
     {
       "reference": 1190,
       "function_id": "F188",
-      "function": "Keep Wisp, ChatGPT, and Claude conversation namespaces distinct.",
+      "function": "Keep OpenWand, ChatGPT, and Claude conversation namespaces distinct.",
       "cause": "The external session is unavailable.",
       "fault_family": "the_external_session_is_unavailable",
       "status": "verified",
@@ -15692,7 +15692,7 @@
     {
       "reference": 1191,
       "function_id": "F188",
-      "function": "Keep Wisp, ChatGPT, and Claude conversation namespaces distinct.",
+      "function": "Keep OpenWand, ChatGPT, and Claude conversation namespaces distinct.",
       "cause": "External authentication is invalid.",
       "fault_family": "external_authentication_is_invalid",
       "status": "verified",
@@ -15705,7 +15705,7 @@
     {
       "reference": 1192,
       "function_id": "F188",
-      "function": "Keep Wisp, ChatGPT, and Claude conversation namespaces distinct.",
+      "function": "Keep OpenWand, ChatGPT, and Claude conversation namespaces distinct.",
       "cause": "The external workspace is invalid.",
       "fault_family": "the_external_workspace_is_invalid",
       "status": "verified",
@@ -15718,7 +15718,7 @@
     {
       "reference": 1193,
       "function_id": "F188",
-      "function": "Keep Wisp, ChatGPT, and Claude conversation namespaces distinct.",
+      "function": "Keep OpenWand, ChatGPT, and Claude conversation namespaces distinct.",
       "cause": "The external transcript path changed.",
       "fault_family": "the_external_transcript_path_changed",
       "status": "verified",
@@ -15731,7 +15731,7 @@
     {
       "reference": 1194,
       "function_id": "F188",
-      "function": "Keep Wisp, ChatGPT, and Claude conversation namespaces distinct.",
+      "function": "Keep OpenWand, ChatGPT, and Claude conversation namespaces distinct.",
       "cause": "The external transcript format changed.",
       "fault_family": "the_external_transcript_format_changed",
       "status": "verified",
@@ -15744,7 +15744,7 @@
     {
       "reference": 1195,
       "function_id": "F188",
-      "function": "Keep Wisp, ChatGPT, and Claude conversation namespaces distinct.",
+      "function": "Keep OpenWand, ChatGPT, and Claude conversation namespaces distinct.",
       "cause": "Files are locked.",
       "fault_family": "files_are_locked",
       "status": "verified",
@@ -15757,7 +15757,7 @@
     {
       "reference": 1196,
       "function_id": "F188",
-      "function": "Keep Wisp, ChatGPT, and Claude conversation namespaces distinct.",
+      "function": "Keep OpenWand, ChatGPT, and Claude conversation namespaces distinct.",
       "cause": "Backup fails.",
       "fault_family": "backup_fails",
       "status": "verified",
@@ -15770,7 +15770,7 @@
     {
       "reference": 1197,
       "function_id": "F188",
-      "function": "Keep Wisp, ChatGPT, and Claude conversation namespaces distinct.",
+      "function": "Keep OpenWand, ChatGPT, and Claude conversation namespaces distinct.",
       "cause": "The provider rejects the operation.",
       "fault_family": "the_provider_rejects_the_operation",
       "status": "verified",
@@ -15783,7 +15783,7 @@
     {
       "reference": 1198,
       "function_id": "F189",
-      "function": "Continue a conversation using Wisp's own model engine.",
+      "function": "Continue a conversation using OpenWand's own model engine.",
       "cause": "The external client is unavailable.",
       "fault_family": "the_external_client_is_unavailable",
       "status": "verified",
@@ -15796,7 +15796,7 @@
     {
       "reference": 1199,
       "function_id": "F189",
-      "function": "Continue a conversation using Wisp's own model engine.",
+      "function": "Continue a conversation using OpenWand's own model engine.",
       "cause": "The external session is unavailable.",
       "fault_family": "the_external_session_is_unavailable",
       "status": "verified",
@@ -15809,7 +15809,7 @@
     {
       "reference": 1200,
       "function_id": "F189",
-      "function": "Continue a conversation using Wisp's own model engine.",
+      "function": "Continue a conversation using OpenWand's own model engine.",
       "cause": "External authentication is invalid.",
       "fault_family": "external_authentication_is_invalid",
       "status": "verified",
@@ -15822,7 +15822,7 @@
     {
       "reference": 1201,
       "function_id": "F189",
-      "function": "Continue a conversation using Wisp's own model engine.",
+      "function": "Continue a conversation using OpenWand's own model engine.",
       "cause": "The external workspace is invalid.",
       "fault_family": "the_external_workspace_is_invalid",
       "status": "verified",
@@ -15835,7 +15835,7 @@
     {
       "reference": 1202,
       "function_id": "F189",
-      "function": "Continue a conversation using Wisp's own model engine.",
+      "function": "Continue a conversation using OpenWand's own model engine.",
       "cause": "The external transcript path changed.",
       "fault_family": "the_external_transcript_path_changed",
       "status": "verified",
@@ -15848,7 +15848,7 @@
     {
       "reference": 1203,
       "function_id": "F189",
-      "function": "Continue a conversation using Wisp's own model engine.",
+      "function": "Continue a conversation using OpenWand's own model engine.",
       "cause": "The external transcript format changed.",
       "fault_family": "the_external_transcript_format_changed",
       "status": "verified",
@@ -15861,7 +15861,7 @@
     {
       "reference": 1204,
       "function_id": "F189",
-      "function": "Continue a conversation using Wisp's own model engine.",
+      "function": "Continue a conversation using OpenWand's own model engine.",
       "cause": "Files are locked.",
       "fault_family": "files_are_locked",
       "status": "verified",
@@ -15874,7 +15874,7 @@
     {
       "reference": 1205,
       "function_id": "F189",
-      "function": "Continue a conversation using Wisp's own model engine.",
+      "function": "Continue a conversation using OpenWand's own model engine.",
       "cause": "Backup fails.",
       "fault_family": "backup_fails",
       "status": "verified",
@@ -15887,7 +15887,7 @@
     {
       "reference": 1206,
       "function_id": "F189",
-      "function": "Continue a conversation using Wisp's own model engine.",
+      "function": "Continue a conversation using OpenWand's own model engine.",
       "cause": "The provider rejects the operation.",
       "fault_family": "the_provider_rejects_the_operation",
       "status": "verified",
@@ -16017,7 +16017,7 @@
     {
       "reference": 1216,
       "function_id": "F191",
-      "function": "Choose whether continued messages belong to Wisp or the selected agent.",
+      "function": "Choose whether continued messages belong to OpenWand or the selected agent.",
       "cause": "The external client is unavailable.",
       "fault_family": "the_external_client_is_unavailable",
       "status": "verified",
@@ -16030,7 +16030,7 @@
     {
       "reference": 1217,
       "function_id": "F191",
-      "function": "Choose whether continued messages belong to Wisp or the selected agent.",
+      "function": "Choose whether continued messages belong to OpenWand or the selected agent.",
       "cause": "The external session is unavailable.",
       "fault_family": "the_external_session_is_unavailable",
       "status": "verified",
@@ -16043,7 +16043,7 @@
     {
       "reference": 1218,
       "function_id": "F191",
-      "function": "Choose whether continued messages belong to Wisp or the selected agent.",
+      "function": "Choose whether continued messages belong to OpenWand or the selected agent.",
       "cause": "External authentication is invalid.",
       "fault_family": "external_authentication_is_invalid",
       "status": "verified",
@@ -16056,7 +16056,7 @@
     {
       "reference": 1219,
       "function_id": "F191",
-      "function": "Choose whether continued messages belong to Wisp or the selected agent.",
+      "function": "Choose whether continued messages belong to OpenWand or the selected agent.",
       "cause": "The external workspace is invalid.",
       "fault_family": "the_external_workspace_is_invalid",
       "status": "verified",
@@ -16069,7 +16069,7 @@
     {
       "reference": 1220,
       "function_id": "F191",
-      "function": "Choose whether continued messages belong to Wisp or the selected agent.",
+      "function": "Choose whether continued messages belong to OpenWand or the selected agent.",
       "cause": "The external transcript path changed.",
       "fault_family": "the_external_transcript_path_changed",
       "status": "verified",
@@ -16082,7 +16082,7 @@
     {
       "reference": 1221,
       "function_id": "F191",
-      "function": "Choose whether continued messages belong to Wisp or the selected agent.",
+      "function": "Choose whether continued messages belong to OpenWand or the selected agent.",
       "cause": "The external transcript format changed.",
       "fault_family": "the_external_transcript_format_changed",
       "status": "verified",
@@ -16095,7 +16095,7 @@
     {
       "reference": 1222,
       "function_id": "F191",
-      "function": "Choose whether continued messages belong to Wisp or the selected agent.",
+      "function": "Choose whether continued messages belong to OpenWand or the selected agent.",
       "cause": "Files are locked.",
       "fault_family": "files_are_locked",
       "status": "verified",
@@ -16108,7 +16108,7 @@
     {
       "reference": 1223,
       "function_id": "F191",
-      "function": "Choose whether continued messages belong to Wisp or the selected agent.",
+      "function": "Choose whether continued messages belong to OpenWand or the selected agent.",
       "cause": "Backup fails.",
       "fault_family": "backup_fails",
       "status": "verified",
@@ -16121,7 +16121,7 @@
     {
       "reference": 1224,
       "function_id": "F191",
-      "function": "Choose whether continued messages belong to Wisp or the selected agent.",
+      "function": "Choose whether continued messages belong to OpenWand or the selected agent.",
       "cause": "The provider rejects the operation.",
       "fault_family": "the_provider_rejects_the_operation",
       "status": "verified",
@@ -16134,7 +16134,7 @@
     {
       "reference": 1225,
       "function_id": "F192",
-      "function": "Push new Wisp turns back into their source transcript after confirmation.",
+      "function": "Push new OpenWand turns back into their source transcript after confirmation.",
       "cause": "The external client is unavailable.",
       "fault_family": "the_external_client_is_unavailable",
       "status": "verified",
@@ -16147,7 +16147,7 @@
     {
       "reference": 1226,
       "function_id": "F192",
-      "function": "Push new Wisp turns back into their source transcript after confirmation.",
+      "function": "Push new OpenWand turns back into their source transcript after confirmation.",
       "cause": "The external session is unavailable.",
       "fault_family": "the_external_session_is_unavailable",
       "status": "verified",
@@ -16160,7 +16160,7 @@
     {
       "reference": 1227,
       "function_id": "F192",
-      "function": "Push new Wisp turns back into their source transcript after confirmation.",
+      "function": "Push new OpenWand turns back into their source transcript after confirmation.",
       "cause": "External authentication is invalid.",
       "fault_family": "external_authentication_is_invalid",
       "status": "verified",
@@ -16173,7 +16173,7 @@
     {
       "reference": 1228,
       "function_id": "F192",
-      "function": "Push new Wisp turns back into their source transcript after confirmation.",
+      "function": "Push new OpenWand turns back into their source transcript after confirmation.",
       "cause": "The external workspace is invalid.",
       "fault_family": "the_external_workspace_is_invalid",
       "status": "verified",
@@ -16188,7 +16188,7 @@
     {
       "reference": 1229,
       "function_id": "F192",
-      "function": "Push new Wisp turns back into their source transcript after confirmation.",
+      "function": "Push new OpenWand turns back into their source transcript after confirmation.",
       "cause": "The external transcript path changed.",
       "fault_family": "the_external_transcript_path_changed",
       "status": "verified",
@@ -16201,7 +16201,7 @@
     {
       "reference": 1230,
       "function_id": "F192",
-      "function": "Push new Wisp turns back into their source transcript after confirmation.",
+      "function": "Push new OpenWand turns back into their source transcript after confirmation.",
       "cause": "The external transcript format changed.",
       "fault_family": "the_external_transcript_format_changed",
       "status": "verified",
@@ -16214,7 +16214,7 @@
     {
       "reference": 1231,
       "function_id": "F192",
-      "function": "Push new Wisp turns back into their source transcript after confirmation.",
+      "function": "Push new OpenWand turns back into their source transcript after confirmation.",
       "cause": "Files are locked.",
       "fault_family": "files_are_locked",
       "status": "verified",
@@ -16227,7 +16227,7 @@
     {
       "reference": 1232,
       "function_id": "F192",
-      "function": "Push new Wisp turns back into their source transcript after confirmation.",
+      "function": "Push new OpenWand turns back into their source transcript after confirmation.",
       "cause": "Backup fails.",
       "fault_family": "backup_fails",
       "status": "verified",
@@ -16240,7 +16240,7 @@
     {
       "reference": 1233,
       "function_id": "F192",
-      "function": "Push new Wisp turns back into their source transcript after confirmation.",
+      "function": "Push new OpenWand turns back into their source transcript after confirmation.",
       "cause": "The provider rejects the operation.",
       "fault_family": "the_provider_rejects_the_operation",
       "status": "verified",
@@ -16370,7 +16370,7 @@
     {
       "reference": 1243,
       "function_id": "F194",
-      "function": "Export a Wisp conversation as a new ChatGPT conversation.",
+      "function": "Export a OpenWand conversation as a new ChatGPT conversation.",
       "cause": "The external client is unavailable.",
       "fault_family": "the_external_client_is_unavailable",
       "status": "verified",
@@ -16383,7 +16383,7 @@
     {
       "reference": 1244,
       "function_id": "F194",
-      "function": "Export a Wisp conversation as a new ChatGPT conversation.",
+      "function": "Export a OpenWand conversation as a new ChatGPT conversation.",
       "cause": "The external session is unavailable.",
       "fault_family": "the_external_session_is_unavailable",
       "status": "verified",
@@ -16396,7 +16396,7 @@
     {
       "reference": 1245,
       "function_id": "F194",
-      "function": "Export a Wisp conversation as a new ChatGPT conversation.",
+      "function": "Export a OpenWand conversation as a new ChatGPT conversation.",
       "cause": "External authentication is invalid.",
       "fault_family": "external_authentication_is_invalid",
       "status": "verified",
@@ -16409,7 +16409,7 @@
     {
       "reference": 1246,
       "function_id": "F194",
-      "function": "Export a Wisp conversation as a new ChatGPT conversation.",
+      "function": "Export a OpenWand conversation as a new ChatGPT conversation.",
       "cause": "The external workspace is invalid.",
       "fault_family": "the_external_workspace_is_invalid",
       "status": "verified",
@@ -16422,7 +16422,7 @@
     {
       "reference": 1247,
       "function_id": "F194",
-      "function": "Export a Wisp conversation as a new ChatGPT conversation.",
+      "function": "Export a OpenWand conversation as a new ChatGPT conversation.",
       "cause": "The external transcript path changed.",
       "fault_family": "the_external_transcript_path_changed",
       "status": "verified",
@@ -16435,7 +16435,7 @@
     {
       "reference": 1248,
       "function_id": "F194",
-      "function": "Export a Wisp conversation as a new ChatGPT conversation.",
+      "function": "Export a OpenWand conversation as a new ChatGPT conversation.",
       "cause": "The external transcript format changed.",
       "fault_family": "the_external_transcript_format_changed",
       "status": "verified",
@@ -16448,7 +16448,7 @@
     {
       "reference": 1249,
       "function_id": "F194",
-      "function": "Export a Wisp conversation as a new ChatGPT conversation.",
+      "function": "Export a OpenWand conversation as a new ChatGPT conversation.",
       "cause": "Files are locked.",
       "fault_family": "files_are_locked",
       "status": "verified",
@@ -16461,7 +16461,7 @@
     {
       "reference": 1250,
       "function_id": "F194",
-      "function": "Export a Wisp conversation as a new ChatGPT conversation.",
+      "function": "Export a OpenWand conversation as a new ChatGPT conversation.",
       "cause": "Backup fails.",
       "fault_family": "backup_fails",
       "status": "verified",
@@ -16474,7 +16474,7 @@
     {
       "reference": 1251,
       "function_id": "F194",
-      "function": "Export a Wisp conversation as a new ChatGPT conversation.",
+      "function": "Export a OpenWand conversation as a new ChatGPT conversation.",
       "cause": "The provider rejects the operation.",
       "fault_family": "the_provider_rejects_the_operation",
       "status": "verified",
@@ -16490,7 +16490,7 @@
     {
       "reference": 1252,
       "function_id": "F195",
-      "function": "Export a Wisp conversation as a new Claude conversation.",
+      "function": "Export a OpenWand conversation as a new Claude conversation.",
       "cause": "The external client is unavailable.",
       "fault_family": "the_external_client_is_unavailable",
       "status": "verified",
@@ -16503,7 +16503,7 @@
     {
       "reference": 1253,
       "function_id": "F195",
-      "function": "Export a Wisp conversation as a new Claude conversation.",
+      "function": "Export a OpenWand conversation as a new Claude conversation.",
       "cause": "The external session is unavailable.",
       "fault_family": "the_external_session_is_unavailable",
       "status": "verified",
@@ -16516,7 +16516,7 @@
     {
       "reference": 1254,
       "function_id": "F195",
-      "function": "Export a Wisp conversation as a new Claude conversation.",
+      "function": "Export a OpenWand conversation as a new Claude conversation.",
       "cause": "External authentication is invalid.",
       "fault_family": "external_authentication_is_invalid",
       "status": "verified",
@@ -16529,7 +16529,7 @@
     {
       "reference": 1255,
       "function_id": "F195",
-      "function": "Export a Wisp conversation as a new Claude conversation.",
+      "function": "Export a OpenWand conversation as a new Claude conversation.",
       "cause": "The external workspace is invalid.",
       "fault_family": "the_external_workspace_is_invalid",
       "status": "verified",
@@ -16542,7 +16542,7 @@
     {
       "reference": 1256,
       "function_id": "F195",
-      "function": "Export a Wisp conversation as a new Claude conversation.",
+      "function": "Export a OpenWand conversation as a new Claude conversation.",
       "cause": "The external transcript path changed.",
       "fault_family": "the_external_transcript_path_changed",
       "status": "verified",
@@ -16555,7 +16555,7 @@
     {
       "reference": 1257,
       "function_id": "F195",
-      "function": "Export a Wisp conversation as a new Claude conversation.",
+      "function": "Export a OpenWand conversation as a new Claude conversation.",
       "cause": "The external transcript format changed.",
       "fault_family": "the_external_transcript_format_changed",
       "status": "verified",
@@ -16568,7 +16568,7 @@
     {
       "reference": 1258,
       "function_id": "F195",
-      "function": "Export a Wisp conversation as a new Claude conversation.",
+      "function": "Export a OpenWand conversation as a new Claude conversation.",
       "cause": "Files are locked.",
       "fault_family": "files_are_locked",
       "status": "verified",
@@ -16581,7 +16581,7 @@
     {
       "reference": 1259,
       "function_id": "F195",
-      "function": "Export a Wisp conversation as a new Claude conversation.",
+      "function": "Export a OpenWand conversation as a new Claude conversation.",
       "cause": "Backup fails.",
       "fault_family": "backup_fails",
       "status": "verified",
@@ -16594,7 +16594,7 @@
     {
       "reference": 1260,
       "function_id": "F195",
-      "function": "Export a Wisp conversation as a new Claude conversation.",
+      "function": "Export a OpenWand conversation as a new Claude conversation.",
       "cause": "The provider rejects the operation.",
       "fault_family": "the_provider_rejects_the_operation",
       "status": "verified",
@@ -18289,7 +18289,7 @@
     {
       "reference": 1390,
       "function_id": "F213",
-      "function": "Connect and clear GitHub Copilot credentials.",
+      "function": "Store and clear GitHub Copilot provider credentials.",
       "cause": "The local credential store is locked.",
       "fault_family": "the_local_credential_store_is_locked",
       "status": "verified",
@@ -18302,7 +18302,7 @@
     {
       "reference": 1391,
       "function_id": "F213",
-      "function": "Connect and clear GitHub Copilot credentials.",
+      "function": "Store and clear GitHub Copilot provider credentials.",
       "cause": "The local credential store is unavailable.",
       "fault_family": "the_local_credential_store_is_unavailable",
       "status": "verified",
@@ -18315,7 +18315,7 @@
     {
       "reference": 1392,
       "function_id": "F213",
-      "function": "Connect and clear GitHub Copilot credentials.",
+      "function": "Store and clear GitHub Copilot provider credentials.",
       "cause": "The local token cannot be removed.",
       "fault_family": "the_local_token_cannot_be_removed",
       "status": "verified",
@@ -18328,7 +18328,7 @@
     {
       "reference": 1393,
       "function_id": "F213",
-      "function": "Connect and clear GitHub Copilot credentials.",
+      "function": "Store and clear GitHub Copilot provider credentials.",
       "cause": "Local and provider session state diverge.",
       "fault_family": "local_and_provider_session_state_diverge",
       "status": "verified",
@@ -18341,66 +18341,66 @@
     {
       "reference": 1394,
       "function_id": "F214",
-      "function": "Test the GitHub Copilot connection.",
-      "cause": "Credentials.",
-      "fault_family": "credentials",
+      "function": "Check GitHub Copilot credential readiness through the app API.",
+      "cause": "The stored credential is missing or malformed.",
+      "fault_family": "the_stored_credential_is_missing_or_malformed",
       "status": "verified",
-      "shared_boundary": "copilot_connection_test_boundary",
+      "shared_boundary": "copilot_readiness_boundary",
       "evidence_ids": [],
       "evidence_node_ids": [
-        "tests/test_llm_fallbacks.py::LlmFallbackTests::test_provider_route_failure_matrix_uses_fallback_without_partial_output"
+        "tests/test_copilot_client.py::CopilotClientBridgeTests::test_readiness_check_reports_local_states_without_claiming_connectivity"
       ]
     },
     {
       "reference": 1395,
       "function_id": "F214",
-      "function": "Test the GitHub Copilot connection.",
-      "cause": "Network access.",
-      "fault_family": "network_access",
+      "function": "Check GitHub Copilot credential readiness through the app API.",
+      "cause": "The Copilot SDK is unavailable.",
+      "fault_family": "the_copilot_sdk_is_unavailable",
       "status": "verified",
-      "shared_boundary": "copilot_connection_test_boundary",
+      "shared_boundary": "copilot_readiness_boundary",
       "evidence_ids": [],
       "evidence_node_ids": [
-        "tests/test_llm_fallbacks.py::LlmFallbackTests::test_provider_route_failure_matrix_uses_fallback_without_partial_output"
+        "tests/test_copilot_client.py::CopilotClientBridgeTests::test_readiness_check_reports_local_states_without_claiming_connectivity"
       ]
     },
     {
       "reference": 1396,
       "function_id": "F214",
-      "function": "Test the GitHub Copilot connection.",
-      "cause": "Provider availability.",
-      "fault_family": "provider_availability",
+      "function": "Check GitHub Copilot credential readiness through the app API.",
+      "cause": "The credential store cannot be read.",
+      "fault_family": "the_credential_store_cannot_be_read",
       "status": "verified",
-      "shared_boundary": "copilot_connection_test_boundary",
+      "shared_boundary": "copilot_readiness_boundary",
       "evidence_ids": [],
       "evidence_node_ids": [
-        "tests/test_llm_fallbacks.py::LlmFallbackTests::test_provider_route_failure_matrix_uses_fallback_without_partial_output"
+        "tests/integration/brain/test_handler_config.py::test_auth_copilot_readiness_contains_credential_store_failure"
       ]
     },
     {
       "reference": 1397,
       "function_id": "F214",
-      "function": "Test the GitHub Copilot connection.",
-      "cause": "The account lacks a required permission.",
-      "fault_family": "the_account_lacks_a_required_permission",
+      "function": "Check GitHub Copilot credential readiness through the app API.",
+      "cause": "Route authorization can only be determined by an actual model request.",
+      "fault_family": "route_authorization_can_only_be_determined_by_an_actual_model_request",
       "status": "verified",
-      "shared_boundary": "copilot_connection_test_boundary",
+      "shared_boundary": "copilot_readiness_boundary",
       "evidence_ids": [],
       "evidence_node_ids": [
-        "tests/test_llm_fallbacks.py::LlmFallbackTests::test_provider_route_failure_matrix_uses_fallback_without_partial_output"
+        "tests/test_connection_management_acceptance.py::test_every_provider_reaches_its_real_chat_route_probe"
       ]
     },
     {
       "reference": 1398,
       "function_id": "F214",
-      "function": "Test the GitHub Copilot connection.",
-      "cause": "The provider API is incompatible.",
-      "fault_family": "the_provider_api_is_incompatible",
+      "function": "Check GitHub Copilot credential readiness through the app API.",
+      "cause": "A readiness result is not proof of provider connectivity.",
+      "fault_family": "a_readiness_result_is_not_proof_of_provider_connectivity",
       "status": "verified",
-      "shared_boundary": "copilot_connection_test_boundary",
+      "shared_boundary": "copilot_readiness_boundary",
       "evidence_ids": [],
       "evidence_node_ids": [
-        "tests/test_llm_fallbacks.py::LlmFallbackTests::test_provider_route_failure_matrix_uses_fallback_without_partial_output"
+        "tests/test_copilot_client.py::CopilotClientBridgeTests::test_readiness_check_reports_local_states_without_claiming_connectivity"
       ]
     },
     {
@@ -19017,7 +19017,7 @@
     {
       "reference": 1446,
       "function_id": "F223",
-      "function": "Pick a saved custom endpoint from the Endpoints menu.",
+      "function": "Choose a preset or custom provider endpoint.",
       "cause": "A value required by this function is invalid.",
       "fault_family": "a_value_required_by_this_function_is_invalid",
       "status": "verified",
@@ -19030,7 +19030,7 @@
     {
       "reference": 1447,
       "function_id": "F223",
-      "function": "Pick a saved custom endpoint from the Endpoints menu.",
+      "function": "Choose a preset or custom provider endpoint.",
       "cause": "The OS keychain is unavailable.",
       "fault_family": "the_os_keychain_is_unavailable",
       "status": "verified",
@@ -19043,7 +19043,7 @@
     {
       "reference": 1448,
       "function_id": "F223",
-      "function": "Pick a saved custom endpoint from the Endpoints menu.",
+      "function": "Choose a preset or custom provider endpoint.",
       "cause": "The endpoint URL is malformed.",
       "fault_family": "the_endpoint_url_is_malformed",
       "status": "verified",
@@ -19056,7 +19056,7 @@
     {
       "reference": 1449,
       "function_id": "F223",
-      "function": "Pick a saved custom endpoint from the Endpoints menu.",
+      "function": "Choose a preset or custom provider endpoint.",
       "cause": "The endpoint is offline.",
       "fault_family": "the_endpoint_is_offline",
       "status": "verified",
@@ -19069,7 +19069,7 @@
     {
       "reference": 1450,
       "function_id": "F223",
-      "function": "Pick a saved custom endpoint from the Endpoints menu.",
+      "function": "Choose a preset or custom provider endpoint.",
       "cause": "The account lacks permission.",
       "fault_family": "the_account_lacks_permission",
       "status": "verified",
@@ -19082,7 +19082,7 @@
     {
       "reference": 1451,
       "function_id": "F223",
-      "function": "Pick a saved custom endpoint from the Endpoints menu.",
+      "function": "Choose a preset or custom provider endpoint.",
       "cause": "The setting cannot be saved.",
       "fault_family": "the_setting_cannot_be_saved",
       "status": "verified",
@@ -23148,7 +23148,7 @@
     {
       "reference": 1761,
       "function_id": "F269",
-      "function": "Use Wisp, ChatGPT, or Claude Agent as the conversation execution engine.",
+      "function": "Use OpenWand, ChatGPT, or Claude Agent as the conversation execution engine.",
       "cause": "The conversation store is locked.",
       "fault_family": "the_conversation_store_is_locked",
       "status": "verified",
@@ -23161,7 +23161,7 @@
     {
       "reference": 1762,
       "function_id": "F269",
-      "function": "Use Wisp, ChatGPT, or Claude Agent as the conversation execution engine.",
+      "function": "Use OpenWand, ChatGPT, or Claude Agent as the conversation execution engine.",
       "cause": "The conversation store is corrupt.",
       "fault_family": "the_conversation_store_is_corrupt",
       "status": "verified",
@@ -23174,7 +23174,7 @@
     {
       "reference": 1763,
       "function_id": "F269",
-      "function": "Use Wisp, ChatGPT, or Claude Agent as the conversation execution engine.",
+      "function": "Use OpenWand, ChatGPT, or Claude Agent as the conversation execution engine.",
       "cause": "The selected conversation record is stale.",
       "fault_family": "the_selected_conversation_record_is_stale",
       "status": "verified",
@@ -23187,7 +23187,7 @@
     {
       "reference": 1764,
       "function_id": "F269",
-      "function": "Use Wisp, ChatGPT, or Claude Agent as the conversation execution engine.",
+      "function": "Use OpenWand, ChatGPT, or Claude Agent as the conversation execution engine.",
       "cause": "A stream is still active.",
       "fault_family": "a_stream_is_still_active",
       "status": "verified",
@@ -23200,7 +23200,7 @@
     {
       "reference": 1765,
       "function_id": "F269",
-      "function": "Use Wisp, ChatGPT, or Claude Agent as the conversation execution engine.",
+      "function": "Use OpenWand, ChatGPT, or Claude Agent as the conversation execution engine.",
       "cause": "The configured model fails.",
       "fault_family": "the_configured_model_fails",
       "status": "verified",
@@ -23213,7 +23213,7 @@
     {
       "reference": 1766,
       "function_id": "F269",
-      "function": "Use Wisp, ChatGPT, or Claude Agent as the conversation execution engine.",
+      "function": "Use OpenWand, ChatGPT, or Claude Agent as the conversation execution engine.",
       "cause": "The configured tool fails.",
       "fault_family": "the_configured_tool_fails",
       "status": "verified",
@@ -23226,7 +23226,7 @@
     {
       "reference": 1767,
       "function_id": "F269",
-      "function": "Use Wisp, ChatGPT, or Claude Agent as the conversation execution engine.",
+      "function": "Use OpenWand, ChatGPT, or Claude Agent as the conversation execution engine.",
       "cause": "Persistence is interrupted.",
       "fault_family": "persistence_is_interrupted",
       "status": "verified",
@@ -23239,7 +23239,7 @@
     {
       "reference": 1768,
       "function_id": "F270",
-      "function": "Choose Wisp or the selected agent as conversation owner.",
+      "function": "Choose OpenWand or the selected agent as conversation owner.",
       "cause": "The conversation store is locked.",
       "fault_family": "the_conversation_store_is_locked",
       "status": "verified",
@@ -23252,7 +23252,7 @@
     {
       "reference": 1769,
       "function_id": "F270",
-      "function": "Choose Wisp or the selected agent as conversation owner.",
+      "function": "Choose OpenWand or the selected agent as conversation owner.",
       "cause": "The conversation store is corrupt.",
       "fault_family": "the_conversation_store_is_corrupt",
       "status": "verified",
@@ -23265,7 +23265,7 @@
     {
       "reference": 1770,
       "function_id": "F270",
-      "function": "Choose Wisp or the selected agent as conversation owner.",
+      "function": "Choose OpenWand or the selected agent as conversation owner.",
       "cause": "The selected conversation record is stale.",
       "fault_family": "the_selected_conversation_record_is_stale",
       "status": "verified",
@@ -23278,7 +23278,7 @@
     {
       "reference": 1771,
       "function_id": "F270",
-      "function": "Choose Wisp or the selected agent as conversation owner.",
+      "function": "Choose OpenWand or the selected agent as conversation owner.",
       "cause": "A stream is still active.",
       "fault_family": "a_stream_is_still_active",
       "status": "verified",
@@ -23291,7 +23291,7 @@
     {
       "reference": 1772,
       "function_id": "F270",
-      "function": "Choose Wisp or the selected agent as conversation owner.",
+      "function": "Choose OpenWand or the selected agent as conversation owner.",
       "cause": "The configured model fails.",
       "fault_family": "the_configured_model_fails",
       "status": "verified",
@@ -23304,7 +23304,7 @@
     {
       "reference": 1773,
       "function_id": "F270",
-      "function": "Choose Wisp or the selected agent as conversation owner.",
+      "function": "Choose OpenWand or the selected agent as conversation owner.",
       "cause": "The configured tool fails.",
       "fault_family": "the_configured_tool_fails",
       "status": "verified",
@@ -23317,7 +23317,7 @@
     {
       "reference": 1774,
       "function_id": "F270",
-      "function": "Choose Wisp or the selected agent as conversation owner.",
+      "function": "Choose OpenWand or the selected agent as conversation owner.",
       "cause": "Persistence is interrupted.",
       "fault_family": "persistence_is_interrupted",
       "status": "verified",
@@ -23330,7 +23330,7 @@
     {
       "reference": 1775,
       "function_id": "F271",
-      "function": "Edit separate system prompts for Wisp, ChatGPT, and Claude conversations.",
+      "function": "Edit separate system prompts for OpenWand, ChatGPT, and Claude conversations.",
       "cause": "The conversation store is locked.",
       "fault_family": "the_conversation_store_is_locked",
       "status": "verified",
@@ -23343,7 +23343,7 @@
     {
       "reference": 1776,
       "function_id": "F271",
-      "function": "Edit separate system prompts for Wisp, ChatGPT, and Claude conversations.",
+      "function": "Edit separate system prompts for OpenWand, ChatGPT, and Claude conversations.",
       "cause": "The conversation store is corrupt.",
       "fault_family": "the_conversation_store_is_corrupt",
       "status": "verified",
@@ -23356,7 +23356,7 @@
     {
       "reference": 1777,
       "function_id": "F271",
-      "function": "Edit separate system prompts for Wisp, ChatGPT, and Claude conversations.",
+      "function": "Edit separate system prompts for OpenWand, ChatGPT, and Claude conversations.",
       "cause": "The selected conversation record is stale.",
       "fault_family": "the_selected_conversation_record_is_stale",
       "status": "verified",
@@ -23369,7 +23369,7 @@
     {
       "reference": 1778,
       "function_id": "F271",
-      "function": "Edit separate system prompts for Wisp, ChatGPT, and Claude conversations.",
+      "function": "Edit separate system prompts for OpenWand, ChatGPT, and Claude conversations.",
       "cause": "A stream is still active.",
       "fault_family": "a_stream_is_still_active",
       "status": "verified",
@@ -23382,7 +23382,7 @@
     {
       "reference": 1779,
       "function_id": "F271",
-      "function": "Edit separate system prompts for Wisp, ChatGPT, and Claude conversations.",
+      "function": "Edit separate system prompts for OpenWand, ChatGPT, and Claude conversations.",
       "cause": "The configured model fails.",
       "fault_family": "the_configured_model_fails",
       "status": "verified",
@@ -23395,7 +23395,7 @@
     {
       "reference": 1780,
       "function_id": "F271",
-      "function": "Edit separate system prompts for Wisp, ChatGPT, and Claude conversations.",
+      "function": "Edit separate system prompts for OpenWand, ChatGPT, and Claude conversations.",
       "cause": "The configured tool fails.",
       "fault_family": "the_configured_tool_fails",
       "status": "verified",
@@ -23408,7 +23408,7 @@
     {
       "reference": 1781,
       "function_id": "F271",
-      "function": "Edit separate system prompts for Wisp, ChatGPT, and Claude conversations.",
+      "function": "Edit separate system prompts for OpenWand, ChatGPT, and Claude conversations.",
       "cause": "Persistence is interrupted.",
       "fault_family": "persistence_is_interrupted",
       "status": "verified",
@@ -27161,7 +27161,7 @@
     {
       "reference": 2065,
       "function_id": "F303",
-      "function": "Interrupt Wisp by speaking over it when full duplex is enabled.",
+      "function": "Interrupt OpenWand by speaking over it when full duplex is enabled.",
       "cause": "The optional runtime is missing.",
       "fault_family": "the_optional_runtime_is_missing",
       "status": "verified",
@@ -27174,7 +27174,7 @@
     {
       "reference": 2066,
       "function_id": "F303",
-      "function": "Interrupt Wisp by speaking over it when full duplex is enabled.",
+      "function": "Interrupt OpenWand by speaking over it when full duplex is enabled.",
       "cause": "A required model asset is missing.",
       "fault_family": "a_required_model_asset_is_missing",
       "status": "verified",
@@ -27187,7 +27187,7 @@
     {
       "reference": 2067,
       "function_id": "F303",
-      "function": "Interrupt Wisp by speaking over it when full duplex is enabled.",
+      "function": "Interrupt OpenWand by speaking over it when full duplex is enabled.",
       "cause": "A required model asset is damaged.",
       "fault_family": "a_required_model_asset_is_damaged",
       "status": "verified",
@@ -27200,7 +27200,7 @@
     {
       "reference": 2068,
       "function_id": "F303",
-      "function": "Interrupt Wisp by speaking over it when full duplex is enabled.",
+      "function": "Interrupt OpenWand by speaking over it when full duplex is enabled.",
       "cause": "Microphone permission is denied.",
       "fault_family": "microphone_permission_is_denied",
       "status": "verified",
@@ -27213,7 +27213,7 @@
     {
       "reference": 2069,
       "function_id": "F303",
-      "function": "Interrupt Wisp by speaking over it when full duplex is enabled.",
+      "function": "Interrupt OpenWand by speaking over it when full duplex is enabled.",
       "cause": "Audio-output permission is denied.",
       "fault_family": "audio_output_permission_is_denied",
       "status": "verified",
@@ -27226,7 +27226,7 @@
     {
       "reference": 2070,
       "function_id": "F303",
-      "function": "Interrupt Wisp by speaking over it when full duplex is enabled.",
+      "function": "Interrupt OpenWand by speaking over it when full duplex is enabled.",
       "cause": "The audio device is unavailable.",
       "fault_family": "the_audio_device_is_unavailable",
       "status": "verified",
@@ -27239,7 +27239,7 @@
     {
       "reference": 2071,
       "function_id": "F303",
-      "function": "Interrupt Wisp by speaking over it when full duplex is enabled.",
+      "function": "Interrupt OpenWand by speaking over it when full duplex is enabled.",
       "cause": "Provider authentication fails.",
       "fault_family": "provider_authentication_fails",
       "status": "verified",
@@ -27252,7 +27252,7 @@
     {
       "reference": 2072,
       "function_id": "F303",
-      "function": "Interrupt Wisp by speaking over it when full duplex is enabled.",
+      "function": "Interrupt OpenWand by speaking over it when full duplex is enabled.",
       "cause": "The provider network request fails.",
       "fault_family": "the_provider_network_request_fails",
       "status": "verified",
@@ -27266,7 +27266,7 @@
     {
       "reference": 2073,
       "function_id": "F303",
-      "function": "Interrupt Wisp by speaking over it when full duplex is enabled.",
+      "function": "Interrupt OpenWand by speaking over it when full duplex is enabled.",
       "cause": "The selected model is unsupported.",
       "fault_family": "the_selected_model_is_unsupported",
       "status": "verified",
@@ -27279,7 +27279,7 @@
     {
       "reference": 2074,
       "function_id": "F303",
-      "function": "Interrupt Wisp by speaking over it when full duplex is enabled.",
+      "function": "Interrupt OpenWand by speaking over it when full duplex is enabled.",
       "cause": "The selected device is unsupported.",
       "fault_family": "the_selected_device_is_unsupported",
       "status": "verified",
@@ -27292,7 +27292,7 @@
     {
       "reference": 2075,
       "function_id": "F304",
-      "function": "Pause the microphone while Wisp speaks in speaker/half-duplex mode.",
+      "function": "Pause the microphone while OpenWand speaks in speaker/half-duplex mode.",
       "cause": "The optional runtime is missing.",
       "fault_family": "the_optional_runtime_is_missing",
       "status": "verified",
@@ -27305,7 +27305,7 @@
     {
       "reference": 2076,
       "function_id": "F304",
-      "function": "Pause the microphone while Wisp speaks in speaker/half-duplex mode.",
+      "function": "Pause the microphone while OpenWand speaks in speaker/half-duplex mode.",
       "cause": "A required model asset is missing.",
       "fault_family": "a_required_model_asset_is_missing",
       "status": "verified",
@@ -27318,7 +27318,7 @@
     {
       "reference": 2077,
       "function_id": "F304",
-      "function": "Pause the microphone while Wisp speaks in speaker/half-duplex mode.",
+      "function": "Pause the microphone while OpenWand speaks in speaker/half-duplex mode.",
       "cause": "A required model asset is damaged.",
       "fault_family": "a_required_model_asset_is_damaged",
       "status": "verified",
@@ -27331,7 +27331,7 @@
     {
       "reference": 2078,
       "function_id": "F304",
-      "function": "Pause the microphone while Wisp speaks in speaker/half-duplex mode.",
+      "function": "Pause the microphone while OpenWand speaks in speaker/half-duplex mode.",
       "cause": "Microphone permission is denied.",
       "fault_family": "microphone_permission_is_denied",
       "status": "verified",
@@ -27344,7 +27344,7 @@
     {
       "reference": 2079,
       "function_id": "F304",
-      "function": "Pause the microphone while Wisp speaks in speaker/half-duplex mode.",
+      "function": "Pause the microphone while OpenWand speaks in speaker/half-duplex mode.",
       "cause": "Audio-output permission is denied.",
       "fault_family": "audio_output_permission_is_denied",
       "status": "verified",
@@ -27357,7 +27357,7 @@
     {
       "reference": 2080,
       "function_id": "F304",
-      "function": "Pause the microphone while Wisp speaks in speaker/half-duplex mode.",
+      "function": "Pause the microphone while OpenWand speaks in speaker/half-duplex mode.",
       "cause": "The audio device is unavailable.",
       "fault_family": "the_audio_device_is_unavailable",
       "status": "verified",
@@ -27370,7 +27370,7 @@
     {
       "reference": 2081,
       "function_id": "F304",
-      "function": "Pause the microphone while Wisp speaks in speaker/half-duplex mode.",
+      "function": "Pause the microphone while OpenWand speaks in speaker/half-duplex mode.",
       "cause": "Provider authentication fails.",
       "fault_family": "provider_authentication_fails",
       "status": "verified",
@@ -27383,7 +27383,7 @@
     {
       "reference": 2082,
       "function_id": "F304",
-      "function": "Pause the microphone while Wisp speaks in speaker/half-duplex mode.",
+      "function": "Pause the microphone while OpenWand speaks in speaker/half-duplex mode.",
       "cause": "The provider network request fails.",
       "fault_family": "the_provider_network_request_fails",
       "status": "verified",
@@ -27397,7 +27397,7 @@
     {
       "reference": 2083,
       "function_id": "F304",
-      "function": "Pause the microphone while Wisp speaks in speaker/half-duplex mode.",
+      "function": "Pause the microphone while OpenWand speaks in speaker/half-duplex mode.",
       "cause": "The selected model is unsupported.",
       "fault_family": "the_selected_model_is_unsupported",
       "status": "verified",
@@ -27410,7 +27410,7 @@
     {
       "reference": 2084,
       "function_id": "F304",
-      "function": "Pause the microphone while Wisp speaks in speaker/half-duplex mode.",
+      "function": "Pause the microphone while OpenWand speaks in speaker/half-duplex mode.",
       "cause": "The selected device is unsupported.",
       "fault_family": "the_selected_device_is_unsupported",
       "status": "verified",
@@ -34303,7 +34303,7 @@
     {
       "reference": 2607,
       "function_id": "F378",
-      "function": "Expose Wisp context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
+      "function": "Expose OpenWand context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
       "cause": "Nothing is selected.",
       "fault_family": "nothing_is_selected",
       "status": "verified",
@@ -34318,7 +34318,7 @@
     {
       "reference": 2608,
       "function_id": "F378",
-      "function": "Expose Wisp context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
+      "function": "Expose OpenWand context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
       "cause": "Focus moved.",
       "fault_family": "focus_moved",
       "status": "verified",
@@ -34331,7 +34331,7 @@
     {
       "reference": 2609,
       "function_id": "F378",
-      "function": "Expose Wisp context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
+      "function": "Expose OpenWand context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
       "cause": "The target control does not expose accessible text.",
       "fault_family": "the_target_control_does_not_expose_accessible_text",
       "status": "verified",
@@ -34344,7 +34344,7 @@
     {
       "reference": 2610,
       "function_id": "F378",
-      "function": "Expose Wisp context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
+      "function": "Expose OpenWand context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
       "cause": "The OS permission is missing.",
       "fault_family": "the_os_permission_is_missing",
       "status": "verified",
@@ -34357,7 +34357,7 @@
     {
       "reference": 2611,
       "function_id": "F378",
-      "function": "Expose Wisp context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
+      "function": "Expose OpenWand context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
       "cause": "The target application is unsupported.",
       "fault_family": "the_target_application_is_unsupported",
       "status": "verified",
@@ -34370,7 +34370,7 @@
     {
       "reference": 2612,
       "function_id": "F378",
-      "function": "Expose Wisp context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
+      "function": "Expose OpenWand context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
       "cause": "The platform backend is unsupported.",
       "fault_family": "the_platform_backend_is_unsupported",
       "status": "verified",
@@ -40483,7 +40483,7 @@
     {
       "reference": 3079,
       "function_id": "F439",
-      "function": "Edit separate Wisp, ChatGPT, and Claude system prompts.",
+      "function": "Edit separate OpenWand, ChatGPT, and Claude system prompts.",
       "cause": "The conversation store is locked.",
       "fault_family": "the_conversation_store_is_locked",
       "status": "verified",
@@ -40496,7 +40496,7 @@
     {
       "reference": 3080,
       "function_id": "F439",
-      "function": "Edit separate Wisp, ChatGPT, and Claude system prompts.",
+      "function": "Edit separate OpenWand, ChatGPT, and Claude system prompts.",
       "cause": "The conversation store is corrupt.",
       "fault_family": "the_conversation_store_is_corrupt",
       "status": "verified",
@@ -40509,7 +40509,7 @@
     {
       "reference": 3081,
       "function_id": "F439",
-      "function": "Edit separate Wisp, ChatGPT, and Claude system prompts.",
+      "function": "Edit separate OpenWand, ChatGPT, and Claude system prompts.",
       "cause": "The selected conversation record is stale.",
       "fault_family": "the_selected_conversation_record_is_stale",
       "status": "verified",
@@ -40522,7 +40522,7 @@
     {
       "reference": 3082,
       "function_id": "F439",
-      "function": "Edit separate Wisp, ChatGPT, and Claude system prompts.",
+      "function": "Edit separate OpenWand, ChatGPT, and Claude system prompts.",
       "cause": "A stream is still active.",
       "fault_family": "a_stream_is_still_active",
       "status": "verified",
@@ -40535,7 +40535,7 @@
     {
       "reference": 3083,
       "function_id": "F439",
-      "function": "Edit separate Wisp, ChatGPT, and Claude system prompts.",
+      "function": "Edit separate OpenWand, ChatGPT, and Claude system prompts.",
       "cause": "The configured model fails.",
       "fault_family": "the_configured_model_fails",
       "status": "verified",
@@ -40548,7 +40548,7 @@
     {
       "reference": 3084,
       "function_id": "F439",
-      "function": "Edit separate Wisp, ChatGPT, and Claude system prompts.",
+      "function": "Edit separate OpenWand, ChatGPT, and Claude system prompts.",
       "cause": "The configured tool fails.",
       "fault_family": "the_configured_tool_fails",
       "status": "verified",
@@ -40561,7 +40561,7 @@
     {
       "reference": 3085,
       "function_id": "F439",
-      "function": "Edit separate Wisp, ChatGPT, and Claude system prompts.",
+      "function": "Edit separate OpenWand, ChatGPT, and Claude system prompts.",
       "cause": "Persistence is interrupted.",
       "fault_family": "persistence_is_interrupted",
       "status": "verified",
@@ -40699,7 +40699,7 @@
       "shared_boundary": "",
       "evidence_ids": [],
       "evidence_node_ids": [
-        "tests/test_optional_deps.py::test_startup_cleanup_removes_only_wisp_package_swap_leftovers"
+        "tests/test_optional_deps.py::test_startup_cleanup_removes_only_openwand_package_swap_leftovers"
       ]
     },
     {
@@ -40914,7 +40914,7 @@
     {
       "reference": 3112,
       "function_id": "F445",
-      "function": "Restart Wisp immediately when an installed component requires restart.",
+      "function": "Restart OpenWand immediately when an installed component requires restart.",
       "cause": "The install did not become restart-ready.",
       "fault_family": "the_install_did_not_become_restart_ready",
       "status": "verified",
@@ -40927,7 +40927,7 @@
     {
       "reference": 3113,
       "function_id": "F445",
-      "function": "Restart Wisp immediately when an installed component requires restart.",
+      "function": "Restart OpenWand immediately when an installed component requires restart.",
       "cause": "The replacement process cannot launch.",
       "fault_family": "the_replacement_process_cannot_launch",
       "status": "verified",
@@ -40940,14 +40940,14 @@
     {
       "reference": 3114,
       "function_id": "F445",
-      "function": "Restart Wisp immediately when an installed component requires restart.",
+      "function": "Restart OpenWand immediately when an installed component requires restart.",
       "cause": "The current process cannot shut down cleanly.",
       "fault_family": "the_current_process_cannot_shut_down_cleanly",
       "status": "verified",
       "shared_boundary": "",
       "evidence_ids": [],
       "evidence_node_ids": [
-        "tests/test_optional_deps.py::test_optional_install_staged_apply_keeps_staging_when_wisp_stays_open"
+        "tests/test_optional_deps.py::test_optional_install_staged_apply_keeps_staging_when_openwand_stays_open"
       ]
     },
     {
@@ -41045,7 +41045,7 @@
     {
       "reference": 3122,
       "function_id": "F447",
-      "function": "Show the installed Wisp version.",
+      "function": "Show the installed OpenWand version.",
       "cause": "A required file is unavailable.",
       "fault_family": "a_required_file_is_unavailable",
       "status": "verified",
@@ -41058,7 +41058,7 @@
     {
       "reference": 3123,
       "function_id": "F447",
-      "function": "Show the installed Wisp version.",
+      "function": "Show the installed OpenWand version.",
       "cause": "Required network access is unavailable.",
       "fault_family": "required_network_access_is_unavailable",
       "status": "verified",
@@ -41071,7 +41071,7 @@
     {
       "reference": 3124,
       "function_id": "F447",
-      "function": "Show the installed Wisp version.",
+      "function": "Show the installed OpenWand version.",
       "cause": "A required permission is unavailable.",
       "fault_family": "a_required_permission_is_unavailable",
       "status": "verified",
@@ -41084,7 +41084,7 @@
     {
       "reference": 3125,
       "function_id": "F447",
-      "function": "Show the installed Wisp version.",
+      "function": "Show the installed OpenWand version.",
       "cause": "Version metadata is invalid.",
       "fault_family": "version_metadata_is_invalid",
       "status": "verified",
@@ -41097,7 +41097,7 @@
     {
       "reference": 3126,
       "function_id": "F447",
-      "function": "Show the installed Wisp version.",
+      "function": "Show the installed OpenWand version.",
       "cause": "Verification metadata is invalid.",
       "fault_family": "verification_metadata_is_invalid",
       "status": "verified",
@@ -41110,7 +41110,7 @@
     {
       "reference": 3127,
       "function_id": "F447",
-      "function": "Show the installed Wisp version.",
+      "function": "Show the installed OpenWand version.",
       "cause": "Another process locks the target.",
       "fault_family": "another_process_locks_the_target",
       "status": "verified",
@@ -41123,7 +41123,7 @@
     {
       "reference": 3128,
       "function_id": "F447",
-      "function": "Show the installed Wisp version.",
+      "function": "Show the installed OpenWand version.",
       "cause": "Disk space is low.",
       "fault_family": "disk_space_is_low",
       "status": "verified",
@@ -41136,7 +41136,7 @@
     {
       "reference": 3129,
       "function_id": "F447",
-      "function": "Show the installed Wisp version.",
+      "function": "Show the installed OpenWand version.",
       "cause": "Bundling cleanup fails for this function.",
       "fault_family": "bundling_cleanup_fails_for_this_function",
       "status": "verified",
@@ -41149,7 +41149,7 @@
     {
       "reference": 3130,
       "function_id": "F447",
-      "function": "Show the installed Wisp version.",
+      "function": "Show the installed OpenWand version.",
       "cause": "Update-apply cleanup fails.",
       "fault_family": "update_apply_cleanup_fails",
       "status": "verified",
@@ -42311,7 +42311,7 @@
     {
       "reference": 3219,
       "function_id": "F460",
-      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and Wisp-owned local AI assets.",
+      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and OpenWand-owned local AI assets.",
       "cause": "A target required by this function is missing.",
       "fault_family": "a_target_required_by_this_function_is_missing",
       "status": "verified",
@@ -42324,7 +42324,7 @@
     {
       "reference": 3220,
       "function_id": "F460",
-      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and Wisp-owned local AI assets.",
+      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and OpenWand-owned local AI assets.",
       "cause": "A target required by this function is locked.",
       "fault_family": "a_target_required_by_this_function_is_locked",
       "status": "verified",
@@ -42338,7 +42338,7 @@
     {
       "reference": 3221,
       "function_id": "F460",
-      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and Wisp-owned local AI assets.",
+      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and OpenWand-owned local AI assets.",
       "cause": "Confirmation is cancelled.",
       "fault_family": "confirmation_is_cancelled",
       "status": "verified",
@@ -42351,7 +42351,7 @@
     {
       "reference": 3222,
       "function_id": "F460",
-      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and Wisp-owned local AI assets.",
+      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and OpenWand-owned local AI assets.",
       "cause": "Required elevation is denied.",
       "fault_family": "required_elevation_is_denied",
       "status": "verified",
@@ -42364,7 +42364,7 @@
     {
       "reference": 3223,
       "function_id": "F460",
-      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and Wisp-owned local AI assets.",
+      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and OpenWand-owned local AI assets.",
       "cause": "Storage access is denied.",
       "fault_family": "storage_access_is_denied",
       "status": "verified",
@@ -42377,7 +42377,7 @@
     {
       "reference": 3224,
       "function_id": "F460",
-      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and Wisp-owned local AI assets.",
+      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and OpenWand-owned local AI assets.",
       "cause": "Another process is using the files.",
       "fault_family": "another_process_is_using_the_files",
       "status": "verified",
@@ -42391,7 +42391,7 @@
     {
       "reference": 3225,
       "function_id": "F460",
-      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and Wisp-owned local AI assets.",
+      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and OpenWand-owned local AI assets.",
       "cause": "Cleanup only partly completes.",
       "fault_family": "cleanup_only_partly_completes",
       "status": "verified",
@@ -42499,7 +42499,7 @@
     {
       "reference": 3233,
       "function_id": "F462",
-      "function": "Run the uninstaller as a detached self-removing process after Wisp closes.",
+      "function": "Run the uninstaller as a detached self-removing process after OpenWand closes.",
       "cause": "A target required by this function is missing.",
       "fault_family": "a_target_required_by_this_function_is_missing",
       "status": "verified",
@@ -42512,7 +42512,7 @@
     {
       "reference": 3234,
       "function_id": "F462",
-      "function": "Run the uninstaller as a detached self-removing process after Wisp closes.",
+      "function": "Run the uninstaller as a detached self-removing process after OpenWand closes.",
       "cause": "A target required by this function is locked.",
       "fault_family": "a_target_required_by_this_function_is_locked",
       "status": "verified",
@@ -42526,7 +42526,7 @@
     {
       "reference": 3235,
       "function_id": "F462",
-      "function": "Run the uninstaller as a detached self-removing process after Wisp closes.",
+      "function": "Run the uninstaller as a detached self-removing process after OpenWand closes.",
       "cause": "Confirmation is cancelled.",
       "fault_family": "confirmation_is_cancelled",
       "status": "verified",
@@ -42539,7 +42539,7 @@
     {
       "reference": 3236,
       "function_id": "F462",
-      "function": "Run the uninstaller as a detached self-removing process after Wisp closes.",
+      "function": "Run the uninstaller as a detached self-removing process after OpenWand closes.",
       "cause": "Required elevation is denied.",
       "fault_family": "required_elevation_is_denied",
       "status": "verified",
@@ -42552,7 +42552,7 @@
     {
       "reference": 3237,
       "function_id": "F462",
-      "function": "Run the uninstaller as a detached self-removing process after Wisp closes.",
+      "function": "Run the uninstaller as a detached self-removing process after OpenWand closes.",
       "cause": "Storage access is denied.",
       "fault_family": "storage_access_is_denied",
       "status": "verified",
@@ -42565,7 +42565,7 @@
     {
       "reference": 3238,
       "function_id": "F462",
-      "function": "Run the uninstaller as a detached self-removing process after Wisp closes.",
+      "function": "Run the uninstaller as a detached self-removing process after OpenWand closes.",
       "cause": "Another process is using the files.",
       "fault_family": "another_process_is_using_the_files",
       "status": "verified",
@@ -42574,13 +42574,13 @@
         "T065"
       ],
       "evidence_node_ids": [
-        "tests/test_uninstaller.py::test_standalone_worker_refuses_while_another_wisp_process_is_running"
+        "tests/test_uninstaller.py::test_standalone_worker_refuses_while_another_openwand_process_is_running"
       ]
     },
     {
       "reference": 3239,
       "function_id": "F462",
-      "function": "Run the uninstaller as a detached self-removing process after Wisp closes.",
+      "function": "Run the uninstaller as a detached self-removing process after OpenWand closes.",
       "cause": "Cleanup only partly completes.",
       "fault_family": "cleanup_only_partly_completes",
       "status": "verified",

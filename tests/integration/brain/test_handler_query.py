@@ -1,6 +1,6 @@
 ﻿"""Unit tests for the ``brain.query`` handler.
 
-These run fully offline via the ``WISP_BRAIN_FAKE_LLM`` seam: the real
+These run fully offline via the ``OPENWAND_BRAIN_FAKE_LLM`` seam: the real
 ``core.query_pipeline.build_context`` still assembles the prompt (so context
 precedence is exercised for real), but the token stream is a deterministic echo
 instead of a provider call. That lets us assert streaming, reassembly, that the
@@ -12,7 +12,7 @@ import sys
 import types
 
 import pytest
-from wisp_brain import handlers
+from openwand_brain import handlers
 
 import config
 
@@ -20,7 +20,7 @@ import config
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch):
     """Verify offline behavior."""
-    monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
+    monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
 
 
 def _chunks(events):
@@ -62,7 +62,7 @@ def test_query_includes_intent_and_selected_in_prompt(record_ctx):
     assert "def add(a, b)" in result["text"]
 
 
-def test_external_query_does_not_paste_wisp_system_prompt_into_user_message(
+def test_external_query_does_not_paste_openwand_system_prompt_into_user_message(
     record_ctx,
     monkeypatch,
 ):
@@ -79,7 +79,7 @@ def test_external_query_does_not_paste_wisp_system_prompt_into_user_message(
 
     monkeypatch.setattr(harness_clients, "run_harness", fake_run)
     monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", False)
-    monkeypatch.setattr(config, "SYSTEM_PROMPT_UTILITY", "DO NOT PASTE THIS WISP PROMPT")
+    monkeypatch.setattr(config, "SYSTEM_PROMPT_UTILITY", "DO NOT PASTE THIS OPENWAND PROMPT")
     _events, ctx = record_ctx()
 
     handlers.HANDLERS["brain.query"](
@@ -95,7 +95,7 @@ def test_external_query_does_not_paste_wisp_system_prompt_into_user_message(
     )
 
     assert captured["provider"] == "codex"
-    assert "DO NOT PASTE THIS WISP PROMPT" not in captured["prompt"]
+    assert "DO NOT PASTE THIS OPENWAND PROMPT" not in captured["prompt"]
     assert "testing 123" in captured["prompt"]
     assert captured["prompt"].endswith("how are you")
 
@@ -782,9 +782,9 @@ def test_rewrite_requires_selected_text(record_ctx):
 def test_chat_stream_routes_background_task_lifecycle_to_supervisor(monkeypatch):
     """A model tool launch emits once during chat and clears request-local state."""
     from core.llm_clients import client as llm_client
-    from runtime.brain.wisp_brain.handlers import StreamContext, _stream_chat_reply
+    from runtime.brain.openwand_brain.handlers import StreamContext, _stream_chat_reply
 
-    monkeypatch.delenv("WISP_BRAIN_FAKE_LLM", raising=False)
+    monkeypatch.delenv("OPENWAND_BRAIN_FAKE_LLM", raising=False)
     events: list[tuple[str, dict, object]] = []
     ctx = StreamContext(lambda event, data, req_id: events.append((event, data, req_id)), "chat-7")
 

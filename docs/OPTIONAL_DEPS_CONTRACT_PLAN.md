@@ -2,7 +2,7 @@
 
 ## Invariants
 
-Wisp recognizes complete dependency contracts, never a package-by-package
+OpenWand recognizes complete dependency contracts, never a package-by-package
 union. An installed optional runtime is valid only when every dependency in one
 recognized contract has its exact locked version and its required imports are
 present.
@@ -29,7 +29,7 @@ present.
 ElevenLabs and Live voice each have one variant on every supported target.
 
 Other operating-system/architecture combinations are source-only and best
-effort. They use the source environment normally. Wisp does not build a release,
+effort. They use the source environment normally. OpenWand does not build a release,
 generate a compatibility contract, or promise support for those targets.
 
 ## Contract sources
@@ -53,7 +53,7 @@ list directly from the applicable Release lock.
 
 1. Resolve/download packages into a staging directory.
 2. Validate that staging matches one complete Release contract.
-3. Add or update `.wisp-contract.json` inside the replacement directory.
+3. Add or update `.openwand-contract.json` inside the replacement directory.
 4. Atomically rename the replacement directory into service.
 5. Deep-import the feature in a short-lived process before reporting success.
 6. Retain or restore the prior directory if activation fails.

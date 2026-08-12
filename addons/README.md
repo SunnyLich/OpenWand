@@ -1,6 +1,6 @@
 ﻿# Addons
 
-Addons extend Wisp with query hooks, response observers, tray actions, settings,
+Addons extend OpenWand with query hooks, response observers, tray actions, settings,
 message actions and presentations, and model-callable tools.
 
 Each addon lives in its own folder under `addons/` and declares an `addon.toml`
@@ -15,10 +15,10 @@ addons/
       summarize-selection.toml
 ```
 
-In a portable packaged build, Wisp creates this `addons/` folder next to
-`Wisp.exe` when that location is writable. If the executable is installed in a
+In a portable packaged build, OpenWand creates this `addons/` folder next to
+`OpenWand.exe` when that location is writable. If the executable is installed in a
 read-only location, use **Addon Manager -> Open addons folder** to open the
-fallback user-writable addon directory. You can also install a `.wisp`/`.zip`
+fallback user-writable addon directory. You can also install a `.openwand`/`.zip`
 archive or unpacked addon folder from the Addon Manager.
 
 Addons run in a dedicated Python subprocess, one process per addon. That means a
@@ -32,7 +32,7 @@ other addons.
 id = "my-addon"
 name = "My Addon"
 version = "1.0.0"
-description = "Adds one small behavior to Wisp."
+description = "Adds one small behavior to OpenWand."
 entry = "__init__.py"
 api_version = "1"
 
@@ -74,12 +74,12 @@ will not expose tray actions. `response = "read"` allows observation through
 `after_response`; `response = "modify"` is required to replace assistant text
 through `transform_response_text`.
 
-`[dependencies]` is optional. Addons without it run from Wisp's own Python
+`[dependencies]` is optional. Addons without it run from OpenWand's own Python
 runtime. Addons that declare dependencies get a dedicated virtual environment
 under `addon_envs/<addon-id>/`; the Addon Manager shows the required packages
-and provides an Install/Repair action. Wisp records approval for the exact
+and provides an Install/Repair action. OpenWand records approval for the exact
 dependency hash, so an addon update that changes packages must be approved
-again before it runs. Wisp uses `uv` when available, falling back to
+again before it runs. OpenWand uses `uv` when available, falling back to
 `python -m venv` in source checkouts.
 
 ## Action catalogue
@@ -137,11 +137,11 @@ Prompt intents declared with action files (or legacy `[[intents]]` blocks)
 appear in the normal intent picker when the addon has `ui = ["intents"]`.
 Notifications declared with
 `[[notifications]]` are exposed through the addon manager payload for UI/native
-surfaces that want to display them, with a Wisp notice fallback where native
+surfaces that want to display them, with a OpenWand notice fallback where native
 toasts are unavailable.
 
 Bubble text that needs a UI-only label should use the host/UI event
-`ui.reply.labeled_text` with `{"label": "...", "text": "..."}`. Wisp renders it
+`ui.reply.labeled_text` with `{"label": "...", "text": "..."}`. OpenWand renders it
 as `Label: text`, but the label is display chrome: it is excluded from reply
 text, read-position counts, and TTS word highlighting. Built-in read-aloud uses
 the same convention for `Reading: ...`.
@@ -151,9 +151,9 @@ return a prompt directly from the manifest, or dynamic `get_hotkeys()` callbacks
 can return dictionaries such as `{"prompt": "..."}`, `{"message": "..."}`,
 `{"notify": {"title": "...", "message": "..."}}`, or
 `{"llm": {"prompt": "...", "max_tokens": 512}}`. LLM actions require
-`llm = true` and are capped by Wisp before provider credentials are used.
+`llm = true` and are capped by OpenWand before provider credentials are used.
 
-Distribution is supported with `.zip` or `.wisp` archives containing exactly one
+Distribution is supported with `.zip` or `.openwand` archives containing exactly one
 addon folder or a manifest at the archive root. The Addon Manager can also
 install from an unpacked addon folder.
 
@@ -245,7 +245,7 @@ metadata such as `surface` (`"reply"` for the floating bubble, `"chat"` for
 chat), `role`, `message_id`, and `conversation_id`. It only runs for addons
 with `[permissions] response = "modify"`. Returning a string or
 `{"text": "..."}` replaces the final assistant text used by the bubble/chat
-document and by later annotations. Wisp buffers normal assistant chunks until
+document and by later annotations. OpenWand buffers normal assistant chunks until
 this final text is ready; live progress/thought chunks may still be shown, but
 the raw pre-transform answer text is not sent to the bubble/chat first.
 
@@ -262,12 +262,12 @@ floating bubble, then returns safe right-click menu actions. Addons must request
 `delete_label` actions with a `match` value for editing saved text labels.
 
 Message actions require `ui = ["message_actions"]`. Their action descriptors
-appear beneath matching chat messages. Wisp sends the canonical message text to
+appear beneath matching chat messages. OpenWand sends the canonical message text to
 `run_message_action` only after the user invokes the action (or when `auto` is
 true). An addon may request up to three bounded host LLM operations by returning
 an `llm` object and continuing in `resume_message_action`; provider credentials
 never enter the addon process. `route` may be `llm` or `chat` and selects the
-corresponding model route already configured in Wisp.
+corresponding model route already configured in OpenWand.
 
 Restricted HTML presentations additionally require
 `ui = ["message_presentations"]`. The UI sanitizes the fragment again, blocks

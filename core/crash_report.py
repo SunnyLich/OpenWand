@@ -56,7 +56,7 @@ def _read_tail(path: Path) -> tuple[str, bool]:
 
 def _path_replacements(repo_root: Path) -> list[tuple[str, str]]:
     values = (
-        (str(repo_root.resolve()), "[WISP_DATA]"),
+        (str(repo_root.resolve()), "[OPENWAND_DATA]"),
         (str(USER_DATA_DIR.resolve()), "[USER_DATA]"),
         (str(Path.home().resolve()), "[HOME]"),
     )
@@ -95,7 +95,7 @@ def create_crash_report(
         root = repo_root() / "build_logs"
 
     stamp = created.strftime("%Y%m%d-%H%M%S-%f")
-    report_path = destination / f"wisp-crash-report-{stamp}.zip"
+    report_path = destination / f"openwand-crash-report-{stamp}.zip"
     replacements = _path_replacements(root.parent)
     included: list[dict[str, object]] = []
     failures: list[str] = []
@@ -124,7 +124,7 @@ def create_crash_report(
         metadata = {
             "format": 1,
             "created_utc": created.isoformat(),
-            "wisp_version": _safe_version(),
+            "openwand_version": _safe_version(),
             "platform": {
                 "system": platform.system(),
                 "release": platform.release(),
@@ -135,7 +135,7 @@ def create_crash_report(
             "included_logs": included,
             "collection_failures": failures,
             "privacy": (
-                "Log text was passed through Wisp's deterministic privacy redactor and local paths were replaced. "
+                "Log text was passed through OpenWand's deterministic privacy redactor and local paths were replaced. "
                 "Chats, memory databases, settings files, environment variables, and keychain data are not collected. "
                 "Review this archive before sharing because diagnostic messages can still contain user-provided text."
             ),

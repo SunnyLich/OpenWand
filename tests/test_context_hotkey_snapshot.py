@@ -96,14 +96,14 @@ def test_context_priority_source_prefers_document_when_browser_is_background():
     )
 
 
-def test_context_target_replaces_wisp_foreground_with_external_window(monkeypatch):
+def test_context_target_replaces_openwand_foreground_with_external_window(monkeypatch):
     pytest.importorskip("PySide6")
     import main
 
     monkeypatch.setattr(main, "_IS_WIN", True)
     monkeypatch.setattr(main.os, "getpid", lambda: 123)
     monkeypatch.setattr(main.App, "_window_pid_win", staticmethod(lambda hwnd: 123 if hwnd == 111 else 456))
-    monkeypatch.setattr(main.App, "_window_title_win", staticmethod(lambda hwnd: "Wisp" if hwnd == 111 else "Chrome"))
+    monkeypatch.setattr(main.App, "_window_title_win", staticmethod(lambda hwnd: "OpenWand" if hwnd == 111 else "Chrome"))
     monkeypatch.setattr(main.App, "_find_external_context_window_win", staticmethod(lambda _hwnd: 777))
 
     app = main.App.__new__(main.App)

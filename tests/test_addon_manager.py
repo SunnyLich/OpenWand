@@ -506,7 +506,7 @@ def test_ui_lab_addon_exercises_saved_label_surfaces(tmp_path, monkeypatch):
     labels_dir = repo_data / "addon_data" / "ui-lab"
     labels_dir.mkdir(parents=True)
     labels_path = labels_dir / "labels.json"
-    monkeypatch.setenv("WISP_REPO_ROOT", str(repo_data))
+    monkeypatch.setenv("OPENWAND_REPO_ROOT", str(repo_data))
     monkeypatch.setattr(addon_store, "_STORE_PATH", tmp_path / "addons.json")
     monkeypatch.setattr(am.addon_store, "_STORE_PATH", tmp_path / "addons.json")
 
@@ -516,7 +516,7 @@ def test_ui_lab_addon_exercises_saved_label_surfaces(tmp_path, monkeypatch):
     assert (
         manager.get_text_annotations(
             {
-                "text": "Try bubble chat style select right-click code in Wisp.",
+                "text": "Try bubble chat style select right-click code in OpenWand.",
                 "message_id": "m-ui-lab",
                 "conversation_id": "c-ui-lab",
                 "surface": "chat",
@@ -531,7 +531,7 @@ def test_ui_lab_addon_exercises_saved_label_surfaces(tmp_path, monkeypatch):
             {
                 "labels": [
                     {
-                        "match": "Wisp",
+                        "match": "OpenWand",
                         "tooltip": "Assistant name",
                         "style": "font-weight:700; text-decoration:underline; background:url(x)",
                     },
@@ -546,7 +546,7 @@ def test_ui_lab_addon_exercises_saved_label_surfaces(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    sample_text = "Wisp uses a bubble label. wisps should not match. WISP can match again."
+    sample_text = "OpenWand uses a bubble label. openwands should not match. OPENWAND can match again."
     annotations = manager.get_text_annotations(
         {
             "text": sample_text,
@@ -562,21 +562,21 @@ def test_ui_lab_addon_exercises_saved_label_surfaces(tmp_path, monkeypatch):
     assert all(item["message_id"] == "m-ui-lab" for item in annotations)
     assert all(item["tag"] == "span" for item in annotations)
     by_match = {sample_text[item["start"]: item["end"]]: item for item in annotations}
-    assert {"Wisp", "bubble label", "WISP"} == set(by_match)
-    assert by_match["Wisp"]["start"] == 0
-    assert by_match["Wisp"]["end"] == 4
-    assert by_match["Wisp"]["tooltip"] == "Assistant name"
-    assert by_match["Wisp"]["style"] == "font-weight:700; text-decoration:underline"
+    assert {"OpenWand", "bubble label", "OPENWAND"} == set(by_match)
+    assert by_match["OpenWand"]["start"] == 0
+    assert by_match["OpenWand"]["end"] == len("OpenWand")
+    assert by_match["OpenWand"]["tooltip"] == "Assistant name"
+    assert by_match["OpenWand"]["style"] == "font-weight:700; text-decoration:underline"
     assert by_match["bubble label"]["style"] == "font-style:italic; color:#b8b8ff"
 
-    unicode_text = "“quoted”—Wisp"
+    unicode_text = "“quoted”—OpenWand"
     unicode_annotations = manager.get_text_annotations(
         {"text": unicode_text, "surface": "chat", "role": "assistant"}
     )
-    wisp_annotation = next(
-        item for item in unicode_annotations if item.get("id") == "ui-lab-label-wisp"
+    openwand_annotation = next(
+        item for item in unicode_annotations if item.get("id") == "ui-lab-label-openwand"
     )
-    assert unicode_text[wisp_annotation["start"]:wisp_annotation["end"]] == "Wisp"
+    assert unicode_text[openwand_annotation["start"]:openwand_annotation["end"]] == "OpenWand"
 
     setting_keys = {item["key"] for item in manager.get_settings("ui-lab")}
     assert {"enabled", "annotate_user_messages", "rewrite_enabled", "rewrite_prefix"} <= setting_keys
@@ -584,7 +584,7 @@ def test_ui_lab_addon_exercises_saved_label_surfaces(tmp_path, monkeypatch):
     assert (
         manager.get_text_annotations(
             {
-                "text": "Wisp uses a bubble label.",
+                "text": "OpenWand uses a bubble label.",
                 "surface": "chat",
                 "role": "user",
             }
@@ -594,7 +594,7 @@ def test_ui_lab_addon_exercises_saved_label_surfaces(tmp_path, monkeypatch):
     manager.set_setting("ui-lab", "annotate_user_messages", "true")
     assert manager.get_text_annotations(
         {
-            "text": "Wisp uses a bubble label.",
+            "text": "OpenWand uses a bubble label.",
             "surface": "chat",
             "role": "user",
         }
@@ -602,19 +602,19 @@ def test_ui_lab_addon_exercises_saved_label_surfaces(tmp_path, monkeypatch):
 
     reply_annotations = manager.get_text_annotations(
         {
-            "text": "Wisp uses a bubble label.",
+            "text": "OpenWand uses a bubble label.",
             "surface": "reply",
             "role": "assistant",
         }
     )
     reply_ids = {item["id"] for item in reply_annotations}
-    assert {"ui-lab-label-wisp", "ui-lab-label-bubble-label"} == reply_ids
+    assert {"ui-lab-label-openwand", "ui-lab-label-bubble-label"} == reply_ids
     assert {item["surface"] for item in reply_annotations} == {"reply"}
 
     context_actions = manager.get_text_context_actions(
         {
-            "selected_text": "Wisp",
-            "text": "Wisp uses a bubble label.",
+            "selected_text": "OpenWand",
+            "text": "OpenWand uses a bubble label.",
             "surface": "reply",
             "role": "assistant",
         }
@@ -626,7 +626,7 @@ def test_ui_lab_addon_exercises_saved_label_surfaces(tmp_path, monkeypatch):
             "label": "Edit label",
             "action": "label_editor",
             "text": "",
-            "match": "Wisp",
+            "match": "OpenWand",
         },
         {
             "addon_id": "ui-lab",
@@ -634,7 +634,7 @@ def test_ui_lab_addon_exercises_saved_label_surfaces(tmp_path, monkeypatch):
             "label": "Delete label",
             "action": "delete_label",
             "text": "",
-            "match": "Wisp",
+            "match": "OpenWand",
         },
     ]
     assert manager.get_text_context_actions({"selected_text": "new phrase", "surface": "chat"}) == [
@@ -649,7 +649,7 @@ def test_ui_lab_addon_exercises_saved_label_surfaces(tmp_path, monkeypatch):
     ]
 
     manager.set_setting("ui-lab", "enabled", "false")
-    assert manager.get_text_annotations({"text": "Wisp", "surface": "chat"}) == []
+    assert manager.get_text_annotations({"text": "OpenWand", "surface": "chat"}) == []
     assert "labels" not in (tmp_path / "addons.json").read_text(encoding="utf-8")
 
     assert manager.transform_response_text({"text": "reply", "surface": "chat", "role": "assistant"}) == "reply"
@@ -667,19 +667,19 @@ def test_ui_lab_labels_migrate_from_legacy_addon_settings(tmp_path, monkeypatch)
     addons_dir.mkdir()
     shutil.copytree(Path("addons/ui_lab"), addons_dir / "ui_lab")
     repo_data = tmp_path / "repo-data"
-    monkeypatch.setenv("WISP_REPO_ROOT", str(repo_data))
+    monkeypatch.setenv("OPENWAND_REPO_ROOT", str(repo_data))
     store_path = tmp_path / "addons.json"
     monkeypatch.setattr(addon_store, "_STORE_PATH", store_path)
     monkeypatch.setattr(am.addon_store, "_STORE_PATH", store_path)
     addon_store.set_setting(
         "ui-lab",
         "labels",
-        [{"match": "Wisp", "tooltip": "Migrated label", "style": "text-decoration:underline"}],
+        [{"match": "OpenWand", "tooltip": "Migrated label", "style": "text-decoration:underline"}],
     )
 
     manager = am.AddonManager(addons_dir)
     manager.load_all()
-    annotations = manager.get_text_annotations({"text": "Wisp", "surface": "chat", "role": "assistant"})
+    annotations = manager.get_text_annotations({"text": "OpenWand", "surface": "chat", "role": "assistant"})
 
     assert annotations and annotations[0]["tooltip"] == "Migrated label"
     labels_path = repo_data / "addon_data" / "ui-lab" / "labels.json"
@@ -958,7 +958,7 @@ def test_repair_environment_approves_current_dependency_hash(tmp_path, monkeypat
 
 
 def test_install_addon_archive_rejects_path_traversal(tmp_path):
-    archive = tmp_path / "bad.wisp"
+    archive = tmp_path / "bad.openwand"
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("../evil.txt", "nope")
 
@@ -967,7 +967,7 @@ def test_install_addon_archive_rejects_path_traversal(tmp_path):
 
 
 def test_install_addon_archive_extracts_single_addon(tmp_path):
-    archive = tmp_path / "demo.wisp"
+    archive = tmp_path / "demo.openwand"
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("demo/addon.toml", "[addon]\nid = 'demo'\nname = 'Demo'\n")
         zf.writestr("demo/__init__.py", "")
@@ -976,6 +976,17 @@ def test_install_addon_archive_extracts_single_addon(tmp_path):
 
     assert result["id"] == "demo"
     assert (tmp_path / "addons" / "demo" / "addon.toml").exists()
+
+
+def test_install_addon_archive_accepts_legacy_wisp_suffix(tmp_path):
+    archive = tmp_path / "legacy.wisp"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("demo/addon.toml", "[addon]\nid = 'demo'\nname = 'Demo'\n")
+        zf.writestr("demo/__init__.py", "")
+
+    result = install_addon_archive(archive, tmp_path / "addons")
+
+    assert result["id"] == "demo"
 
 
 def test_install_addon_folder_copies_single_addon(tmp_path):

@@ -1,4 +1,4 @@
-"""JSON-line subprocess host for one Wisp addon."""
+"""JSON-line subprocess host for one OpenWand addon."""
 from __future__ import annotations
 
 import argparse
@@ -38,13 +38,13 @@ class AddonHost:
         entry_path = (self.folder / self.entry).resolve()
         if not entry_path.exists():
             raise FileNotFoundError(f"addon entry does not exist: {entry_path}")
-        package_name = f"wisp_addons.{self.addon_id.replace('-', '_')}"
+        package_name = f"openwand_addons.{self.addon_id.replace('-', '_')}"
         if str(self.folder) not in sys.path:
             sys.path.insert(0, str(self.folder))
-        if "wisp_addons" not in sys.modules:
-            namespace = types.ModuleType("wisp_addons")
+        if "openwand_addons" not in sys.modules:
+            namespace = types.ModuleType("openwand_addons")
             namespace.__path__ = []  # type: ignore[attr-defined]
-            sys.modules["wisp_addons"] = namespace
+            sys.modules["openwand_addons"] = namespace
         spec = importlib.util.spec_from_file_location(
             package_name,
             entry_path,
@@ -406,8 +406,8 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.store:
-        os.environ["WISP_ADDON_STORE"] = args.store
-    os.environ["WISP_ADDON_ID"] = args.id
+        os.environ["OPENWAND_ADDON_STORE"] = args.store
+    os.environ["OPENWAND_ADDON_ID"] = args.id
 
     host = AddonHost(args.id, Path(args.folder), args.entry)
     try:

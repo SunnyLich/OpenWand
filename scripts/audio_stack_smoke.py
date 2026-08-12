@@ -35,7 +35,7 @@ def _print_json(obj: dict[str, Any]) -> None:
 def _base_env() -> dict[str, str]:
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
-    env.setdefault("WISP_RUN_LOG_DIR", str(LOG_ROOT))
+    env.setdefault("OPENWAND_RUN_LOG_DIR", str(LOG_ROOT))
     env.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
     existing_pythonpath = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(REPO_ROOT) if not existing_pythonpath else str(REPO_ROOT) + os.pathsep + existing_pythonpath
@@ -138,7 +138,7 @@ def _child_case_kokoro_audio_host_cpu() -> None:
     config.TTS_PROVIDER = "kokoro"
     config.KOKORO_DEVICE = "cpu"
     audio_host._set_local_tts_warmup(warming=False, ready=False)
-    result = audio_host.tts_synthesize("hello from wisp audio smoke")
+    result = audio_host.tts_synthesize("hello from openwand audio smoke")
     _print_json(result)
     if int(result.get("bytes") or 0) <= 0:
         raise RuntimeError("audio_host.tts_synthesize returned no audio bytes")
@@ -277,7 +277,7 @@ def _child_case_audio_worker_ipc_tts_cpu() -> None:
             out_queue,
             2,
             "audio.tts.synthesize",
-            {"text": "hello from wisp worker smoke"},
+            {"text": "hello from openwand worker smoke"},
             120.0,
         )
         _print_json({"ping": ping, "synthesize": synth})

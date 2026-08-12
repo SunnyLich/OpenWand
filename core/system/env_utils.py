@@ -203,7 +203,7 @@ def _resolve_env_variables(values: dict[str, str | None]) -> dict[str, str | Non
 
     dotenv's own implementation copies the whole of ``os.environ`` into a fresh
     dict for every single entry, making the cost of reading a file quadratic in
-    its size for no benefit (~4x slower on Wisp's own settings file). Semantics
+    its size for no benefit (~4x slower on OpenWand's own settings file). Semantics
     are unchanged -- later entries still shadow the process environment, and only
     values that actually contain a reference pay for a lookup table.
     """

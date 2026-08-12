@@ -6,7 +6,7 @@ Simulates what the app does when the user asks something: spawn the actual
 ``brain.query`` and assert reply chunks arrive. Uses the user's configured
 provider + OS-stored/.env key. Spends a few real tokens.
 
-The worker runs with WISP_REPO_ROOT pointed at a scratch dir (with .env copied
+The worker runs with OPENWAND_REPO_ROOT pointed at a scratch dir (with .env copied
 in) so memory/chat writes never touch the real data. Memory is additionally
 disabled for the query; flow_e2e covers the memory-enabled path.
 """
@@ -23,7 +23,7 @@ import _lab
 _lab.bootstrap()
 
 MARKER = "pineapple"
-# The assistant-language setting localizes replies (a real Wisp behavior this
+# The assistant-language setting localizes replies (a real OpenWand behavior this
 # check should survive), so demand the literal untranslated token.
 PROMPT = f"Reply with exactly this literal lowercase token, untranslated: {MARKER}"
 
@@ -32,15 +32,15 @@ def main() -> int:
     import config
     from runtime.supervisor.ipc import WorkerClient, WorkerSpec
 
-    # WISP_TESTLAB_LLM_PROVIDER/MODEL pin a lab-only route (e.g. a free
+    # OPENWAND_TESTLAB_LLM_PROVIDER/MODEL pin a lab-only route (e.g. a free
     # AI Studio model) so the lab never spends paid tokens even when the app
     # itself is configured for a paid provider. Default: the app's own route.
     provider = (
-        os.environ.get("WISP_TESTLAB_LLM_PROVIDER", "").strip()
+        os.environ.get("OPENWAND_TESTLAB_LLM_PROVIDER", "").strip()
         or str(getattr(config, "LLM_PROVIDER", "") or "").strip()
     )
     model = (
-        os.environ.get("WISP_TESTLAB_LLM_MODEL", "").strip()
+        os.environ.get("OPENWAND_TESTLAB_LLM_MODEL", "").strip()
         or str(getattr(config, "LLM_MODEL", "") or "").strip()
     )
     fallbacks = str(getattr(config, "LLM_FALLBACKS", "") or "").strip()

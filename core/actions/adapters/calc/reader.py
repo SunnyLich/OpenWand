@@ -1,4 +1,4 @@
-"""Background LibreOffice Calc selection reader used by Wisp's native worker."""
+"""Background LibreOffice Calc selection reader used by OpenWand's native worker."""
 
 from __future__ import annotations
 

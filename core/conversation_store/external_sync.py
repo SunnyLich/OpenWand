@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -12,6 +13,9 @@ from pathlib import Path
 
 from core.conversation_store.store import GENERAL_PROJECT_ID
 from core.system.paths import CHATS_DIR
+
+EXTERNAL_SYNC_STATE_FILE = CHATS_DIR / "external_sync_state.json"
+_sync_state_lock = threading.RLock()
 
 _CODEX_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f-]{27,})", re.IGNORECASE)
 _CLAUDE_NOISE_BLOCK_RE = re.compile(
@@ -33,13 +37,13 @@ class SyncReport:
 
     @property
     def changed(self) -> int:
-        """Return the number of Wisp conversations changed by the pull."""
+        """Return the number of OpenWand conversations changed by the pull."""
         return self.imported + self.updated
 
 
 @dataclass
 class PushReport:
-    """Result of appending Wisp-only turns to one external transcript."""
+    """Result of appending OpenWand-only turns to one external transcript."""
 
     provider: str
     pushed: int
@@ -48,7 +52,7 @@ class PushReport:
 
 @dataclass
 class ExportReport:
-    """Result of exporting a Wisp-native conversation as a new provider session."""
+    """Result of exporting a OpenWand-native conversation as a new provider session."""
 
     provider: str
     session_id: str
@@ -58,6 +62,83 @@ class ExportReport:
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def load_external_sync_state(path: Path | None = None) -> dict[str, dict]:
+    """Load persistent per-provider automatic-sync preferences."""
+    state_path = path or EXTERNAL_SYNC_STATE_FILE
+    try:
+        value = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        value = {}
+    if not isinstance(value, dict):
+        value = {}
+    return {
+        provider: {
+            "enabled": bool((value.get(provider) or {}).get("enabled")),
+            "since": _text((value.get(provider) or {}).get("since")),
+        }
+        for provider in ("codex", "claude")
+    }
+
+
+def set_external_auto_sync(
+    provider: str,
+    enabled: bool,
+    *,
+    path: Path | None = None,
+    enabled_at: str = "",
+) -> dict[str, dict]:
+    """Persist one provider toggle and establish its no-backfill boundary."""
+    provider = _text(provider).lower()
+    if provider not in {"codex", "claude"}:
+        raise ValueError("unsupported external conversation provider")
+    state_path = path or EXTERNAL_SYNC_STATE_FILE
+    with _sync_state_lock:
+        state = load_external_sync_state(state_path)
+        previous = state[provider]
+        state[provider] = {
+            "enabled": bool(enabled),
+            "since": (
+                previous.get("since")
+                if previous.get("enabled")
+                else _text(enabled_at) or _now_iso()
+                if enabled
+                else previous.get("since", "")
+            ),
+        }
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = state_path.with_suffix(state_path.suffix + ".tmp")
+        try:
+            temporary.write_text(
+                json.dumps(state, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            os.replace(temporary, state_path)
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+        return state
+
+
+def external_conversations_since(discovered: list[dict], since: str) -> list[dict]:
+    """Keep sources created or modified at/after an automatic-sync boundary."""
+    boundary = _text(since)
+    if not boundary:
+        return []
+    selected = []
+    for conversation in discovered:
+        source = conversation.get("external_source")
+        source_updated = _text(
+            source.get("source_updated_at") if isinstance(source, dict) else ""
+        )
+        if source_updated and source_updated >= boundary:
+            selected.append(conversation)
+    return selected
 
 
 def _default_codex_home() -> Path:
@@ -147,7 +228,7 @@ def _conversation(
     created_at = _text(messages[0].get("created_at")) if messages else fallback_time
     updated_at = _text(messages[-1].get("created_at")) if messages else fallback_time
     return {
-        "id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"wisp:{provider}:{session_id}")),
+        "id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"openwand:{provider}:{session_id}")),
         "project_id": GENERAL_PROJECT_ID,
         "title": title or _derived_title(messages, f"{provider.title()} conversation"),
         "title_override": "",
@@ -173,7 +254,7 @@ def _conversation(
 
 
 def parse_codex_session(path: Path) -> dict | None:
-    """Convert one Codex session transcript into a Wisp conversation."""
+    """Convert one Codex session transcript into a OpenWand conversation."""
     records = _read_jsonl(path)
     session_id = ""
     cwd = ""
@@ -270,7 +351,7 @@ def _claude_main_chain(records: list[dict]) -> list[dict]:
 
 
 def parse_claude_session(path: Path) -> dict | None:
-    """Convert one Claude Code project transcript into a Wisp conversation."""
+    """Convert one Claude Code project transcript into a OpenWand conversation."""
     records = _read_jsonl(path)
     session_id = ""
     cwd = ""
@@ -337,7 +418,7 @@ def _source_key(conversation: dict) -> str:
 
 
 def pending_external_push_count(conversation: dict) -> int:
-    """Return the number of Wisp-only turns after the imported source prefix."""
+    """Return the number of OpenWand-only turns after the imported source prefix."""
     source = conversation.get("external_source")
     if not isinstance(source, dict):
         return 0
@@ -417,7 +498,7 @@ def _claude_message_records(messages: list[dict], source: dict, existing: list[d
     session_id = (
         _text(source.get("session_id"))
         or _text(template.get("sessionId"))
-        or "wisp-session"
+        or "openwand-session"
     )
     cwd = _text(source.get("cwd") or template.get("cwd"))
     records: list[dict] = []
@@ -445,12 +526,12 @@ def _claude_message_records(messages: list[dict], source: dict, existing: list[d
             record["message"] = {"role": "user", "content": content}
         else:
             usage = assistant_message.get("usage")
-            record["requestId"] = f"wisp-{uuid.uuid4()}"
+            record["requestId"] = f"openwand-{uuid.uuid4()}"
             record["message"] = {
-                "id": f"msg_wisp_{uuid.uuid4().hex}",
+                "id": f"msg_openwand_{uuid.uuid4().hex}",
                 "type": "message",
                 "role": "assistant",
-                "model": _text(assistant_message.get("model")) or "wisp-import",
+                "model": _text(assistant_message.get("model")) or "openwand-import",
                 "content": [{"type": "text", "text": content}],
                 "stop_reason": "end_turn",
                 "stop_sequence": None,
@@ -511,7 +592,7 @@ def _conversation_export_title(conversation: dict, messages: list[dict]) -> str:
     return (
         _text(conversation.get("title_override"))
         or _text(conversation.get("title"))
-        or _derived_title(messages, "Wisp conversation")
+        or _derived_title(messages, "OpenWand conversation")
     )
 
 
@@ -555,7 +636,7 @@ def _codex_new_session_records(
             "id": session_id,
             "timestamp": timestamp,
             "cwd": cwd,
-            "originator": "Wisp",
+            "originator": "OpenWand",
             "cli_version": _latest_codex_cli_version(codex_home),
             "source": "vscode",
             "thread_source": "user",
@@ -599,7 +680,7 @@ def export_conversation_as_new_session(
     codex_home: Path | None = None,
     claude_home: Path | None = None,
 ) -> ExportReport:
-    """Export a Wisp-native chat as a new Codex or Claude local session."""
+    """Export a OpenWand-native chat as a new Codex or Claude local session."""
     existing_source = conversation.get("external_source")
     if isinstance(existing_source, dict) and _text(existing_source.get("session_id")):
         raise ValueError("conversation is already linked to an external session")
@@ -669,7 +750,7 @@ def push_conversation_to_source(
     backup_dir: Path | None = None,
     source_root: Path | None = None,
 ) -> PushReport:
-    """Append Wisp-only turns to an imported transcript after making a full backup.
+    """Append OpenWand-only turns to an imported transcript after making a full backup.
 
     This is an explicit compatibility fallback for installations where the
     provider's supported CLI/app-server cannot be launched. Earlier source
@@ -738,18 +819,28 @@ def discover_external_conversations(
     *,
     codex_home: Path | None = None,
     claude_home: Path | None = None,
+    provider: str = "",
 ) -> tuple[list[dict], SyncReport]:
-    """Read external transcripts without mutating Wisp's live conversation list."""
+    """Read external transcripts without mutating OpenWand's live conversation list."""
     report = SyncReport()
     codex_home = codex_home or _default_codex_home()
     claude_home = claude_home or _default_claude_home()
+    provider = _text(provider).lower()
+    if provider not in {"", "codex", "claude"}:
+        raise ValueError("unsupported external conversation provider")
     discovered: dict[str, dict] = {}
 
-    for provider, path in _session_files(codex_home, claude_home):
+    for source_provider, path in _session_files(codex_home, claude_home):
+        if provider and source_provider != provider:
+            continue
         try:
-            imported = parse_codex_session(path) if provider == "codex" else parse_claude_session(path)
+            imported = (
+                parse_codex_session(path)
+                if source_provider == "codex"
+                else parse_claude_session(path)
+            )
         except OSError as exc:
-            report.errors.append(f"{provider}: {type(exc).__name__}")
+            report.errors.append(f"{source_provider}: {type(exc).__name__}")
             continue
         if imported is None:
             report.skipped += 1
@@ -764,13 +855,75 @@ def discover_external_conversations(
     return list(discovered.values()), report
 
 
+def external_project_path(conversation: dict) -> str:
+    """Return the source project path, or an empty string for general chats."""
+    source = conversation.get("external_source")
+    if not isinstance(source, dict):
+        return ""
+    return _text(source.get("cwd"))
+
+
+def select_external_conversations(
+    discovered: list[dict],
+    *,
+    provider: str,
+    include_general: bool,
+    general_limit: int,
+    include_project: bool,
+    project_path: str,
+    project_limit: int,
+) -> list[dict]:
+    """Select the latest provider chats from general and one source project."""
+    provider = _text(provider).lower()
+    if provider not in {"codex", "claude"}:
+        raise ValueError("unsupported external conversation provider")
+
+    provider_items = [
+        conversation
+        for conversation in discovered
+        if _text((conversation.get("external_source") or {}).get("provider")).lower()
+        == provider
+    ]
+    selected: list[dict] = []
+    if include_general and int(general_limit) > 0:
+        general = [item for item in provider_items if not external_project_path(item)]
+        selected.extend(
+            sorted(general, key=lambda item: _text(item.get("updated_at")), reverse=True)[
+                : int(general_limit)
+            ]
+        )
+
+    wanted_project = os.path.normcase(os.path.normpath(_text(project_path)))
+    if include_project and wanted_project and int(project_limit) > 0:
+        project_items = [
+            item
+            for item in provider_items
+            if os.path.normcase(os.path.normpath(external_project_path(item)))
+            == wanted_project
+        ]
+        selected.extend(
+            sorted(
+                project_items,
+                key=lambda item: _text(item.get("updated_at")),
+                reverse=True,
+            )[: int(project_limit)]
+        )
+
+    unique = {_source_key(item): item for item in selected if _source_key(item)}
+    return sorted(
+        unique.values(),
+        key=lambda item: _text(item.get("updated_at")),
+        reverse=True,
+    )
+
+
 def apply_external_conversations(
     conversations: list[dict],
     discovered: list[dict],
     *,
     report: SyncReport | None = None,
 ) -> SyncReport:
-    """Merge previously discovered transcripts into Wisp's live list."""
+    """Merge previously discovered transcripts into OpenWand's live list."""
     report = report or SyncReport()
 
     existing = {_source_key(conv): conv for conv in conversations if _source_key(conv)}

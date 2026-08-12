@@ -1,11 +1,11 @@
-name: Deploy Wisp Website
+name: Deploy OpenWand Website
 
 on:
   push:
     branches:
       - main
     paths:
-      - "Wisp Website/**"
+      - "OpenWand Website/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -76,17 +76,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          site_dir="$RUNNER_TEMP/wisp-site"
+          site_dir="$RUNNER_TEMP/openwand-site"
           mkdir -p "$site_dir"
-          cp -R "Wisp Website/." "$site_dir/"
-          cp "$site_dir/Wisp Docs.html" "$site_dir/index.html"
+          cp -R "OpenWand Website/." "$site_dir/"
+          cp "$site_dir/OpenWand Docs.html" "$site_dir/index.html"
           touch "$site_dir/.nojekyll"
 
       - name: Upload Pages artifact
         if: steps.pages_setup.outputs.enabled == 'true'
         uses: actions/upload-pages-artifact@v4
         with:
-          path: ${{ runner.temp }}/wisp-site
+          path: ${{ runner.temp }}/openwand-site
 
       - name: Deploy to GitHub Pages
         if: steps.pages_setup.outputs.enabled == 'true'

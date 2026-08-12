@@ -10,7 +10,7 @@ from core.actions.telemetry import ActionTrace
 
 def test_action_trace_persists_content_free_stage_events(monkeypatch, tmp_path: Path) -> None:
     path = tmp_path / "action-timings.jsonl"
-    monkeypatch.setenv("WISP_ACTION_TRACE_PATH", str(path))
+    monkeypatch.setenv("OPENWAND_ACTION_TRACE_PATH", str(path))
     trace = ActionTrace(
         "vscode.code_change",
         app="vscode",
@@ -45,7 +45,7 @@ def test_action_trace_can_use_an_in_memory_sink() -> None:
 
 
 def test_unwritable_trace_path_never_blocks_an_action(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("WISP_ACTION_TRACE_PATH", str(tmp_path))
+    monkeypatch.setenv("OPENWAND_ACTION_TRACE_PATH", str(tmp_path))
 
     trace = ActionTrace("calc.add_chart", app="libreoffice_calc")
     trace.finish("applied")

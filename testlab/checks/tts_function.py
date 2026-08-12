@@ -1,6 +1,6 @@
 """Real TTS synthesis (and playback) through the real audio worker.
 
-Simulates what happens when Wisp speaks a reply: spawn the actual
+Simulates what happens when OpenWand speaks a reply: spawn the actual
 ``runtime.workers.audio_host`` subprocess, prewarm it like the supervisor does
 at startup, synthesize a sentence with the user's configured provider, then
 verify the WAV is real speech-like audio (non-silent, sane duration) and play
@@ -21,7 +21,7 @@ import _lab
 
 _lab.bootstrap()
 
-TEXT = "Wisp test lab is checking speech output."
+TEXT = "OpenWand test lab is checking speech output."
 MIN_SECONDS = 0.4
 MIN_PEAK = 0.02  # int16 fraction; silence-detector threshold
 
@@ -77,7 +77,7 @@ def main() -> int:
             "audio",
             env=_lab.env_overrides(
                 isolated_root=isolated_root,
-                extra={"WISP_MACOS_ENABLE_AUDIO": "1", **env_extra},
+                extra={"OPENWAND_MACOS_ENABLE_AUDIO": "1", **env_extra},
             ),
         )
     )

@@ -1,4 +1,4 @@
-"""Run a real Wisp launcher until UI/workers are ready, then audit cleanup."""
+"""Run a real OpenWand launcher until UI/workers are ready, then audit cleanup."""
 
 from __future__ import annotations
 
@@ -82,16 +82,16 @@ def _repo_root() -> Path:
 
 def _packaged_executable(root: Path) -> Path:
     if sys.platform == "win32":
-        return root / "dist" / "Wisp" / "Wisp.exe"
+        return root / "dist" / "OpenWand" / "OpenWand.exe"
     if sys.platform == "darwin":
-        return root / "dist" / "Wisp.app" / "Contents" / "MacOS" / "Wisp"
-    return root / "dist" / "Wisp" / "Wisp"
+        return root / "dist" / "OpenWand.app" / "Contents" / "MacOS" / "OpenWand"
+    return root / "dist" / "OpenWand" / "OpenWand"
 
 
 def _source_command(root: Path) -> list[str]:
     if sys.platform == "win32":
-        return ["cmd.exe", "/d", "/c", str(root / "Start Wisp.bat")]
-    launcher = root / ("Start Wisp.command" if sys.platform == "darwin" else "Start Wisp.sh")
+        return ["cmd.exe", "/d", "/c", str(root / "Start OpenWand.bat")]
+    launcher = root / ("Start OpenWand.command" if sys.platform == "darwin" else "Start OpenWand.sh")
     return ["bash", str(launcher)]
 
 
@@ -190,11 +190,11 @@ def run_launcher_smoke(
     else:
         executable = (executable or _packaged_executable(root)).resolve()
         if not executable.is_file():
-            raise FileNotFoundError(f"packaged Wisp executable not found: {executable}")
+            raise FileNotFoundError(f"packaged OpenWand executable not found: {executable}")
         command = [str(executable)]
         frozen = True
 
-    with tempfile.TemporaryDirectory(prefix=f"wisp-{kind}-smoke-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"openwand-{kind}-smoke-") as temporary:
         state = Path(temporary)
         ready_file = state / "ready.json"
         settings_env_path = state / "config" / ".env"
@@ -205,7 +205,7 @@ def run_launcher_smoke(
             settings_env_path.write_text(
                 "\n".join(
                     (
-                        "WISP_ONBOARDING_COMPLETE=True",
+                        "OPENWAND_ONBOARDING_COMPLETE=True",
                         "START_ON_LOGIN=False",
                         "PROFILE_COUNT=1",
                         "PROFILE_1_ID=a",
@@ -239,29 +239,29 @@ def run_launcher_smoke(
                 "PYTHONUNBUFFERED": "1",
                 "PYTHONPATH": str(root),
                 "QT_QPA_PLATFORM": "offscreen",
-                "WISP_ADDONS_DIR": str(state / "addons"),
-                "WISP_BRAIN_FAKE_LLM": "1",
-                "WISP_LAUNCH_SMOKE_DISABLE_AUTOSTART_SYNC": "1",
-                "WISP_LAUNCH_SMOKE_EXIT_AFTER_READY": "1",
-                "WISP_LAUNCH_SMOKE_READY_FILE": str(ready_file),
-                "WISP_MACOS_SAFE_MODE": "1",
-                "WISP_DATA_ROOT": str(state / "data"),
-                "WISP_RUNTIME_LOG_MODE": "crash",
-                "WISP_USER_DATA_DIR": str(state / "user-data"),
+                "OPENWAND_ADDONS_DIR": str(state / "addons"),
+                "OPENWAND_BRAIN_FAKE_LLM": "1",
+                "OPENWAND_LAUNCH_SMOKE_DISABLE_AUTOSTART_SYNC": "1",
+                "OPENWAND_LAUNCH_SMOKE_EXIT_AFTER_READY": "1",
+                "OPENWAND_LAUNCH_SMOKE_READY_FILE": str(ready_file),
+                "OPENWAND_MACOS_SAFE_MODE": "1",
+                "OPENWAND_DATA_ROOT": str(state / "data"),
+                "OPENWAND_RUNTIME_LOG_MODE": "crash",
+                "OPENWAND_USER_DATA_DIR": str(state / "user-data"),
             }
         )
         if fake_ollama is not None:
             env.update(
                 {
                     "OLLAMA_HOST": fake_ollama.host,
-                    "WISP_LAUNCH_SMOKE_OLLAMA_MODELS": ",".join(SETTINGS_SMOKE_OLLAMA_MODELS),
-                    "WISP_LAUNCH_SMOKE_SETTINGS_PROFILE": "1",
-                    "WISP_SETTINGS_ENV_PATH": str(settings_env_path),
-                    "WISP_UI_DEBUG_METHODS": "1",
+                    "OPENWAND_LAUNCH_SMOKE_OLLAMA_MODELS": ",".join(SETTINGS_SMOKE_OLLAMA_MODELS),
+                    "OPENWAND_LAUNCH_SMOKE_SETTINGS_PROFILE": "1",
+                    "OPENWAND_SETTINGS_ENV_PATH": str(settings_env_path),
+                    "OPENWAND_UI_DEBUG_METHODS": "1",
                 }
             )
         if kind == "source":
-            env["WISP_LAUNCH_PYTHON"] = str((source_python or Path(sys.executable)).resolve())
+            env["OPENWAND_LAUNCH_PYTHON"] = str((source_python or Path(sys.executable)).resolve())
         try:
             creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
             process = subprocess.Popen(

@@ -18,7 +18,7 @@ _RULES: tuple[tuple[tuple[str, ...], str], ...] = (
     ),
     (
         ("cannot be rendered", "render failed", "render data is invalid"),
-        "Recommendation: reopen the conversation and retry; restart Wisp if the display remains unavailable.",
+        "Recommendation: reopen the conversation and retry; restart OpenWand if the display remains unavailable.",
     ),
     (
         ("cannot be pasted", "paste into the target", "paste failed"),
@@ -55,15 +55,15 @@ _RULES: tuple[tuple[tuple[str, ...], str], ...] = (
     (
         ("com.sun.star.connection", "noconnectexception", "calc action pipe"),
         "Recommendation: this is a local LibreOffice connection, not an internet failure. "
-        "Restart Wisp and reopen LibreOffice once, then retry.",
+        "Restart OpenWand and reopen LibreOffice once, then retry.",
     ),
     (
         ("calc data changed after the preview", "selected calc range changed after the preview"),
-        "Recommendation: Wisp made no change. Review the current range and create a new preview before applying.",
+        "Recommendation: OpenWand made no change. Review the current range and create a new preview before applying.",
     ),
     (
         ("no module named", "modulenotfounderror", "importerror", "dll load failed"),
-        "Recommendation: the package install looks incomplete - reinstall it from Settings, then restart Wisp.",
+        "Recommendation: the package install looks incomplete - reinstall it from Settings, then restart OpenWand.",
     ),
     (
         ("cuda", "cudnn", "cublas", "vram", "gpu"),
@@ -95,18 +95,15 @@ _RULES: tuple[tuple[tuple[str, ...], str], ...] = (
     ),
     (
         ("worker is unresponsive", "worker stopped responding", "worker heartbeat"),
-        "Recommendation: restart Wisp, then open Runtime Status and inspect the worker log if it happens again.",
+        "Recommendation: restart OpenWand, then open Runtime Status and inspect the worker log if it happens again.",
     ),
 )
 
-_DEFAULT_RECOMMENDATION = (
-    "Recommendation: retry once, then open Runtime Status and create a crash report "
-    "with recent logs if the failure continues."
-)
+_DEFAULT_RECOMMENDATION = ""
 
 
 def recommendation_for(message: str) -> str:
-    """Return the best recommendation for a user-facing error message."""
+    """Return a specific useful recommendation, or no recommendation."""
     lower = str(message or "").lower()
     for needles, recommendation in _RULES:
         if any(needle in lower for needle in needles):

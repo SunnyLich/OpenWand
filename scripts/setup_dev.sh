@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# macOS/Linux developer setup script for creating the pinned Wisp virtual environment.
+# macOS/Linux developer setup script for creating the pinned OpenWand virtual environment.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

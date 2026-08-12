@@ -3,8 +3,8 @@
 The agent loop is driven by a scripted model callback (no provider/network), so
 these exercise the *real* ``core.agent`` runner end-to-end: spec deserialization,
 the run-loop, log/trace event streaming, and the final-report result. Two seams
-are covered -- the single-turn ``WISP_BRAIN_FAKE_LLM`` fast path and an explicit
-``WISP_BRAIN_AGENT_TEST_SCRIPT`` of model turns.
+are covered -- the single-turn ``OPENWAND_BRAIN_FAKE_LLM`` fast path and an explicit
+``OPENWAND_BRAIN_AGENT_TEST_SCRIPT`` of model turns.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 import pytest
-from wisp_brain import handlers
+from openwand_brain import handlers
 
 
 def _events_of(events, name):
@@ -55,7 +55,7 @@ def test_agent_is_registered_as_streaming():
 def test_agent_requires_spec_dict():
     """Verify agent requires spec dict behavior."""
     events = []
-    from wisp_brain.handlers import StreamContext
+    from openwand_brain.handlers import StreamContext
 
     ctx = StreamContext(lambda e, d, r: events.append((e, d)), 1)
     with pytest.raises(ValueError):
@@ -64,7 +64,7 @@ def test_agent_requires_spec_dict():
 
 def test_agent_fake_llm_completes_in_one_turn(record_ctx, tmp_path, monkeypatch):
     """Verify agent fake llm completes in one turn behavior."""
-    monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
+    monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
     events, ctx = record_ctx()
     spec = _noop_spec(tmp_path, title="smoke", objective="do nothing")
     result = handlers.HANDLERS["brain.agent.run"](
@@ -97,7 +97,7 @@ def test_agent_runs_a_scripted_model(record_ctx, tmp_path, monkeypatch):
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("WISP_BRAIN_AGENT_TEST_SCRIPT", str(script))
+    monkeypatch.setenv("OPENWAND_BRAIN_AGENT_TEST_SCRIPT", str(script))
 
     events, ctx = record_ctx()
     spec = _noop_spec(tmp_path, title="scripted", objective="report")
@@ -128,7 +128,7 @@ def test_agent_done_reports_underlying_model_errors(record_ctx, tmp_path, monkey
         ]),
         encoding="utf-8",
     )
-    monkeypatch.setenv("WISP_BRAIN_AGENT_TEST_SCRIPT", str(script))
+    monkeypatch.setenv("OPENWAND_BRAIN_AGENT_TEST_SCRIPT", str(script))
     events, ctx = record_ctx()
 
     result = handlers.HANDLERS["brain.agent.run"](
@@ -163,8 +163,8 @@ def test_agent_history_lists_recent_runs(tmp_path):
 
 def test_agent_history_lists_previous_runtime_runs_after_restart(tmp_path, monkeypatch):
     """Verify agent history lists previous runtime runs after restart behavior."""
-    current_runtime = tmp_path / "build_logs" / "wisp_runtime_20260102-010101"
-    old_root = tmp_path / "build_logs" / "wisp_runtime_20260101-010101" / "agent-runs"
+    current_runtime = tmp_path / "build_logs" / "openwand_runtime_20260102-010101"
+    old_root = tmp_path / "build_logs" / "openwand_runtime_20260101-010101" / "agent-runs"
     cancelled = old_root / "20260101-020202-cancelled"
     cancelled.mkdir(parents=True)
     (cancelled / "task.json").write_text(
@@ -281,8 +281,8 @@ def test_agent_last_spec_read_falls_back_to_newest_run_task(tmp_path):
 
 def test_agent_last_spec_read_scans_previous_runtime_roots(tmp_path, monkeypatch):
     """Verify agent last spec read scans previous runtime roots behavior."""
-    current_runtime = tmp_path / "build_logs" / "wisp_runtime_20260102-010101"
-    old_root = tmp_path / "build_logs" / "wisp_runtime_20260101-010101" / "agent-runs"
+    current_runtime = tmp_path / "build_logs" / "openwand_runtime_20260102-010101"
+    old_root = tmp_path / "build_logs" / "openwand_runtime_20260101-010101" / "agent-runs"
     previous = old_root / "20260101-020202-previous"
     previous.mkdir(parents=True)
     (previous / "task.json").write_text(
@@ -360,7 +360,7 @@ def test_agent_run_approval_request_can_be_approved(record_ctx, tmp_path, monkey
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("WISP_BRAIN_AGENT_TEST_SCRIPT", str(script))
+    monkeypatch.setenv("OPENWAND_BRAIN_AGENT_TEST_SCRIPT", str(script))
 
     events = []
 
@@ -373,7 +373,7 @@ def test_agent_run_approval_request_can_be_approved(record_ctx, tmp_path, monkey
                 approved=True,
             )
 
-    from wisp_brain.handlers import StreamContext
+    from openwand_brain.handlers import StreamContext
 
     ctx = StreamContext(emit, 1)
     spec = _noop_spec(tmp_path, title="approval run", objective="create a note")

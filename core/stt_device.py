@@ -34,11 +34,11 @@ def _stt_diag(message: str) -> None:
     line = f"[stt] {message}"
     print(line, flush=True)
     try:
-        root = os.environ.get("WISP_RUN_LOG_DIR")
+        root = os.environ.get("OPENWAND_RUN_LOG_DIR")
         if root:
             path = Path(root) / "stt-debug.log"
         else:
-            repo = os.environ.get("WISP_REPO_ROOT")
+            repo = os.environ.get("OPENWAND_REPO_ROOT")
             path = Path(repo or ".") / "build_logs" / "stt-debug.log"
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as handle:
@@ -57,14 +57,24 @@ def _report(log: Log, message: str) -> None:
 
 
 def _configure_windows_cuda_dll_directories() -> list[str]:
-    """Expose CUDA DLLs installed under Wisp's optional Python directory."""
+    """Expose CUDA DLLs installed under OpenWand's optional Python directory."""
     if sys.platform != "win32":
         return []
     roots: list[Path] = []
-    optional_root = os.environ.get("WISP_OPTIONAL_PACKAGES_DIR", "").strip()
+    optional_root = os.environ.get("OPENWAND_OPTIONAL_PACKAGES_DIR", "").strip()
     if optional_root:
         roots.append(Path(optional_root).expanduser())
-    roots.extend(Path(item) for item in sys.path if item)
+    sys_path_roots = [Path(item) for item in sys.path if item]
+    if not optional_root and not any(root.name == "python_packages" for root in sys_path_roots):
+        # A source checkout can legitimately import faster-whisper/CTranslate2
+        # from its venv while reusing CUDA DLLs installed by OpenWand's managed
+        # speech layer. The dependency selector intentionally removes that
+        # managed Python layer from sys.path; native DLL discovery must not lose
+        # the accompanying torch/CUDA runtime as a side effect.
+        from core.system.paths import USER_DATA_DIR
+
+        roots.append(USER_DATA_DIR / "python_packages")
+    roots.extend(sys_path_roots)
     bundle_root = str(getattr(sys, "_MEIPASS", "") or "").strip()
     if bundle_root:
         roots.append(Path(bundle_root))
@@ -123,7 +133,7 @@ def _windows_cuda_environment_lines() -> list[str]:
     managed_dirs = _configure_windows_cuda_dll_directories()
     lines: list[str] = []
     if managed_dirs:
-        lines.append("Wisp CUDA DLL directories: " + ", ".join(managed_dirs))
+        lines.append("OpenWand CUDA DLL directories: " + ", ".join(managed_dirs))
     nvidia_smi = shutil.which("nvidia-smi")
     if not nvidia_smi:
         lines.append("nvidia-smi was not found on PATH.")

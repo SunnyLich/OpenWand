@@ -77,7 +77,7 @@ from core.agent.task_spec import (
     role_label,
     role_responsibility,
 )
-from core.system.paths import AGENT_RUNS_DIR
+from core.system.paths import AGENT_RUNS_DIR, DOLL_ASSETS_DIR
 from ui.agent.activity_i18n import (
     translate_agent_activity_text,
     translate_agent_health_badge,
@@ -131,6 +131,7 @@ from ui.agent.combo_helpers import (
 )
 from ui.agent.log_parser import parse_live_log_event
 from ui.i18n import localize_widget_tree, t
+from ui.openwand_icon import SpeakingRippleGraphicsItem
 from ui.settings_panel.dialog import (
     _PROVIDER_LABELS,
     _PROVIDER_MODELS,
@@ -139,6 +140,7 @@ from ui.settings_panel.dialog import (
 )
 from ui.settings_panel.helpers import NoScrollCombo as _NoScrollCombo
 from ui.settings_panel.helpers import parse_fallback_rows
+from ui.shared.theme import is_dark_mode, theme_colors
 from ui.shared.window_utils import enable_standard_window_controls, fit_window_to_screen
 
 TaskSubmitCallback = Callable[["AgentTaskSpec"], None]
@@ -153,7 +155,7 @@ _AGENT_APP_CONTEXT_TRUNCATED = "\n[Current application context truncated at 12,0
 
 
 def _capture_current_app_context() -> str:
-    """Return bounded, redacted context from the topmost non-Wisp application."""
+    """Return bounded, redacted context from the topmost non-OpenWand application."""
     from core import context_fetcher
     from core.llm_clients.client import read_active_document_for_context_with_debug
     from core.privacy_redaction import redact_text
@@ -186,6 +188,102 @@ def _capture_current_app_context() -> str:
         return value
     keep = max(0, _AGENT_APP_CONTEXT_MAX_CHARS - len(_AGENT_APP_CONTEXT_TRUNCATED))
     return value[:keep].rstrip() + _AGENT_APP_CONTEXT_TRUNCATED
+
+
+def _configured_agent_provider_options() -> list[tuple[str, str]]:
+    """Return providers that have a usable local connection configuration."""
+    import config
+    from core.auth import chatgpt as chatgpt_auth
+    from core.auth import copilot_auth
+    from core.custom_connections import route_id as custom_route_id
+    from core.llm_clients.routes import api_key_for
+    from core.ollama_manager import find_ollama_executable
+
+    options: dict[str, str] = {}
+    for provider in _PROVIDER_MODELS:
+        if provider in {"chatgpt", "copilot", "ollama", "custom"}:
+            continue
+        try:
+            configured = bool(api_key_for(provider))
+        except Exception:
+            configured = False
+        if configured:
+            alias = os.getenv(f"OPENWAND_CONNECTION_ALIAS_{provider.upper()}", "").strip()
+            label = t(_PROVIDER_LABELS.get(provider, provider))
+            options[provider] = f"{label} ({alias})" if alias else label
+
+    try:
+        if chatgpt_auth.get_tokens():
+            options["chatgpt"] = t(_PROVIDER_LABELS["chatgpt"])
+    except Exception:
+        pass
+    try:
+        if copilot_auth.has_effective_token():
+            options["copilot"] = t(_PROVIDER_LABELS["copilot"])
+    except Exception:
+        pass
+
+    configured_routes = {
+        str(getattr(config, "LLM_PROVIDER", "") or "").strip(),
+        str(getattr(config, "VISION_LLM_PROVIDER", "") or "").strip(),
+        str(getattr(config, "MEMORY_LLM_PROVIDER", "") or "").strip(),
+    }
+    for raw in (
+        getattr(config, "LLM_FALLBACKS", ""),
+        getattr(config, "VISION_LLM_FALLBACKS", ""),
+        getattr(config, "MEMORY_LLM_FALLBACKS", ""),
+    ):
+        configured_routes.update(provider for provider, _model in parse_fallback_rows(str(raw or "")))
+
+    try:
+        ollama_ready = bool(
+            "ollama" in configured_routes
+            or os.getenv("OLLAMA_HOST", "").strip()
+            or find_ollama_executable()
+        )
+    except Exception:
+        ollama_ready = "ollama" in configured_routes
+    if ollama_ready:
+        options["ollama"] = t(_PROVIDER_LABELS["ollama"])
+
+    for connection in list(getattr(config, "CUSTOM_CONNECTIONS", []) or []):
+        connection_id = str(connection.get("id") or "").strip()
+        base_url = str(connection.get("base_url") or "").strip()
+        if not connection_id or not base_url:
+            continue
+        provider = custom_route_id(connection_id)
+        alias = str(connection.get("alias") or "").strip()
+        label = t(_PROVIDER_LABELS["custom"])
+        options[provider] = f"{label} ({alias or base_url})"
+
+    preferred = [
+        str(getattr(config, "LLM_PROVIDER", "") or "").strip(),
+        *(provider for provider, _model in parse_fallback_rows(str(getattr(config, "LLM_FALLBACKS", "") or ""))),
+    ]
+    ordered: list[tuple[str, str]] = []
+    for provider in [*preferred, *options]:
+        if provider in options and not any(item_provider == provider for _label, item_provider in ordered):
+            ordered.append((options[provider], provider))
+    return ordered
+
+
+def _configured_models_for_provider(provider: str) -> list[str]:
+    """Return model ids already selected in Settings for one provider."""
+    import config
+
+    provider = str(provider or "").strip()
+    routes: list[tuple[str, str]] = []
+    for provider_key, model_key, fallback_key in (
+        ("LLM_PROVIDER", "LLM_MODEL", "LLM_FALLBACKS"),
+        ("VISION_LLM_PROVIDER", "VISION_LLM_MODEL", "VISION_LLM_FALLBACKS"),
+        ("MEMORY_LLM_PROVIDER", "MEMORY_LLM_MODEL", "MEMORY_LLM_FALLBACKS"),
+    ):
+        routes.append((
+            str(getattr(config, provider_key, "") or "").strip(),
+            str(getattr(config, model_key, "") or "").strip(),
+        ))
+        routes.extend(parse_fallback_rows(str(getattr(config, fallback_key, "") or "")))
+    return list(dict.fromkeys(model for route_provider, model in routes if route_provider == provider and model))
 
 
 def make_agent_task_action(
@@ -341,6 +439,11 @@ class AgentTaskDialog(QDialog):
         self._communication_window: AgentCommunicationMapWindow | None = None
         self._advanced_groups: list[QGroupBox] = []
         self._advanced_visible = False
+        self._provider_options = _configured_agent_provider_options()
+        self._usable_provider_ids = {
+            "same as app",
+            *(provider for _label, provider in self._provider_options),
+        }
 
         self.setWindowTitle(t("Start Agent Team"))
         self.setMinimumSize(680, 520)
@@ -364,7 +467,7 @@ class AgentTaskDialog(QDialog):
         intro = QLabel(
             t(
                 "Create a scoped Agent Team that keeps working in the background. You can close "
-                "the activity window and keep using Wisp while the team works. The selected "
+                "the activity window and keep using OpenWand while the team works. The selected "
                 "folder is its filesystem boundary."
             )
         )
@@ -428,9 +531,11 @@ class AgentTaskDialog(QDialog):
         self.objective_edit.setPlainText(spec.objective)
         self.scope_edit.setText(spec.scope_folder)
         _set_combo_value(self.sandbox_combo, spec.sandbox_mode)
-        _set_combo_value(self.provider_combo, getattr(spec, "provider", "same as app"))
+        provider_index = self.provider_combo.findData(getattr(spec, "provider", ""))
+        self.provider_combo.setCurrentIndex(provider_index)
         self._refresh_task_model_combo()
-        self.model_edit.setCurrentText(spec.model)
+        if _combo_value(self.provider_combo) != "same as app":
+            self.model_edit.setCurrentText(spec.model)
         self._set_fallback_rows(getattr(spec, "model_fallbacks", "") or "")
         _set_combo_value(self.reasoning_combo, spec.reasoning_effort)
         self.runtime_minutes.setValue(spec.max_runtime_minutes)
@@ -517,8 +622,8 @@ class AgentTaskDialog(QDialog):
         model_row.setContentsMargins(0, 0, 0, 0)
         model_row.setSpacing(8)
         self.provider_combo = _NoScrollCombo()
-        self.provider_combo.setEditable(True)
-        self._populate_provider_combo(self.provider_combo)
+        self.provider_combo.setEditable(False)
+        self._populate_provider_combo(self.provider_combo, include_openwand_chat=True)
         self.model_edit = self._model_combo()
         self.provider_combo.currentIndexChanged.connect(lambda _: self._refresh_task_model_combo())
         self.provider_combo.currentTextChanged.connect(lambda _: self._refresh_task_model_combo())
@@ -544,7 +649,7 @@ class AgentTaskDialog(QDialog):
         context_button_row = QHBoxLayout()
         self.copy_context_btn = QPushButton(t("Copy current app context"))
         self.copy_context_btn.setToolTip(
-            t("Append readable text and window details from the application behind Wisp.")
+            t("Append readable text and window details from the application behind OpenWand.")
         )
         self.copy_context_btn.clicked.connect(self._copy_context_from_app)
         context_button_row.addWidget(self.copy_context_btn)
@@ -553,7 +658,6 @@ class AgentTaskDialog(QDialog):
         form.addRow("Context", context_wrapper)
         return box
 
-    _FALLBACK_PROVIDERS = list(_PROVIDER_MODELS.keys())
     # Shared width for the trailing button so the Model and Fallback Model rows
     # line up column-for-column ("Copy from app" / "Remove").
     _ROW_BTN_WIDTH = 110
@@ -596,7 +700,7 @@ class AgentTaskDialog(QDialog):
         h.setSpacing(8)
 
         provider_combo = _NoScrollCombo()
-        provider_combo.setEditable(True)
+        provider_combo.setEditable(False)
         self._populate_provider_combo(provider_combo)
         if provider:
             _set_combo_value(provider_combo, provider)
@@ -624,12 +728,26 @@ class AgentTaskDialog(QDialog):
         self.fallback_rows_layout.addWidget(row_w)
         self._fallback_rows.append(row_info)
 
-    @staticmethod
-    def _populate_provider_combo(combo: QComboBox) -> None:
-        """Populate an agent provider combo with the same provider names used in Settings."""
+    def _populate_provider_combo(
+        self,
+        combo: QComboBox,
+        *,
+        include_openwand_chat: bool = False,
+    ) -> None:
+        """Populate an agent provider combo with configured, usable connections."""
         combo.clear()
-        for provider in AgentTaskDialog._FALLBACK_PROVIDERS:
-            combo.addItem(_PROVIDER_LABELS.get(provider, provider), provider)
+        if include_openwand_chat:
+            combo.addItem(t("Same as OpenWand chat"), "same as app")
+        for label, provider in self._provider_options:
+            combo.addItem(label, provider)
+        combo.setPlaceholderText(t("Choose a provider"))
+
+    def _populate_agent_override_provider_combo(self, combo: QComboBox) -> None:
+        """Populate per-agent overrides from the same usable provider set."""
+        combo.clear()
+        combo.addItem(t("same as task"), "same as task")
+        for label, provider in self._provider_options:
+            combo.addItem(label, provider)
 
     @staticmethod
     def _model_combo(provider: str = "") -> QComboBox:
@@ -642,14 +760,48 @@ class AgentTaskDialog(QDialog):
 
     @staticmethod
     def _refresh_model_combo_for_provider(combo: QComboBox, provider: str) -> None:
-        """Refresh model choices from the shared Settings model catalog."""
+        """Refresh models, prioritizing routes the user already configured."""
+        previous_provider = str(combo.property("openwandAgentProvider") or "")
+        current = combo.currentText().strip() if previous_provider == provider else ""
         _refresh_model_combo(combo, provider)
+        configured = _configured_models_for_provider(provider)
+        existing = [combo.itemText(index) for index in range(combo.count())]
+        models = list(dict.fromkeys([*configured, *existing]))
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(models)
+        if current:
+            combo.setCurrentText(current)
+        elif configured:
+            combo.setCurrentText(configured[0])
+        elif models:
+            combo.setCurrentIndex(0)
+        else:
+            combo.setCurrentIndex(-1)
+        combo.setProperty("openwandAgentProvider", provider)
+        combo.blockSignals(False)
         if combo.lineEdit() is not None:
             combo.lineEdit().setPlaceholderText(_model_hint(provider) if provider else "model name")
 
     def _refresh_task_model_combo(self) -> None:
         """Refresh the primary model combo for the selected primary provider."""
-        self._refresh_model_combo_for_provider(self.model_edit, _combo_value(self.provider_combo))
+        provider = _combo_value(self.provider_combo)
+        if provider == "same as app":
+            import config
+
+            self.model_edit.blockSignals(True)
+            self.model_edit.setEnabled(True)
+            self.model_edit.clear()
+            self.model_edit.addItem(
+                str(getattr(config, "LLM_MODEL", "") or t("Same as OpenWand chat")),
+                "same as app",
+            )
+            self.model_edit.setCurrentIndex(0)
+            self.model_edit.setEnabled(False)
+            self.model_edit.blockSignals(False)
+            return
+        self.model_edit.setEnabled(True)
+        self._refresh_model_combo_for_provider(self.model_edit, provider)
 
     def _remove_fallback_row(self, row_info: dict) -> None:
         """Remove fallback row."""
@@ -666,7 +818,8 @@ class AgentTaskDialog(QDialog):
         """Set fallback rows."""
         self._clear_fallback_rows()
         for provider, model in parse_fallback_rows(raw):
-            self._add_fallback_row(provider, model)
+            if provider in self._usable_provider_ids:
+                self._add_fallback_row(provider, model)
 
     def _collect_fallbacks(self) -> str:
         """Handle collect fallbacks for agent task dialog."""
@@ -683,15 +836,18 @@ class AgentTaskDialog(QDialog):
         import config
         provider = (getattr(config, "LLM_PROVIDER", "") or "").strip()
         model = (getattr(config, "LLM_MODEL", "") or "").strip()
-        if provider:
-            _set_combo_value(self.provider_combo, provider)
-            self._refresh_task_model_combo()
-        if model:
+        provider_index = self.provider_combo.findData(provider) if provider else -1
+        if provider_index >= 0:
+            self.provider_combo.setCurrentIndex(provider_index)
+        elif self.provider_combo.count() and self.provider_combo.currentIndex() < 0:
+            self.provider_combo.setCurrentIndex(0)
+        self._refresh_task_model_combo()
+        if model and _combo_value(self.provider_combo) == provider:
             self.model_edit.setCurrentText(model)
         self._set_fallback_rows(getattr(config, "LLM_FALLBACKS", "") or "")
 
     def _copy_context_from_app(self) -> None:
-        """Append a bounded snapshot from the current non-Wisp application."""
+        """Append a bounded snapshot from the current non-OpenWand application."""
         try:
             context = _capture_current_app_context().strip()
         except Exception as exc:  # noqa: BLE001 - desktop context is optional
@@ -734,8 +890,8 @@ class AgentTaskDialog(QDialog):
         self.agent_role_combo.currentTextChanged.connect(self._agent_role_changed)
         self.agent_provider_combo = _NoScrollCombo()
         self.agent_provider_combo.hide()
-        self.agent_provider_combo.setEditable(True)
-        _add_translated_combo_items(self.agent_provider_combo, _AGENT_PROVIDER_OPTIONS)
+        self.agent_provider_combo.setEditable(False)
+        self._populate_agent_override_provider_combo(self.agent_provider_combo)
         self.agent_provider_combo.currentTextChanged.connect(self._save_current_agent)
         self.agent_model_edit = QLineEdit()
         self.agent_model_edit.hide()
@@ -966,9 +1122,10 @@ class AgentTaskDialog(QDialog):
     def _load_defaults(self) -> None:
         """Load defaults."""
         self.scope_edit.setText(str(Path.cwd()))
-        # Default the model to the app's configured LLM (provider + model +
-        # fallbacks) instead of the old "same as app" sentinel.
-        self._copy_model_from_app()
+        # Inherit the live OpenWand chat route by default. Unlike copying its
+        # current values, this follows later model changes made before the run.
+        self.provider_combo.setCurrentIndex(self.provider_combo.findData("same as app"))
+        self._refresh_task_model_combo()
         _set_combo_value(self.allow_shell, "auto")
         _set_combo_value(self.allow_network, "never permit")
         _set_combo_value(self.allow_git, "auto")
@@ -1326,8 +1483,14 @@ class AgentTaskDialog(QDialog):
         if not objective:
             raise ValueError(t("Describe the task objective."))
         provider = _combo_value(self.provider_combo).strip()
-        model = self.model_edit.currentText().strip()
+        model = (
+            "same as app"
+            if provider == "same as app"
+            else self.model_edit.currentText().strip()
+        )
         if not provider:
+            raise ValueError(t("Choose a model provider."))
+        if provider not in self._usable_provider_ids:
             raise ValueError(t("Choose a model provider."))
         if not model:
             raise ValueError(t("Add a model name."))
@@ -1598,18 +1761,18 @@ class _RelationshipItem(QGraphicsRectItem):
         self._index = index
         self._click_callback = click_callback
         self.setAcceptHoverEvents(True)
-        self.setBrush(QBrush(QColor(255, 255, 255, 1)))
+        self.setBrush(QBrush(QColor(216, 161, 69, 1)))
         self.setPen(QPen(Qt.PenStyle.NoPen))
         self.setZValue(5)
 
     def hoverEnterEvent(self, event):  # noqa: N802
         """Handle hover enter event for relationship item."""
-        self.setBrush(QBrush(QColor(120, 167, 223, 24)))
+        self.setBrush(QBrush(QColor(216, 161, 69, 32)))
         super().hoverEnterEvent(event)
 
     def hoverLeaveEvent(self, event):  # noqa: N802
         """Handle hover leave event for relationship item."""
-        self.setBrush(QBrush(QColor(255, 255, 255, 1)))
+        self.setBrush(QBrush(QColor(216, 161, 69, 1)))
         super().hoverLeaveEvent(event)
 
     def mousePressEvent(self, event):  # noqa: N802
@@ -1642,23 +1805,24 @@ class _RelationshipAgentItem(QGraphicsItemGroup):
         self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setZValue(3)
+        colors = theme_colors()
         shadow = QGraphicsEllipseItem(4, 5, 144, 72)
-        shadow.setBrush(QBrush(QColor(86, 105, 135, 42)))
+        shadow.setBrush(QBrush(QColor(0, 0, 0, 72)))
         shadow.setPen(QPen(Qt.PenStyle.NoPen))
         self.addToGroup(shadow)
         self._node = QGraphicsRectItem(0, 0, 144, 72)
-        self._node.setBrush(QBrush(QColor("#ffffff")))
-        self._node.setPen(QPen(QColor("#7aa7df"), 1.5))
+        self._node.setBrush(QBrush(QColor(colors["surface"])))
+        self._node.setPen(QPen(QColor(colors["accent"]), 1.5))
         self.addToGroup(self._node)
         name_item = QGraphicsTextItem(name)
-        name_item.setDefaultTextColor(QColor("#111111"))
+        name_item.setDefaultTextColor(QColor(colors["text"]))
         name_item.setFont(QFont("Segoe UI", 9, QFont.Weight.DemiBold))
         name_item.setTextWidth(126)
         name_item.setPos(12, 12)
         name_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
         self.addToGroup(name_item)
         role_item = QGraphicsTextItem(role)
-        role_item.setDefaultTextColor(QColor("#5c6f87"))
+        role_item.setDefaultTextColor(QColor(colors["text_dim"]))
         role_item.setFont(QFont("Segoe UI", 8))
         role_item.setTextWidth(126)
         role_item.setPos(12, 36)
@@ -1668,12 +1832,12 @@ class _RelationshipAgentItem(QGraphicsItemGroup):
 
     def hoverEnterEvent(self, event):  # noqa: N802
         """Handle hover enter event for relationship agent item."""
-        self._node.setBrush(QBrush(QColor("#edf6ff")))
+        self._node.setBrush(QBrush(QColor(theme_colors()["raised"])))
         super().hoverEnterEvent(event)
 
     def hoverLeaveEvent(self, event):  # noqa: N802
         """Handle hover leave event for relationship agent item."""
-        self._node.setBrush(QBrush(QColor("#ffffff")))
+        self._node.setBrush(QBrush(QColor(theme_colors()["surface"])))
         super().hoverLeaveEvent(event)
 
     def mousePressEvent(self, event):  # noqa: N802
@@ -1704,6 +1868,7 @@ class _LiveAgentItem(QGraphicsItemGroup):
     WIDTH = 220
     HEIGHT = 150
     TEXT_WIDTH = 196
+    ACTIVITY_VFX_SIZE = 250
     GRIP = 16          # bottom-right resize handle, in item-local coords
     MIN_SCALE = 0.6
     MAX_SCALE = 2.2
@@ -1738,27 +1903,32 @@ class _LiveAgentItem(QGraphicsItemGroup):
         self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setZValue(5 if active or selected else 3)
 
-        border = "#2f80ed" if active else "#7aa7df"
-        fill = "#eaf4ff" if active else "#ffffff"
+        colors = theme_colors()
+        border = colors["accent"] if active else colors["border"]
+        fill = colors["accent_soft"] if active else colors["surface"]
         if selected:
-            border = "#1f6fd1"
-            fill = "#dceeff"
+            border = colors["accent_fill"]
+            fill = colors["accent_strong"]
 
+        self.activity_vfx: SpeakingRippleGraphicsItem | None = None
         if active:
-            for offset, alpha in ((-10, 62), (-5, 42), (0, 24)):
-                glow = QGraphicsEllipseItem(
-                    offset,
-                    offset + 1,
-                    self.WIDTH - offset * 2,
-                    self.HEIGHT - offset * 2,
-                )
-                glow.setBrush(QBrush(QColor(47, 128, 237, alpha)))
-                glow.setPen(QPen(Qt.PenStyle.NoPen))
-                self.addToGroup(glow)
+            # The old stacked amber ellipses looked like a selection glow.
+            # Play the floating logo's speaking ripple behind the active card.
+            self.activity_vfx = SpeakingRippleGraphicsItem(self.ACTIVITY_VFX_SIZE)
+            self.activity_vfx.set_vfx_sources(str(DOLL_ASSETS_DIR / "vfx"))
+            self.activity_vfx.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            self.activity_vfx.setPos(
+                (self.WIDTH - self.ACTIVITY_VFX_SIZE) / 2,
+                (self.HEIGHT - self.ACTIVITY_VFX_SIZE) / 2,
+            )
+            self.activity_vfx.setZValue(-2)
+            self.activity_vfx.start()
+            self.addToGroup(self.activity_vfx)
 
         shadow = QGraphicsEllipseItem(4, 6, self.WIDTH, self.HEIGHT)
-        shadow.setBrush(QBrush(QColor(86, 105, 135, 34)))
+        shadow.setBrush(QBrush(QColor(0, 0, 0, 64)))
         shadow.setPen(QPen(Qt.PenStyle.NoPen))
+        shadow.setZValue(-1)
         self.addToGroup(shadow)
 
         node = QGraphicsRectItem(0, 0, self.WIDTH, self.HEIGHT)
@@ -1767,7 +1937,7 @@ class _LiveAgentItem(QGraphicsItemGroup):
         self.addToGroup(node)
 
         name_item = QGraphicsTextItem(name)
-        name_item.setDefaultTextColor(QColor("#172033"))
+        name_item.setDefaultTextColor(QColor(colors["text"]))
         name_item.setFont(QFont("Segoe UI", 9, QFont.Weight.DemiBold))
         name_item.setTextWidth(self.TEXT_WIDTH)
         name_item.setPos(12, 10)
@@ -1775,7 +1945,7 @@ class _LiveAgentItem(QGraphicsItemGroup):
         self.addToGroup(name_item)
 
         role_item = QGraphicsTextItem(role)
-        role_item.setDefaultTextColor(QColor("#5f7088"))
+        role_item.setDefaultTextColor(QColor(colors["text_dim"]))
         role_item.setFont(QFont("Segoe UI", 8))
         role_item.setTextWidth(self.TEXT_WIDTH)
         role_item.setPos(12, 32)
@@ -1783,7 +1953,7 @@ class _LiveAgentItem(QGraphicsItemGroup):
         self.addToGroup(role_item)
 
         status_item = QGraphicsTextItem(status or "Waiting")
-        status_item.setDefaultTextColor(QColor("#24405f" if active else "#667085"))
+        status_item.setDefaultTextColor(QColor(colors["accent"] if active else colors["label"]))
         status_item.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold if active else QFont.Weight.Normal))
         status_item.setTextWidth(self.TEXT_WIDTH)
         status_item.setPos(12, 54)
@@ -1791,7 +1961,7 @@ class _LiveAgentItem(QGraphicsItemGroup):
         self.addToGroup(status_item)
 
         objective_item = QGraphicsTextItem(objective or "No current objective")
-        objective_item.setDefaultTextColor(QColor("#344054"))
+        objective_item.setDefaultTextColor(QColor(colors["label"]))
         objective_item.setFont(QFont("Segoe UI", 7))
         objective_item.setTextWidth(self.TEXT_WIDTH)
         objective_item.setPos(12, 78)
@@ -1799,7 +1969,7 @@ class _LiveAgentItem(QGraphicsItemGroup):
         self.addToGroup(objective_item)
 
         health_item = QGraphicsTextItem(health)
-        health_item.setDefaultTextColor(QColor("#697586"))
+        health_item.setDefaultTextColor(QColor(colors["text_dim"]))
         health_item.setFont(QFont("Segoe UI", 7))
         health_item.setTextWidth(self.TEXT_WIDTH)
         health_item.setPos(12, 122)
@@ -1808,7 +1978,7 @@ class _LiveAgentItem(QGraphicsItemGroup):
 
         grip = QGraphicsRectItem(self.WIDTH - self.GRIP, self.HEIGHT - self.GRIP, self.GRIP, self.GRIP)
         grip.setBrush(QBrush(QColor(border)))
-        grip.setPen(QPen(QColor("#ffffff"), 1))
+        grip.setPen(QPen(QColor(colors["on_accent"]), 1))
         grip.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
         self.addToGroup(grip)
 
@@ -1950,9 +2120,10 @@ class AgentCommunicationMapWindow(QDialog):
         vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         vertical_splitter.setChildrenCollapsible(False)
         vertical_splitter.setHandleWidth(10)
+        colors = theme_colors()
         vertical_splitter.setStyleSheet(
-            "QSplitter::handle:vertical { background: #c6d0df; margin: 3px 0px; }"
-            "QSplitter::handle:vertical:hover { background: #8ea6c4; }"
+            f"QSplitter::handle:vertical {{ background: {colors['border']}; margin: 3px 0px; }}"
+            f"QSplitter::handle:vertical:hover {{ background: {colors['accent_fill']}; }}"
         )
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
@@ -1973,8 +2144,8 @@ class AgentCommunicationMapWindow(QDialog):
         self.map_agent_role.setEditable(True)
         _add_translated_combo_items(self.map_agent_role, _AGENT_ROLE_OPTIONS)
         self.map_agent_provider = _NoScrollCombo()
-        self.map_agent_provider.setEditable(True)
-        _add_translated_combo_items(self.map_agent_provider, _MAP_AGENT_PROVIDER_OPTIONS)
+        self.map_agent_provider.setEditable(False)
+        self._task_dialog._populate_agent_override_provider_combo(self.map_agent_provider)
         self.map_agent_model = QLineEdit()
         self.map_agent_model.setPlaceholderText("same as task")
         self.map_agent_responsibility = QTextEdit()
@@ -2039,7 +2210,9 @@ class AgentCommunicationMapWindow(QDialog):
         self.relationship_scene = QGraphicsScene(self)
         self.relationship_view = QGraphicsView(self.relationship_scene)
         self.relationship_view.setMinimumHeight(190)
-        self.relationship_view.setStyleSheet("QGraphicsView { background: #eef3f9; border: 1px solid #c2ccda; }")
+        self.relationship_view.setStyleSheet(
+            f"QGraphicsView {{ background: {colors['bg']}; border: 1px solid {colors['border']}; }}"
+        )
         relationship_layout.addWidget(self.relationship_view, stretch=1)
         vertical_splitter.addWidget(relationship_panel)
         vertical_splitter.setStretchFactor(0, 2)
@@ -2107,6 +2280,7 @@ class AgentCommunicationMapWindow(QDialog):
 
     def _draw_relationship_map(self) -> None:
         """Handle draw relationship map for agent communication map window."""
+        colors = theme_colors()
         for node in self._relationship_nodes:
             node.mark_dead()
         self._relationship_nodes.clear()
@@ -2114,11 +2288,17 @@ class AgentCommunicationMapWindow(QDialog):
         self.relationship_scene.setSceneRect(0, 0, 860, 260)
         bg = QPainterPath()
         bg.addRoundedRect(8, 8, 844, 244, 14, 14)
-        self.relationship_scene.addPath(bg, QPen(QColor("#d1dae8"), 1), QBrush(QColor("#eef3f9")))
+        self.relationship_scene.addPath(
+            bg,
+            QPen(QColor(colors["border"]), 1),
+            QBrush(QColor(colors["bg"])),
+        )
+        grid = QColor(colors["border"])
+        grid.setAlpha(90)
         for x in range(40, 840, 40):
-            self.relationship_scene.addLine(x, 22, x, 246, QPen(QColor(210, 219, 232, 70), 0.8))
+            self.relationship_scene.addLine(x, 22, x, 246, QPen(grid, 0.8))
         for y in range(40, 240, 40):
-            self.relationship_scene.addLine(22, y, 838, y, QPen(QColor(210, 219, 232, 70), 0.8))
+            self.relationship_scene.addLine(22, y, 838, y, QPen(grid, 0.8))
         agents = self._task_dialog._agent_specs
         communications = self._task_dialog._communication_specs
         default_positions = self._relationship_positions(len(agents))
@@ -2168,7 +2348,7 @@ class AgentCommunicationMapWindow(QDialog):
             item = _RelationshipItem(idx, self._select_exchange_from_map, mx - 82, my - 18, 164, 36)
             self.relationship_scene.addItem(item)
             text = QGraphicsTextItem(_display_phase(comm.get("phase") or "Exchange"))
-            text.setDefaultTextColor(QColor("#203047"))
+            text.setDefaultTextColor(QColor(colors["text"]))
             text.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold))
             text.setTextWidth(150)
             text.setPos(mx - 74, my - 14)
@@ -2206,7 +2386,8 @@ class AgentCommunicationMapWindow(QDialog):
         bidirectional: bool = False,
     ) -> None:
         """Draw a directed exchange; add a reverse head only for paired routes."""
-        pen = QPen(QColor("#5d7fa9"), 2.0)
+        accent = QColor(theme_colors()["accent_fill"])
+        pen = QPen(accent, 2.0)
         self.relationship_scene.addLine(sx, sy, tx, ty, pen)
         dx, dy = tx - sx, ty - sy
         length = max(1.0, math.hypot(dx, dy))
@@ -2226,7 +2407,7 @@ class AgentCommunicationMapWindow(QDialog):
             path.lineTo(left[0], left[1])
             path.lineTo(right[0], right[1])
             path.closeSubpath()
-            self.relationship_scene.addPath(path, QPen(QColor("#5d7fa9")), QBrush(QColor("#5d7fa9")))
+            self.relationship_scene.addPath(path, QPen(accent), QBrush(accent))
 
     def _relationship_positions(self, count: int) -> list[tuple[float, float]]:
         """Handle relationship positions for agent communication map window."""
@@ -2668,14 +2849,15 @@ class AgentRunWindow(QDialog):
         self.completion_banner.hide()
         root.addWidget(self.completion_banner)
 
+        colors = theme_colors()
         self.approval_panel = QFrame()
         self._approval_style_dark = (
-            "QFrame { background: #2b2b3a; border: 1px solid #555577; border-radius: 6px; }"
-            "QLabel { color: #eeeeff; background: transparent; }"
+            f"QFrame {{ background: {colors['surface']}; border: 1px solid {colors['border']}; border-radius: 6px; }}"
+            f"QLabel {{ color: {colors['text']}; background: transparent; }}"
         )
         self._approval_style_alert = (
-            "QFrame { background: #fff3d6; border: 2px solid #f59e0b; border-radius: 6px; }"
-            "QLabel { color: #3a2500; background: transparent; font-weight: 600; }"
+            f"QFrame {{ background: {colors['accent_soft']}; border: 2px solid {colors['accent']}; border-radius: 6px; }}"
+            f"QLabel {{ color: {colors['text']}; background: transparent; font-weight: 600; }}"
         )
         self.approval_panel.setStyleSheet(self._approval_style_dark)
         approval_layout = QHBoxLayout(self.approval_panel)
@@ -2699,7 +2881,9 @@ class AgentRunWindow(QDialog):
         # Small minimum so the panel can shrink and the splitter can redistribute;
         # the view scales its scene to fit, so nothing is clipped.
         self.meeting_view.setMinimumSize(280, 220)
-        self.meeting_view.setStyleSheet("QGraphicsView { background: #edf3fa; border: 1px solid #c2ccda; }")
+        self.meeting_view.setStyleSheet(
+            f"QGraphicsView {{ background: {colors['bg']}; border: 1px solid {colors['border']}; }}"
+        )
         agent_detail_panel = QWidget()
         agent_detail_layout = QVBoxLayout(agent_detail_panel)
         agent_detail_layout.setContentsMargins(0, 0, 0, 0)
@@ -3125,17 +3309,26 @@ class AgentRunWindow(QDialog):
 
     def _draw_live_meeting(self) -> None:
         """Handle draw live meeting for agent run window."""
+        colors = theme_colors()
         self.meeting_scene.clear()
         self.meeting_scene.setSceneRect(0, 0, 1080, 560)
         bg = QPainterPath()
         bg.addRoundedRect(10, 10, 1060, 540, 16, 16)
-        self.meeting_scene.addPath(bg, QPen(QColor("#cfd9e6"), 1), QBrush(QColor("#edf3fa")))
+        self.meeting_scene.addPath(
+            bg,
+            QPen(QColor(colors["border"]), 1),
+            QBrush(QColor(colors["bg"])),
+        )
 
         table = QPainterPath()
         table.addRoundedRect(445, 230, 190, 100, 24, 24)
-        self.meeting_scene.addPath(table, QPen(QColor("#9fb2c8"), 1.5), QBrush(QColor("#dbe6f2")))
+        self.meeting_scene.addPath(
+            table,
+            QPen(QColor(colors["accent"]), 1.5),
+            QBrush(QColor(colors["raised"])),
+        )
         title = QGraphicsTextItem(t("Agent Meeting"))
-        title.setDefaultTextColor(QColor("#26384f"))
+        title.setDefaultTextColor(QColor(colors["accent"]))
         title.setFont(QFont("Segoe UI", 11, QFont.Weight.DemiBold))
         title.setTextWidth(150)
         title.setPos(465, 267)
@@ -3198,7 +3391,8 @@ class AgentRunWindow(QDialog):
         sx, sy = source
         tx, ty = target
         sx_edge, sy_edge, tx_edge, ty_edge = self._live_edge_points(sx, sy, tx, ty)
-        pen = QPen(QColor("#2f80ed"), 2.3)
+        accent = QColor(theme_colors()["accent_fill"])
+        pen = QPen(accent, 2.3)
         self.meeting_scene.addLine(sx_edge, sy_edge, tx_edge, ty_edge, pen)
         dx, dy = tx_edge - sx_edge, ty_edge - sy_edge
         length = max(1.0, math.hypot(dx, dy))
@@ -3212,7 +3406,7 @@ class AgentRunWindow(QDialog):
         path.lineTo(bx + px * size * 0.55, by + py * size * 0.55)
         path.lineTo(bx - px * size * 0.55, by - py * size * 0.55)
         path.closeSubpath()
-        self.meeting_scene.addPath(path, QPen(QColor("#2f80ed")), QBrush(QColor("#2f80ed")))
+        self.meeting_scene.addPath(path, QPen(accent), QBrush(accent))
 
     @staticmethod
     def _live_edge_points(sx: float, sy: float, tx: float, ty: float) -> tuple[float, float, float, float]:
@@ -3407,23 +3601,29 @@ class AgentRunWindow(QDialog):
 
     def _show_completion_banner(self, title: str, detail: str, kind: str) -> None:
         """Show a prominent completion banner at the top of the run window."""
-        styles = {
+        dark_styles = {
             "success": (
-                "#dcfce7",
-                "#16a34a",
-                "#14532d",
+                "#173124",
+                "#42b883",
+                "#bce8cf",
             ),
             "failed": (
-                "#fee2e2",
-                "#dc2626",
-                "#7f1d1d",
+                "#351d1b",
+                "#c4553d",
+                "#f0c0b6",
             ),
             "cancelled": (
-                "#e5e7eb",
-                "#6b7280",
-                "#111827",
+                "#22262b",
+                "#5f574f",
+                "#b8b4ac",
             ),
         }
+        light_styles = {
+            "success": ("#e3ecdf", "#557a4c", "#31472d"),
+            "failed": ("#f0ddd5", "#a3391c", "#6e2816"),
+            "cancelled": ("#e7e2d5", "#d1c9b7", "#6c6659"),
+        }
+        styles = dark_styles if is_dark_mode() else light_styles
         bg, border, text = styles.get(kind, styles["success"])
         self.completion_banner.setStyleSheet(
             f"QFrame#agentCompletionBanner {{ background: {bg}; border: 3px solid {border}; border-radius: 8px; }}"

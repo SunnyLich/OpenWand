@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from wisp_brain import handlers
+from openwand_brain import handlers
 
 from core import context_fetcher
 from core.llm_clients import client as llm

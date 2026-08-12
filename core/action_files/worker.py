@@ -10,9 +10,9 @@ from typing import Any
 
 
 def _load(path: Path) -> Any:
-    spec = importlib.util.spec_from_file_location(f"wisp_action_{path.stem}", path)
+    spec = importlib.util.spec_from_file_location(f"openwand_action_{path.stem}", path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("Wisp could not load this action script.")
+        raise RuntimeError("OpenWand could not load this action script.")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

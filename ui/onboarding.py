@@ -1,4 +1,4 @@
-"""First-run profile setup wizard for Wisp.
+"""First-run profile setup wizard for OpenWand.
 
 The wizard deliberately asks only the choices that make the app usable on day
 one.  Everything it records can later be changed in Settings.
@@ -239,7 +239,7 @@ def should_show_onboarding(env: dict[str, str], *, env_file_exists: bool) -> boo
     Existing installations may have a .env without the new marker, so treating
     any pre-existing file as configured avoids interrupting established users.
     """
-    value = str(env.get("WISP_ONBOARDING_COMPLETE") or "").strip().lower()
+    value = str(env.get("OPENWAND_ONBOARDING_COMPLETE") or "").strip().lower()
     if value in {"1", "true", "yes", "on"}:
         return False
     if value in {"0", "false", "no", "off"}:
@@ -264,14 +264,14 @@ def profile_values(
     """Translate wizard answers into non-secret .env values."""
     mode = "advanced" if setup_mode == "advanced" else "simple"
     values = {
-        "WISP_ONBOARDING_COMPLETE": "True",
-        "WISP_PROFILE_NAME": clean_profile_name(name),
-        "WISP_SETUP_MODE": mode,
-        "WISP_TTS_PREFERENCE": tts_preference,
-        "WISP_STT_PREFERENCE": stt_preference,
+        "OPENWAND_ONBOARDING_COMPLETE": "True",
+        "OPENWAND_PROFILE_NAME": clean_profile_name(name),
+        "OPENWAND_SETUP_MODE": mode,
+        "OPENWAND_TTS_PREFERENCE": tts_preference,
+        "OPENWAND_STT_PREFERENCE": stt_preference,
         "APP_LANGUAGE": app_language,
         "ASSISTANT_LANGUAGE": assistant_language,
-        "THEME_MODE": theme_mode if theme_mode in {"system", "light", "dark"} else "system",
+        "THEME_MODE": theme_mode if theme_mode in {"system", "light", "dark"} else "dark",
     }
     selected_provider = provider if mode == "advanced" else ""
     if selected_provider in _PROVIDER_DEFAULTS:
@@ -328,7 +328,7 @@ def local_speech_install_request(
         settings_updates.update(
             {
                 "TTS_PROVIDER": "kokoro",
-                "WISP_TTS_PREFERENCE": "local",
+                "OPENWAND_TTS_PREFERENCE": "local",
                 "KOKORO_VOICE": str(settings.get("KOKORO_VOICE") or "af_heart"),
                 "KOKORO_LANG_CODE": str(settings.get("KOKORO_LANG_CODE") or "a"),
                 "KOKORO_DEVICE": kokoro_device,
@@ -351,7 +351,7 @@ def local_speech_install_request(
         remove_artifacts.extend(optional_deps.stt_remove_artifacts())
         settings_updates.update(
             {
-                "WISP_STT_PREFERENCE": "local",
+                "OPENWAND_STT_PREFERENCE": "local",
                 "STT_PROVIDER": "local",
                 "STT_MODEL": str(settings.get("STT_MODEL") or "base"),
                 "STT_DEVICE": stt_device,
@@ -407,7 +407,7 @@ def launch_local_speech_installer(request: dict[str, object]) -> object:
         external_plan_extra=dict(request.get("external_plan_extra") or {}),
     )
     dialog = OptionalInstallDialog(
-        title=t("Wisp {display_name} installer").format(display_name=display_name),
+        title=t("OpenWand {display_name} installer").format(display_name=display_name),
         subtitle=t("Downloading and preparing the local speech features selected during setup."),
         command=command,
         cwd=root,
@@ -445,8 +445,8 @@ class OnboardingWizard(QDialog):
         import config
 
         self._previous_app_language = str(getattr(config, "APP_LANGUAGE", "") or "")
-        self._previous_theme_mode = str(getattr(config, "THEME_MODE", "system") or "system")
-        self.setWindowTitle("Welcome to Wisp")
+        self._previous_theme_mode = str(getattr(config, "THEME_MODE", "dark") or "dark")
+        self.setWindowTitle("Welcome to OpenWand")
         self.setModal(False)
         self.setMinimumWidth(540)
         self.resize(620, 460)
@@ -501,9 +501,9 @@ class OnboardingWizard(QDialog):
     def _build_pages(self) -> None:
         page, layout = self._page(
             "Choose a language",
-            "Choose Wisp’s interface language and the language you want the assistant to use in its replies. You can change both later in Settings.",
+            "Choose OpenWand’s interface language and the language you want the assistant to use in its replies. You can change both later in Settings.",
         )
-        app_language_label = QLabel("Wisp interface language")
+        app_language_label = QLabel("OpenWand interface language")
         self._app_language = QComboBox()
         for label, value in LANGUAGE_OPTIONS:
             self._app_language.addItem(label, value)
@@ -543,7 +543,7 @@ class OnboardingWizard(QDialog):
         self._pages.addWidget(page)
 
         page, layout = self._page(
-            "Let’s set up Wisp",
+            "Let’s set up OpenWand",
             "You can change every choice later in Settings. Start simple, or choose advanced if you already know your preferred AI provider.",
         )
         self._mode_group = QButtonGroup(self)
@@ -558,8 +558,8 @@ class OnboardingWizard(QDialog):
         self._pages.addWidget(page)
 
         page, layout = self._page(
-            "What should Wisp call you?",
-            "This creates your local profile. Your name stays on this device and helps Wisp make conversations feel a little more natural.",
+            "What should OpenWand call you?",
+            "This creates your local profile. Your name stays on this device and helps OpenWand make conversations feel a little more natural.",
         )
         self._name = QLineEdit()
         self._name.setPlaceholderText("Your name")
@@ -571,7 +571,7 @@ class OnboardingWizard(QDialog):
 
         page, layout = self._page(
             "Choose your provider",
-            "Optional. Choose any provider Wisp supports, enter a model yourself, and add a key now or later. Keys are saved in your operating system’s secure keychain, never in your profile file.",
+            "Optional. Choose any provider OpenWand supports, enter a model yourself, and add a key now or later. Keys are saved in your operating system’s secure keychain, never in your profile file.",
         )
         self._provider = QComboBox()
         self._provider.addItem("I’ll choose later", "")
@@ -619,12 +619,12 @@ class OnboardingWizard(QDialog):
             "Voice preferences",
             "Choose what you would like to try first. Local options use on-device speech models; cloud options stay as a preference until you add the matching credentials in Settings.",
         )
-        tts_label = QLabel("Would you like Wisp to speak replies?")
+        tts_label = QLabel("Would you like OpenWand to speak replies?")
         self._tts = QComboBox()
         self._tts.addItem("Not now", "none")
         self._tts.addItem(t("Local voice — Kokoro (installer opens after setup)"), "local")
         self._tts.addItem("Cloud voice — configure in Settings", "cloud")
-        stt_label = QLabel("Would you like to speak to Wisp?")
+        stt_label = QLabel("Would you like to speak to OpenWand?")
         self._stt = QComboBox()
         self._stt.addItem("Not now", "none")
         self._stt.addItem(
@@ -640,7 +640,7 @@ class OnboardingWizard(QDialog):
         self._pages.addWidget(page)
 
         page, layout = self._page(
-            "You’re ready to try Wisp",
+            "You’re ready to try OpenWand",
             "Your profile is ready. Use the floating icon whenever you need help, and open chat only when it suits the task. You can revisit every choice in Settings.",
         )
         self._trial_steps = QLabel()
@@ -825,7 +825,7 @@ class OnboardingWizard(QDialog):
                 self._oauth_connected = True
                 self._oauth_in_progress = False
                 self._oauth_timer.stop()
-                self._oauth_status.setText(t("Connected. Wisp will use your ChatGPT sign-in unless you selected another provider."))
+                self._oauth_status.setText(t("Connected. OpenWand will use your ChatGPT sign-in unless you selected another provider."))
                 self._oauth_status.setStyleSheet("color: #408040;")
                 self._oauth_button.setText(t("Connected"))
                 return

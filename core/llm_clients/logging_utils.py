@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-LOGGER_NAME = "wisp.llm"
+LOGGER_NAME = "openwand.llm"
 
 
 def get_logger() -> logging.Logger:

@@ -1,4 +1,4 @@
-"""Tests for the Wisp Context Server (the MCP server side of mcp_bridge).
+"""Tests for the OpenWand Context Server (the MCP server side of mcp_bridge).
 
 Protocol behavior is tested through a real subprocess (dogfooded through the
 bridge's own MCPStdioClient); capture wiring is tested in-process with
@@ -32,11 +32,11 @@ EXPECTED_TOOLS = {
     "take_screen_snip",
 }
 
-_ENABLED_ENV = {"WISP_CONTEXT_SERVER_ENABLED": "1"}
+_ENABLED_ENV = {"OPENWAND_CONTEXT_SERVER_ENABLED": "1"}
 
 
 def _make_client(name: str = "ctx", cwd: str | None = None) -> MCPStdioClient:
-    """Dogfood harness: Wisp's own MCP client pointed at the context server."""
+    """Dogfood harness: OpenWand's own MCP client pointed at the context server."""
     return MCPStdioClient(
         name, sys.executable, [str(SERVER)], env=_ENABLED_ENV, cwd=cwd, timeout=30
     )
@@ -121,7 +121,7 @@ def test_unknown_method_and_garbage_input():
         proc.stdout.close()
         assert proc.wait(timeout=30) == 0
 
-    assert replies[1]["result"]["serverInfo"]["name"] == "wisp-context-server"
+    assert replies[1]["result"]["serverInfo"]["name"] == "openwand-context-server"
     instructions = replies[1]["result"]["instructions"]
     assert "Proactively use these tools" in instructions
     assert "even when they do not explicitly" in instructions
@@ -140,7 +140,7 @@ def test_disabled_server_refuses_to_serve(tmp_path):
         capture_output=True,
         text=True,
         timeout=60,
-        env={**__import__("os").environ, "WISP_CONTEXT_SERVER_ENABLED": "0"},
+        env={**__import__("os").environ, "OPENWAND_CONTEXT_SERVER_ENABLED": "0"},
     )
     assert result.returncode == 2
     assert result.stdout == ""
@@ -418,7 +418,7 @@ def test_client_pids_climbs_past_launch_trampolines(tmp_path):
 def test_client_config_snippet_is_pasteable():
     """The generated snippet names this interpreter and an existing script."""
     data = json.loads(client_config_snippet())
-    entry = data["mcpServers"]["wisp-context"]
+    entry = data["mcpServers"]["openwand-context"]
     assert entry["command"] == sys.executable
     script = Path(entry["args"][0])
     assert script.is_absolute()
@@ -526,7 +526,7 @@ def test_allow_synthetic_copy_false_skips_clipboard_fallback(monkeypatch):
 
 
 def test_allow_synthetic_copy_default_still_uses_fallback(monkeypatch):
-    """Wisp's own behavior is unchanged: the fallback still runs by default."""
+    """OpenWand's own behavior is unchanged: the fallback still runs by default."""
     from core import capture
 
     monkeypatch.setattr(capture, "_get_selected_text_uia", lambda: None)

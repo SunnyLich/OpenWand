@@ -101,7 +101,7 @@ def _read_anydoc_text(path: str) -> str | None:
     except anydoc.ConvertError:
         return None
     except Exception:
-        # A newly introduced native parser must not make formats that Wisp
+        # A newly introduced native parser must not make formats that OpenWand
         # already supported less reliable during the staged rollout.
         return None
 

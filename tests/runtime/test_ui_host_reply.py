@@ -1,5 +1,102 @@
 from __future__ import annotations
 
+import logging
+
+
+def test_overlay_amplitude_is_clamped_and_emitted() -> None:
+    from runtime.workers.ui_host import QtProtocolHost
+
+    values: list[float] = []
+
+    class Emitter:
+        def emit(self, value: float) -> None:
+            values.append(value)
+
+    class Signals:
+        set_mouth_amp = Emitter()
+
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host._overlay_signals = Signals()
+    host._ensure_overlay = lambda: object()  # type: ignore[method-assign]
+
+    assert host._overlay_amplitude(4.2) == {"amplitude": 1.0}
+    assert host._overlay_amplitude(-0.5) == {"amplitude": 0.0}
+    assert values == [1.0, 0.0]
+
+
+def test_rewrite_anchor_refreshes_emit_one_summary_on_remove(caplog) -> None:
+    from runtime.workers.ui_host import QtProtocolHost
+
+    class Popup:
+        state = "proposal"
+        removed = False
+        visible = True
+        left = 400
+        top = 300
+
+        def update_selection_anchor(self, selection_rect, *, visible=True) -> None:
+            self.visible = bool(visible)
+            if selection_rect:
+                self.left = int(selection_rect["left"]) + int(selection_rect["width"]) + 10
+                self.top = int(selection_rect["top"]) - 12
+
+        def isVisible(self) -> bool:
+            return self.visible
+
+        def x(self) -> int:
+            return self.left
+
+        def y(self) -> int:
+            return self.top
+
+        @staticmethod
+        def width() -> int:
+            return 390
+
+        @staticmethod
+        def height() -> int:
+            return 240
+
+        def remove(self) -> None:
+            self.removed = True
+
+    host = object.__new__(QtProtocolHost)
+    popup = Popup()
+    initial = {"left": 100, "top": 120, "width": 40, "height": 20}
+    moved = {"left": 100, "top": 180, "width": 40, "height": 20}
+    host._rewrite_annotations = {"anchor-1": popup}
+    host._rewrite_anchor_stats = {
+        "anchor-1": {
+            "started_at": 1.0,
+            "refreshes": 0,
+            "visible_samples": 0,
+            "hidden_samples": 0,
+            "position_changes": 0,
+            "visibility_changes": 0,
+            "source_counts": {},
+            "last_rect": host._rewrite_anchor_rect_key(initial),
+            "last_visible": True,
+        }
+    }
+
+    with caplog.at_level(logging.INFO, logger="openwand.ui_host"):
+        host._rewrite_annotation_anchor("anchor-1", initial, True, "uia")
+        host._rewrite_annotation_anchor("anchor-1", moved, True, "uia")
+        host._rewrite_annotation_anchor("anchor-1", None, False, "uia")
+        assert not [record for record in caplog.records if "rewrite anchor" in record.message]
+        removed = host._rewrite_annotation_remove("anchor-1")
+
+    summaries = [record.message for record in caplog.records if "rewrite anchor summary" in record.message]
+    assert removed["removed"] is True
+    assert popup.removed is True
+    assert len(summaries) == 1
+    assert "refreshes=3" in summaries[0]
+    assert "visible=2 hidden=1" in summaries[0]
+    assert "position_changes=1" in summaries[0]
+    assert "visibility_changes=1" in summaries[0]
+    assert "sources=uia:3" in summaries[0]
+    assert "final_state=proposal" in summaries[0]
+
 
 def test_wayland_desktop_uses_xwayland_for_positioned_overlay() -> None:
     """The floating overlay needs global coordinates, unlike native capture."""
@@ -15,7 +112,7 @@ def test_ui_platform_respects_native_wayland_opt_in() -> None:
     """Users can retain the Qt Wayland backend explicitly."""
     from runtime.workers import ui_host
 
-    environment = {"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0", "WISP_UI_PLATFORM": "wayland"}
+    environment = {"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0", "OPENWAND_UI_PLATFORM": "wayland"}
 
     assert ui_host._configure_linux_ui_platform(environment, platform="linux") == ""
     assert "QT_QPA_PLATFORM" not in environment
@@ -41,6 +138,11 @@ def test_health_text_translates_nested_messages_and_values(monkeypatch) -> None:
         "LLM route uses {provider} but you are not logged in.": "LLM \u8def\u7531\u4f7f\u7528 {provider}\uff0c\u4f46\u4f60\u5c1a\u672a\u767b\u5165\u3002",
         "Microphone permission: {value}.": "\u9ea5\u514b\u98a8\u6b0a\u9650\uff1a{value}\u3002",
         "unavailable": "\u7121\u6cd5\u4f7f\u7528",
+        "Speech to text": "\u8a9e\u97f3\u8f49\u6587\u5b57",
+        "STT model configured: {model}, but STT verification failed: {error}": "\u5df2\u8a2d\u5b9a STT \u6a21\u578b\uff1a{model}\uff0c\u4f46 STT \u9a57\u8b49\u5931\u6557\uff1a{error}",
+        "STT packages and runtime are verified for {model}; the model loads on first use.": "\u5df2\u9a57\u8b49 {model} \u7684 STT \u5957\u4ef6\u8207\u57f7\u884c\u74b0\u5883\uff1b\u6a21\u578b\u6703\u5728\u9996\u6b21\u4f7f\u7528\u6642\u8f09\u5165\u3002",
+        "Windows CUDA runtime is incomplete or unloadable: {files}": "Windows CUDA \u57f7\u884c\u74b0\u5883\u4e0d\u5b8c\u6574\u6216\u7121\u6cd5\u8f09\u5165\uff1a{files}",
+        "Health issue: {name}: {message}": "\u5065\u5eb7\u72c0\u614b\u554f\u984c\uff1a{name}\uff1a{message}",
     }
     monkeypatch.setattr(ui_host, "t", lambda text: translations.get(text, text))
 
@@ -50,6 +152,22 @@ def test_health_text_translates_nested_messages_and_values(monkeypatch) -> None:
     assert (
         ui_host._translate_health_text("Microphone permission: unavailable.")
         == "\u9ea5\u514b\u98a8\u6b0a\u9650\uff1a\u7121\u6cd5\u4f7f\u7528\u3002"
+    )
+    failure = (
+        "STT model configured: base, but STT verification failed: "
+        "Windows CUDA runtime is incomplete or unloadable: cublas64_12.dll"
+    )
+    assert ui_host._translate_health_text(failure) == (
+        "\u5df2\u8a2d\u5b9a STT \u6a21\u578b\uff1abase\uff0c\u4f46 STT \u9a57\u8b49\u5931\u6557\uff1a"
+        "Windows CUDA \u57f7\u884c\u74b0\u5883\u4e0d\u5b8c\u6574\u6216\u7121\u6cd5\u8f09\u5165\uff1acublas64_12.dll"
+    )
+    assert ui_host._translate_health_text(
+        "STT packages and runtime are verified for base; the model loads on first use."
+    ) == "\u5df2\u9a57\u8b49 base \u7684 STT \u5957\u4ef6\u8207\u57f7\u884c\u74b0\u5883\uff1b\u6a21\u578b\u6703\u5728\u9996\u6b21\u4f7f\u7528\u6642\u8f09\u5165\u3002"
+    assert ui_host._translate_notice_text(f"Health issue: Speech to text: {failure}") == (
+        "\u5065\u5eb7\u72c0\u614b\u554f\u984c\uff1a\u8a9e\u97f3\u8f49\u6587\u5b57\uff1a"
+        "\u5df2\u8a2d\u5b9a STT \u6a21\u578b\uff1abase\uff0c\u4f46 STT \u9a57\u8b49\u5931\u6557\uff1a"
+        "Windows CUDA \u57f7\u884c\u74b0\u5883\u4e0d\u5b8c\u6574\u6216\u7121\u6cd5\u8f09\u5165\uff1acublas64_12.dll"
     )
 
 
@@ -318,7 +436,7 @@ def test_transient_local_tts_warmup_notices_do_not_show_in_bubble() -> None:
     host._ensure_bubble = fail_bubble  # type: ignore[attr-defined]
 
     messages = [
-        "Local voice is still warming up. Try again when Wisp says local speech is ready.",
+        "Local voice is still warming up. Try again when OpenWand says local speech is ready.",
         (
             "Local speech warmup failed: tts: error: RuntimeError: Kokoro is still warming up. "
             "Current stage: importing kokoro.KPipeline (17s). Try again when local speech is ready."
@@ -536,7 +654,7 @@ def test_debug_tray_trigger_queues_action_until_after_dispatch(monkeypatch) -> N
         QTimer=SimpleNamespace(singleShot=lambda interval, callback: queued.append((interval, callback)))
     )
     monkeypatch.setitem(sys.modules, "PySide6.QtCore", qtcore)
-    monkeypatch.setenv("WISP_UI_DEBUG_METHODS", "1")
+    monkeypatch.setenv("OPENWAND_UI_DEBUG_METHODS", "1")
     action = SimpleNamespace(text=lambda: "Quit", trigger=lambda: triggered.append("Quit"))
     overlay = SimpleNamespace(_tray_menu=SimpleNamespace(actions=lambda: [action]))
     host = QtProtocolHost.__new__(QtProtocolHost)
@@ -566,6 +684,41 @@ def test_native_workspace_endpoint_accepts_only_authenticated_loopback() -> None
         _validated_endpoint(f"https://example.com/?token={token}")
     with pytest.raises(ValueError, match="loopback"):
         _validated_endpoint("http://127.0.0.1:8765/")
+
+
+def test_model_opened_workspace_window_is_native_reusable_and_nonactivating(tmp_path) -> None:
+    """The real UI host opens and reuses the native viewer without taking focus."""
+    import sys
+
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
+    from addons.virtual_workspace.workspace import WorkspaceController
+    from runtime.workers.ui_host import QtProtocolHost
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    workspace = WorkspaceController()
+    workspace.configure(tmp_path / "workspace-data")
+    workspace.start()
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host._virtual_workspace_window = None
+
+    try:
+        opened = host._show_virtual_workspace(workspace.viewer_url, activate=False)
+        app.processEvents()
+        window = host._virtual_workspace_window
+        assert opened == {"shown": True, "reused": False, "native": True}
+        assert window is not None and window.isVisible()
+        assert window.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+
+        reused = host._show_virtual_workspace(workspace.viewer_url, activate=False)
+        assert reused == {"shown": True, "reused": True, "native": True}
+        assert host._virtual_workspace_window is window
+    finally:
+        if host._virtual_workspace_window is not None:
+            host._virtual_workspace_window.close()
+        workspace.stop()
+        app.processEvents()
 
 
 def test_virtual_workspace_task_start_uses_a_locked_down_scoped_agent_spec(monkeypatch) -> None:  # noqa: ANN001
@@ -836,8 +989,8 @@ def test_chat_add_conversation_persists_image_only_assistant(tmp_path) -> None:
     assert messages[1]["attachments"][0]["path"] == str(image_path)
 
 
-def test_agent_owned_chat_is_mirrored_into_wisp_history_with_live_activity() -> None:
-    """A remote-owned turn must still leave a complete local Wisp transcript."""
+def test_agent_owned_chat_is_mirrored_into_openwand_history_with_live_activity() -> None:
+    """A remote-owned turn must still leave a complete local OpenWand transcript."""
     from runtime.workers.ui_host import QtProtocolHost
 
     host = QtProtocolHost.__new__(QtProtocolHost)
@@ -889,7 +1042,7 @@ def test_macos_snip_app_region_avoids_ui_quartz_by_default(monkeypatch) -> None:
         return original_import(name, *args, **kwargs)
 
     monkeypatch.setattr(ui_host.sys, "platform", "darwin")
-    monkeypatch.delenv("WISP_MACOS_UI_QUARTZ_SNIP_APP_REGION", raising=False)
+    monkeypatch.delenv("OPENWAND_MACOS_UI_QUARTZ_SNIP_APP_REGION", raising=False)
     monkeypatch.setattr(builtins, "__import__", guarded_import)
 
     host = QtProtocolHost.__new__(QtProtocolHost)
@@ -994,8 +1147,8 @@ def test_chat_add_conversation_persists_text_annotations() -> None:
     assert messages[1]["annotations"] == assistant_annotations
 
 
-def test_wisp_owned_harness_reply_clears_provider_continuation() -> None:
-    """Switching continuity to Wisp must not later resume a stale agent session."""
+def test_openwand_owned_harness_reply_clears_provider_continuation() -> None:
+    """Switching continuity to OpenWand must not later resume a stale agent session."""
     from runtime.workers.ui_host import QtProtocolHost
 
     host = QtProtocolHost.__new__(QtProtocolHost)
@@ -1017,7 +1170,7 @@ def test_wisp_owned_harness_reply_clears_provider_continuation() -> None:
             "provider": "codex",
             "session_id": "",
             "cwd": "/repo",
-            "conversation_owner": "wisp",
+            "conversation_owner": "openwand",
             "clear_session": True,
         },
     )
@@ -1214,7 +1367,7 @@ def test_intent_conversation_options_start_new_until_chat_is_active() -> None:
 
 
 def test_intent_conversation_options_are_isolated_by_provider_scope() -> None:
-    """Codex-owned pickers must not offer native Wisp or Claude history."""
+    """Codex-owned pickers must not offer native OpenWand or Claude history."""
     from runtime.workers.ui_host import QtProtocolHost
 
     host = QtProtocolHost.__new__(QtProtocolHost)
@@ -1224,7 +1377,7 @@ def test_intent_conversation_options_are_isolated_by_provider_scope() -> None:
         {
             "messages": [{"role": "user", "content": "native"}],
             "project_id": "general",
-            "conversation_scope": "wisp",
+            "conversation_scope": "openwand",
         },
         {
             "messages": [{"role": "user", "content": "codex"}],
@@ -1245,7 +1398,7 @@ def test_intent_conversation_options_are_isolated_by_provider_scope() -> None:
 
 
 def test_chat_add_conversation_does_not_cross_provider_scope() -> None:
-    """A route switch starts a new record instead of appending to native Wisp."""
+    """A route switch starts a new record instead of appending to native OpenWand."""
     from runtime.workers.ui_host import QtProtocolHost
 
     host = QtProtocolHost.__new__(QtProtocolHost)
@@ -1256,7 +1409,7 @@ def test_chat_add_conversation_does_not_cross_provider_scope() -> None:
         {
             "messages": [{"role": "user", "content": "native"}],
             "project_id": "general",
-            "conversation_scope": "wisp",
+            "conversation_scope": "openwand",
         }
     ]
     host._chat = None

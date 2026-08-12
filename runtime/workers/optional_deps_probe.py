@@ -1,7 +1,7 @@
 """Short-lived optional dependency probes.
 
 Run via ``python -m runtime.workers.optional_deps_probe`` or, in frozen builds,
-``Wisp.exe -m runtime.workers.optional_deps_probe``. Keeping these checks in a
+``OpenWand.exe -m runtime.workers.optional_deps_probe``. Keeping these checks in a
 separate process prevents native libraries from staying loaded in the Settings
 process after install verification.
 """
@@ -22,7 +22,7 @@ def _configure_dependency_path(path: str) -> None:
     optional_dir = str(Path(path).expanduser())
     while optional_dir in sys.path:
         sys.path.remove(optional_dir)
-    _USE_MANAGED_LAYER = os.environ.get("WISP_OPTIONAL_PROBE_SOURCE", "managed") != "environment"
+    _USE_MANAGED_LAYER = os.environ.get("OPENWAND_OPTIONAL_PROBE_SOURCE", "managed") != "environment"
     if _USE_MANAGED_LAYER:
         sys.path.insert(0, optional_dir)
     importlib.invalidate_caches()
@@ -155,7 +155,7 @@ def _stt_runtime_status() -> dict[str, object]:
 
 
 def _elevenlabs_runtime_status() -> dict[str, object]:
-    """Verify the SDK entry point used by Wisp, not merely its package folder."""
+    """Verify the SDK entry point used by OpenWand, not merely its package folder."""
     status: dict[str, object] = {
         "installed": False,
         "valid": False,
@@ -196,7 +196,7 @@ def _stt_model_status(model_name: str, requested_device: str, requested_compute:
     diagnostics: list[str] = []
     try:
         if _find_spec("faster_whisper") is None:
-            status["error"] = "faster_whisper was not found in Wisp's selected dependency layer"
+            status["error"] = "faster_whisper was not found in OpenWand's selected dependency layer"
             status["diagnostics"] = [str(status["error"])]
             return status
         status["installed"] = True

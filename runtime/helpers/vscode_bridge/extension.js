@@ -80,8 +80,8 @@ async function handleApply(payload) {
 }
 
 function activate(context) {
-  const port = Number.parseInt(process.env.WISP_VSCODE_BRIDGE_PORT || "", 10);
-  const token = process.env.WISP_VSCODE_BRIDGE_TOKEN || "";
+  const port = Number.parseInt(process.env.OPENWAND_VSCODE_BRIDGE_PORT || "", 10);
+  const token = process.env.OPENWAND_VSCODE_BRIDGE_TOKEN || "";
   if (!Number.isInteger(port) || port < 1 || port > 65535 || token.length < 16) {
     return;
   }

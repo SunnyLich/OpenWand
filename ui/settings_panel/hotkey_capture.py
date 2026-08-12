@@ -246,11 +246,18 @@ class HotkeyCaptureEdit(QLineEdit):
     """Read-only field that captures a hotkey combo by interaction."""
 
     _IDLE_STYLE = ""
-    _RECORD_STYLE = "background: #1e1e3a; color: #a0a0ff; border: 1px solid #6060cc;"
+    _RECORD_STYLE = "background: #0e1013; color: #d8a145; border: 1px solid #d8a145;"
 
     def __init__(self, parent=None):
         """Initialize the hotkey capture edit instance."""
         super().__init__(parent)
+        from ui.shared.theme import theme_colors
+
+        colors = theme_colors()
+        self._RECORD_STYLE = (
+            f"background: {colors['well']}; color: {colors['accent']}; "
+            f"border: 1px solid {colors['accent']};"
+        )
         self.setReadOnly(True)
         self.setPlaceholderText(t("Click to set..."))
         self.setCursor(Qt.CursorShape.PointingHandCursor)

@@ -29,6 +29,7 @@ from PySide6.QtWidgets import QApplication, QFrame, QLabel, QMenu, QTextBrowser,
 import config
 from ui.chat_rendering import _compact_markdown_tables
 from ui.i18n import t
+from ui.latex_rendering import iter_math_spans, latex_expression_to_plain, render_latex_image
 from ui.shared.theme import show_tooltip_text
 from ui.shared.window_utils import start_wayland_system_move
 from ui.text_annotations import (
@@ -87,6 +88,26 @@ def _color(value: str, fallback: QColor) -> QColor:
             return QColor(fallback)
     qcolor = QColor(raw)
     return qcolor if qcolor.isValid() else QColor(fallback)
+
+
+def _active_bubble_colors() -> tuple[QColor, QColor, QColor, QColor]:
+    """Resolve default bubble colours through the active app theme."""
+    from ui.shared.theme import is_dark_mode, theme_colors
+
+    bubble = _color(config.BUBBLE_COLOR, QColor(28, 28, 36, 220))
+    text = _color(config.BUBBLE_TEXT_COLOR, QColor(230, 230, 230))
+    read = _color(config.BUBBLE_READ_WORD_COLOR, QColor(216, 161, 69))
+    if not is_dark_mode():
+        colors = theme_colors(False)
+        if str(config.BUBBLE_COLOR).strip().lower() in {"#16181bdc", "#1c1c24dc"}:
+            bubble = QColor(colors["surface"])
+            bubble.setAlpha(236)
+        if str(config.BUBBLE_TEXT_COLOR).strip().lower() in {"#e9e6e0", "#e6e6e6"}:
+            text = QColor(colors["text"])
+        if str(config.BUBBLE_READ_WORD_COLOR).strip().lower() in {"#d8a145", "#a78bfa"}:
+            read = QColor(colors["accent"])
+    thought = QColor(theme_colors()["text_dim"])
+    return bubble, text, read, thought
 
 
 def _css_color(color: QColor) -> str:
@@ -254,14 +275,17 @@ class SpeechBubble(QWidget):
         self._space_w = 0
         self._line_h = 0
         self._apply_font()
-        self._bubble_color = _color(config.BUBBLE_COLOR, QColor(28, 28, 36, 220))
-        self._text_color = _color(config.BUBBLE_TEXT_COLOR, QColor(230, 230, 230))
-        self._read_word_color = _color(config.BUBBLE_READ_WORD_COLOR, QColor(77, 163, 255))
-        self._thought_color = QColor(150, 150, 165)
+        (
+            self._bubble_color,
+            self._text_color,
+            self._read_word_color,
+            self._thought_color,
+        ) = _active_bubble_colors()
 
         self._full_text = ""
         self._thought_text = ""
         self._display_segments: list[tuple[str, bool]] = []
+        self._math_renders: dict[str, tuple[str, bool, str]] = {}
         self._lines: list[str] = []
         self._all_line_segments: list[list[tuple[str, bool, int | None, bool, bool]]] = []
         self._line_segments: list[list[tuple[str, bool, int | None, bool, bool]]] = []
@@ -274,6 +298,7 @@ class SpeechBubble(QWidget):
         self._manual_scroll_start: int | None = None
         self._visible_start_line = 0
         self._reply_chunk_count = 0
+        self._listening = False
 
         # Read-position mode (syncs highlighting to audio playback speed)
         self._reveal_mode = False
@@ -290,7 +315,7 @@ class SpeechBubble(QWidget):
         self._pre_audio_timestamps: list[tuple] = []  # batches that arrived before audio start
         self._speed_boosting = False
         self._highlight_generation = 0
-        # Live voice captions (interleaved "You / Wisp" lines, instant reveal)
+        # Live voice captions (interleaved "You / OpenWand" lines, instant reveal)
         self._live_mode = False
         self._live_last_role = ""
         self._live_ready_shown = False
@@ -438,9 +463,12 @@ class SpeechBubble(QWidget):
         self._text_w = self._bubble_w - _PAD * 2 - _CONTROL_GUTTER_W
         self._bubble_h = _PAD * 2 + self._line_h * config.BUBBLE_LINES - _LINE_GAP
         self.setFixedSize(self._bubble_w + _TAIL_W, self._bubble_h)
-        self._bubble_color = _color(config.BUBBLE_COLOR, QColor(28, 28, 36, 220))
-        self._text_color = _color(config.BUBBLE_TEXT_COLOR, QColor(230, 230, 230))
-        self._read_word_color = _color(config.BUBBLE_READ_WORD_COLOR, QColor(77, 163, 255))
+        (
+            self._bubble_color,
+            self._text_color,
+            self._read_word_color,
+            self._thought_color,
+        ) = _active_bubble_colors()
         self._hide_timer.setInterval(self._hide_delay_ms())
         self._apply_reveal_speed()
         if not self._bubble_scroll_enabled():
@@ -664,7 +692,7 @@ class SpeechBubble(QWidget):
     def show_listening(self, text: str | None = None):
         """Show a static status indicator while the app waits for user input."""
         self._reset_user_engagement()
-        message = str(text or "Recording - release to send").strip()
+        message = t(str(text or "Recording - release to send").strip())
         self._clear_image()
         self._restore_base_size()
         self._full_text = ""
@@ -676,6 +704,7 @@ class SpeechBubble(QWidget):
         self._line_segments = [[(message, False, None, False, False)]]
         self._reply_annotations = []
         self._thinking = False
+        self._listening = True
         self._transcript_preview = False
         self._reply_chunk_count = 0
         self._pending_words = []
@@ -713,6 +742,7 @@ class SpeechBubble(QWidget):
         self._line_segments = []
         self._reply_annotations = []
         self._thinking = True
+        self._listening = False
         self._transcript_preview = False
         self._reply_chunk_count = 0
         self._dot_count = 1
@@ -839,6 +869,7 @@ class SpeechBubble(QWidget):
         """Buffer incoming LLM chunk. Starts WPM reveal on first token if not already active."""
         if not isinstance(chunk, str) or not chunk:
             return
+        self._listening = False
         if is_thought and not self._thought_text:
             # Harness progress entries use leading newlines to separate them
             # from earlier activity.  There is nothing to separate on the first
@@ -998,6 +1029,7 @@ class SpeechBubble(QWidget):
             self._sync_text_view()
 
         self._thinking = False
+        self._listening = False
         self._dot_timer.stop()
         self._hide_timer.stop()
         self._auto_hide_pending_ms = None
@@ -1038,6 +1070,7 @@ class SpeechBubble(QWidget):
         self._manual_scroll_start = None
         self._pre_audio_timestamps = []
         self._thinking = False
+        self._listening = False
         self._transcript_preview = False
         self._full_text = ""
         self._thought_text = ""
@@ -1094,7 +1127,7 @@ class SpeechBubble(QWidget):
         if not text:
             return
         if role != self._live_last_role:
-            label = t("You") if role == "user" else "Wisp"
+            label = t("You") if role == "user" else "OpenWand"
             newline = "\n" if self._full_text else ""
             text = f"{newline}{label} ▸ {text}"
             self._live_last_role = role
@@ -1194,6 +1227,7 @@ class SpeechBubble(QWidget):
         self._audio_started = False
         self._speech_tracking_pending = False
         self._thinking = False
+        self._listening = False
         self._transcript_preview = False
         self._manual_scroll_start = None
         self._reply_chunk_count = 0
@@ -1675,10 +1709,31 @@ class SpeechBubble(QWidget):
                     and word_idx >= self._highlight_index_offset
                     and word_idx < highlight_end
                 )
-                color = self._thought_color if is_thought else (self._read_word_color if is_read else self._text_color)
+                color = (
+                    self._thought_color
+                    if is_thought
+                    else self._read_word_color
+                    if self._listening or is_read
+                    else self._text_color
+                )
                 styles = [f"color:{_css_color(color)}"]
                 if bold and not is_thought:
                     styles.append("font-weight:700")
+                math_render = self._math_renders.get(word)
+                if math_render is not None:
+                    expression, display, source_text = math_render
+                    rendered = render_latex_image(
+                        expression,
+                        size=self._math_font_size(display),
+                        color=_css_color(color),
+                        inline=not display,
+                    )
+                    if rendered is not None:
+                        parts.append(rendered.image_html(max_width=self._text_w))
+                        doc_offset += 1
+                        if not is_thought:
+                            reply_offset += len(source_text)
+                        continue
                 if is_thought:
                     parts.append(self._styled_text_span(word, styles))
                     doc_offset += len(word)
@@ -1689,7 +1744,12 @@ class SpeechBubble(QWidget):
                     parts.append(self._styled_text_span(word, styles, start=start, end=end))
                     reply_offset = end
                     doc_offset += len(word)
-            html_lines.append("".join(parts))
+            line_html = "".join(parts)
+            if len(line) == 1:
+                only_math = self._math_renders.get(line[0][0])
+                if only_math is not None and only_math[1]:
+                    line_html = f'<div align="center">{line_html}</div>'
+            html_lines.append(line_html)
             if line_idx < len(lines) - 1:
                 doc_offset += 1
         self._text_view_tooltips = tooltip_annotations
@@ -1937,6 +1997,25 @@ class SpeechBubble(QWidget):
             self._advance_highlight()
         # Timer keeps running until finish() is called (which sets _finishing)
 
+    def _math_font_size(self, display: bool) -> float:
+        """Return an SVG math size matched to the configured bubble font."""
+        scale = 1.45 if display else 1.30
+        return max(12.0, self._font.pointSizeF() * scale)
+
+    def _math_display_size(self, token: str) -> tuple[int, int]:
+        """Return a math image's width and height after bubble-width scaling."""
+        expression, display, _source_text = self._math_renders[token]
+        rendered = render_latex_image(
+            expression,
+            size=self._math_font_size(display),
+            color=_css_color(self._text_color),
+            inline=not display,
+        )
+        if rendered is None:
+            return self._fm.horizontalAdvance(latex_expression_to_plain(expression)), self._fm.height()
+        scale = min(1.0, self._text_w / max(1.0, rendered.width))
+        return max(1, round(rendered.width * scale)), max(1, round(rendered.height * scale))
+
     def _rewrap(self):
         """Word-wrap _full_text and update the visible window."""
         # Expand each whitespace word into breakable units. CJK text has no
@@ -1944,6 +2023,7 @@ class SpeechBubble(QWidget):
         # letting the wrap break mid-"word". space_before marks the first unit of
         # a source word so spacing and the read-highlight index stay correct.
         words: list[tuple[str, bool, int | None, bool, bool]] = []
+        self._math_renders = {}
         reply_idx = 0
         display_segments = list(self._display_segments)
         if not display_segments:
@@ -1966,20 +2046,44 @@ class SpeechBubble(QWidget):
                     segment_words.pop(0)
             if not segment_words:
                 continue
-            for word, bold in segment_words:
+            for word, bold, source_space_before in segment_words:
                 if word == "\n":
                     words.append((word, bold, None, is_thought, False))
                     continue
+                if word in self._math_renders:
+                    words.append((word, bold, None if is_thought else reply_idx, is_thought, source_space_before))
+                    if not is_thought:
+                        reply_idx += 1
+                    continue
                 if is_thought:
                     for u_i, unit in enumerate(self._wrap_units(word)):
-                        words.append((unit, bold, None, True, u_i == 0))
+                        words.append((unit, bold, None, True, source_space_before and u_i == 0))
                     continue
                 reveal_units = self._reveal_units(word) or [word]
                 for reveal_i, reveal_unit in enumerate(reveal_units):
                     for u_i, unit in enumerate(self._wrap_units(reveal_unit)):
-                        words.append((unit, bold, reply_idx, False, reveal_i == 0 and u_i == 0))
+                        words.append(
+                            (
+                                unit,
+                                bold,
+                                reply_idx,
+                                False,
+                                source_space_before and reveal_i == 0 and u_i == 0,
+                            )
+                        )
                     reply_idx += 1
             previous_kind = is_thought
+
+        base_line_h = self._fm.height() + _LINE_GAP
+        math_heights = [self._math_display_size(word)[1] for word, _bold, _idx, _thought, _space in words
+                        if word in self._math_renders]
+        desired_line_h = max([base_line_h, *(height + _LINE_GAP for height in math_heights)])
+        if desired_line_h != self._line_h:
+            self._line_h = desired_line_h
+            visible_lines = self._visible_line_count()
+            self._bubble_h = self._bubble_body_h_for_lines(visible_lines) + self._notice_action_extra_h()
+            self.setFixedSize(self._bubble_w + _TAIL_W, self._bubble_h)
+            self._sync_text_view_geometry()
         lines: list[list[tuple[str, bool, int | None, bool, bool]]] = []
         current: list[tuple[str, bool, int | None, bool, bool]] = []
         current_w = 0
@@ -1992,7 +2096,7 @@ class SpeechBubble(QWidget):
                 prev_is_thought = is_thought
                 continue
             fm = self._bold_fm if bold else self._fm
-            word_w = fm.horizontalAdvance(word)
+            word_w = self._math_display_size(word)[0] if word in self._math_renders else fm.horizontalAdvance(word)
             # Keep thought/tool activity in arrival order, separated from reply
             # blocks on either side instead of hoisting all gray text to the top.
             force_break = (
@@ -2001,6 +2105,13 @@ class SpeechBubble(QWidget):
                 and prev_is_thought != is_thought
             )
             extra_space = self._space_w if (current and space_before) else 0
+            display_math = bool(word in self._math_renders and self._math_renders[word][1])
+            if display_math and current:
+                lines.append(current)
+                current = []
+                current_w = 0
+                extra_space = 0
+                force_break = False
             if force_break or (current and current_w + extra_space + word_w > self._text_w):
                 lines.append(current)
                 current = [(word, bold, reply_idx, is_thought, space_before)]
@@ -2008,6 +2119,10 @@ class SpeechBubble(QWidget):
             else:
                 current.append((word, bold, reply_idx, is_thought, space_before))
                 current_w += extra_space + word_w
+            if display_math:
+                lines.append(current)
+                current = []
+                current_w = 0
             prev_is_thought = is_thought
         if current:
             lines.append(current)
@@ -2206,56 +2321,69 @@ class SpeechBubble(QWidget):
             return [text]
         return [text[i:i + 28] for i in range(0, len(text), 28)]
 
-    @staticmethod
-    def _join_units(line) -> str:
+    def _join_units(self, line) -> str:
         """Render a wrapped line back to text, inserting a space only where a
         source-word boundary was (never between CJK characters)."""
         out = ""
         for i, (word, _bold, _idx, _is_thought, space_before) in enumerate(line):
             if i and space_before:
                 out += " "
-            out += word
+            math_render = self._math_renders.get(word)
+            out += latex_expression_to_plain(math_render[0]) if math_render else word
         return out
 
-    @staticmethod
-    def _markdown_words(text: str) -> list[tuple[str, bool]]:
-        """Handle markdown words for speech bubble."""
+    def _markdown_words(self, text: str) -> list[tuple[str, bool, bool]]:
+        """Tokenize bubble Markdown while preserving typeset math objects."""
         text = _compact_markdown_tables(text)
-        words: list[tuple[str, bool]] = []
+        math_by_start = {span.start: span for span in iter_math_spans(text)}
+        words: list[tuple[str, bool, bool]] = []
         bold = False
         buf = ""
+        pending_space = False
+        buf_space_before = False
 
         def flush_buffer() -> None:
-            nonlocal buf
-            word = ""
-            for ch in buf.replace("\r\n", "\n").replace("\r", "\n"):
-                if ch == "\n":
-                    if word:
-                        words.append((word, bold))
-                        word = ""
-                    words.append(("\n", bold))
-                elif ch.isspace():
-                    if word:
-                        words.append((word, bold))
-                        word = ""
-                else:
-                    word += ch
-            if word:
-                words.append((word, bold))
+            nonlocal buf, buf_space_before
+            if buf:
+                words.append((buf, bold, buf_space_before))
             buf = ""
+            buf_space_before = False
 
         i = 0
         while i < len(text):
             if text.startswith("**", i) or text.startswith("__", i):
-                if buf:
-                    flush_buffer()
+                flush_buffer()
                 bold = not bold
                 i += 2
                 continue
-            buf += text[i]
+            math_span = math_by_start.get(i)
+            if math_span is not None:
+                flush_buffer()
+                token_index = len(self._math_renders)
+                token = chr(0xE000 + token_index) if token_index < 0x1900 else "￼"
+                source_text = text[math_span.start:math_span.end]
+                self._math_renders[token] = (math_span.expression, math_span.display, source_text)
+                words.append((token, bold, pending_space))
+                pending_space = False
+                i = math_span.end
+                continue
+            ch = text[i]
+            if ch in "\r\n":
+                flush_buffer()
+                if ch == "\r" and i + 1 < len(text) and text[i + 1] == "\n":
+                    i += 1
+                words.append(("\n", bold, False))
+                pending_space = False
+            elif ch.isspace():
+                flush_buffer()
+                pending_space = True
+            else:
+                if not buf:
+                    buf_space_before = pending_space
+                    pending_space = False
+                buf += ch
             i += 1
-        if buf:
-            flush_buffer()
+        flush_buffer()
         return words
 
     # ------------------------------------------------------------------

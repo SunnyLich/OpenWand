@@ -1,0 +1,3870 @@
+"""
+openwand_brain.handlers — methods that execute INSIDE the brain worker.
+
+Each entry in ``HANDLERS`` maps a protocol ``method`` to a callable. Methods in
+``STREAMING`` receive a ``StreamContext`` as their first positional argument and
+may push ``reply.chunk``-style events (tagged with the request id) before they
+return their final result; everything else is a plain unary call whose return
+value becomes the response ``result``.
+
+Heavy / OS-agnostic brain modules (``core.query_pipeline``,
+``core.llm_clients.client``, faster-whisper, ...) are imported LAZILY inside the
+handlers, never at module import, so the brain worker boots and can answer ``ping`` on
+any platform with no API keys or models present. That is what lets this file be
+tested from Windows/CI without the LLM stack.
+"""
+from __future__ import annotations
+
+import ast
+import base64
+import importlib
+import json
+import os
+import threading
+import time
+import uuid
+import wave
+from collections.abc import Callable, Iterator, Sequence
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+
+# Keep optional-dependency chatter off the protocol channel's stderr mirror.
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+
+HANDLERS: dict[str, Callable[..., Any]] = {}
+STREAMING: set[str] = set()
+_STT_MODEL = None
+_AGENT_APPROVALS: dict[str, dict[str, Any]] = {}
+_AGENT_APPROVALS_LOCK = threading.Lock()
+_AGENT_RUN_CONTROLS: dict[Any, Any] = {}
+_AGENT_RUN_CONTROLS_LOCK = threading.Lock()
+_LIVE_FILE_APPROVALS: dict[str, dict[str, Any]] = {}
+_LIVE_FILE_APPROVALS_LOCK = threading.Lock()
+_PRIVACY_APPROVALS: dict[str, dict[str, Any]] = {}
+_PRIVACY_APPROVALS_LOCK = threading.Lock()
+_LIVE_FILE_TOOL_NAMES = {"list_files", "read_file", "create_file", "edit_file", "write_file"}
+_ADDON_MANAGER_LOCK = threading.Lock()
+_ADDON_BOOTSTRAP_STATE_LOCK = threading.Lock()
+_ADDON_BOOTSTRAP_READY = threading.Event()
+_ADDON_BOOTSTRAP_STARTED = False
+_ADDON_BOOTSTRAP_ERROR = ""
+_ADDON_BOOTSTRAP_EVENT_PUBLISHED = False
+_RUNTIME_EVENT_EMITTER: Callable[[str, Any], None] | None = None
+
+
+class StreamContext:
+    """Passed to streaming handlers; ``emit`` tags events with the request id so
+    the host can route partial output back to the originating call."""
+
+    __slots__ = ("_emit", "req_id", "cancelled")
+
+    def __init__(self, emit: Callable[[str, Any, Any], None], req_id: Any) -> None:
+        """Initialize the stream context instance."""
+        self._emit = emit          # (event_name, data, req_id) -> None
+        self.req_id = req_id
+        self.cancelled = False
+
+    def emit(self, event: str, data: Any = None) -> None:
+        """Emit a stream event tagged with this context's request id."""
+        self._emit(event, data, self.req_id)
+
+
+def handler(name: str, *, streaming: bool = False) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Handle handler for runtime brain openwand brain handlers."""
+    def deco(fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Handle deco for runtime brain openwand brain handlers."""
+        HANDLERS[name] = fn
+        if streaming:
+            STREAMING.add(name)
+        return fn
+    return deco
+
+
+def _log(msg: str) -> None:
+    """Print a brain-worker log line to stderr."""
+    print(f"[brain] {msg}", flush=True)  # -> stderr (host redirects fd 1 to fd 2)
+
+
+def set_runtime_event_emitter(emitter: Callable[[str, Any], None] | None) -> None:
+    """Install the host's thread-safe unscoped event publisher."""
+    global _RUNTIME_EVENT_EMITTER
+    _RUNTIME_EVENT_EMITTER = emitter
+    if emitter is not None:
+        _publish_addon_bootstrap_if_ready()
+
+
+def _emit_runtime_event(name: str, data: Any) -> None:
+    emitter = _RUNTIME_EVENT_EMITTER
+    if emitter is None:
+        return
+    try:
+        emitter(name, data)
+    except Exception as exc:  # noqa: BLE001 - state mutation already succeeded
+        _log(f"could not emit {name}: {type(exc).__name__}: {exc}")
+
+
+def _reload_config_for_live_file_tools(
+    *,
+    use_tools: bool,
+    allowed_tools: list[str] | None,
+    file_access_mode: str,
+) -> None:
+    """Reload settings before live file tools read TOOL_FILE_ROOTS."""
+    if not use_tools or not file_access_mode:
+        return
+    if not (set(allowed_tools or []) & _LIVE_FILE_TOOL_NAMES):
+        return
+    try:
+        import config
+
+        config.reload()
+    except Exception as exc:  # noqa: BLE001 - stale config should not kill the query
+        _log(f"config reload before local file tools failed: {type(exc).__name__}: {exc}")
+
+
+def _runtime_output_dir() -> Path:
+    """Directory for large brain-worker artifacts returned by path over IPC."""
+    run_log_dir = os.getenv("OPENWAND_RUN_LOG_DIR")
+    if run_log_dir:
+        out = Path(run_log_dir)
+    else:
+        import tempfile
+        out = Path(tempfile.gettempdir()) / "openwand-brain"
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def _record_file_context(
+    events: list[dict[str, Any]],
+    activity_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> Callable[[dict], None]:
+    """Store completed file metadata while forwarding live activity."""
+    def record(event: dict) -> None:
+        """Record one local-file tool event."""
+        if not isinstance(event, dict):
+            return
+        phase = str(event.get("phase") or "completed").strip().lower()
+        item = {
+            "tool": str(event.get("tool") or ""),
+            "path": str(event.get("path") or ""),
+            "relative_path": str(event.get("relative_path") or ""),
+            "root": str(event.get("root") or ""),
+            "phase": phase,
+        }
+        if not item["tool"] or not item["path"]:
+            return
+        if phase != "started":
+            stored = {
+                **item,
+                "ok": bool(event.get("ok")),
+                "message": str(event.get("message") or ""),
+            }
+            stored.pop("phase", None)
+            if stored not in events:
+                events.append(stored)
+        del events[:-20]
+        if activity_callback is not None:
+            activity = dict(item)
+            if phase != "started":
+                activity["ok"] = bool(event.get("ok"))
+                activity["message"] = str(event.get("message") or "")
+            try:
+                activity_callback(activity)
+            except Exception:
+                pass
+
+    return record
+
+
+# ---------------------------------------------------------------------------
+# Offline / deterministic seams (tests + dev smoke; OFF in production).
+#
+# These are guarded by environment variables that are unset in the shipped app,
+# so the real LLM / TTS paths run normally on the Mac. When set, the brain
+# produces deterministic output with no network or models, which is what lets
+# the full handler set -- including ``brain.query`` and ``brain.agent.run`` --
+# be exercised end-to-end from Windows/CI. This mirrors the existing
+# ``OPENWAND_MACOS_*`` env-flag style used elsewhere in the codebase.
+# ---------------------------------------------------------------------------
+
+def _offline_brain() -> bool:
+    """True when the brain should answer deterministically without network/models.
+
+    Driven by ``OPENWAND_BRAIN_FAKE_LLM`` (any non-empty value). Used by the query,
+    tts, and agent handlers so an off-Mac integration run never touches a real
+    provider, model, or API key.
+    """
+    return bool(os.getenv("OPENWAND_BRAIN_FAKE_LLM"))
+
+
+def _write_silent_wav(path: Path, *, sample_rate: int = 22_050, milliseconds: int = 120) -> int:
+    """Write a mono int16 silent WAV and return the byte count of its frames."""
+    frames = max(1, int(sample_rate * milliseconds / 1000))
+    silence = b"\x00\x00" * frames
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(silence)
+    return len(silence)
+
+
+def _agent_test_model_callback() -> Callable[[str], str] | None:
+    """Return a model callback that drives the agent loop without a real LLM.
+
+    Resolution order:
+      1. ``OPENWAND_BRAIN_AGENT_TEST_SCRIPT`` -> path to a JSON array of agent
+         response strings (or objects). Each model turn pops the next entry; once
+         exhausted the agent is told to finish. This lets a test script multi-turn
+         tool-call behavior deterministically.
+      2. ``OPENWAND_BRAIN_FAKE_LLM`` -> single-turn callback that immediately returns a
+         valid ``final`` agent response, so the loop completes in one turn offline.
+      3. Otherwise ``None`` -> the runner calls the configured provider (production).
+    """
+    script_path = os.getenv("OPENWAND_BRAIN_AGENT_TEST_SCRIPT")
+    if script_path:
+        raw = json.loads(Path(script_path).read_text(encoding="utf-8"))
+        responses = [r if isinstance(r, str) else json.dumps(r) for r in raw]
+        index = {"i": 0}
+        lock = threading.Lock()
+        done = json.dumps({"thought": "script exhausted", "final": "Done.", "tool_calls": []})
+
+        def scripted(_prompt: str) -> str:
+            """Handle scripted for local."""
+            with lock:
+                i = index["i"]
+                index["i"] = i + 1
+            return responses[i] if i < len(responses) else done
+
+        return scripted
+
+    if _offline_brain():
+        canned = json.dumps(
+            {"thought": "fake offline run", "final": "Fake agent run complete.", "tool_calls": []}
+        )
+
+        def fake(_prompt: str) -> str:
+            """Handle fake for local."""
+            return canned
+
+        return fake
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Diagnostics (no heavy imports -- always available)
+# ---------------------------------------------------------------------------
+
+@handler("ping")
+def ping(value: Any = None) -> dict[str, Any]:
+    """Liveness / round-trip check. Echoes *value* and reports the brain worker pid."""
+    return {"pong": True, "value": value, "pid": os.getpid()}
+
+
+@handler("brain.config.reload")
+def brain_config_reload() -> dict[str, Any]:
+    """Reload .env-backed Python config after the native Settings panel saves."""
+    import config
+
+    config.reload()
+    # Drop cached TTS connections so brain.tts.test reconnects under the new
+    # provider/voice/key instead of reusing a socket from the old settings.
+    try:
+        importlib.import_module("core.tts").reset_connections()
+    except Exception:  # noqa: BLE001 — best effort; never block a config reload
+        pass
+    return {
+        "ok": True,
+        "llm_provider": getattr(config, "LLM_PROVIDER", ""),
+        "llm_model": getattr(config, "LLM_MODEL", ""),
+        "tts_provider": getattr(config, "TTS_PROVIDER", ""),
+    }
+
+
+@handler("brain.privacy.prewarm")
+def brain_privacy_prewarm() -> dict[str, Any]:
+    """Warm Advanced Privacy in the brain process without blocking startup."""
+    import config
+
+    if str(getattr(config, "PRIVACY_MODE", "builtin") or "builtin").strip().lower() != "advanced":
+        return {"ready": False, "skipped": True, "reason": "disabled"}
+    try:
+        from core import privacy_model
+
+        status = privacy_model.model_status()
+        if not status.get("valid"):
+            return {"ready": False, "skipped": True, "reason": "not_installed"}
+        _log("Advanced privacy warmup starting.")
+        result = privacy_model.prewarm()
+        _log(
+            "Advanced privacy warmup ready "
+            f"in {float(result.get('elapsed_seconds') or 0.0):.2f}s"
+            f"{' (cached)' if result.get('cached') else ''}."
+        )
+        return dict(result)
+    except Exception as exc:  # noqa: BLE001 - warmup is best effort; requests remain fail-closed.
+        message = f"{type(exc).__name__}: {exc}"
+        _log(f"Advanced privacy warmup failed: {message}")
+        return {"ready": False, "skipped": False, "error": message}
+
+
+@handler("brain.harness.prewarm")
+def brain_harness_prewarm() -> dict[str, Any]:
+    """Start the selected reusable local harness before the first prompt."""
+    import config
+
+    provider = str(getattr(config, "CHAT_EXECUTION_MODE", "openwand") or "openwand").strip().lower()
+    if provider != "codex":
+        return {"ready": False, "skipped": True, "provider": provider}
+    try:
+        from core.harness_clients.codex import prewarm_codex
+
+        _log("Codex app-server prewarm starting.")
+        result = prewarm_codex()
+        _log(f"Codex app-server prewarm ready backend={result.get('backend') or 'unknown'}.")
+        return {"provider": "codex", **result}
+    except Exception as exc:  # noqa: BLE001 - the first real turn can retry startup.
+        message = f"{type(exc).__name__}: {exc}"
+        _log(f"Codex app-server prewarm failed: {message}")
+        return {"ready": False, "skipped": False, "provider": "codex", "error": message}
+
+
+_SECRET_LABELS = {
+    "GROQ_API_KEY": "Groq",
+    "OPENAI_API_KEY": "OpenAI",
+    "ANTHROPIC_API_KEY": "Anthropic",
+    "GOOGLE_API_KEY": "Google",
+    "CARTESIA_API_KEY": "Cartesia",
+    "ELEVENLABS_API_KEY": "ElevenLabs",
+    "CUSTOM_API_KEY": "Custom provider",
+    "DEEPSEEK_API_KEY": "DeepSeek",
+    "OPENROUTER_API_KEY": "OpenRouter",
+    "MISTRAL_API_KEY": "Mistral",
+    "XAI_API_KEY": "xAI",
+    "TOGETHER_API_KEY": "Together",
+    "CEREBRAS_API_KEY": "Cerebras",
+}
+
+
+def _secret_name(raw: str) -> str:
+    """Handle secret name for runtime brain openwand brain handlers."""
+    from core import secret_store
+
+    name = (raw or "").strip().upper()
+    if name not in secret_store.API_KEY_NAMES:
+        raise ValueError(f"Unknown API key name: {raw}")
+    return name
+
+
+@handler("brain.secrets.status")
+def brain_secrets_status() -> dict[str, Any]:
+    """Return API-key presence/source metadata without exposing secret values."""
+    from core import secret_store
+
+    secrets = []
+    for name in secret_store.API_KEY_NAMES:
+        available = bool(secret_store.get_secret(name))
+        secrets.append(
+            {
+                "name": name,
+                "label": _SECRET_LABELS.get(name, name),
+                "configured": available or secret_store.configured_marker(name),
+                "available": available,
+                "source": secret_store.secret_source(name),
+            }
+        )
+    return {"secrets": secrets}
+
+
+@handler("brain.secrets.set")
+def brain_secrets_set(name: str = "", value: str = "") -> dict[str, Any]:
+    """Save one API key through the shared OS keychain secret store."""
+    from core import secret_store
+
+    key_name = _secret_name(name)
+    cleaned = (value or "").strip()
+    if not cleaned:
+        raise ValueError("value is required")
+
+    secret_store.set_secret(key_name, cleaned)
+    return {
+        "ok": True,
+        "name": key_name,
+        "label": _SECRET_LABELS.get(key_name, key_name),
+        "source": secret_store.secret_source(key_name),
+    }
+
+
+@handler("brain.secrets.clear")
+def brain_secrets_clear(name: str = "") -> dict[str, Any]:
+    """Clear one API key through the shared OS keychain secret store."""
+    from core import secret_store
+
+    key_name = _secret_name(name)
+    secret_store.delete_secret(key_name)
+    return {
+        "ok": True,
+        "name": key_name,
+        "label": _SECRET_LABELS.get(key_name, key_name),
+        "source": secret_store.secret_source(key_name),
+    }
+
+
+@handler("brain.auth.status")
+def brain_auth_status() -> dict[str, Any]:
+    """Return OAuth/token-auth provider status without exposing credentials."""
+    from core.auth import chatgpt as chatgpt_auth
+    from core.auth import copilot_auth
+    from core.auth import github as github_auth
+
+    def oauth_status(name: str, label: str, loader: Callable[[], Any]) -> dict[str, Any]:
+        try:
+            tokens = loader()
+        except Exception as exc:  # noqa: BLE001 - status must remain available
+            return {
+                "name": name,
+                "label": label,
+                "configured": False,
+                "message": f"Status unavailable: {type(exc).__name__}: {exc}",
+            }
+        if not tokens:
+            return {"name": name, "label": label, "configured": False, "message": "Not logged in"}
+        if not isinstance(tokens, dict) or not str(
+            tokens.get("access") or tokens.get("access_token") or ""
+        ).strip():
+            return {
+                "name": name,
+                "label": label,
+                "configured": False,
+                "message": "Stored token is invalid. Sign in again.",
+            }
+        if name == "chatgpt" and tokens.get("expires") is not None:
+            try:
+                expired = float(tokens["expires"]) <= time.time() * 1000
+            except (TypeError, ValueError):
+                expired = True
+            if expired:
+                return {
+                    "name": name,
+                    "label": label,
+                    "configured": False,
+                    "message": "Stored token has expired. Sign in again.",
+                }
+        account = ""
+        if name == "chatgpt":
+            account = str(tokens.get("account_id") or "")
+        else:
+            user = tokens.get("user")
+            if isinstance(user, dict):
+                account = str(user.get("login") or "")
+        return {
+            "name": name,
+            "label": label,
+            "configured": True,
+            "message": "Logged in" + (f" as {account}" if account else ""),
+        }
+
+    chatgpt_status = oauth_status("chatgpt", "ChatGPT", chatgpt_auth.get_tokens)
+    github_status = oauth_status("github", "GitHub", github_auth.get_tokens)
+
+    try:
+        copilot_configured, copilot_message = copilot_auth.token_status()
+    except Exception as exc:  # noqa: BLE001 - shown as status, never fatal
+        copilot_configured = False
+        copilot_message = f"Keychain error: {exc}"
+
+    return {
+        "providers": [
+            chatgpt_status,
+            github_status,
+            {
+                "name": "copilot",
+                "label": "GitHub Copilot",
+                "configured": bool(copilot_configured),
+                "message": copilot_message,
+            },
+        ]
+    }
+
+
+@handler("brain.auth.chatgpt.start_browser_login")
+def brain_auth_chatgpt_start_browser_login() -> dict[str, Any]:
+    """Start ChatGPT browser OAuth through the shared auth module."""
+    from core.auth import chatgpt as chatgpt_auth
+
+    def on_success(_tokens: dict) -> None:
+        """Handle success events."""
+        _log("chatgpt login complete")
+
+    def on_error(message: str) -> None:
+        """Handle error events."""
+        _log(f"chatgpt login error: {message}")
+
+    chatgpt_auth.start_browser_login(on_success=on_success, on_error=on_error)
+    return {"ok": True, "message": "Opening browser for ChatGPT sign-in"}
+
+
+@handler("brain.auth.chatgpt.browser_login", streaming=True)
+def brain_auth_chatgpt_browser_login(
+    ctx: StreamContext,
+    timeout_seconds: int = 300,
+) -> dict[str, Any]:
+    """Run ChatGPT browser OAuth and stream completion back to the supervisor."""
+    from core.auth import chatgpt as chatgpt_auth
+
+    done = threading.Event()
+    result: dict[str, Any] = {
+        "ok": False,
+        "provider": "chatgpt",
+        "message": "ChatGPT sign-in did not finish.",
+    }
+
+    def on_success(tokens: dict) -> None:
+        """Handle success events."""
+        account = tokens.get("account_id") if isinstance(tokens, dict) else ""
+        result.update({
+            "ok": True,
+            "provider": "chatgpt",
+            "message": "Logged in" + (f" as {account}" if account else ""),
+        })
+        ctx.emit("auth.done", result)
+        done.set()
+
+    def on_error(message: str) -> None:
+        """Handle error events."""
+        result.update({"ok": False, "provider": "chatgpt", "message": message})
+        ctx.emit("auth.error", result)
+        done.set()
+
+    ctx.emit("auth.started", {"provider": "chatgpt", "message": "Opening browser for ChatGPT sign-in"})
+    chatgpt_auth.start_browser_login(on_success=on_success, on_error=on_error)
+    deadline = time.time() + max(1, int(timeout_seconds or 300))
+    while not done.wait(0.25):
+        if ctx.cancelled:
+            return {"ok": False, "provider": "chatgpt", "cancelled": True, "message": "ChatGPT sign-in cancelled"}
+        if time.time() >= deadline:
+            result.update({"ok": False, "provider": "chatgpt", "message": "Timed out waiting for ChatGPT login"})
+            ctx.emit("auth.error", result)
+            break
+    return result
+
+
+@handler("brain.auth.chatgpt.clear")
+def brain_auth_chatgpt_clear() -> dict[str, Any]:
+    """Handle brain auth chatgpt clear for runtime brain openwand brain handlers."""
+    from core.auth import chatgpt as chatgpt_auth
+
+    return _clear_auth_credential(
+        "chatgpt",
+        chatgpt_auth.clear_tokens,
+        chatgpt_auth.get_tokens,
+    )
+
+
+@handler("brain.auth.github.clear")
+def brain_auth_github_clear() -> dict[str, Any]:
+    """Handle brain auth github clear for runtime brain openwand brain handlers."""
+    from core.auth import github as github_auth
+
+    return _clear_auth_credential(
+        "github",
+        github_auth.clear_tokens,
+        github_auth.get_tokens,
+    )
+
+
+def _clear_auth_credential(
+    name: str,
+    clear: Callable[[], Any],
+    read_remaining: Callable[[], Any],
+) -> dict[str, Any]:
+    """Clear one local credential and verify it did not remain stored."""
+    try:
+        clear()
+    except Exception as exc:  # noqa: BLE001 - reported to Settings in-band
+        return {
+            "ok": False,
+            "name": name,
+            "message": f"Could not clear local credential: {type(exc).__name__}: {exc}",
+        }
+    try:
+        remaining = read_remaining()
+    except Exception as exc:  # noqa: BLE001 - an unreadable store is not success
+        return {
+            "ok": False,
+            "name": name,
+            "message": f"Could not verify credential removal: {type(exc).__name__}: {exc}",
+        }
+    if remaining:
+        return {
+            "ok": False,
+            "name": name,
+            "message": "Local credential still exists after sign-out.",
+        }
+    return {"ok": True, "name": name}
+
+
+@handler("brain.auth.github.device_login", streaming=True)
+def brain_auth_github_device_login(
+    ctx: StreamContext,
+    client_id: str = "",
+    scopes: str = "",
+    timeout_seconds: int = 900,
+) -> dict[str, Any]:
+    """Run GitHub device auth and stream the verification code to the supervisor."""
+    import config
+    from core.auth import github as github_auth
+
+    config.GITHUB_CLIENT_ID = (client_id or "").strip() or getattr(config, "GITHUB_DEFAULT_CLIENT_ID", "")
+    config.GITHUB_OAUTH_SCOPES = (scopes or "").strip()
+    if not github_auth.has_configured_client_id():
+        raise ValueError("This build does not include a GitHub OAuth app client ID yet.")
+
+    done = threading.Event()
+    result: dict[str, Any] = {"ok": False, "message": "GitHub sign-in did not finish."}
+
+    def on_code(url: str, user_code: str) -> None:
+        """Handle code events."""
+        ctx.emit("auth.code", {"provider": "github", "url": url, "user_code": user_code})
+
+    def on_success(tokens: dict) -> None:
+        """Handle success events."""
+        user = tokens.get("user") if isinstance(tokens, dict) else {}
+        login = user.get("login") if isinstance(user, dict) else ""
+        result.update({
+            "ok": True,
+            "provider": "github",
+            "message": "Logged in" + (f" as {login}" if login else ""),
+        })
+        ctx.emit("auth.done", result)
+        done.set()
+
+    def on_error(message: str) -> None:
+        """Handle error events."""
+        result.update({"ok": False, "provider": "github", "message": message})
+        ctx.emit("auth.error", result)
+        done.set()
+
+    github_auth.start_device_login(
+        on_code,
+        on_success,
+        on_error,
+        is_cancelled=lambda: ctx.cancelled,
+    )
+    deadline = time.time() + max(1, int(timeout_seconds or 900))
+    while not done.wait(0.25):
+        if ctx.cancelled:
+            return {"ok": False, "provider": "github", "cancelled": True, "message": "GitHub sign-in cancelled"}
+        if time.time() >= deadline:
+            result.update({"ok": False, "provider": "github", "message": "Timed out waiting for GitHub login"})
+            ctx.emit("auth.error", result)
+            break
+    return result
+
+
+@handler("brain.auth.copilot.set")
+def brain_auth_copilot_set(token: str = "") -> dict[str, Any]:
+    """Handle brain auth copilot set for runtime brain openwand brain handlers."""
+    from core.auth import copilot_auth
+
+    copilot_auth.save_token((token or "").strip())
+    configured, message = copilot_auth.token_status()
+    return {"ok": True, "configured": configured, "message": message}
+
+
+@handler("brain.auth.copilot.test")
+def brain_auth_copilot_test() -> dict[str, Any]:
+    """Handle brain auth copilot test for runtime brain openwand brain handlers."""
+    from core.auth import copilot_client
+
+    try:
+        ok, message = copilot_client.test_copilot_token()
+    except Exception as exc:  # noqa: BLE001 - credential diagnostics must be controlled
+        return {"ok": False, "message": f"Could not check Copilot readiness: {exc}"}
+    return {"ok": ok, "message": message}
+
+
+@handler("brain.auth.copilot.clear")
+def brain_auth_copilot_clear() -> dict[str, Any]:
+    """Handle brain auth copilot clear for runtime brain openwand brain handlers."""
+    from core.auth import copilot_auth
+
+    result = _clear_auth_credential(
+        "copilot",
+        copilot_auth.clear_token,
+        copilot_auth.get_token,
+    )
+    if not result["ok"]:
+        return {**result, "configured": False}
+    try:
+        configured, message = copilot_auth.token_status()
+    except Exception as exc:  # noqa: BLE001 - verification must not crash Settings
+        return {
+            "ok": False,
+            "name": "copilot",
+            "configured": False,
+            "message": f"Could not verify credential removal: {type(exc).__name__}: {exc}",
+        }
+    return {"ok": True, "configured": configured, "message": message}
+
+
+@handler("brain.settings.reset_credentials")
+def brain_settings_reset_credentials() -> dict[str, Any]:
+    """Clear shared credential stores during native Settings factory reset."""
+    import os
+
+    from core import secret_store
+
+    cleared: list[str] = []
+    failures: list[str] = []
+    for name in secret_store.API_KEY_NAMES:
+        try:
+            secret_store.delete_secret(name)
+            cleared.append(name)
+        except Exception as exc:  # noqa: BLE001 - surfaced in reset summary
+            failures.append(f"{name}: {exc}")
+
+    for label, module_path, function_name in (
+        ("ChatGPT", "core.auth.chatgpt", "clear_tokens"),
+        ("GitHub", "core.auth.github", "clear_tokens"),
+        ("GitHub Copilot", "core.auth.copilot_auth", "clear_token"),
+    ):
+        try:
+            import importlib
+
+            getattr(importlib.import_module(module_path), function_name)()
+            cleared.append(label)
+        except Exception as exc:  # noqa: BLE001 - surfaced in reset summary
+            failures.append(f"{label}: {exc}")
+
+    try:
+        import config
+        from core.system.env_utils import read_env_file, write_env_file
+
+        env_path = config._ENV_FILE
+        env_values = read_env_file(env_path)
+        credential_keys = set(getattr(secret_store, "API_KEY_NAMES", ())) & set(env_values)
+        if credential_keys:
+            write_env_file(env_path, {}, remove_keys=credential_keys)
+        for key in credential_keys:
+            os.environ.pop(key, None)
+
+        config.reload()
+    except Exception as exc:  # noqa: BLE001 - reset already cleared credentials
+        failures.append(f"config reload: {exc}")
+
+    return {"ok": not failures, "cleared": cleared, "failures": failures}
+
+
+@handler("brain.addons.list")
+def brain_addons_list() -> dict[str, Any]:
+    """Return loaded/discoverable addons for the Python macOS addon manager."""
+    from core.system.paths import ADDONS_DIR
+
+    addons_dir = Path(ADDONS_DIR)
+    addons_dir.mkdir(parents=True, exist_ok=True)
+    return {
+        "addons_dir": str(addons_dir),
+        "addons": _addon_summaries(addons_dir),
+    }
+
+
+@handler("brain.addons.ready")
+def brain_addons_ready(timeout_seconds: float = 3.0) -> dict[str, Any]:
+    """Wait for background addon loading and return its cached startup snapshot."""
+    from core.system.paths import ADDONS_DIR
+
+    start_addon_bootstrap()
+    timeout = max(0.0, min(float(timeout_seconds or 0.0), 10.0))
+    ready = _ADDON_BOOTSTRAP_READY.wait(timeout)
+    addons_dir = Path(ADDONS_DIR)
+    return {
+        "ready": ready and not _ADDON_BOOTSTRAP_ERROR,
+        "error": _ADDON_BOOTSTRAP_ERROR,
+        "addons_dir": str(addons_dir),
+        "addons": _addon_summaries(addons_dir) if ready else [],
+    }
+
+
+@handler("brain.addons.tools")
+def brain_addons_tools() -> dict[str, Any]:
+    """Return enabled addon model tools for supervisor tool policy."""
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    return {"tools": manager.model_tool_payloads()}
+
+
+@handler("brain.addons.text_annotations")
+def brain_addons_text_annotations(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return display-only text annotations from enabled addons."""
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    return {"annotations": manager.get_text_annotations(payload or {})}
+
+
+@handler("brain.addons.transform_response_text")
+def brain_addons_transform_response_text(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return assistant text after response-modifying addons run."""
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    return {"text": manager.transform_response_text(payload or {})}
+
+
+@handler("brain.addons.run_action")
+def brain_addons_run_action(addon_id: str = "", label: str = "") -> dict[str, Any]:
+    """Run a loaded addon tray action by addon name/id and label."""
+    addon_id = addon_id.strip()
+    label = label.strip()
+    if not addon_id:
+        raise ValueError("addon_id is required")
+    if not label:
+        raise ValueError("label is required")
+
+    # Tray actions can be invoked before the first chat query. Ensure lifecycle
+    # setup (especially each addon's private data directory) has happened.
+    run_addon_startup()
+
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    action_result = manager.run_tray_action(addon_id, label)
+    result = {"ok": True, "message": f"Ran addon action: {addon_id} / {label}"}
+    if isinstance(action_result, dict):
+        if action_result.get("message"):
+            result["message"] = str(action_result["message"])
+        if action_result.get("virtual_workspace_url"):
+            result["virtual_workspace_url"] = str(action_result["virtual_workspace_url"])
+    return result
+
+
+@handler("brain.addons.run_intent")
+def brain_addons_run_intent(
+    addon_id: str = "",
+    action_id: str = "",
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run one declared addon intent inside its existing isolated host."""
+    addon_id = str(addon_id or "").strip()
+    action_id = str(action_id or "").strip()
+    if not addon_id:
+        raise ValueError("addon_id is required")
+    if not action_id:
+        raise ValueError("action_id is required")
+    run_addon_startup()
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    result = manager.run_intent(addon_id, action_id, payload or {})
+    return result if isinstance(result, dict) else {}
+
+
+@handler("brain.addons.set_enabled")
+def brain_addons_set_enabled(addon_id: str = "", enabled: bool = True) -> dict[str, Any]:
+    """Enable or disable a loaded addon; persists to addons.json and applies live."""
+    addon_id = addon_id.strip()
+    if not addon_id:
+        raise ValueError("addon_id is required")
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    state = manager.set_enabled(addon_id, bool(enabled))
+    _publish_addon_change("enabled" if state else "disabled", addon_id)
+    return {"ok": True, "id": addon_id, "enabled": bool(state)}
+
+
+@handler("brain.addons.set_action_enabled")
+def brain_addons_set_action_enabled(
+    addon_id: str = "",
+    action_id: str = "",
+    enabled: bool = True,
+) -> dict[str, Any]:
+    """Persist and live-apply one declarative addon action toggle."""
+    addon_id = str(addon_id or "").strip()
+    action_id = str(action_id or "").strip()
+    if not addon_id:
+        raise ValueError("addon_id is required")
+    if not action_id:
+        raise ValueError("action_id is required")
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    state = manager.set_action_enabled(addon_id, action_id, bool(enabled))
+    _publish_addon_change("action_changed", addon_id)
+    return {"ok": True, "id": addon_id, "action_id": action_id, "enabled": bool(state)}
+
+
+@handler("brain.addons.set_setting")
+def brain_addons_set_setting(addon_id: str = "", key: str = "", value: Any = "") -> dict[str, Any]:
+    """Persist a single addon setting value to addons.json."""
+    addon_id = addon_id.strip()
+    key = str(key).strip()
+    if not addon_id:
+        raise ValueError("addon_id is required")
+    if not key:
+        raise ValueError("key is required")
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    manager.set_setting(addon_id, key, value)
+    _publish_addon_change("setting_changed", addon_id)
+    return {"ok": True, "id": addon_id, "key": key}
+
+
+@handler("brain.addons.repair_environment")
+def brain_addons_repair_environment(addon_id: str = "") -> dict[str, Any]:
+    """Install or rebuild a loaded addon's dependency environment."""
+    addon_id = addon_id.strip()
+    if not addon_id:
+        raise ValueError("addon_id is required")
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    result = manager.repair_environment(addon_id)
+    _publish_addon_change("repaired", addon_id)
+    return result if isinstance(result, dict) else {"ready": False, "error": "environment repair failed"}
+
+
+@handler("brain.addons.install_archive")
+def brain_addons_install_archive(path: str = "") -> dict[str, Any]:
+    """Install a current or legacy addon archive and reload the shared manager."""
+    path = str(path or "").strip()
+    if not path:
+        raise ValueError("path is required")
+    from core.addon_distribution import install_addon_archive
+    from core.system.paths import ADDONS_DIR
+
+    result = install_addon_archive(Path(path), Path(ADDONS_DIR), replace=False)
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    if hasattr(manager, "load_all"):
+        manager.load_all()
+    _publish_addon_change(
+        "installed",
+        str(result.get("id") or "") if isinstance(result, dict) else "",
+    )
+    return result
+
+
+@handler("brain.addons.install_folder")
+def brain_addons_install_folder(path: str = "") -> dict[str, Any]:
+    """Install an unpacked addon folder and reload the shared manager."""
+    path = str(path or "").strip()
+    if not path:
+        raise ValueError("path is required")
+    from core.addon_distribution import install_addon_folder
+    from core.system.paths import ADDONS_DIR
+
+    result = install_addon_folder(Path(path), Path(ADDONS_DIR), replace=False)
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    if hasattr(manager, "load_all"):
+        manager.load_all()
+    _publish_addon_change(
+        "installed",
+        str(result.get("id") or "") if isinstance(result, dict) else "",
+    )
+    return result
+
+
+@handler("brain.addons.run_hotkey")
+def brain_addons_run_hotkey(addon_id: str = "", hotkey_id: str = "") -> dict[str, Any]:
+    """Run a loaded addon hotkey callback or return its prompt action."""
+    addon_id = addon_id.strip()
+    hotkey_id = hotkey_id.strip()
+    if not addon_id:
+        raise ValueError("addon_id is required")
+    if not hotkey_id:
+        raise ValueError("hotkey_id is required")
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    result = manager.run_hotkey(addon_id, hotkey_id)
+    return result if isinstance(result, dict) else {}
+
+
+@handler("brain.addons.message_actions")
+def brain_addons_message_actions(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """List addon actions that may appear beside chat messages."""
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    return {"actions": manager.get_message_actions(payload or {})}
+
+
+@handler("brain.addons.run_message_action")
+def brain_addons_run_message_action(
+    addon_id: str = "",
+    action_id: str = "",
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run a user-requested message action, including bounded host LLM work."""
+    addon_id = str(addon_id or "").strip()
+    action_id = str(action_id or "").strip()
+    if not addon_id:
+        raise ValueError("addon_id is required")
+    if not action_id:
+        raise ValueError("action_id is required")
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    result = manager.run_message_action(addon_id, action_id, payload or {})
+    for _phase in range(3):
+        operation = result.get("llm") if isinstance(result, dict) else None
+        if not isinstance(operation, dict):
+            return result if isinstance(result, dict) else {}
+        prompt = str(operation.get("prompt") or "").strip()
+        if not prompt:
+            raise ValueError("addon message action returned an empty LLM prompt")
+        llm_result = _run_addon_llm_call(
+            addon_id=addon_id,
+            prompt=prompt,
+            max_tokens=int(operation.get("max_tokens") or 2048),
+            temperature=operation.get("temperature"),
+            limit=30,
+            route=str(operation.get("route") or "llm"),
+            max_cap=4096,
+            route_model_hint=str(operation.get("model") or ""),
+        )
+        result = manager.resume_message_action(
+            addon_id,
+            action_id,
+            {
+                "operation": "llm",
+                "text": str(llm_result.get("text") or ""),
+                "state": result.get("state") if isinstance(result, dict) else {},
+                "input_tokens_estimate": llm_result.get("input_tokens_estimate", 0),
+                "output_tokens_estimate": llm_result.get("output_tokens_estimate", 0),
+                "route": llm_result.get("route", ""),
+                "provider": llm_result.get("provider", ""),
+                "model": llm_result.get("model", ""),
+            },
+        )
+    if not isinstance(result, dict) or not isinstance(result.get("llm"), dict):
+        return result if isinstance(result, dict) else {}
+    raise RuntimeError("addon message action exceeded the three-operation limit")
+
+
+@handler("brain.addons.llm_call")
+def brain_addons_llm_call(
+    addon_id: str = "",
+    prompt: str = "",
+    max_tokens: int = 512,
+    temperature: float | None = None,
+) -> dict[str, Any]:
+    """Run a capped LLM call for an addon without exposing provider secrets."""
+    return _run_addon_llm_call(
+        addon_id=addon_id,
+        prompt=prompt,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        limit=5,
+    )
+
+
+def _run_addon_llm_call(
+    *,
+    addon_id: str,
+    prompt: str,
+    max_tokens: int,
+    temperature: float | None,
+    limit: int,
+    route: str = "llm",
+    max_cap: int = 2048,
+    route_model_hint: str = "",
+) -> dict[str, Any]:
+    """Run one permission-checked addon LLM operation."""
+    addon_id = addon_id.strip()
+    prompt = str(prompt or "").strip()
+    if not addon_id:
+        raise ValueError("addon_id is required")
+    if not prompt:
+        raise ValueError("prompt is required")
+    from core import addon_store
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    addon = manager._find(addon_id) if hasattr(manager, "_find") else None
+    if addon is None or not getattr(addon, "enabled", False):
+        raise ValueError(f"Addon not loaded: {addon_id}")
+    if not bool(addon.manifest.permissions.get("llm")):
+        raise PermissionError(f"Addon is missing llm permission: {addon_id}")
+    stored_addon_id = str(getattr(addon, "id", addon_id) or addon_id)
+    allowed, remaining = addon_store.record_llm_call(
+        stored_addon_id,
+        limit=max(1, int(limit)),
+        window_seconds=3600,
+    )
+    if not allowed:
+        raise PermissionError(f"Addon LLM call cap reached: {addon_id}")
+
+    import config
+    from core.llm_clients import client as llm_client
+    from core.privacy_gateway import scrub_cloud_fields
+
+    route = str(route or "llm").strip().lower()
+    if route not in {"llm", "chat", "chatgpt-mini", "chatgpt-nano", "ollama-local"}:
+        route = "llm"
+    if route == "chat":
+        route_provider = config.CHAT_LLM_PROVIDER
+        route_model = str(route_model_hint or config.CHAT_LLM_MODEL).strip()
+        route_fallbacks = "" if route_model_hint else config.CHAT_LLM_FALLBACKS
+    elif route in {"chatgpt-mini", "chatgpt-nano"}:
+        route_provider = "chatgpt"
+        route_model = "gpt-5.4-mini" if route == "chatgpt-mini" else "gpt-5.4-nano"
+        route_fallbacks = ""
+    elif route == "ollama-local":
+        route_provider = "ollama"
+        route_model = str(route_model_hint or "").strip()
+        if not route_model:
+            models, error = llm_client.safe_list_models("ollama")
+            if not models:
+                detail = f" ({error})" if error else ""
+                raise RuntimeError(f"No installed Ollama formatting model was found{detail}.")
+            route_model = str(models[0])
+        # A local-only selection must never fall through to a metered cloud
+        # fallback when Ollama is unavailable or the chosen model fails.
+        route_fallbacks = ""
+    else:
+        route_provider = config.LLM_PROVIDER
+        route_model = str(route_model_hint or config.LLM_MODEL).strip()
+        route_fallbacks = "" if route_model_hint else None
+
+    privacy_session, scrubbed, privacy_report = scrub_cloud_fields(
+        {"addon_prompt": prompt},
+        session_id=f"addon:{stored_addon_id}",
+    )
+    llm_client.set_live_privacy_context(
+        privacy_session,
+        ai_enabled=bool(privacy_report.get("ai_enabled")),
+    )
+    try:
+        request_kwargs: dict[str, Any] = {
+            "use_tools": False,
+            "max_tokens": max(1, min(int(max_tokens or 512), max(1, int(max_cap)))),
+            "temperature": temperature,
+        }
+        if route != "llm" or route_model_hint:
+            request_kwargs.update({
+                "route_provider": route_provider,
+                "route_model": route_model,
+                "route_fallbacks": route_fallbacks,
+            })
+        chunks = list(llm_client.stream_response(
+            scrubbed["addon_prompt"],
+            **request_kwargs,
+        ))
+    finally:
+        llm_client.set_live_privacy_context(None)
+    text = "".join(chunks)
+    if privacy_session is not None:
+        text = privacy_session.restore(text)
+    result = {
+        "text": text,
+        "remaining": remaining,
+        "route": route,
+        "provider": route_provider or "",
+        "model": route_model or "",
+        "input_tokens_estimate": max(1, (len(prompt) + 3) // 4),
+        "output_tokens_estimate": max(1, (len(text) + 3) // 4),
+    }
+    if privacy_report.get("count"):
+        result["privacy_report"] = privacy_report
+    return result
+
+
+def _addon_summaries(addons_dir: Path) -> list[dict[str, Any]]:
+    """Return addon summaries for the brain worker."""
+    try:
+        manager = _loaded_addon_manager(addons_dir)
+        if hasattr(manager, "summaries"):
+            try:
+                return manager.summaries(
+                    refresh_host=False,
+                    resolve_dynamic_options=False,
+                )
+            except TypeError:
+                return manager.summaries()
+        mods = getattr(manager, "_mods", [])
+        return [_loaded_addon_payload(mod, manager) for mod in mods]
+    except Exception:
+        return _discover_addon_payloads(addons_dir)
+
+
+def _publish_addon_change(reason: str, addon_id: str = "") -> None:
+    """Publish one authoritative cached addon snapshot after a live state change."""
+    from core.system.paths import ADDONS_DIR
+
+    addons_dir = Path(ADDONS_DIR)
+    _emit_runtime_event(
+        "addons.changed",
+        {
+            "reason": str(reason or "changed"),
+            "addon_id": str(addon_id or ""),
+            "addons_dir": str(addons_dir),
+            "addons": _addon_summaries(addons_dir),
+        },
+    )
+
+
+def _publish_addon_bootstrap_if_ready() -> None:
+    """Push the initial addon snapshot once both loading and IPC events are ready."""
+    global _ADDON_BOOTSTRAP_EVENT_PUBLISHED
+    with _ADDON_BOOTSTRAP_STATE_LOCK:
+        if (
+            _ADDON_BOOTSTRAP_EVENT_PUBLISHED
+            or not _ADDON_BOOTSTRAP_READY.is_set()
+            or bool(_ADDON_BOOTSTRAP_ERROR)
+            or _RUNTIME_EVENT_EMITTER is None
+        ):
+            return
+        _ADDON_BOOTSTRAP_EVENT_PUBLISHED = True
+    _publish_addon_change("loaded")
+
+
+def _loaded_addon_manager(addons_dir: Path) -> Any:
+    """Return the shared addon manager, initializing it when needed."""
+    addon_manager = importlib.import_module("core.addon_manager")
+    with _ADDON_MANAGER_LOCK:
+        try:
+            return addon_manager.get_manager()
+        except Exception:
+            return addon_manager.init(addons_dir)
+
+
+def start_addon_bootstrap() -> None:
+    """Begin addon loading as soon as the brain worker boots, without delaying ping."""
+    global _ADDON_BOOTSTRAP_STARTED
+    with _ADDON_BOOTSTRAP_STATE_LOCK:
+        if _ADDON_BOOTSTRAP_STARTED:
+            return
+        _ADDON_BOOTSTRAP_STARTED = True
+
+    def load() -> None:
+        global _ADDON_BOOTSTRAP_ERROR
+        try:
+            from core.system.paths import ADDONS_DIR
+
+            _loaded_addon_manager(Path(ADDONS_DIR))
+        except Exception as exc:  # noqa: BLE001 - surfaced through brain.addons.ready
+            _ADDON_BOOTSTRAP_ERROR = f"{type(exc).__name__}: {exc}"
+            _log(f"addon bootstrap failed: {_ADDON_BOOTSTRAP_ERROR}")
+        finally:
+            _ADDON_BOOTSTRAP_READY.set()
+            _publish_addon_bootstrap_if_ready()
+
+    threading.Thread(target=load, name="openwand-addon-bootstrap", daemon=True).start()
+
+
+_addon_startup_done = False
+
+
+def run_addon_startup() -> None:
+    """Fire addon ``on_startup`` once and register their ``get_tools``.
+
+    The app runtime initializes this at startup; the headless brain must do it
+    too, or addon model-tools never reach the LLM and ``on_startup`` never runs.
+    Called lazily from the query path (not at boot) to keep the brain's ping-only
+    startup free of the LLM stack. ``signals`` is ``None`` here — there is no Qt in
+    the brain worker; addons drive the UI via tray actions / protocol, not Qt
+    signals. Idempotent and best-effort.
+    """
+    global _addon_startup_done
+    if _addon_startup_done:
+        return
+    _addon_startup_done = True
+    try:
+        import config
+        from core.llm_clients.client import get_tool_registry
+        from core.system.paths import ADDONS_DIR
+
+        addon_manager = importlib.import_module("core.addon_manager")
+        try:
+            manager = addon_manager.get_manager()
+        except Exception:
+            manager = addon_manager.init(Path(ADDONS_DIR))
+        manager.on_startup(
+            addon_manager.AppContext(
+                signals=None,
+                model_tool_registry=get_tool_registry(),
+                config=config,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - addon startup must not block the brain
+        _log(f"addon startup skipped: {type(exc).__name__}: {exc}")
+
+
+def run_addon_shutdown() -> None:
+    """Fire addon ``on_shutdown`` if addons were started."""
+    try:
+        addon_manager = importlib.import_module("core.addon_manager")
+        manager = addon_manager.get_manager()  # raises if never initialised
+    except Exception:
+        return
+    try:
+        manager.on_shutdown()
+    except Exception as exc:  # noqa: BLE001
+        _log(f"addon shutdown skipped: {type(exc).__name__}: {exc}")
+
+
+def _loaded_addon_payload(mod: Any, manager: Any = None) -> dict[str, Any]:
+    """Return a UI payload for a loaded addon."""
+    module = getattr(mod, "module", None)
+    path = getattr(module, "__file__", "") or ""
+    hooks = _addon_hook_names(module)
+    name = str(getattr(mod, "name", ""))
+    addon_id = str(getattr(mod, "id", name) or name)
+    settings: list[dict[str, Any]] = []
+    if manager is not None:
+        try:
+            settings = manager.get_settings(addon_id)
+        except Exception:
+            settings = []
+    host = getattr(mod, "host", None)
+    logs = ""
+    if host is not None and hasattr(host, "log_text"):
+        try:
+            logs = str(host.log_text())
+        except Exception:
+            logs = ""
+    manifest = getattr(mod, "manifest", None)
+    deps = getattr(manifest, "dependencies", None)
+    packages = list(getattr(deps, "packages", []) or [])
+    python_req = str(getattr(deps, "python", "") or "")
+    runtime = getattr(mod, "runtime_status", {}) if isinstance(getattr(mod, "runtime_status", {}), dict) else {}
+    return {
+        "id": addon_id,
+        "name": name,
+        "path": str(Path(path).parent) if path else "",
+        "status": "loaded",
+        "enabled": bool(getattr(mod, "enabled", True)),
+        "hooks": hooks,
+        "tray_actions": _safe_tray_action_labels(module),
+        "tools": _safe_tool_names(module),
+        "settings": settings,
+        "permissions": getattr(manifest, "permissions", {}) or {},
+        "dependencies": {"python": python_req, "packages": packages},
+        "runtime": runtime or {
+            "tier": "2" if (python_req or packages) else "1",
+            "ready": True,
+            "packages": packages,
+            "python_requirement": python_req,
+            "error": "",
+        },
+        "hotkeys": list(getattr(mod, "hotkeys", []) or []),
+        "description": str(getattr(manifest, "description", "") or ""),
+        "error": "",
+        "logs": logs,
+    }
+
+
+def _discover_addon_payloads(addons_dir: Path) -> list[dict[str, Any]]:
+    """Return lightweight payloads for addon folders before the manager loads."""
+    if not addons_dir.exists():
+        return []
+
+    payloads: list[dict[str, Any]] = []
+    for child in sorted(p for p in addons_dir.iterdir() if p.is_dir()):
+        init_path = child / "__init__.py"
+        manifest_path = child / "addon.toml"
+        if not init_path.exists() and not manifest_path.exists():
+            continue
+        hooks = _declared_hook_names(init_path) if init_path.exists() else []
+        payloads.append({
+            "id": child.name,
+            "name": child.name,
+            "path": str(child),
+            "status": "discovered",
+            "enabled": True,
+            "hooks": hooks,
+            "tray_actions": [],
+            "tools": [],
+            "hotkeys": [],
+            "settings": [],
+            "permissions": {},
+            "dependencies": {"python": "", "packages": []},
+            "runtime": {"tier": "1", "ready": True, "packages": [], "error": ""},
+            "description": "",
+            "error": "",
+            "logs": "",
+        })
+    return payloads
+
+
+def _addon_hook_names(module: Any) -> list[str]:
+    """Return hook names exposed by an addon module."""
+    return [
+        hook
+        for hook in _ADDON_HOOKS
+        if module is not None and hasattr(module, hook)
+    ]
+
+
+def _declared_hook_names(init_path: Path) -> list[str]:
+    """Handle declared hook names for runtime brain openwand brain handlers."""
+    try:
+        tree = ast.parse(init_path.read_text(encoding="utf-8"), filename=str(init_path))
+    except Exception:
+        return []
+    declared = {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    return [hook for hook in _ADDON_HOOKS if hook in declared]
+
+
+def _safe_tray_action_labels(module: Any) -> list[str]:
+    """Handle safe tray action labels for runtime brain openwand brain handlers."""
+    fn = getattr(module, "get_tray_actions", None)
+    if not callable(fn):
+        return []
+    try:
+        items = fn()
+    except Exception:
+        return []
+    if not isinstance(items, list):
+        return []
+    return [
+        str(item.get("label", "Action"))
+        for item in items
+        if isinstance(item, dict)
+    ]
+
+
+def _safe_tool_names(module: Any) -> list[str]:
+    """Handle safe tool names for runtime brain openwand brain handlers."""
+    fn = getattr(module, "get_tools", None)
+    if not callable(fn):
+        return []
+    try:
+        items = fn()
+    except Exception:
+        return []
+    if not isinstance(items, list):
+        return []
+    return [
+        str(item.get("name", "?"))
+        for item in items
+        if isinstance(item, dict)
+    ]
+
+
+_ADDON_HOOKS = (
+    "on_startup",
+    "on_shutdown",
+    "before_query",
+    "after_response",
+    "transform_response_text",
+    "get_tools",
+    "get_tray_actions",
+    "get_settings",
+    "get_system_prompt_section",
+)
+
+
+@handler("brain.echo", streaming=True)
+def brain_echo(ctx: StreamContext, text: str = "", chunk_size: int = 1, delay: float = 0.0) -> dict[str, Any]:
+    """Stream *text* back word-by-word as ``reply.chunk`` events, then return the
+    whole string. Pure-Python, no models or network -- this is the streaming
+    handshake the Phase-1 test exercises to prove event correlation works."""
+    words = text.split(" ") if text else []
+    sent: list[str] = []
+    for i in range(0, len(words), max(1, chunk_size)):
+        if ctx.cancelled:
+            break
+        piece = " ".join(words[i:i + max(1, chunk_size)])
+        if i + max(1, chunk_size) < len(words):
+            piece += " "
+        sent.append(piece)
+        ctx.emit("reply.chunk", {"text": piece})
+        if delay:
+            time.sleep(delay)
+    full = "".join(sent)
+    ctx.emit("reply.done", {"text": full})
+    return {"text": full}
+
+
+# ---------------------------------------------------------------------------
+# Audio model endpoints -- The audio worker owns playback; the brain only reads/writes paths.
+# ---------------------------------------------------------------------------
+
+@handler("brain.transcribe")
+def brain_transcribe(pcm_path: str = "", language: str | None = None) -> dict[str, Any]:
+    """Transcribe a WAV/audio file recorded by the audio worker.
+
+    This deliberately does NOT import ``core.stt`` because that module still owns
+    legacy sounddevice recording. The native shell has already captured audio;
+    the brain worker only loads faster-whisper and transcribes a normalized numpy
+    array. Large PCM never crosses IPC, only ``pcm_path``.
+    """
+    if not pcm_path:
+        raise ValueError("pcm_path is required")
+
+    import numpy as np
+    import soundfile as sf
+
+    import config
+
+    data, sample_rate = sf.read(pcm_path, dtype="float32", always_2d=False)
+    if getattr(data, "ndim", 1) > 1:
+        data = data.mean(axis=1)
+    if sample_rate != 16_000:
+        try:
+            from math import gcd
+
+            from scipy.signal import resample_poly
+            g = gcd(int(sample_rate), 16_000)
+            data = resample_poly(data, 16_000 // g, int(sample_rate) // g).astype("float32")
+        except Exception:
+            # Linear fallback keeps the handler usable if scipy is missing.
+            duration = len(data) / float(sample_rate)
+            src_x = np.linspace(0.0, duration, num=len(data), endpoint=False)
+            dst_len = max(1, int(duration * 16_000))
+            dst_x = np.linspace(0.0, duration, num=dst_len, endpoint=False)
+            data = np.interp(dst_x, src_x, data).astype("float32")
+
+    if len(data) < 16_000 * 0.25:
+        return {"text": "", "duration": len(data) / 16_000, "reason": "too_short"}
+
+    global _STT_MODEL
+    if _STT_MODEL is None:
+        from core import optional_deps
+
+        optional_deps.require_optional_package_runtime("stt", device="cpu")
+        from faster_whisper import WhisperModel
+        _STT_MODEL = WhisperModel(
+            config.STT_MODEL,
+            device="cpu",
+            compute_type=config.STT_COMPUTE_TYPE,
+        )
+        _log(f"loaded STT model {config.STT_MODEL!r}")
+    model = _STT_MODEL
+    from core.stt_postprocess import clean_transcript
+
+    selected_language = language or config.STT_LANGUAGE or None
+    _log(f"transcribing {pcm_path!r} with language={selected_language!r}")
+    segments, _info = model.transcribe(
+        data,
+        beam_size=1,
+        language=selected_language,
+        vad_filter=True,
+    )
+    raw_text = " ".join(seg.text.strip() for seg in segments).strip()
+    text = clean_transcript(raw_text)
+    if raw_text and not text:
+        _log(f"discarded repeated-token transcript for {pcm_path!r}: {raw_text!r}")
+    _log(f"transcribed {pcm_path!r}: {text!r}")
+    return {"text": text, "duration": len(data) / 16_000}
+
+
+@handler("brain.tts.synthesize")
+def brain_tts_synthesize(text: str = "", voice: str | None = None) -> dict[str, Any]:
+    """Synthesize text to a standard int16 WAV file for audio-worker playback."""
+    if not text.strip():
+        raise ValueError("text is required")
+
+    if _offline_brain():
+        out_path = _runtime_output_dir() / f"tts-{int(time.time() * 1000)}.wav"
+        n_bytes = _write_silent_wav(out_path, sample_rate=22_050, milliseconds=120)
+        return {"path": str(out_path), "sample_rate": 22_050, "bytes": n_bytes, "provider": "fake"}
+
+    import numpy as np
+
+    import config
+
+    tts = importlib.import_module("core.tts")
+
+    chunks = list(tts.stream_audio(text))
+    out_path = _runtime_output_dir() / f"tts-{int(time.time() * 1000)}.wav"
+
+    provider = config.TTS_PROVIDER.lower()
+    if provider == "none" or not chunks:
+        with wave.open(str(out_path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(22_050)
+            wf.writeframes(b"")
+        return {"path": str(out_path), "sample_rate": 22_050, "bytes": 0, "provider": provider}
+
+    sample_rate, _channels, dtype = tts.playback_format(provider)
+    if dtype == "int16":
+        # ElevenLabs / OpenAI / compatible servers already stream signed 16-bit.
+        pcm_i16 = b"".join(chunks)
+    else:
+        # Cartesia streams float32; convert to the int16 WAV body.
+        # np.frombuffer yields a read-only view over the immutable bytes, so
+        # nan_to_num must copy (copy=False raises "assignment destination is
+        # read-only"). clip then returns its own writable array.
+        audio_f32 = np.frombuffer(b"".join(chunks), dtype=np.float32)
+        audio_f32 = np.nan_to_num(audio_f32)
+        audio_f32 = np.clip(audio_f32, -1.0, 1.0)
+        pcm_i16 = (audio_f32 * 32767.0).astype("<i2").tobytes()
+
+    with wave.open(str(out_path), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm_i16)
+
+    _log(f"tts synthesized {len(pcm_i16)} bytes -> {out_path}")
+    return {"path": str(out_path), "sample_rate": sample_rate, "bytes": len(pcm_i16), "provider": provider}
+
+
+@handler("brain.tts.test")
+def brain_tts_test(provider: str = "", cartesia_voice_id: str = "") -> dict[str, Any]:
+    """Validate the configured TTS route for the native Settings panel."""
+    if _offline_brain():
+        selected = (provider or "fake").strip().lower()
+        return {"ok": True, "message": f"TTS route OK: {selected}", "provider": selected}
+
+    import config
+
+    tts = importlib.import_module("core.tts")
+
+    selected = (provider or config.TTS_PROVIDER or "none").strip().lower()
+    voice = cartesia_voice_id if cartesia_voice_id is not None else config.CARTESIA_VOICE_ID
+    ok, message = tts.test_connection(
+        selected,
+        cartesia_voice_id=voice,
+    )
+    return {"ok": ok, "message": message, "provider": selected}
+
+
+@handler("brain.llm.test")
+def brain_llm_test(
+    provider: str = "",
+    model: str = "",
+    fallbacks: str = "",
+    route_name: str = "LLM",
+    image: bool = False,
+    custom_base_url: str = "",
+    include_fallbacks: bool = True,
+) -> dict[str, Any]:
+    """Validate a configured LLM route and its fallback chain for Settings."""
+    selected_provider = provider.strip().lower()
+    selected_model = model.strip()
+    label = route_name.strip() or "LLM"
+    from core.llm_clients.routes import route_candidates
+
+    routes = route_candidates(
+        selected_provider,
+        selected_model,
+        fallbacks if include_fallbacks else "",
+    )
+    if not routes:
+        return {
+            "ok": False,
+            "message": f"{label} test failed: No model configured.",
+            "provider": selected_provider,
+            "model": selected_model,
+            "routes": [],
+        }
+
+    if _offline_brain():
+        suffix = " vision route" if image else " route"
+        if len(routes) > 1:
+            lines = [
+                f"{_route_test_label(index)} OK: {route_provider} / {route_model}"
+                for index, (route_provider, route_model) in enumerate(routes)
+            ]
+            return {
+                "ok": True,
+                "message": f"{label}{suffix} OK:\n" + "\n".join(lines),
+                "provider": selected_provider,
+                "model": selected_model,
+                "routes": _route_payloads(routes),
+            }
+        return {
+            "ok": True,
+            "message": f"{label}{suffix} OK: {selected_provider} / {selected_model}",
+            "provider": selected_provider,
+            "model": selected_model,
+            "routes": _route_payloads(routes),
+        }
+
+    llm = importlib.import_module("core.llm_clients.client")
+
+    results: list[dict[str, Any]] = []
+    for index, (route_provider, route_model) in enumerate(routes):
+        ok, message = llm.test_route_connection(
+            route_provider,
+            route_model,
+            label,
+            image=image,
+            custom_base_url=_custom_base_url_for_route(route_provider, custom_base_url),
+        )
+        results.append({
+            "label": _route_test_label(index),
+            "ok": ok,
+            "provider": route_provider,
+            "model": route_model,
+            "message": message,
+        })
+
+    if len(results) == 1:
+        only = results[0]
+        return {
+            "ok": bool(only["ok"]),
+            "message": str(only["message"]),
+            "provider": selected_provider,
+            "model": selected_model,
+            "routes": results,
+        }
+
+    ok = all(bool(result["ok"]) for result in results)
+    lines = [
+        f"{result['label']} - {result['provider']} / {result['model']}: {_short_route_test_message(str(result['message']), label)}"
+        for result in results
+    ]
+    status = "OK" if ok else "failed"
+    return {
+        "ok": ok,
+        "message": f"{label} route chain {status}:\n" + "\n".join(lines),
+        "provider": selected_provider,
+        "model": selected_model,
+        "routes": results,
+    }
+
+
+def _route_payloads(routes: list[tuple[str, str]]) -> list[dict[str, Any]]:
+    """Handle route payloads for runtime brain openwand brain handlers."""
+    return [
+        {
+            "label": _route_test_label(index),
+            "ok": True,
+            "provider": provider,
+            "model": model,
+            "message": "OK",
+        }
+        for index, (provider, model) in enumerate(routes)
+    ]
+
+
+def _route_test_label(index: int) -> str:
+    """Handle route test label for runtime brain openwand brain handlers."""
+    return "Primary" if index == 0 else f"Fallback {index}"
+
+
+def _short_route_test_message(message: str, route_name: str) -> str:
+    """Handle short route test message for runtime brain openwand brain handlers."""
+    prefix = f"{route_name} test failed: "
+    if message.startswith(prefix):
+        return message[len(prefix):]
+    prefix = f"{route_name} route OK: "
+    if message.startswith(prefix):
+        return "OK"
+    prefix = f"{route_name} vision route OK: "
+    if message.startswith(prefix):
+        return "OK"
+    return message
+
+
+def _custom_base_url_for_route(provider: str, custom_base_url: str) -> str | None:
+    """Handle custom base url for route for runtime brain openwand brain handlers."""
+    if provider.strip().lower() != "custom":
+        return None
+    return custom_base_url.strip() or None
+
+
+# ---------------------------------------------------------------------------
+# Real query path -- wired to the existing pipeline, exercised on the Mac / online.
+# Imports are lazy so this module still loads with no LLM deps/keys present.
+# ---------------------------------------------------------------------------
+
+def _harness_session_id(raw: dict[str, Any] | None, provider: str) -> str:
+    """Return a session id only when it belongs to the selected harness."""
+    if not isinstance(raw, dict):
+        return ""
+    if str(raw.get("provider") or "").strip().lower() != provider:
+        return ""
+    return str(raw.get("session_id") or "").strip()
+
+
+def _harness_history_text(messages: list[dict[str, Any]]) -> str:
+    """Format OpenWand history for the first turn of a newly linked harness session."""
+    lines = ["[Existing OpenWand conversation]"]
+    for message in messages:
+        role = str(message.get("role") or "user").strip().lower()
+        content = str(message.get("content") or "").strip()
+        if content:
+            lines.append(f"{role.title()}: {content}")
+    return "\n\n".join(lines)
+
+
+def _harness_chat_prompt(turns: list[dict[str, Any]], *, include_history: bool) -> str:
+    """Return either a complete OpenWand handoff or only the newest user turn."""
+    if include_history:
+        return _harness_history_text(turns)
+    return next(
+        (
+            str(message.get("content") or "").strip()
+            for message in reversed(turns)
+            if message.get("role") == "user" and str(message.get("content") or "").strip()
+        ),
+        "",
+    )
+
+
+_HARNESS_IMAGE_MAX_AGE_SECONDS = 24 * 3600
+
+
+def _harness_image_extension(data: bytes) -> str:
+    """Name an attachment after its real format; screenshots are always PNG."""
+    if data.startswith(b"\xff\xd8"):
+        return ".jpg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return ".gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    return ".png"
+
+
+def _sweep_stale_harness_images(directory: Path) -> None:
+    """Delete attachment files a crashed turn left behind."""
+    cutoff = time.time() - _HARNESS_IMAGE_MAX_AGE_SECONDS
+    try:
+        entries = list(directory.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        try:
+            if entry.is_file() and entry.stat().st_mtime < cutoff:
+                entry.unlink()
+        except OSError:
+            continue
+
+
+def _write_harness_images(images_b64: Sequence[str]) -> list[str]:
+    """Materialize captured images as files a harness ingests by path.
+
+    Codex embeds the bytes into its thread when the turn starts, so these
+    files only need to outlive the turn; callers delete them afterwards via
+    ``_delete_harness_images``.
+    """
+    from core.system.paths import USER_DATA_DIR
+
+    paths: list[str] = []
+    directory = USER_DATA_DIR / "harness_attachments"
+    for raw in images_b64:
+        value = str(raw or "").strip()
+        if not value:
+            continue
+        if value.startswith("data:"):
+            _, _, value = value.partition(",")
+        try:
+            data = base64.b64decode(value)
+        except (ValueError, TypeError):
+            _log("harness image skipped: undecodable base64")
+            continue
+        if not data:
+            continue
+        extension = _harness_image_extension(data)
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            _sweep_stale_harness_images(directory)
+            path = directory / f"openwand-{uuid.uuid4().hex}{extension}"
+            path.write_bytes(data)
+        except OSError as exc:
+            _log(f"harness image skipped: {type(exc).__name__}: {exc}")
+            continue
+        paths.append(str(path))
+    return paths
+
+
+def _delete_harness_images(paths: Sequence[str]) -> None:
+    """Remove this turn's attachment files once the harness ingested them."""
+    for value in paths:
+        try:
+            Path(value).unlink(missing_ok=True)
+        except OSError:
+            continue
+
+
+def _run_live_harness(
+    ctx: StreamContext,
+    provider: str,
+    prompt: str,
+    *,
+    harness_session: dict[str, Any] | None,
+    harness_cwd: str,
+    conversation_owner: str,
+    privacy_session: Any = None,
+    privacy_report: dict[str, Any] | None = None,
+    images: Sequence[str] = (),
+) -> dict[str, Any]:
+    """Run an external harness turn and map its events onto OpenWand's live stream."""
+    from core.harness_clients import run_harness
+
+    owner = "agent" if str(conversation_owner).strip().lower() == "agent" else "openwand"
+    display_segments: list[dict[str, Any]] = []
+    attachments: list[dict[str, Any]] = []
+    session_id = _harness_session_id(harness_session, provider) if owner == "agent" else ""
+    stored_cwd = ""
+    if session_id and isinstance(harness_session, dict):
+        stored_cwd = str(harness_session.get("cwd") or "")
+    requested_cwd = str(harness_cwd or "").strip()
+    if session_id and stored_cwd and requested_cwd:
+        try:
+            workspace_changed = Path(stored_cwd).expanduser().resolve() != Path(
+                requested_cwd
+            ).expanduser().resolve()
+        except OSError:
+            workspace_changed = stored_cwd != requested_cwd
+        if workspace_changed:
+            _log(
+                "harness workspace changed; starting a new provider session "
+                f"old={stored_cwd} new={requested_cwd}"
+            )
+            session_id = ""
+            stored_cwd = ""
+    _log(
+        "harness starting "
+        f"provider={provider} owner={owner} resume={'yes' if session_id else 'no'} "
+        f"cwd={stored_cwd or requested_cwd or Path.cwd()}"
+    )
+    if not ctx.cancelled:
+        ctx.emit(
+            "reply.chunk",
+            {
+                "text": "Starting ChatGPT..." if provider == "codex" else "Claude is working...",
+                "is_progress": True,
+                "is_thought": False,
+            },
+        )
+
+    def on_harness_event(event: Any) -> None:
+        text = str(getattr(event, "text", "") or "")
+        kind = str(getattr(event, "kind", "reply") or "reply")
+        attachment = getattr(event, "attachment", None)
+        if kind == "image" and isinstance(attachment, dict):
+            candidate = dict(attachment)
+            key = (str(candidate.get("path") or ""), str(candidate.get("name") or ""))
+            if key[0] and not any(
+                (str(item.get("path") or ""), str(item.get("name") or "")) == key
+                for item in attachments
+            ):
+                attachments.append(candidate)
+        if (not text and kind != "image") or ctx.cancelled:
+            return
+        if privacy_session is not None:
+            text = privacy_session.restore(text)
+        if kind == "image":
+            ctx.emit(
+                "reply.chunk",
+                {
+                    "text": text or "Image generated.",
+                    "is_progress": True,
+                    "is_thought": False,
+                },
+            )
+            return
+        if kind == "progress":
+            text = f"\n{text.strip()}\n"
+        if kind in {"reply", "thought", "progress"}:
+            is_thought = kind in {"thought", "progress"}
+            if is_thought and not display_segments:
+                # Progress events carry surrounding newlines so they separate
+                # from prior content. The first durable event has no prior
+                # content and must still begin on the bubble's first line.
+                text = text.lstrip("\r\n")
+            if display_segments and bool(display_segments[-1].get("is_thought")) == is_thought:
+                display_segments[-1]["text"] = str(display_segments[-1].get("text") or "") + text
+            else:
+                display_segments.append({"text": text, "is_thought": is_thought})
+        ctx.emit(
+            "reply.chunk",
+            {
+                "text": text,
+                # Provider actions belong to the persistent activity transcript.
+                # Only the initial "is working" line is a replaceable preview.
+                "is_progress": kind in {"progress", "status"},
+                "is_thought": kind in {"thought", "progress"},
+            },
+        )
+
+    result = run_harness(
+        provider,
+        prompt,
+        session_id=session_id,
+        cwd=stored_cwd or requested_cwd or None,
+        on_event=on_harness_event,
+        approval_callback=_live_file_approval_callback(ctx),
+        images=images,
+    )
+    text = str(result.text or "")
+    for raw_attachment in getattr(result, "attachments", ()) or ():
+        if not isinstance(raw_attachment, dict):
+            continue
+        candidate = dict(raw_attachment)
+        key = (str(candidate.get("path") or ""), str(candidate.get("name") or ""))
+        if key[0] and not any(
+            (str(item.get("path") or ""), str(item.get("name") or "")) == key
+            for item in attachments
+        ):
+            attachments.append(candidate)
+    if privacy_session is not None:
+        text = privacy_session.restore(text)
+    _log(
+        "harness completed "
+        f"provider={result.provider} backend={result.backend or 'unknown'} "
+        f"session_id={result.session_id}"
+    )
+    done_payload: dict[str, Any] = {
+        "text": text,
+        "display_segments": display_segments,
+        "attachments": attachments,
+        "harness": {
+            "provider": result.provider,
+            "session_id": result.session_id if owner == "agent" else "",
+            "cwd": result.cwd,
+            "conversation_owner": owner,
+            "clear_session": owner == "openwand",
+        },
+    }
+    if result.workspace_changes:
+        done_payload["harness"]["workspace_changes"] = dict(result.workspace_changes)
+    if isinstance(privacy_report, dict) and privacy_report.get("count"):
+        done_payload["privacy_report"] = privacy_report
+    ctx.emit("reply.done", done_payload)
+    return done_payload
+
+
+@handler("brain.query", streaming=True)
+def brain_query(
+    ctx: StreamContext,
+    intent_prompt: str = "",
+    selected: str | None = None,
+    screenshot_b64: str | None = None,
+    ambient_text: str = "",
+    memory_context: str = "",
+    memory_enabled: bool = True,
+    use_tools: bool = False,
+    allowed_tools: list[str] | None = None,
+    pinned_tools: list[str] | None = None,
+    frontload_tools: list[str] | None = None,
+    file_access_mode: str = "",
+    allow_screenshot_tool: bool = False,
+    screenshot_tool_b64: str | None = None,
+    include_active_document: bool = False,
+    active_document_text: str = "",
+    active_document_label: str = "",
+    context_priority: str = "",
+    history: list[dict] | None = None,
+    memory_project: str | None = None,
+    privacy_session_id: str = "",
+    harness_provider: str = "",
+    conversation_owner: str = "",
+    harness_session: dict[str, Any] | None = None,
+    harness_cwd: str = "",
+) -> dict[str, Any]:
+    """Assemble context and stream an LLM reply, mirroring App._query_and_speak.
+
+    Reuses the OS-agnostic brain verbatim: ``core.query_pipeline.build_context``
+    for precedence rules and ``core.llm_clients.client.stream_response`` for the
+    token stream. Each chunk becomes a ``reply.chunk`` event tagged with this
+    request's id; the full text is the final response result.
+    """
+    import config
+    from core.query_pipeline import ContextInputs, build_context
+
+    query_started = time.monotonic()
+    _reload_config_for_live_file_tools(
+        use_tools=use_tools,
+        allowed_tools=allowed_tools,
+        file_access_mode=file_access_mode,
+    )
+    trust_privacy_mode = bool(getattr(config, "TRUST_PRIVACY_MODE", True))
+    if memory_enabled:
+        try:
+            # Scope memory (retrieval + saves) to the conversation's project for
+            # this query. Memory lives in this brain process, so the supervisor
+            # passes the active project per call.
+            from core.memory_store import store
+            store.set_active_project(memory_project)
+        except Exception as exc:
+            _log(f"memory project scope skipped: {type(exc).__name__}: {exc}")
+        try:
+            from core.memory_store import store
+            from core.memory_store.commands import extract_remember_fact
+            fact = extract_remember_fact(intent_prompt)
+            if fact:
+                store.get_manager().add_explicit_fact(fact)
+        except Exception as exc:  # memory should not block answering
+            _log(f"explicit remember skipped: {type(exc).__name__}: {exc}")
+
+    if memory_enabled and not memory_context:
+        try:
+            from core.memory_store import store
+            memory_context = store.get_manager().retrieve_relevant(intent_prompt) or ""
+        except Exception as exc:  # memory should not block answering
+            _log(f"memory retrieval skipped: {type(exc).__name__}: {exc}")
+
+    active_document = active_document_text
+    # Read open documents whenever the caller asked for them ("On"), including
+    # alongside a screenshot — a screenshot shows pixels, not document text, so
+    # it must not silently disable the documents setting.
+    if include_active_document and not active_document:
+        active_document = brain_context_active_document().get("text", "")
+
+    built = build_context(
+        ContextInputs(
+            intent_prompt=intent_prompt,
+            selected=selected,
+            screenshot_b64=screenshot_b64,
+            ambient_text=ambient_text,
+            active_document_text=active_document,
+            active_document_label=active_document_label,
+            priority_context=context_priority,
+            trust_privacy_mode=trust_privacy_mode,
+            defer_privacy_redaction=trust_privacy_mode,
+        )
+    )
+    built = _apply_frontloaded_tools(built, frontload_tools)
+    built = _apply_addon_before_query(built)
+    normalized_history = _normalize_chat_messages(history or []) if history else None
+    privacy_session = None
+    if trust_privacy_mode:
+        from core.privacy_gateway import ai_detection_enabled, get_session, review_enabled
+
+        privacy_session = get_session(privacy_session_id or f"query:{ctx.req_id}")
+        fields = {
+            "prompt": str(getattr(built, "user_message", "") or ""),
+            "context": str(getattr(built, "ambient_ctx", "") or ""),
+            "memory": str(memory_context or ""),
+        }
+        for index, message in enumerate(normalized_history or []):
+            fields[f"history:{index}"] = str(message.get("content") or "")
+        scrubbed, privacy_report = privacy_session.scrub_fields(
+            fields,
+            ai_enabled=ai_detection_enabled(),
+            review=(
+                _privacy_review_callback(ctx)
+                if review_enabled() and not _offline_brain()
+                else None
+            ),
+        )
+        built = type(built)(
+            user_message=scrubbed["prompt"],
+            ambient_ctx=scrubbed["context"],
+            screenshot_b64=getattr(built, "screenshot_b64", None),
+            privacy_report=privacy_report,
+        )
+        memory_context = scrubbed["memory"]
+        if normalized_history:
+            normalized_history = [dict(message) for message in normalized_history]
+            for index, message in enumerate(normalized_history):
+                message["content"] = scrubbed[f"history:{index}"]
+    harness_mode = str(
+        harness_provider or getattr(config, "CHAT_EXECUTION_MODE", "openwand") or "openwand"
+    ).strip().lower()
+    if harness_mode not in {"openwand", "codex", "claude"}:
+        harness_mode = "openwand"
+    owner = str(
+        conversation_owner or getattr(config, "CHAT_CONVERSATION_OWNER", "openwand") or "openwand"
+    ).strip().lower()
+    if owner not in {"openwand", "agent"}:
+        owner = "openwand"
+    if harness_mode in {"codex", "claude"}:
+        # External harnesses own their system instructions. Their optional
+        # provider-specific prompts are applied through the native harness API,
+        # never pasted into the user's message.
+        prompt_parts: list[str] = []
+        has_agent_session = owner == "agent" and bool(_harness_session_id(harness_session, harness_mode))
+        if not has_agent_session and normalized_history:
+            prompt_parts.append(_harness_history_text(normalized_history))
+        if memory_context:
+            prompt_parts.append(f"[OpenWand memory]\n{memory_context}")
+        ambient = str(getattr(built, "ambient_ctx", "") or "").strip()
+        if ambient:
+            prompt_parts.append(ambient)
+        prompt_parts.append(str(getattr(built, "user_message", "") or ""))
+        harness_images = _write_harness_images(
+            [str(getattr(built, "screenshot_b64", "") or "")]
+        )
+        try:
+            return _run_live_harness(
+                ctx,
+                harness_mode,
+                "\n\n---\n\n".join(part for part in prompt_parts if part),
+                harness_session=harness_session,
+                harness_cwd=harness_cwd,
+                conversation_owner=owner,
+                privacy_session=privacy_session,
+                privacy_report=getattr(built, "privacy_report", None),
+                images=harness_images,
+            )
+        finally:
+            _delete_harness_images(harness_images)
+
+    parts: list[str] = []
+    file_context: list[dict[str, Any]] = []
+    _log(
+        "brain.query stream starting after "
+        f"{time.monotonic() - query_started:.2f}s "
+        f"tools={bool(use_tools)} file_access={file_access_mode or 'off'}"
+    )
+    first_chunk_seen = False
+    for chunk in _stream_query_reply(
+        built,
+        memory_context,
+        use_tools,
+        allowed_tools,
+        allow_screenshot_tool,
+        screenshot_tool_b64,
+        pinned_tools=pinned_tools,
+        history=normalized_history,
+        ctx=ctx,
+        file_access_mode=file_access_mode,
+        file_context=file_context,
+        privacy_session=privacy_session,
+        privacy_report=getattr(built, "privacy_report", None),
+    ):
+        if ctx.cancelled:
+            break
+        text = str(chunk)
+        if privacy_session is not None:
+            text = privacy_session.restore(text)
+        kind = _stream_chunk_kind(chunk)
+        if not first_chunk_seen:
+            first_chunk_seen = True
+            _log(f"brain.query first stream chunk after {time.monotonic() - query_started:.2f}s kind={kind}")
+        is_progress = kind == "progress"
+        is_thought = kind == "thought"
+        if not (is_progress or is_thought):
+            # Buffer answer text so OpenWand/default transforms and addons can
+            # finalize it before the UI sees any assistant content.
+            parts.append(text)
+            continue
+        ctx.emit("reply.chunk", {"text": text, "is_progress": is_progress, "is_thought": is_thought})
+
+    full = _transform_addon_response_text("".join(parts), surface="reply")
+    if privacy_session is not None:
+        full = privacy_session.restore(full)
+    if full and not ctx.cancelled:
+        ctx.emit(
+            "reply.chunk",
+            {
+                "text": full,
+                "is_progress": False,
+                "is_thought": False,
+                "annotations": _addon_text_annotations(full, surface="reply"),
+            },
+        )
+    done_payload: dict[str, Any] = {"text": full}
+    if file_context:
+        done_payload["file_context"] = file_context
+    privacy_report = getattr(built, "privacy_report", None)
+    if isinstance(privacy_report, dict) and privacy_report.get("count"):
+        done_payload["privacy_report"] = privacy_report
+    ctx.emit("reply.done", done_payload)
+    _notify_addon_after_response(full)
+    return done_payload
+
+
+def _apply_frontloaded_tools(built: Any, frontload_tools: list[str] | None) -> Any:
+    """Apply frontloaded tools."""
+    if not frontload_tools:
+        return built
+    try:
+        from core.llm_clients.client import _inject_frontloaded_tool_context
+
+        ambient_ctx = _inject_frontloaded_tool_context(
+            getattr(built, "ambient_ctx", ""),
+            frontload_tools,
+            query=getattr(built, "user_message", ""),
+        )
+        return type(built)(
+            user_message=getattr(built, "user_message", ""),
+            ambient_ctx=ambient_ctx,
+            screenshot_b64=getattr(built, "screenshot_b64", None),
+            privacy_report=getattr(built, "privacy_report", {}),
+        )
+    except Exception as exc:  # noqa: BLE001 - injected context should not block answering
+        _log(f"frontloaded tools skipped: {type(exc).__name__}: {exc}")
+        return built
+
+
+def _apply_addon_before_query(built: Any) -> Any:
+    """Apply addon before-query hooks."""
+    try:
+        from core.system.paths import ADDONS_DIR
+
+        # Ensure on_startup ran and addon get_tools are registered before the
+        # LLM gathers tools for this query.
+        run_addon_startup()
+        user_message, ambient_ctx = _loaded_addon_manager(Path(ADDONS_DIR)).before_query(
+            getattr(built, "user_message", ""),
+            getattr(built, "ambient_ctx", ""),
+        )
+        return type(built)(
+            user_message=user_message,
+            ambient_ctx=ambient_ctx,
+            screenshot_b64=getattr(built, "screenshot_b64", None),
+            privacy_report=getattr(built, "privacy_report", {}),
+        )
+    except Exception as exc:  # noqa: BLE001 - addon hooks should not block answering
+        _log(f"addon before_query skipped: {type(exc).__name__}: {exc}")
+        return built
+
+
+def _notify_addon_after_response(text: str) -> None:
+    """Notify addons after a response finishes."""
+    if not text:
+        return
+    try:
+        from core.system.paths import ADDONS_DIR
+
+        _loaded_addon_manager(Path(ADDONS_DIR)).after_response(text)
+    except Exception as exc:  # noqa: BLE001 - addon hooks should not block answering
+        _log(f"addon after_response skipped: {type(exc).__name__}: {exc}")
+
+
+def _transform_addon_response_text(text: str, *, surface: str) -> str:
+    """Apply opt-in addon response transforms to final assistant text."""
+    if not text:
+        return text
+    try:
+        from core.system.paths import ADDONS_DIR
+
+        run_addon_startup()
+        return _loaded_addon_manager(Path(ADDONS_DIR)).transform_response_text(
+            {
+                "text": text,
+                "surface": surface,
+                "role": "assistant",
+            }
+        )
+    except Exception as exc:  # noqa: BLE001 - addon hooks should not block answering
+        _log(f"addon transform_response_text skipped: {type(exc).__name__}: {exc}")
+        return text
+
+
+def _addon_text_annotations(text: str, *, surface: str) -> list[dict[str, Any]]:
+    """Return display-only addon text annotations for a final assistant surface."""
+    if not text:
+        return []
+    try:
+        from core.system.paths import ADDONS_DIR
+
+        run_addon_startup()
+        result = _loaded_addon_manager(Path(ADDONS_DIR)).get_text_annotations(
+            {
+                "text": text,
+                "surface": surface,
+                "role": "assistant",
+            }
+        )
+        return result if isinstance(result, list) else []
+    except Exception as exc:  # noqa: BLE001 - addon annotations should not block answering
+        _log(f"addon text annotations skipped: {type(exc).__name__}: {exc}")
+        return []
+
+
+@handler("brain.context.active_document")
+def brain_context_active_document(
+    active_window: dict[str, Any] | None = None,
+    active_only: bool = False,
+) -> dict[str, Any]:
+    """Return active/open document text through the shared context reader."""
+    try:
+        from core.llm_clients.client import read_active_document_for_context_with_debug
+
+        text, debug = read_active_document_for_context_with_debug(
+            active_window=active_window,
+            active_only=bool(active_only),
+        )
+        if text.startswith(("Could not", "File type", "Failed to")):
+            text = ""
+        return {"text": text, "debug": debug}
+    except Exception as exc:  # noqa: BLE001 - context should not block answering
+        _log(f"active document read failed: {type(exc).__name__}: {exc}")
+        return {"text": "", "error": str(exc)}
+
+
+def _stream_query_reply(
+    built: Any,
+    memory_context: str,
+    use_tools: bool,
+    allowed_tools: list[str] | None,
+    allow_screenshot_tool: bool,
+    screenshot_tool_b64: str | None = None,
+    pinned_tools: list[str] | None = None,
+    history: list[dict] | None = None,
+    ctx: StreamContext | None = None,
+    file_access_mode: str = "",
+    file_context: list[dict[str, Any]] | None = None,
+    privacy_session: Any | None = None,
+    privacy_report: dict[str, Any] | None = None,
+) -> Iterator[str]:
+    """Token stream for ``brain.query``: real provider, or deterministic offline.
+
+    In offline mode (``OPENWAND_BRAIN_FAKE_LLM``) the assembled prompt is still built
+    by ``core.query_pipeline.build_context`` -- so context precedence is exercised
+    for real -- and the reply just echoes the intent plus the assembled ambient
+    context (selected text, clipboard, app/window) with a ``[fake-llm]`` tag, so
+    tests can assert reassembly and that each of their inputs reached the model.
+    """
+    if _offline_brain():
+        prompt = (getattr(built, "user_message", "") or "").strip()
+        ambient = (getattr(built, "ambient_ctx", "") or "").strip()
+        combined = (prompt + ("\n" + ambient if ambient else "")).strip()
+        reply = f"[fake-llm] {combined}".strip()
+        try:
+            delay = max(0.0, float(os.getenv("OPENWAND_BRAIN_FAKE_LLM_DELAY", "0") or 0))
+        except (TypeError, ValueError):
+            delay = 0.0
+        for word in reply.split(" "):
+            if ctx is not None and ctx.cancelled:
+                break
+            yield word + " "
+            if delay:
+                time.sleep(delay)
+        return
+
+    from core.llm_clients import client as llm_client
+
+    def normal_stream() -> Iterator[str]:
+        """Run the existing single-response query stream."""
+        llm_client.set_live_file_access_mode(file_access_mode or None)
+        llm_client.set_live_file_approval_callback(_live_file_approval_callback(ctx) if ctx is not None else None)
+        llm_client.set_live_file_event_callback(
+            _record_file_context(
+                file_context,
+                (lambda event: ctx.emit("live_file.activity", event)) if ctx is not None else None,
+            )
+            if file_context is not None
+            else None
+        )
+        llm_client.set_live_model_tool_ui_callback(
+            (lambda request: ctx.emit("model_tool.ui.request", request))
+            if ctx is not None
+            else None
+        )
+        if privacy_session is not None:
+            from core.privacy_gateway import ai_detection_enabled, review_enabled
+
+            llm_client.set_live_privacy_context(
+                privacy_session,
+                ai_enabled=ai_detection_enabled(),
+                review_callback=(
+                    _privacy_review_callback(ctx)
+                    if ctx is not None and review_enabled()
+                    else None
+                ),
+                report_callback=(
+                    (lambda report: _merge_privacy_report(privacy_report, report))
+                    if privacy_report is not None
+                    else None
+                ),
+            )
+        try:
+            yield from llm_client.stream_response(
+                built.user_message,
+                image_base64=built.screenshot_b64,
+                ambient_context=built.ambient_ctx,
+                memory_context=memory_context,
+                use_tools=use_tools,
+                allowed_tools=allowed_tools,
+                pinned_tools=pinned_tools,
+                allow_screenshot_tool=allow_screenshot_tool,
+                screenshot_tool_b64=screenshot_tool_b64,
+                history=history,
+            )
+        finally:
+            llm_client.set_live_file_access_mode(None)
+            llm_client.set_live_file_approval_callback(None)
+            llm_client.set_live_file_event_callback(None)
+            llm_client.set_live_model_tool_ui_callback(None)
+            llm_client.set_live_privacy_context(None)
+
+    if _planned_chunking_query_enabled(
+        built,
+        use_tools=use_tools,
+        allow_screenshot_tool=allow_screenshot_tool,
+        screenshot_tool_b64=screenshot_tool_b64,
+        history=history,
+        file_access_mode=file_access_mode,
+    ):
+        import config
+
+        yield from llm_client.stream_planned_chunk_response(
+            built.user_message,
+            ambient_context=built.ambient_ctx,
+            memory_context=memory_context,
+            chunks=getattr(config, "PLANNED_CHUNKING_CHUNKS", 3),
+            fallback_stream=normal_stream,
+        )
+        return
+
+    yield from normal_stream()
+
+
+def _planned_chunking_query_enabled(
+    built: Any,
+    *,
+    use_tools: bool,
+    allow_screenshot_tool: bool,
+    screenshot_tool_b64: str | None,
+    history: list[dict] | None,
+    file_access_mode: str,
+) -> bool:
+    """Return whether this query is safe for experimental planned chunking."""
+    import config
+
+    if not bool(getattr(config, "PLANNED_CHUNKING", False)):
+        return False
+    if use_tools or allow_screenshot_tool or screenshot_tool_b64:
+        return False
+    if getattr(built, "screenshot_b64", None):
+        return False
+    if history:
+        return False
+    if (file_access_mode or "").strip().lower() not in {"", "off", "never"}:
+        return False
+    prompt_size = len(
+        (
+            str(getattr(built, "user_message", "") or "")
+            + "\n"
+            + str(getattr(built, "ambient_ctx", "") or "")
+        ).strip()
+    )
+    return prompt_size >= max(0, int(getattr(config, "PLANNED_CHUNKING_MIN_PROMPT_CHARS", 80) or 0))
+
+
+@handler("brain.rewrite", streaming=True)
+def brain_rewrite(
+    ctx: StreamContext,
+    selected_text: str = "",
+    intent_prompt: str = "Rewrite or fix the following text",
+    rewrite_context: str = "",
+    privacy_session_id: str = "",
+) -> dict[str, Any]:
+    """Stream an inline rewrite for native paste-back callers."""
+    handler_started = time.perf_counter()
+    selected_text = str(selected_text or "")
+    if not selected_text.strip():
+        raise ValueError("selected_text is required")
+
+    privacy_session = None
+    privacy_report: dict[str, Any] = {}
+    import config
+    if bool(getattr(config, "TRUST_PRIVACY_MODE", True)):
+        from core.privacy_gateway import ai_detection_enabled, get_session, review_enabled
+
+        privacy_session = get_session(privacy_session_id or f"rewrite:{ctx.req_id}")
+        scrubbed, privacy_report = privacy_session.scrub_fields(
+            {
+                "rewrite_text": selected_text,
+                "instruction": intent_prompt,
+                "context": rewrite_context,
+            },
+            ai_enabled=ai_detection_enabled(),
+            review=(
+                _privacy_review_callback(ctx)
+                if review_enabled() and not _offline_brain()
+                else None
+            ),
+        )
+        selected_text = scrubbed["rewrite_text"]
+        intent_prompt = scrubbed["instruction"]
+        rewrite_context = scrubbed["context"]
+
+    replacement_parts: list[str] = []
+    visible_parts: list[str] = []
+    chunk_count = 0
+    first_chunk_ms: float | None = None
+    for chunk in _stream_rewrite_reply(selected_text, intent_prompt, rewrite_context):
+        if ctx.cancelled:
+            break
+        chunk_count += 1
+        if first_chunk_ms is None:
+            first_chunk_ms = (time.perf_counter() - handler_started) * 1000
+            ctx.emit(
+                "rewrite.first_activity",
+                {"kind": str(getattr(chunk, "kind", "answer") or "answer")},
+            )
+        kind = str(getattr(chunk, "kind", "answer") or "answer")
+        text = str(chunk)
+        if privacy_session is not None:
+            text = privacy_session.restore(text)
+        if kind == "rewrite_result":
+            replacement_parts.append(text)
+            continue
+        if kind != "thought":
+            visible_parts.append(text)
+        ctx.emit(
+            "reply.chunk",
+            {
+                "text": text,
+                "is_thought": kind == "thought",
+                "is_progress": kind == "progress",
+            },
+        )
+
+    full = "".join(replacement_parts)
+    visible = "".join(visible_parts).strip()
+    if privacy_session is not None:
+        full = privacy_session.restore(full)
+        visible = privacy_session.restore(visible)
+    done_payload = {"text": full, "visible_text": visible}
+    if privacy_report.get("count"):
+        done_payload["privacy_report"] = privacy_report
+    ctx.emit(
+        "rewrite.telemetry",
+        {
+            "handler_total_ms": round((time.perf_counter() - handler_started) * 1000, 3),
+            "first_chunk_ms": round(first_chunk_ms, 3) if first_chunk_ms is not None else None,
+            "chunk_count": chunk_count,
+            "replacement_chars": len(full),
+            "visible_chars": len(visible),
+            "cancelled": bool(ctx.cancelled),
+            "privacy_matches": int(privacy_report.get("count") or 0),
+        },
+    )
+    ctx.emit("reply.done", done_payload)
+    return done_payload
+
+
+def _stream_rewrite_reply(selected_text: str, intent_prompt: str, rewrite_context: str = "") -> Iterator[str]:
+    """Stream rewrite reply."""
+    if _offline_brain():
+        from core.llm_clients.client import _rewrite_result_chunk
+
+        reply = f"[fake-rewrite] {intent_prompt}: {selected_text}"
+        yield _rewrite_result_chunk(reply)
+        return
+
+    from core.llm_clients.client import stream_rewrite
+
+    yield from stream_rewrite(selected_text, intent_prompt, rewrite_context=rewrite_context)
+
+
+@handler("brain.action.plan", streaming=True)
+def brain_action_plan(
+    ctx: StreamContext,
+    planning_tool_name: str = "",
+    planning_tool_description: str = "",
+    input_schema: dict[str, Any] | None = None,
+    user_prompt: str = "",
+    app_context: Any = None,
+    privacy_session_id: str = "",
+) -> dict[str, Any]:
+    """Force one typed app-action plan; never execute the proposed action."""
+    from core.llm_clients.client import _validated_action_planning_spec
+
+    # Validate caller-controlled tool metadata before it reaches any provider.
+    name, description, frozen_schema, _tool_schema = _validated_action_planning_spec(
+        planning_tool_name,
+        planning_tool_description,
+        input_schema or {},
+    )
+    prompt = str(user_prompt or "")
+    if isinstance(app_context, str):
+        context_text = app_context
+    else:
+        try:
+            context_text = json.dumps(app_context or {}, ensure_ascii=False, sort_keys=True)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("app_context must be a string or JSON-compatible value") from exc
+
+    privacy_session = None
+    privacy_report: dict[str, Any] = {}
+    import config
+    if bool(getattr(config, "TRUST_PRIVACY_MODE", True)):
+        from core.privacy_gateway import ai_detection_enabled, get_session, review_enabled
+
+        privacy_session = get_session(privacy_session_id or f"action-plan:{ctx.req_id}")
+        scrubbed, privacy_report = privacy_session.scrub_fields(
+            {"user_prompt": prompt, "app_context": context_text},
+            ai_enabled=ai_detection_enabled(),
+            review=(
+                _privacy_review_callback(ctx)
+                if review_enabled() and not _offline_brain()
+                else None
+            ),
+        )
+        prompt = scrubbed["user_prompt"]
+        context_text = scrubbed["app_context"]
+
+    plan_result: dict[str, Any] | None = None
+    visible_parts: list[str] = []
+    for chunk in _stream_action_plan_reply(name, description, frozen_schema, prompt, context_text):
+        if ctx.cancelled:
+            break
+        kind = str(getattr(chunk, "kind", "answer") or "answer")
+        text = str(chunk)
+        if kind == "action_plan_result":
+            try:
+                parsed = json.loads(text)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Action planner returned an invalid internal result") from exc
+            if not isinstance(parsed, dict) or parsed.get("tool_name") != name:
+                raise ValueError("Action planner returned the wrong planning tool")
+            arguments = parsed.get("arguments")
+            if not isinstance(arguments, dict):
+                raise ValueError("Action planner returned non-object arguments")
+            plan_result = {"tool_name": name, "arguments": arguments}
+            continue
+        if privacy_session is not None:
+            text = privacy_session.restore(text)
+        if kind != "thought":
+            visible_parts.append(text)
+        ctx.emit(
+            "reply.chunk",
+            {
+                "text": text,
+                "is_thought": kind == "thought",
+                "is_progress": kind == "progress",
+            },
+        )
+
+    if ctx.cancelled:
+        return {"tool_name": name, "arguments": {}, "visible_text": "", "cancelled": True}
+    if plan_result is None:
+        raise ValueError(f"Planning model did not return required tool {name}")
+
+    def restore_value(value):
+        if privacy_session is None:
+            return value
+        if isinstance(value, str):
+            return privacy_session.restore(value)
+        if isinstance(value, list):
+            return [restore_value(item) for item in value]
+        if isinstance(value, dict):
+            return {key: restore_value(item) for key, item in value.items()}
+        return value
+
+    result = {
+        "tool_name": name,
+        "arguments": restore_value(plan_result["arguments"]),
+        "visible_text": "".join(visible_parts).strip(),
+    }
+    if privacy_report.get("count"):
+        result["privacy_report"] = privacy_report
+    ctx.emit("reply.done", result)
+    return result
+
+
+def _stream_action_plan_reply(
+    planning_tool_name: str,
+    planning_tool_description: str,
+    input_schema: dict[str, Any],
+    user_prompt: str,
+    app_context: str,
+) -> Iterator[str]:
+    """Call the provider-neutral forced planner without any executor access."""
+    if _offline_brain():
+        raise RuntimeError("Forced application-action planning is unavailable in fake LLM mode")
+    from core.llm_clients.client import stream_action_plan
+
+    yield from stream_action_plan(
+        planning_tool_name,
+        planning_tool_description,
+        input_schema,
+        user_prompt,
+        app_context=app_context,
+    )
+
+
+@handler("brain.chat", streaming=True)
+def brain_chat(
+    ctx: StreamContext,
+    messages: list[dict[str, Any]] | None = None,
+    memory_context: str = "",
+    memory_enabled: bool = True,
+    memory_project: str | None = None,
+    use_tools: bool = False,
+    allowed_tools: list[str] | None = None,
+    pinned_tools: list[str] | None = None,
+    file_access_mode: str = "",
+    privacy_session_id: str = "",
+    harness_provider: str = "",
+    conversation_owner: str = "",
+    harness_session: dict[str, Any] | None = None,
+    harness_cwd: str = "",
+) -> dict[str, Any]:
+    """Stream a multi-turn chat reply from the existing chat LLM path."""
+    _reload_config_for_live_file_tools(
+        use_tools=use_tools,
+        allowed_tools=allowed_tools,
+        file_access_mode=file_access_mode,
+    )
+    turns = _normalize_chat_messages(messages or [])
+    if not turns:
+        raise ValueError("messages must include at least one user turn")
+
+    if memory_enabled:
+        try:
+            from core.memory_store import store
+            store.set_active_project(memory_project)
+        except Exception as exc:
+            _log(f"chat memory project scope skipped: {type(exc).__name__}: {exc}")
+
+    last_user = next(
+        (str(m.get("content") or "") for m in reversed(turns) if m.get("role") == "user"),
+        "",
+    )
+
+    if memory_enabled and last_user:
+        try:
+            from core.memory_store import store
+            from core.memory_store.commands import extract_remember_fact
+            fact = extract_remember_fact(last_user)
+            if fact:
+                store.get_manager().add_explicit_fact(fact)
+        except Exception as exc:  # memory should not block chat
+            _log(f"chat explicit remember skipped: {type(exc).__name__}: {exc}")
+
+    if memory_enabled and not memory_context and last_user:
+        try:
+            from core.memory_store import store
+            memory_context = store.get_manager().retrieve_relevant(last_user) or ""
+        except Exception as exc:  # memory should not block chat
+            _log(f"chat memory retrieval skipped: {type(exc).__name__}: {exc}")
+
+    privacy_session = None
+    privacy_report: dict[str, Any] = {}
+    import config
+    if bool(getattr(config, "TRUST_PRIVACY_MODE", True)):
+        from core.privacy_gateway import ai_detection_enabled, get_session, review_enabled
+
+        privacy_session = get_session(privacy_session_id or f"chat:{ctx.req_id}")
+        fields = {"memory": str(memory_context or "")}
+        for index, message in enumerate(turns):
+            fields[f"message:{index}"] = str(message.get("content") or "")
+        scrubbed, privacy_report = privacy_session.scrub_fields(
+            fields,
+            ai_enabled=ai_detection_enabled(),
+            review=(
+                _privacy_review_callback(ctx)
+                if review_enabled() and not _offline_brain()
+                else None
+            ),
+        )
+        memory_context = scrubbed["memory"]
+        turns = [dict(message) for message in turns]
+        for index, message in enumerate(turns):
+            message["content"] = scrubbed[f"message:{index}"]
+
+    harness_mode = str(
+        harness_provider or getattr(config, "CHAT_EXECUTION_MODE", "openwand") or "openwand"
+    ).strip().lower()
+    if harness_mode not in {"openwand", "codex", "claude"}:
+        harness_mode = "openwand"
+    owner = str(
+        conversation_owner or getattr(config, "CHAT_CONVERSATION_OWNER", "openwand") or "openwand"
+    ).strip().lower()
+    if owner not in {"openwand", "agent"}:
+        owner = "openwand"
+    if harness_mode in {"codex", "claude"}:
+        session_id = _harness_session_id(harness_session, harness_mode) if owner == "agent" else ""
+        prompt = _harness_chat_prompt(turns, include_history=not bool(session_id))
+        if memory_context:
+            prompt = f"[OpenWand memory]\n{memory_context}\n\n---\n\n{prompt}"
+        # Older turns' images stay history-only; the newest user turn's image
+        # is the one this turn is about, so it rides along as harness input.
+        newest_image = next(
+            (
+                str(message.get("image_base64") or "")
+                for message in reversed(turns)
+                if message.get("role") == "user" and message.get("image_base64")
+            ),
+            "",
+        )
+        harness_images = _write_harness_images([newest_image])
+        try:
+            return _run_live_harness(
+                ctx,
+                harness_mode,
+                prompt,
+                harness_session=harness_session,
+                harness_cwd=harness_cwd,
+                conversation_owner=owner,
+                privacy_session=privacy_session,
+                privacy_report=privacy_report,
+                images=harness_images,
+            )
+        finally:
+            _delete_harness_images(harness_images)
+
+    parts: list[str] = []
+    file_context: list[dict[str, Any]] = []
+    for chunk in _stream_chat_reply(
+        turns,
+        memory_context,
+        use_tools=use_tools,
+        allowed_tools=allowed_tools,
+        pinned_tools=pinned_tools,
+        ctx=ctx,
+        file_access_mode=file_access_mode,
+        file_context=file_context,
+        privacy_session=privacy_session,
+        privacy_report=privacy_report,
+    ):
+        if ctx.cancelled:
+            break
+        text = str(chunk)
+        if privacy_session is not None:
+            text = privacy_session.restore(text)
+        kind = _stream_chunk_kind(chunk)
+        is_progress = kind == "progress"
+        is_thought = kind == "thought"
+        if not (is_progress or is_thought):
+            # Buffer answer text so OpenWand/default transforms and addons can
+            # finalize it before the UI sees any assistant content.
+            parts.append(text)
+            continue
+        ctx.emit("reply.chunk", {"text": text, "is_progress": is_progress, "is_thought": is_thought})
+
+    full = _transform_addon_response_text("".join(parts), surface="chat")
+    if privacy_session is not None:
+        full = privacy_session.restore(full)
+    if full and not ctx.cancelled:
+        ctx.emit("reply.chunk", {"text": full, "is_progress": False, "is_thought": False})
+    done_payload: dict[str, Any] = {"text": full}
+    if file_context:
+        done_payload["file_context"] = file_context
+    if privacy_report.get("count"):
+        done_payload["privacy_report"] = privacy_report
+    ctx.emit("reply.done", done_payload)
+    return done_payload
+
+
+def _message_context_text(raw: object) -> str:
+    """Normalize one message-scoped hidden context value."""
+    if isinstance(raw, list):
+        return "\n\n---\n".join(
+            str(item or "").strip()
+            for item in raw
+            if str(item or "").strip()
+        )
+    return str(raw or "").strip()
+
+
+def _source_boundary_label(value: object, fallback: str) -> str:
+    """Return a single-line source label safe for prompt boundaries."""
+    label = " ".join(str(value or "").split()).strip()
+    return label or fallback
+
+
+def _user_turn_with_message_context(raw: dict[str, Any], content: str, conversation_store: Any) -> str:
+    """Attach message-local context to the owning user turn with source boundaries."""
+    context_parts: list[str] = []
+    context_text = _message_context_text(raw.get("context"))
+    if context_text:
+        context_parts.append(
+            "--- BEGIN MESSAGE CONTEXT ---\n"
+            f"{context_text}\n"
+            "--- END MESSAGE CONTEXT ---"
+        )
+    if conversation_store is not None:
+        for ref in conversation_store.normalize_attachments(raw.get("attachments")):
+            ref_context = conversation_store.attachment_context_text(ref)
+            if not ref_context:
+                continue
+            name = _source_boundary_label(ref.get("name") or ref.get("path"), "attachment")
+            context_parts.append(
+                f"--- BEGIN ATTACHED FILE: {name} ---\n"
+                f"{ref_context}\n"
+                f"--- END ATTACHED FILE: {name} ---"
+            )
+    if not context_parts:
+        return content
+    joined_context = "\n\n".join(context_parts)
+    return (
+        f"{content.rstrip()}\n\n"
+        "[Attached context for this message]\n"
+        "Each block below belongs only to this user message. Keep file/source boundaries distinct.\n"
+        f"{joined_context}"
+    )
+
+
+def _normalize_chat_messages(messages: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Normalize chat messages, keeping user context anchored to its source turn."""
+    allowed_roles = {"system", "user", "assistant"}
+    turns: list[dict[str, str]] = []
+    try:
+        from core.conversation_store import store as conversation_store
+    except Exception:
+        conversation_store = None
+    for raw in messages:
+        role = str(raw.get("role") or "").strip().lower()
+        content = raw.get("content")
+        if role not in allowed_roles or content is None:
+            continue
+        text = str(content).strip()
+        if role == "user":
+            text = _user_turn_with_message_context(raw, text, conversation_store)
+        turn: dict[str, str] = {"role": role, "content": text}
+        # Carry attached screenshots/images forward by resolving references at
+        # model-call time, never by persisting base64 in conversation history.
+        image = raw.get("image_base64")
+        if not image and role == "user" and conversation_store is not None:
+            image = conversation_store.first_image_base64_from_message(raw)
+        if role == "user" and image:
+            turn["image_base64"] = str(image)
+        if text or turn.get("image_base64"):
+            turns.append(turn)
+    return turns
+
+
+def _stream_chunk_kind(chunk: Any) -> str:
+    """Return stream chunk kind metadata, defaulting to final-answer text."""
+    return str(getattr(chunk, "kind", "answer") or "answer")
+
+
+def _stream_chat_reply(
+    messages: list[dict[str, str]],
+    memory_context: str,
+    *,
+    use_tools: bool = False,
+    allowed_tools: list[str] | None = None,
+    pinned_tools: list[str] | None = None,
+    ctx: StreamContext | None = None,
+    file_access_mode: str = "",
+    file_context: list[dict[str, Any]] | None = None,
+    privacy_session: Any | None = None,
+    privacy_report: dict[str, Any] | None = None,
+) -> Iterator[str]:
+    """Stream chat reply."""
+    if _offline_brain():
+        last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+        reply = f"[fake-chat] {last_user}".strip()
+        for word in reply.split(" "):
+            yield word + " "
+        return
+
+    from core.llm_clients import client as llm_client
+
+    llm_client.set_live_file_access_mode(file_access_mode or None)
+    llm_client.set_live_file_approval_callback(_live_file_approval_callback(ctx) if ctx is not None else None)
+    llm_client.set_live_file_event_callback(
+        _record_file_context(
+            file_context,
+            (lambda event: ctx.emit("live_file.activity", event)) if ctx is not None else None,
+        )
+        if file_context is not None
+        else None
+    )
+    llm_client.set_live_model_tool_ui_callback(
+        (lambda request: ctx.emit("model_tool.ui.request", request))
+        if ctx is not None
+        else None
+    )
+    llm_client.set_live_background_task_event_callback(
+        (lambda payload: ctx.emit("background_task.started", payload)) if ctx is not None else None
+    )
+    if privacy_session is not None:
+        from core.privacy_gateway import ai_detection_enabled, review_enabled
+
+        llm_client.set_live_privacy_context(
+            privacy_session,
+            ai_enabled=ai_detection_enabled(),
+            review_callback=(
+                _privacy_review_callback(ctx)
+                if ctx is not None and review_enabled()
+                else None
+            ),
+            report_callback=(
+                (lambda report: _merge_privacy_report(privacy_report, report))
+                if privacy_report is not None
+                else None
+            ),
+        )
+    try:
+        yield from llm_client.stream_response_with_history(
+            messages,
+            memory_context=memory_context,
+            use_tools=use_tools,
+            allowed_tools=allowed_tools,
+            pinned_tools=pinned_tools,
+        )
+    finally:
+        llm_client.set_live_file_access_mode(None)
+        llm_client.set_live_file_approval_callback(None)
+        llm_client.set_live_file_event_callback(None)
+        llm_client.set_live_model_tool_ui_callback(None)
+        llm_client.set_live_background_task_event_callback(None)
+        llm_client.set_live_privacy_context(None)
+
+
+@handler("brain.memory.add")
+def brain_memory_add(
+    text: str = "",
+    category: str | None = None,
+    scope: str | None = None,
+    project: str | None = None,
+) -> dict[str, Any]:
+    """Add a durable memory fact through the existing memory store.
+
+    ``scope`` ("general"/"project") routes through the project-scoped
+    save_memory API; an explicit ``category`` keeps the legacy manual path.
+    """
+    fact = text.strip()
+    if not fact:
+        raise ValueError("text is required")
+
+    from core.memory_store import store
+
+    manager = store.get_manager()
+    if scope:
+        result = manager.save_memory(fact, scope=scope)
+        return {"ok": bool(result.get("ok")), "scope": result.get("scope"),
+                "project": result.get("project"), "text": fact}
+    if project is not None:
+        project = project.strip()
+        used_category = "project_context" if project else "general"
+        manager.add_fact_manual(fact, used_category, project=project)
+        return {"ok": True, "category": used_category, "project": project, "text": fact}
+    if category:
+        manager.add_fact_manual(fact, category)
+        used_category = category
+    else:
+        manager.add_explicit_fact(fact)
+        used_category = "auto"
+    return {"ok": True, "category": used_category, "text": fact}
+
+
+@handler("brain.memory.search")
+def brain_memory_search(query: str = "", top_k: int | None = None) -> dict[str, Any]:
+    """Return the same memory block injected into LLM context."""
+    if not query.strip():
+        raise ValueError("query is required")
+
+    from core.memory_store import store
+
+    text = store.get_manager().retrieve_relevant(query, top_k=top_k) or ""
+    return {"text": text}
+
+
+@handler("brain.memory.list")
+def brain_memory_list() -> dict[str, Any]:
+    """Return active memory facts for the Python macOS memory UI."""
+    from core.memory_store import store
+
+    facts = store.get_manager().get_all_facts()
+    return {"facts": [_memory_fact_payload(fact) for fact in facts]}
+
+
+@handler("brain.memory.update")
+def brain_memory_update(
+    fact_id: str = "",
+    text: str = "",
+    category: str | None = None,
+    project: str | None = None,
+) -> dict[str, Any]:
+    """Update one durable memory fact through the existing memory store."""
+    cleaned_id = fact_id.strip()
+    cleaned_text = text.strip()
+    if not cleaned_id:
+        raise ValueError("fact_id is required")
+    if not cleaned_text:
+        raise ValueError("text is required")
+
+    from core.memory_store import store
+
+    manager = store.get_manager()
+    if project is None:
+        manager.update_fact(cleaned_id, cleaned_text, category)
+        return {"ok": True, "id": cleaned_id, "text": cleaned_text, "category": category}
+    project = project.strip()
+    manager.update_fact(cleaned_id, cleaned_text, category, project=project)
+    used_category = "project_context" if project else "general"
+    return {
+        "ok": True,
+        "id": cleaned_id,
+        "text": cleaned_text,
+        "category": used_category,
+        "project": project,
+    }
+
+
+@handler("brain.memory.delete")
+def brain_memory_delete(fact_id: str = "") -> dict[str, Any]:
+    """Delete one durable memory fact through the existing memory store."""
+    cleaned_id = fact_id.strip()
+    if not cleaned_id:
+        raise ValueError("fact_id is required")
+
+    from core.memory_store import store
+
+    store.get_manager().delete_fact(cleaned_id)
+    return {"ok": True, "id": cleaned_id}
+
+
+def _memory_fact_payload(fact: dict[str, Any]) -> dict[str, Any]:
+    """Handle memory fact payload for runtime brain openwand brain handlers."""
+    return {
+        "id": str(fact.get("id") or ""),
+        "text": str(fact.get("text") or ""),
+        "category": str(fact.get("category") or "general"),
+        "source": str(fact.get("source") or "unknown"),
+        "project": str(fact.get("project") or ""),
+        "created_at": str(fact.get("created_at") or ""),
+        "last_seen": str(fact.get("last_seen") or ""),
+    }
+
+
+def _agent_runs_root(log_root: str | None = None) -> Path:
+    """Handle agent runs root for runtime brain openwand brain handlers."""
+    if log_root:
+        root = Path(log_root)
+    else:
+        root = _runtime_output_dir() / "agent-runs"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _agent_history_roots(log_root: str | None = None) -> list[Path]:
+    """Return run roots that should be visible in the native history UI.
+
+    Agent runs are written under the per-launch runtime log dir. After OpenWand is
+    restarted, the current runtime dir changes, so cancelled or stopped runs
+    from the previous launch can look like they disappeared unless history
+    scans sibling runtime folders too.
+    """
+    if log_root:
+        return [_agent_runs_root(log_root)]
+
+    roots: list[Path] = []
+    seen: set[Path] = set()
+
+    def add_root(path: Path, *, create: bool = False) -> None:
+        """Add root."""
+        try:
+            if create:
+                path.mkdir(parents=True, exist_ok=True)
+            if not path.is_dir():
+                return
+            key = path.resolve()
+        except OSError:
+            return
+        if key in seen:
+            return
+        seen.add(key)
+        roots.append(path)
+
+    current = _agent_runs_root(None)
+    add_root(current)
+
+    runtimes_parent = current.parent.parent
+    try:
+        runtime_roots = sorted(
+            runtimes_parent.glob("openwand_runtime_*/agent-runs"),
+            key=lambda path: (_safe_mtime(path), path.name),
+            reverse=True,
+        )
+    except OSError:
+        runtime_roots = []
+    for root in runtime_roots:
+        add_root(root)
+
+    try:
+        from core.system.paths import AGENT_RUNS_DIR
+    except Exception:
+        pass
+    else:
+        add_root(AGENT_RUNS_DIR)
+
+    return roots
+
+
+def _agent_last_task_path(log_root: str | None = None) -> Path:
+    """Handle agent last task path for runtime brain openwand brain handlers."""
+    return _agent_runs_root(log_root) / "last_task.json"
+
+
+def _save_agent_last_task_spec(spec: dict[str, Any], log_root: str | None = None) -> bool:
+    """Save agent last task spec."""
+    path = _agent_last_task_path(log_root)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(spec, indent=2), encoding="utf-8")
+    except OSError:
+        return False
+    return True
+
+
+def _load_agent_last_task_spec(log_root: str | None = None) -> dict[str, Any] | None:
+    """Load agent last task spec."""
+    from core.agent.task_spec import agent_task_spec_from_dict
+
+    roots = _agent_history_roots(log_root)
+    candidates = sorted(
+        (root / "last_task.json" for root in roots if (root / "last_task.json").exists()),
+        key=_safe_mtime,
+        reverse=True,
+    )
+    run_task_files: list[Path] = []
+    for root in roots:
+        try:
+            run_task_files.extend(
+                path / "task.json"
+                for path in root.iterdir()
+                if path.is_dir() and (path / "task.json").exists()
+            )
+        except OSError:
+            continue
+    run_task_files.sort(key=_safe_mtime, reverse=True)
+    candidates.extend(run_task_files)
+
+    for path in candidates:
+        data = _read_json(path)
+        if not data:
+            continue
+        try:
+            return asdict(agent_task_spec_from_dict(data))
+        except Exception:
+            continue
+    return None
+
+
+@handler("brain.agent.last_spec.read")
+def brain_agent_last_spec_read(log_root: str | None = None) -> dict[str, Any]:
+    """Return the last started task spec, matching the Windows copy-last flow."""
+    return {"spec": _load_agent_last_task_spec(log_root)}
+
+
+@handler("brain.agent.last_spec.write")
+def brain_agent_last_spec_write(spec: Any = None, log_root: str | None = None) -> dict[str, Any]:
+    """Persist a validated task spec as the next copy-last source."""
+    if not isinstance(spec, dict):
+        raise ValueError("spec (a serialized agent task dict) is required")
+
+    from core.agent.task_spec import agent_task_spec_from_dict
+
+    validated = asdict(agent_task_spec_from_dict(spec))
+    return {
+        "ok": _save_agent_last_task_spec(validated, log_root),
+        "path": str(_agent_last_task_path(log_root)),
+        "spec": validated,
+    }
+
+
+def _agent_approval_callback(ctx: StreamContext) -> Callable[[dict], bool]:
+    """Handle agent approval callback for runtime brain openwand brain handlers."""
+    def request_approval(request: dict) -> bool:
+        """Handle request approval for runtime brain openwand brain handlers."""
+        action = str(request.get("action") or "approval")
+        approval_id = uuid.uuid4().hex
+        event = threading.Event()
+        state: dict[str, Any] = {"event": event, "approved": False}
+        with _AGENT_APPROVALS_LOCK:
+            _AGENT_APPROVALS[approval_id] = state
+
+        payload = dict(request)
+        payload["approval_id"] = approval_id
+        ctx.emit("agent.log", {"line": f"waiting for user approval: {action}"})
+        ctx.emit("agent.approval.request", payload)
+
+        try:
+            while not event.wait(0.1):
+                if ctx.cancelled:
+                    ctx.emit("agent.log", {"line": f"approval cancelled: {action}"})
+                    return False
+            return bool(state["approved"])
+        finally:
+            with _AGENT_APPROVALS_LOCK:
+                _AGENT_APPROVALS.pop(approval_id, None)
+
+    return request_approval
+
+
+def _live_file_approval_callback(ctx: StreamContext) -> Callable[[dict], dict[str, Any]]:
+    """Return a callback that asks the UI before live model file writes."""
+    def request_approval(request: dict) -> dict[str, Any]:
+        """Ask the supervisor/UI to resolve one live file approval."""
+        approval_id = uuid.uuid4().hex
+        event = threading.Event()
+        state: dict[str, Any] = {"event": event, "approved": False, "feedback": ""}
+        with _LIVE_FILE_APPROVALS_LOCK:
+            _LIVE_FILE_APPROVALS[approval_id] = state
+
+        payload = dict(request)
+        payload["approval_id"] = approval_id
+        ctx.emit("live_file.approval.request", payload)
+
+        try:
+            while not event.wait(0.1):
+                if ctx.cancelled:
+                    return {"approved": False, "feedback": ""}
+            return {
+                "approved": bool(state["approved"]),
+                "feedback": str(state.get("feedback") or ""),
+            }
+        finally:
+            with _LIVE_FILE_APPROVALS_LOCK:
+                _LIVE_FILE_APPROVALS.pop(approval_id, None)
+
+    return request_approval
+
+
+def _privacy_review_callback(ctx: StreamContext) -> Callable[[dict[str, Any]], str]:
+    """Return a callback that blocks the model send until the user reviews it."""
+    def request_review(request: dict[str, Any]) -> str:
+        approval_id = uuid.uuid4().hex
+        event = threading.Event()
+        state: dict[str, Any] = {"event": event, "decision": "cancel"}
+        with _PRIVACY_APPROVALS_LOCK:
+            _PRIVACY_APPROVALS[approval_id] = state
+        payload = dict(request)
+        payload["approval_id"] = approval_id
+        ctx.emit("privacy.review.request", payload)
+        try:
+            while not event.wait(0.1):
+                if ctx.cancelled:
+                    return "cancel"
+            return str(state.get("decision") or "cancel")
+        finally:
+            with _PRIVACY_APPROVALS_LOCK:
+                _PRIVACY_APPROVALS.pop(approval_id, None)
+
+    return request_review
+
+
+def _merge_privacy_report(target: dict[str, Any] | None, report: dict[str, Any]) -> None:
+    """Merge later tool-result detections into the request's safe report."""
+    if target is None or not report.get("count"):
+        return
+    target["count"] = int(target.get("count") or 0) + int(report.get("count") or 0)
+    target.setdefault("items", []).extend(list(report.get("items") or []))
+    for key in ("categories", "sources"):
+        destination = target.setdefault(key, {})
+        for name, count in dict(report.get(key) or {}).items():
+            destination[name] = int(destination.get(name) or 0) + int(count or 0)
+    target["ai_enabled"] = bool(target.get("ai_enabled") or report.get("ai_enabled"))
+    target["reviewed"] = bool(target.get("reviewed") or report.get("reviewed"))
+    if report.get("decision") == "full":
+        target["decision"] = "full"
+        target["redacted"] = False
+
+
+@handler("brain.debug.live_file.execute", streaming=True)
+def brain_debug_live_file_execute(
+    ctx: StreamContext,
+    name: str = "",
+    inputs: dict[str, Any] | None = None,
+    access_mode: str = "ask",
+) -> dict[str, Any]:
+    """Exercise the real live-file approval boundary in offline contract runs."""
+    if not _offline_brain():
+        raise PermissionError("offline brain mode is required for debug file execution")
+    import config
+    from core.tools.local_files import execute_live_file_tool
+
+    config.reload()
+    result = execute_live_file_tool(
+        str(name or ""),
+        dict(inputs or {}),
+        access_mode=str(access_mode or "ask"),
+        approval_callback=_live_file_approval_callback(ctx),
+    )
+    return {"result": result}
+
+
+@handler("brain.agent.approval.respond")
+def brain_agent_approval_respond(approval_id: str = "", approved: bool = False) -> dict[str, Any]:
+    """Resolve one pending agent approval prompt emitted by ``brain.agent.run``."""
+    cleaned = approval_id.strip()
+    if not cleaned:
+        raise ValueError("approval_id is required")
+
+    with _AGENT_APPROVALS_LOCK:
+        state = _AGENT_APPROVALS.get(cleaned)
+    if state is None:
+        return {"ok": False, "message": "approval request is no longer pending"}
+
+    state["approved"] = bool(approved)
+    event = state.get("event")
+    if isinstance(event, threading.Event):
+        event.set()
+    return {"ok": True, "approved": bool(approved)}
+
+
+@handler("brain.live_file.approval.respond")
+def brain_live_file_approval_respond(
+    approval_id: str = "",
+    approved: bool = False,
+    feedback: str = "",
+) -> dict[str, Any]:
+    """Resolve one pending live model file-edit approval prompt."""
+    cleaned = approval_id.strip()
+    if not cleaned:
+        raise ValueError("approval_id is required")
+
+    with _LIVE_FILE_APPROVALS_LOCK:
+        state = _LIVE_FILE_APPROVALS.get(cleaned)
+    if state is None:
+        return {"ok": False, "message": "approval request is no longer pending"}
+
+    state["approved"] = bool(approved)
+    state["feedback"] = str(feedback or "").strip()
+    event = state.get("event")
+    if isinstance(event, threading.Event):
+        event.set()
+    result = {"ok": True, "approved": bool(approved)}
+    if state["feedback"]:
+        result["feedback"] = state["feedback"]
+    return result
+
+
+@handler("brain.privacy.review.respond")
+def brain_privacy_review_respond(
+    approval_id: str = "",
+    decision: str = "",
+    approved: bool = False,
+) -> dict[str, Any]:
+    """Resolve one pending pre-send privacy review."""
+    cleaned = approval_id.strip()
+    if not cleaned:
+        raise ValueError("approval_id is required")
+    with _PRIVACY_APPROVALS_LOCK:
+        state = _PRIVACY_APPROVALS.get(cleaned)
+    if state is None:
+        return {"ok": False, "message": "privacy review is no longer pending"}
+    normalized = str(decision or ("redacted" if approved else "cancel")).strip().lower()
+    if normalized not in {"redacted", "full", "cancel"}:
+        normalized = "cancel"
+    state["decision"] = normalized
+    event = state.get("event")
+    if isinstance(event, threading.Event):
+        event.set()
+    return {
+        "ok": True,
+        "approved": normalized in {"redacted", "full"},
+        "decision": normalized,
+    }
+
+
+@handler("brain.agent.control")
+def brain_agent_control(
+    target: Any = None,
+    action: str = "",
+    target_agent: str = "ALL",
+    message: str = "",
+    permission_modes: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Control one running agent task."""
+    with _AGENT_RUN_CONTROLS_LOCK:
+        control = _AGENT_RUN_CONTROLS.get(target)
+    if control is None:
+        return {"ok": False, "message": "agent run is no longer active"}
+
+    verb = str(action or "").strip().lower()
+    if verb == "pause":
+        control.pause_after_turn()
+        return {"ok": True, "paused": True}
+    if verb == "resume":
+        control.resume()
+        return {"ok": True, "paused": False}
+    if verb == "nudge":
+        control.add_nudge(str(target_agent or "ALL"), str(message or ""))
+        return {"ok": True}
+    if verb == "permissions":
+        control.update_permission_modes(permission_modes or {})
+        return {"ok": True}
+    return {"ok": False, "message": f"unknown agent control action: {action}"}
+
+
+@handler("brain.agent.history.list")
+def brain_agent_history_list(log_root: str | None = None, limit: int = 100) -> dict[str, Any]:
+    """Return recent agent run folders and lightweight metadata for native UI."""
+    roots = _agent_history_roots(log_root)
+    root = roots[0] if roots else _agent_runs_root(log_root)
+    run_dirs_by_key: dict[Path, Path] = {}
+    for candidate_root in roots:
+        try:
+            children = (p for p in candidate_root.iterdir() if p.is_dir())
+        except OSError:
+            continue
+        for path in children:
+            if not _is_agent_run_dir(path):
+                continue
+            try:
+                key = path.resolve()
+            except OSError:
+                continue
+            run_dirs_by_key.setdefault(key, path)
+    run_dirs = sorted(
+        run_dirs_by_key.values(),
+        key=lambda p: (_safe_mtime(p), p.name),
+        reverse=True,
+    )
+    runs = [
+        _agent_run_summary(path)
+        for path in run_dirs
+    ]
+    return {
+        "runs_root": str(root),
+        "runs_roots": [str(path) for path in roots],
+        "runs": runs[:max(1, int(limit or 100))],
+    }
+
+
+@handler("brain.agent.history.read")
+def brain_agent_history_read(run_dir: str = "") -> dict[str, Any]:
+    """Return full readable artifacts for one agent run."""
+    path = _agent_run_dir(run_dir)
+    if not any((path / name).exists() for name in ("task.json", "final.md", "run.log", "error.txt")):
+        raise ValueError("run_dir is not an agent run")
+
+    return {
+        **_agent_run_summary(path),
+        "task_json": _read_text(path / "task.json"),
+        "final": _read_text(path / "final.md"),
+        "error": _read_text(path / "error.txt"),
+        "run_log": _read_text(path / "run.log"),
+        "verbose_log": _read_text(path / "verbose.log"),
+        "diff_patch": _read_text(path / "diff.patch"),
+    }
+
+
+@handler("brain.agent.history.retry_spec")
+def brain_agent_history_retry_spec(run_dir: str = "") -> dict[str, Any]:
+    """Return the original task spec for a previous run."""
+    from core.agent.task_spec import retry_spec_from_run
+
+    spec = retry_spec_from_run(_agent_run_dir(run_dir))
+    return {"spec": asdict(spec)}
+
+
+@handler("brain.agent.history.continue_spec")
+def brain_agent_history_continue_spec(run_dir: str = "") -> dict[str, Any]:
+    """Return a continuation task spec with compact prior-run context."""
+    from core.agent.task_spec import continue_spec_from_run
+
+    spec = continue_spec_from_run(_agent_run_dir(run_dir))
+    return {"spec": asdict(spec)}
+
+
+def _agent_run_dir(run_dir: str) -> Path:
+    """Handle agent run dir for runtime brain openwand brain handlers."""
+    cleaned = run_dir.strip()
+    if not cleaned:
+        raise ValueError("run_dir is required")
+    path = Path(cleaned).expanduser().resolve()
+    if not path.is_dir():
+        raise ValueError("run_dir does not exist")
+    return path
+
+
+def _agent_run_summary(run_dir: Path) -> dict[str, Any]:
+    """Handle agent run summary for runtime brain openwand brain handlers."""
+    task = _read_json(run_dir / "task.json")
+    final = _read_text(run_dir / "final.md")
+    error = _read_text(run_dir / "error.txt")
+    run_log = _read_text(run_dir / "run.log", max_chars=12_000)
+    title = str((task or {}).get("title") or run_dir.name)
+    status = _agent_run_status(final, error, run_log)
+    modified = run_dir.stat().st_mtime
+    return {
+        "id": run_dir.name,
+        "run_dir": str(run_dir),
+        "title": title,
+        "objective": str((task or {}).get("objective") or ""),
+        "status": status,
+        "modified": modified,
+        "modified_display": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(modified)),
+        "has_final": bool(final.strip()),
+        "has_error": bool(error.strip()),
+        "has_diff": (run_dir / "diff.patch").exists(),
+    }
+
+
+def _is_agent_run_dir(path: Path) -> bool:
+    """Return whether agent run dir is true."""
+    return (
+        (path / "task.json").exists()
+        or (path / "final.md").exists()
+        or (path / "run.log").exists()
+        or (path / "error.txt").exists()
+    )
+
+
+def _safe_mtime(path: Path) -> float:
+    """Handle safe mtime for runtime brain openwand brain handlers."""
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _agent_run_status(final: str, error: str, run_log: str) -> str:
+    """Handle agent run status for runtime brain openwand brain handlers."""
+    if error.strip():
+        return "failed"
+    if "agent run cancelled" in run_log:
+        return "cancelled"
+    last_pause = run_log.rfind("agent run paused")
+    last_resume = run_log.rfind("agent run resumed")
+    if not final.strip() and last_pause >= 0 and last_pause > last_resume:
+        return "paused"
+    if final.strip() or "agent run finished" in run_log:
+        return "complete"
+    return "in progress"
+
+
+def _read_text(path: Path, *, max_chars: int | None = None) -> str:
+    """Read text."""
+    if not path.exists():
+        return ""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if max_chars is not None and len(text) > max_chars:
+        return text[-max_chars:]
+    return text
+
+
+def _read_json(path: Path) -> dict[str, Any] | None:
+    """Read json."""
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+# ---------------------------------------------------------------------------
+# Agent runtime -- the scoped multi-agent task runner behind the Windows tray's
+# "Start agent task" dialog, exposed to the native shell. Reuses the OS-agnostic
+# ``core.agent`` verbatim; only the log/trace plumbing and cancel bridging are
+# brain-specific. Run artifacts are written under the run-log dir (never the
+# repo's memory/agent_runs) so the brain worker stays self-contained on the Mac.
+# ---------------------------------------------------------------------------
+
+@handler("brain.agent.run", streaming=True)
+def brain_agent_run(ctx: StreamContext, spec: Any = None, log_root: str | None = None) -> dict[str, Any]:
+    """Run one scoped agent task, streaming its log/trace lines as events.
+
+    ``spec`` is the same serialized ``AgentTaskSpec`` dict the Windows GUI builds
+    (title/objective/scope_folder/permissions/agents/...). Each run.log line is
+    emitted as an ``agent.log`` event and each verbose entry as ``agent.trace``,
+    both tagged with this request id so the host can render live progress. The
+    final result carries the run directory and the final report; the runner never
+    raises (it captures failures into ``error.txt``), so a failed task returns its
+    error text rather than erroring the call.
+    """
+    if not isinstance(spec, dict):
+        raise ValueError("spec (a serialized agent task dict) is required")
+
+    from core.agent.runner import AgentTaskRunner
+    from core.agent.runtime import AgentRunControl
+    from core.agent.task_spec import agent_task_spec_from_dict
+
+    task_spec = agent_task_spec_from_dict(spec)
+    _save_agent_last_task_spec(asdict(task_spec), log_root)
+    control = AgentRunControl()
+    with _AGENT_RUN_CONTROLS_LOCK:
+        _AGENT_RUN_CONTROLS[ctx.req_id] = control
+
+    # Bridge cooperative cancel: the host cancels the stream (brain.cancel) ->
+    # ctx.cancelled flips -> propagate into the agent's own cancel token so the
+    # run loop stops at its next checkpoint.
+    stop_watch = threading.Event()
+
+    def _watch_cancel() -> None:
+        """Handle watch cancel for runtime brain openwand brain handlers."""
+        while not stop_watch.wait(0.1):
+            if ctx.cancelled:
+                control.cancel()
+                return
+
+    watcher = threading.Thread(target=_watch_cancel, daemon=True)
+    watcher.start()
+
+    runs_dir = _agent_runs_root(log_root)
+    runner = AgentTaskRunner(
+        log_root=runs_dir,
+        model_callback=_agent_test_model_callback(),
+        approval_callback=_agent_approval_callback(ctx),
+        control=control,
+    )
+
+    def on_log(line: str) -> None:
+        """Handle log events."""
+        ctx.emit("agent.log", {"line": line})
+
+    def on_trace(entry: str) -> None:
+        """Handle trace events."""
+        ctx.emit("agent.trace", {"entry": entry})
+
+    try:
+        run_dir = runner.run(task_spec, on_log, on_trace)
+    finally:
+        stop_watch.set()
+        with _AGENT_RUN_CONTROLS_LOCK:
+            _AGENT_RUN_CONTROLS.pop(ctx.req_id, None)
+
+    run_dir = Path(run_dir)
+    final_text = ""
+    final_path = run_dir / "final.md"
+    if final_path.exists():
+        final_text = final_path.read_text(encoding="utf-8", errors="replace")
+    error_text = ""
+    error_path = run_dir / "error.txt"
+    if error_path.exists():
+        error_text = error_path.read_text(encoding="utf-8", errors="replace")
+
+    file_tool_successes = 0
+    file_tool_failures = 0
+    file_tool_results: list[dict[str, Any]] = []
+    model_errors: list[str] = []
+    turns_path = run_dir / "turns.json"
+    if turns_path.exists():
+        try:
+            turns_payload = json.loads(turns_path.read_text(encoding="utf-8", errors="replace"))
+            for turn in turns_payload if isinstance(turns_payload, list) else []:
+                if isinstance(turn, dict):
+                    response_payload = turn.get("model_response")
+                    if isinstance(response_payload, str):
+                        try:
+                            response_payload = json.loads(response_payload)
+                        except (TypeError, ValueError):
+                            response_payload = None
+                    if isinstance(response_payload, dict):
+                        model_error = str(response_payload.get("model_error") or "").strip()
+                        if model_error and model_error not in model_errors:
+                            model_errors.append(model_error[:2_000])
+                for tool_result in turn.get("tool_results", []) if isinstance(turn, dict) else []:
+                    if not isinstance(tool_result, dict) or tool_result.get("tool") not in {
+                        "create_file",
+                        "create_file_base64",
+                        "edit_file",
+                        "write_file",
+                        "write_file_base64",
+                        "patch_file",
+                    }:
+                        continue
+                    if tool_result.get("ok"):
+                        file_tool_successes += 1
+                    else:
+                        file_tool_failures += 1
+                    file_tool_results.append({
+                        "tool": str(tool_result.get("tool") or "file")[:80],
+                        "ok": bool(tool_result.get("ok")),
+                        "message": str(tool_result.get("message") or "")[:1_000],
+                    })
+        except (OSError, TypeError, ValueError):
+            pass
+
+    result = {
+        "run_dir": str(run_dir),
+        "final": final_text,
+        "error": error_text,
+        "cancelled": control.is_cancelled(),
+        "file_tool_successes": file_tool_successes,
+        "file_tool_failures": file_tool_failures,
+        "file_tool_results": file_tool_results,
+        "model_errors": model_errors[-5:],
+        "run_log_path": str(run_dir / "run.log"),
+    }
+    ctx.emit("agent.done", result)
+    return result
+
+
+__all__ = ["HANDLERS", "STREAMING", "StreamContext", "handler"]

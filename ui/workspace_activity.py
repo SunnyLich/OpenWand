@@ -1,4 +1,4 @@
-"""Compact, expandable activity entries for Wisp's shared workspace."""
+"""Compact, expandable activity entries for OpenWand's shared workspace."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.i18n import t
+from ui.shared.theme import theme_colors
 
 MAX_ACTIVITY_ID = 160
 MAX_SUMMARY_CHARS = 2_000
@@ -313,44 +314,51 @@ class WorkspaceActivityList(QScrollArea):
             item.set_expanded(activity_id in wanted)
 
 
-WISP_ACTIVITY_STYLE = """
-QScrollArea#workspaceActivityList, QWidget#workspaceActivityContent {
-    background: #10131b;
-}
-QFrame#workspaceActivityItem {
-    background: #151925;
-    border: 1px solid #2a3040;
+def workspace_activity_style() -> str:
+    """Return activity-list styling for the active light or dark palette."""
+    c = theme_colors()
+    return f"""
+QScrollArea#workspaceActivityList, QWidget#workspaceActivityContent {{
+    background: {c["bg"]};
+}}
+QFrame#workspaceActivityItem {{
+    background: {c["surface"]};
+    border: 1px solid {c["border"]};
     border-radius: 7px;
-}
-QFrame#workspaceActivityHeader:hover {
-    background: #1c2130;
-}
-QLabel#workspaceActivityArrow, QLabel#workspaceActivityKind {
-    color: #a98cff;
-}
-QLabel#workspaceActivityTimestamp, QLabel#workspaceActivityStatus {
-    color: #9299aa;
+}}
+QFrame#workspaceActivityHeader:hover {{
+    background: {c["raised"]};
+}}
+QLabel#workspaceActivityArrow, QLabel#workspaceActivityKind {{
+    color: {c["accent"]};
+}}
+QLabel#workspaceActivityTimestamp, QLabel#workspaceActivityStatus {{
+    color: {c["text_dim"]};
     font-size: 11px;
-}
-QLabel#workspaceActivitySummary, QLabel#workspaceActivityDetail {
-    color: #edf0f7;
-}
-QLabel#workspaceActivityDetail {
-    border-top: 1px solid #2a3040;
+}}
+QLabel#workspaceActivitySummary, QLabel#workspaceActivityDetail {{
+    color: {c["text"]};
+}}
+QLabel#workspaceActivityDetail {{
+    border-top: 1px solid {c["border"]};
     font-family: "Cascadia Mono", Consolas, monospace;
-}
-QFrame#workspaceActivityItem[activityStatus="failed"] QLabel#workspaceActivityStatus {
-    color: #ff8f95;
-}
-QFrame#workspaceActivityItem[activityStatus="complete"] QLabel#workspaceActivityStatus {
-    color: #76d6a1;
-}
+}}
+QFrame#workspaceActivityItem[activityStatus="failed"] QLabel#workspaceActivityStatus {{
+    color: {c["over_budget"]};
+}}
+QFrame#workspaceActivityItem[activityStatus="complete"] QLabel#workspaceActivityStatus {{
+    color: {"#76d6a1" if c["bg"] == "#16181b" else "#2f7d54"};
+}}
 """
+
+
+OPENWAND_ACTIVITY_STYLE = workspace_activity_style()
 
 
 __all__ = [
     "ActivityHeader",
-    "WISP_ACTIVITY_STYLE",
+    "OPENWAND_ACTIVITY_STYLE",
+    "workspace_activity_style",
     "WorkspaceActivityItem",
     "WorkspaceActivityList",
 ]

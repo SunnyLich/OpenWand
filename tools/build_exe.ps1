@@ -1,4 +1,4 @@
-# Builds the Windows Wisp executable with PyInstaller and required assets.
+# Builds the Windows OpenWand executable with PyInstaller and required assets.
 param(
     [switch]$Clean,
     [switch]$SkipInstall,
@@ -16,8 +16,8 @@ $VenvName = if ($UseDevVenv) { ".venv" } else { ".venv-build" }
 $VenvDir = Join-Path $Root $VenvName
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
 $PythonVersionFile = Join-Path $Root ".python-version"
-$SpecName = "Wisp.spec"
-$AppName = "Wisp"
+$SpecName = "OpenWand.spec"
+$AppName = "OpenWand"
 $RequirementsFile = "requirements/requirements-windows.lock"
 $BuildRequirementsFile = "requirements/requirements-build.lock"
 $Spec = Join-Path $Root "packaging\$SpecName"
@@ -78,7 +78,7 @@ foreach ($RequiredBuildFile in $RequiredBuildFiles) {
 $RequiredPackagingFiles = @(
     @{ Path = $Spec; Name = "packaging\$SpecName" },
     @{ Path = (Join-Path $Root "runtime\supervisor\app.py"); Name = "runtime\supervisor\app.py" },
-    @{ Path = (Join-Path $Root "Uninstall Wisp.bat"); Name = "Uninstall Wisp.bat" },
+    @{ Path = (Join-Path $Root "Uninstall OpenWand.bat"); Name = "Uninstall OpenWand.bat" },
     @{ Path = (Join-Path $Root ".env.example"); Name = ".env.example" }
 )
 foreach ($RequiredPackagingFile in $RequiredPackagingFiles) {
@@ -198,7 +198,7 @@ function Install-UvWithPython {
     if ([string]::IsNullOrWhiteSpace($Python) -or (-not (Test-Path -LiteralPath $Python -PathType Leaf))) {
         return $null
     }
-    Write-Host "Installing uv into the build Python so it can be bundled with Wisp..."
+    Write-Host "Installing uv into the build Python so it can be bundled with OpenWand..."
     Ensure-Pip -Python $Python | Out-Host
     Invoke-CheckedPython -Python $Python -CommandArgs @("-m", "pip", "install", "uv") -StepName "uv Python install" | Out-Host
     return Find-UvForPython -Python $Python
@@ -218,7 +218,7 @@ function Stage-PortableUv {
         $Uv = Install-UvWithPython -Python $Python
     }
     if ([string]::IsNullOrWhiteSpace($Uv)) {
-        throw "Could not find or install uv. Runtime package installs in packaged Wisp require bundled uv.exe."
+        throw "Could not find or install uv. Runtime package installs in packaged OpenWand require bundled uv.exe."
     }
     $UvCandidates = @($Uv) | ForEach-Object { "$_".Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     $Uv = $UvCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
@@ -271,7 +271,7 @@ function Assert-PythonVersion {
 
     $ActualVersion = Get-PythonVersion -Python $Python
     if (($ActualVersion -ne $ExpectedPython) -and (-not (($ExpectedPython -match '^\d+\.\d+$') -and $ActualVersion.StartsWith("$ExpectedPython.")))) {
-        throw "$Python is Python $ActualVersion, but Wisp packaging is pinned to Python $ExpectedPython. Rebuild $VenvName with Python $ExpectedPython installed."
+        throw "$Python is Python $ActualVersion, but OpenWand packaging is pinned to Python $ExpectedPython. Rebuild $VenvName with Python $ExpectedPython installed."
     }
 }
 
@@ -325,7 +325,7 @@ function Clear-BuildOutputs {
 function New-BuildRequirementsFile {
     param([string]$SourcePath)
 
-    $TempPath = Join-Path $env:TEMP "wisp-build-requirements.txt"
+    $TempPath = Join-Path $env:TEMP "openwand-build-requirements.txt"
     $InstallerOwnedSpeechPattern = '^\s*(av|ctranslate2|elevenlabs|faster-whisper|flatbuffers|onnxruntime)\s*=='
     Get-Content $SourcePath |
         Where-Object { $_ -notmatch $InstallerOwnedSpeechPattern } |
@@ -349,11 +349,11 @@ if (-not $UseGlobalPython) {
 }
 
 if (Test-Path $DistExe) {
-    $RunningWisp = Get-Process -Name "Wisp" -ErrorAction SilentlyContinue |
+    $RunningOpenWand = Get-Process -Name "OpenWand" -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -eq $DistExe }
-    if ($RunningWisp) {
-        $Pids = ($RunningWisp | ForEach-Object { $_.Id }) -join ", "
-        throw "Cannot rebuild while the packaged app is running. Close Wisp.exe first. Running process id(s): $Pids"
+    if ($RunningOpenWand) {
+        $Pids = ($RunningOpenWand | ForEach-Object { $_.Id }) -join ", "
+        throw "Cannot rebuild while the packaged app is running. Close OpenWand.exe first. Running process id(s): $Pids"
     }
 }
 
@@ -403,9 +403,9 @@ try {
 Stage-PortableUv -Python $Python
 Invoke-CheckedPython -Python $Python -CommandArgs @("-m", "PyInstaller", "--noconfirm", $Spec) -StepName "PyInstaller build"
 
-# Seed %APPDATA%\Wisp\.env with the repo's .env if the user has no settings yet.
+# Seed %APPDATA%\OpenWand\.env with the repo's .env if the user has no settings yet.
 # Settings are stored there so they survive rebuilds and updates.
-$UserCfg = Join-Path $env:APPDATA "Wisp"
+$UserCfg = Join-Path $env:APPDATA "OpenWand"
 $EnvTarget = Join-Path $UserCfg ".env"
 if (-not (Test-Path $UserCfg)) { New-Item -ItemType Directory -Force $UserCfg | Out-Null }
 if (-not (Test-Path $EnvTarget)) {

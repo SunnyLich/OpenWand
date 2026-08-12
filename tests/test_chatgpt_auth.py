@@ -7,6 +7,7 @@ import logging
 import os
 import socket
 import threading
+import urllib.error
 import urllib.request
 import uuid
 import webbrowser
@@ -22,7 +23,7 @@ _ASYNC_OAUTH_TEST_TIMEOUT = 15
 @pytest.fixture(autouse=True)
 def _isolate_native_codex_login(monkeypatch):
     """Unit tests must not inherit the developer machine's Codex session."""
-    monkeypatch.setenv("WISP_SHARE_CODEX_LOGIN", "false")
+    monkeypatch.setenv("OPENWAND_SHARE_CODEX_LOGIN", "false")
 
 
 def _jwt_with_expiry(expiry_seconds: int) -> str:
@@ -33,7 +34,7 @@ def _jwt_with_expiry(expiry_seconds: int) -> str:
 
 
 def test_native_codex_login_is_reused_without_copying_tokens(tmp_path, monkeypatch):
-    """A fresh Codex ChatGPT cache becomes Wisp's preferred login source."""
+    """A fresh Codex ChatGPT cache becomes OpenWand's preferred login source."""
     auth_file = tmp_path / "auth.json"
     access = _jwt_with_expiry(int(chatgpt_auth.time.time()) + 3600)
     auth_file.write_text(
@@ -49,12 +50,12 @@ def test_native_codex_login_is_reused_without_copying_tokens(tmp_path, monkeypat
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("WISP_SHARE_CODEX_LOGIN", "true")
+    monkeypatch.setenv("OPENWAND_SHARE_CODEX_LOGIN", "true")
     monkeypatch.setattr(chatgpt_auth, "_codex_auth_path", lambda: auth_file)
     monkeypatch.setattr(
         chatgpt_auth,
         "_get_tokens_unlocked",
-        lambda: {"access": "wisp-access", "account_id": "account-wisp"},
+        lambda: {"access": "openwand-access", "account_id": "account-openwand"},
     )
 
     tokens = chatgpt_auth.get_tokens()
@@ -70,8 +71,8 @@ def test_native_codex_login_is_reused_without_copying_tokens(tmp_path, monkeypat
     assert chatgpt_auth.get_valid_access_token() == access
 
 
-def test_expired_codex_login_falls_back_to_wisp_oauth(tmp_path, monkeypatch):
-    """Wisp never spends or rewrites Codex's rotating refresh token."""
+def test_expired_codex_login_falls_back_to_openwand_oauth(tmp_path, monkeypatch):
+    """OpenWand never spends or rewrites Codex's rotating refresh token."""
     auth_file = tmp_path / "auth.json"
     auth_file.write_text(
         json.dumps(
@@ -87,29 +88,80 @@ def test_expired_codex_login_falls_back_to_wisp_oauth(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     fallback = {
-        "access": "wisp-access",
-        "refresh": "wisp-refresh",
+        "access": "openwand-access",
+        "refresh": "openwand-refresh",
         "expires": int((chatgpt_auth.time.time() + 3600) * 1000),
-        "account_id": "account-wisp",
+        "account_id": "account-openwand",
     }
-    monkeypatch.setenv("WISP_SHARE_CODEX_LOGIN", "true")
+    monkeypatch.setenv("OPENWAND_SHARE_CODEX_LOGIN", "true")
     monkeypatch.setattr(chatgpt_auth, "_codex_auth_path", lambda: auth_file)
     monkeypatch.setattr(chatgpt_auth, "_get_tokens_unlocked", lambda: fallback)
 
     assert chatgpt_auth.get_tokens() == fallback
-    assert chatgpt_auth.credential_source() == "wisp"
+    assert chatgpt_auth.credential_source() == "openwand"
 
 
-def test_oauth_success_page_uses_wisp_copy(monkeypatch):
-    """Verify the browser callback success page uses the branded Wisp message."""
+def test_validate_login_checks_authenticated_catalog_without_model_call(monkeypatch):
+    """The green status requires a successful authenticated server request."""
+    seen: dict[str, object] = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, size):
+            seen["read_size"] = size
+            return b"{"
+
+    def open_request(request, timeout):
+        seen["url"] = request.full_url
+        seen["authorization"] = request.get_header("Authorization")
+        seen["account"] = request.get_header("Chatgpt-account-id")
+        seen["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(chatgpt_auth, "get_tokens", lambda: {"access": "stored"})
+    monkeypatch.setattr(chatgpt_auth, "get_valid_access_token", lambda: "live-access")
+    monkeypatch.setattr(chatgpt_auth, "get_account_id", lambda: "acct-123")
+    monkeypatch.setattr(urllib.request, "urlopen", open_request)
+
+    assert chatgpt_auth.validate_login(timeout_seconds=3) == (True, "acct-123")
+    assert "/backend-api/codex/models?client_version=" in str(seen["url"])
+    assert seen["authorization"] == "Bearer live-access"
+    assert seen["account"] == "acct-123"
+    assert seen["timeout"] == 3
+    assert seen["read_size"] == 1
+
+
+def test_validate_login_rejects_saved_chatgpt_token_after_remote_401(monkeypatch):
+    monkeypatch.setattr(chatgpt_auth, "get_tokens", lambda: {"access": "stored"})
+    monkeypatch.setattr(chatgpt_auth, "get_valid_access_token", lambda: "revoked-access")
+    monkeypatch.setattr(chatgpt_auth, "get_account_id", lambda: "acct-123")
+    monkeypatch.setattr(
+        urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            urllib.error.HTTPError("https://chatgpt.com", 401, "Unauthorized", {}, None)
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="rejected"):
+        chatgpt_auth.validate_login()
+
+
+def test_oauth_success_page_uses_openwand_copy(monkeypatch):
+    """Verify the browser callback success page uses the branded OpenWand message."""
     monkeypatch.setattr(chatgpt_auth, "_app_icon_data_uri", lambda: "data:image/x-icon;base64,icon")
 
     html = chatgpt_auth._html_success()
 
-    assert "Wisp - Authorization Complete" in html
-    assert 'alt="Wisp"' in html
+    assert "OpenWand - Authorization Complete" in html
+    assert 'alt="OpenWand"' in html
     assert "Authorization completed successfully." in html
-    assert "You can close this window and return to Wisp." in html
+    assert "You can close this window and return to OpenWand." in html
     assert "Authorization Successful" not in html
     assert "return to the app" not in html
 
@@ -121,7 +173,7 @@ def test_oauth_error_page_escapes_error_message(monkeypatch):
     html = chatgpt_auth._html_error('<script>alert("x")</script>')
 
     assert "Authorization failed." in html
-    assert "Return to Wisp and try signing in again." in html
+    assert "Return to OpenWand and try signing in again." in html
     assert "&lt;script&gt;" in html
     assert '<script>alert("x")</script>' not in html
 
@@ -196,7 +248,7 @@ def test_browser_oauth_rejects_mismatched_state_without_leaking_code(monkeypatch
         return True
 
     monkeypatch.setattr(webbrowser, "open", open_browser)
-    with caplog.at_level(logging.INFO, logger="wisp.chatgpt_auth"):
+    with caplog.at_level(logging.INFO, logger="openwand.chatgpt_auth"):
         chatgpt_auth.start_browser_login(
             lambda _tokens: pytest.fail("state mismatch must not authenticate"),
             lambda message: (errors.append(message), finished.set()),
@@ -449,8 +501,8 @@ def test_device_login_reports_secure_storage_failure(monkeypatch):
 
 @pytest.mark.real_host
 @pytest.mark.skipif(
-    os.environ.get("WISP_RUN_REAL_KEYRING_TESTS") != "1",
-    reason="set WISP_RUN_REAL_KEYRING_TESTS=1 to use the real OS credential store",
+    os.environ.get("OPENWAND_RUN_REAL_KEYRING_TESTS") != "1",
+    reason="set OPENWAND_RUN_REAL_KEYRING_TESTS=1 to use the real OS credential store",
 )
 def test_real_os_keyring_roundtrip_uses_disposable_account(tmp_path, monkeypatch):
     """The active OS keyring can store, retrieve, and clear a disposable token."""

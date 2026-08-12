@@ -1,8 +1,8 @@
 [addon]
 id = "formatted-replies"
 name = "Formatted Replies (Experimental)"
-version = "0.1.0"
-description = "Keeps the canonical reply and optionally generates a restricted rich presentation beside it."
+version = "0.2.0"
+description = "Converts the canonical reply into a restricted rich presentation while keeping the original available."
 entry = "__init__.py"
 api_version = "1"
 priority = 80
@@ -16,31 +16,39 @@ ui = ["settings", "message_actions", "message_presentations"]
 key = "auto_format"
 label = "Auto-format every new reply"
 type = "bool"
-default = false
+default = true
 
 [[settings]]
 key = "verify_meaning"
-label = "Verify meaning before showing"
+label = "Verify model-generated layout before showing"
 type = "bool"
 default = false
 
 [[settings]]
-key = "formatter_model"
-label = "Formatting model"
+key = "formatting_method"
+label = "Formatting method"
 type = "choice"
-default = "Wisp Chat model"
-options = ["Local (Ollama)", "Efficient (gpt-5.4-mini)", "Fastest (gpt-5.4-nano)", "Wisp LLM model", "Wisp Chat model"]
-help = "Uses Wisp's normal Chat model by default. Local Ollama and the smaller cloud models are opt-in and never change the model that writes the original reply."
+default = "Built-in renderer"
+options = ["Built-in renderer", "Model-generated layout"]
+help = "Built-in rendering converts the structure OpenWand already recognizes into custom HTML and CSS instantly, offline, and without model tokens."
+
+[[settings]]
+key = "formatter_model"
+label = "Model for generated layouts"
+type = "choice"
+default = "OpenWand Chat model"
+options = ["Local (Ollama)", "Efficient (gpt-5.4-mini)", "Fastest (gpt-5.4-nano)", "OpenWand LLM model", "OpenWand Chat model"]
+help = "Used only when Formatting method is Model-generated layout. It never changes the model that wrote the original reply."
 
 [[settings]]
 key = "formatter_local_model"
 label = "Local formatting model"
 type = "ollama_model"
 default = ""
-help = "Choose an installed Ollama model. If left blank, Wisp uses the first installed local model."
+help = "Choose an installed Ollama model. If left blank, OpenWand uses the first installed local model."
 
 [[settings]]
 key = "presentation_preference"
-label = "Presentation preference"
+label = "Model-generated layout preference"
 type = "text"
 default = "Use restrained editorial formatting. Choose special decision layouts only when the content calls for one."

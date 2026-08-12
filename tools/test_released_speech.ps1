@@ -1,12 +1,12 @@
-# Diagnose the speech installation of the released Windows Wisp v0.9.0 build.
+# Diagnose the speech installation of the released Windows OpenWand v0.9.0 build.
 #
-# This script is intentionally standalone: copy it beside Wisp.exe on the
-# affected computer, close Wisp, and run it with Windows PowerShell 5.1+.
+# This script is intentionally standalone: copy it beside OpenWand.exe on the
+# affected computer, close OpenWand, and run it with Windows PowerShell 5.1+.
 # The default model check is offline, so it proves whether the existing
 # installation/model cache is complete without repairing it during the test.
 [CmdletBinding()]
 param(
-    [string]$WispExe = "",
+    [string]$OpenWandExe = "",
     [string]$Model = "",
     [ValidateSet("auto", "cuda", "cpu")]
     [string]$Device = "cuda",
@@ -125,7 +125,7 @@ function Write-NewProbeProgress {
     }
 }
 
-function Invoke-WispProbe {
+function Invoke-OpenWandProbe {
     param(
         [string]$Executable,
         [string[]]$ProbeArguments,
@@ -277,11 +277,11 @@ function Get-NvidiaStatus {
     }
 }
 
-if (-not ("WispSpeechNativeLoader" -as [type])) {
+if (-not ("OpenWandSpeechNativeLoader" -as [type])) {
     Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
-public static class WispSpeechNativeLoader {
+public static class OpenWandSpeechNativeLoader {
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern IntPtr LoadLibraryW(string path);
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -294,10 +294,10 @@ public static class WispSpeechNativeLoader {
 function Test-NativeLibraryLoad {
     param([string]$Path)
 
-    $handle = [WispSpeechNativeLoader]::LoadLibraryW($Path)
+    $handle = [OpenWandSpeechNativeLoader]::LoadLibraryW($Path)
     $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
     if ($handle -ne [IntPtr]::Zero) {
-        [void][WispSpeechNativeLoader]::FreeLibrary($handle)
+        [void][OpenWandSpeechNativeLoader]::FreeLibrary($handle)
         return [ordered]@{ path = $Path; loadable = $true; win32_error = 0 }
     }
     return [ordered]@{ path = $Path; loadable = $false; win32_error = $errorCode }
@@ -397,23 +397,23 @@ function Add-Conclusion {
     })
 }
 
-if (-not $WispExe) {
-    foreach ($candidate in @((Join-Path $PSScriptRoot "Wisp.exe"), (Join-Path (Get-Location) "Wisp.exe"))) {
+if (-not $OpenWandExe) {
+    foreach ($candidate in @((Join-Path $PSScriptRoot "OpenWand.exe"), (Join-Path (Get-Location) "OpenWand.exe"))) {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-            $WispExe = $candidate
+            $OpenWandExe = $candidate
             break
         }
     }
 }
-if (-not $WispExe) {
-    $WispExe = Read-Host "Full path to the released Wisp.exe"
+if (-not $OpenWandExe) {
+    $OpenWandExe = Read-Host "Full path to the released OpenWand.exe"
 }
-if (-not (Test-Path -LiteralPath $WispExe -PathType Leaf)) {
-    throw "Wisp.exe was not found: $WispExe"
+if (-not (Test-Path -LiteralPath $OpenWandExe -PathType Leaf)) {
+    throw "OpenWand.exe was not found: $OpenWandExe"
 }
-$WispExe = (Resolve-Path -LiteralPath $WispExe).Path
-$wispRoot = Split-Path -Parent $WispExe
-$userRoot = Join-Path $env:APPDATA "Wisp"
+$OpenWandExe = (Resolve-Path -LiteralPath $OpenWandExe).Path
+$openwandRoot = Split-Path -Parent $OpenWandExe
+$userRoot = Join-Path $env:APPDATA "OpenWand"
 $optionalRoot = Join-Path $userRoot "python_packages"
 $settingsPath = Join-Path $userRoot ".env"
 $settings = Get-EnvFileValues $settingsPath
@@ -423,31 +423,31 @@ $kokoroVoice = if ($settings.ContainsKey("KOKORO_VOICE") -and $settings["KOKORO_
 $ttsProvider = if ($settings.ContainsKey("TTS_PROVIDER")) { $settings["TTS_PROVIDER"].ToLowerInvariant() } else { "none" }
 $kokoroDevice = if ($settings.ContainsKey("KOKORO_DEVICE")) { $settings["KOKORO_DEVICE"].ToLowerInvariant() } else { "auto" }
 
-Write-Host "Testing released Wisp speech installation" -ForegroundColor Cyan
-Write-Host "  EXE:     $WispExe"
+Write-Host "Testing released OpenWand speech installation" -ForegroundColor Cyan
+Write-Host "  EXE:     $OpenWandExe"
 Write-Host "  Runtime: bundled inside that EXE; no source checkout or separate Python is used"
 Write-Host "  STT:     model=$Model device=$Device compute=$Compute"
 Write-Host "  Network: $(if ($AllowModelDownload) { 'model download allowed' } else { 'offline; existing installation only' })"
 Write-Host ""
 
 $running = @()
-foreach ($process in Get-Process -Name "Wisp" -ErrorAction SilentlyContinue) {
+foreach ($process in Get-Process -Name "OpenWand" -ErrorAction SilentlyContinue) {
     try {
-        if ($process.Path -eq $WispExe) { $running += $process.Id }
+        if ($process.Path -eq $OpenWandExe) { $running += $process.Id }
     } catch {}
 }
 if ($running.Count -gt 0) {
     $preflightGpu = Get-NvidiaStatus
     Write-Host ""
-    Write-Host "PREFLIGHT FAILED: Wisp is still running." -ForegroundColor Red
-    Write-Host "Close Wisp and every Wisp.exe process before testing so old models do not consume VRAM."
-    Write-Host "Existing Wisp PID(s): $($running -join ', ')"
+    Write-Host "PREFLIGHT FAILED: OpenWand is still running." -ForegroundColor Red
+    Write-Host "Close OpenWand and every OpenWand.exe process before testing so old models do not consume VRAM."
+    Write-Host "Existing OpenWand PID(s): $($running -join ', ')"
     if ([bool]$preflightGpu.available) {
         foreach ($gpu in $preflightGpu.rows) {
             Write-Host "GPU before test: $($gpu.name); VRAM $($gpu.memory_free_mib)/$($gpu.memory_total_mib) MiB free"
         }
     }
-    Write-Host "Result: WISP_PREFLIGHT_BLOCKED"
+    Write-Host "Result: OPENWAND_PREFLIGHT_BLOCKED"
     Write-Host "No model probe was started."
     if (-not $NoPause) {
         [void](Read-Host "Press Enter to close this window")
@@ -456,7 +456,7 @@ if ($running.Count -gt 0) {
 }
 
 $bundleVersion = ""
-$bundlePyproject = Join-Path $wispRoot "_internal\pyproject.toml"
+$bundlePyproject = Join-Path $openwandRoot "_internal\pyproject.toml"
 if (Test-Path -LiteralPath $bundlePyproject -PathType Leaf) {
     $versionMatch = Select-String -LiteralPath $bundlePyproject -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
     if ($versionMatch -and $versionMatch.Matches.Count -gt 0) { $bundleVersion = $versionMatch.Matches[0].Groups[1].Value }
@@ -486,7 +486,7 @@ if ($sttPlan) {
 }
 
 $nvidia = Get-NvidiaStatus
-$cudaDlls = Get-CudaDllStatus $wispRoot $optionalRoot
+$cudaDlls = Get-CudaDllStatus $openwandRoot $optionalRoot
 $unavailableCudaDlls = @(
     $cudaDlls | Where-Object {
         -not [bool]$_.basename_load.loadable -and
@@ -502,10 +502,10 @@ $modelBlockedByCudaDlls = $Device -eq "cuda" -and $unavailableRequiredCudaDlls.C
 $packages = Get-DistInfoPackages $optionalRoot
 $kokoroAssets = Get-KokoroAssets $kokoroVoice
 
-$scratchRoot = Join-Path ([IO.Path]::GetTempPath()) ("wisp-speech-tester-" + [guid]::NewGuid().ToString("N"))
+$scratchRoot = Join-Path ([IO.Path]::GetTempPath()) ("openwand-speech-tester-" + [guid]::NewGuid().ToString("N"))
 $childEnvironment = @{
-    "WISP_OPTIONAL_PACKAGES_DIR" = $optionalRoot
-    "WISP_RUN_LOG_DIR" = $scratchRoot
+    "OPENWAND_OPTIONAL_PACKAGES_DIR" = $optionalRoot
+    "OPENWAND_RUN_LOG_DIR" = $scratchRoot
     "PYTHONUNBUFFERED" = "1"
 }
 if (-not $AllowModelDownload) {
@@ -515,13 +515,13 @@ if (-not $AllowModelDownload) {
 }
 
 Write-Host "Running packaged STT import probe..."
-$sttRuntimeProbe = Invoke-WispProbe $WispExe @("stt-runtime-status", $optionalRoot) 120 $childEnvironment
+$sttRuntimeProbe = Invoke-OpenWandProbe $OpenWandExe @("stt-runtime-status", $optionalRoot) 120 $childEnvironment
 $kokoroProbe = $null
 $torchProbe = $null
 if ($ttsProvider -eq "kokoro") {
     Write-Host "Running packaged Kokoro/Torch import probes..."
-    $kokoroProbe = Invoke-WispProbe $WispExe @("kokoro-runtime-status", $optionalRoot) 180 $childEnvironment
-    $torchProbe = Invoke-WispProbe $WispExe @("torch-status", $optionalRoot) 180 $childEnvironment
+    $kokoroProbe = Invoke-OpenWandProbe $OpenWandExe @("kokoro-runtime-status", $optionalRoot) 180 $childEnvironment
+    $torchProbe = Invoke-OpenWandProbe $OpenWandExe @("torch-status", $optionalRoot) 180 $childEnvironment
 } else {
     Write-Host "Skipping Kokoro/Torch probes because Kokoro is not selected."
 }
@@ -534,9 +534,9 @@ if ($modelBlockedByCudaDlls) {
     Write-Host "Running real Whisper model construction and warm-up. This can take several minutes..."
     $initialModelLogRoot = Join-Path $scratchRoot "initial-model"
     $initialModelEnvironment = $childEnvironment.Clone()
-    $initialModelEnvironment["WISP_RUN_LOG_DIR"] = $initialModelLogRoot
-    $sttModelProbe = Invoke-WispProbe `
-        -Executable $WispExe `
+    $initialModelEnvironment["OPENWAND_RUN_LOG_DIR"] = $initialModelLogRoot
+    $sttModelProbe = Invoke-OpenWandProbe `
+        -Executable $OpenWandExe `
         -ProbeArguments @("stt-model-status", $optionalRoot, $Model, $Device, $Compute) `
         -Timeout $TimeoutSeconds `
         -ChildEnvironment $initialModelEnvironment `
@@ -554,14 +554,14 @@ if ($modelBlockedByCudaDlls) {
         # v0.9.0 swallowed an exception from the second warm-up after its INT8
         # fallback. A separate probe requested as float16 does not take that
         # buggy branch, so its success/failure verifies the fallback for real.
-        Write-Host "Wisp fell back to float16; running an independent v0.9-compatible float16 verification..."
+        Write-Host "OpenWand fell back to float16; running an independent v0.9-compatible float16 verification..."
         $remainingSeconds = [int][Math]::Floor(($modelTestDeadline - (Get-Date)).TotalSeconds)
         if ($remainingSeconds -gt 0) {
             $float16LogRoot = Join-Path $scratchRoot "float16-verification"
             $float16Environment = $childEnvironment.Clone()
-            $float16Environment["WISP_RUN_LOG_DIR"] = $float16LogRoot
-            $sttFloat16VerificationProbe = Invoke-WispProbe `
-                -Executable $WispExe `
+            $float16Environment["OPENWAND_RUN_LOG_DIR"] = $float16LogRoot
+            $sttFloat16VerificationProbe = Invoke-OpenWandProbe `
+                -Executable $OpenWandExe `
                 -ProbeArguments @("stt-model-status", $optionalRoot, $Model, "cuda", "float16") `
                 -Timeout $remainingSeconds `
                 -ChildEnvironment $float16Environment `
@@ -580,7 +580,7 @@ $resolvedScratch = [IO.Path]::GetFullPath($scratchRoot).TrimEnd('\', '/')
 $expectedPrefix = $tempRoot + [IO.Path]::DirectorySeparatorChar
 if (
     $resolvedScratch.StartsWith($expectedPrefix, [StringComparison]::OrdinalIgnoreCase) -and
-    (Split-Path -Leaf $resolvedScratch).StartsWith("wisp-speech-tester-", [StringComparison]::OrdinalIgnoreCase)
+    (Split-Path -Leaf $resolvedScratch).StartsWith("openwand-speech-tester-", [StringComparison]::OrdinalIgnoreCase)
 ) {
     Remove-Item -LiteralPath $resolvedScratch -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -661,10 +661,10 @@ if ($modelBlockedByCudaDlls) {
             ) {
                 Add-Conclusion "stt-gpu" "warning" "GPU_WORKS_WITH_VERIFIED_FLOAT16_FALLBACK" "INT8 did not remain active, but a separate v0.9-compatible probe verified CUDA float16 construction and warm-up." ($modelEvidence + "`nIndependent float16 verification:`n" + $verificationEvidence)
             } else {
-                Add-Conclusion "stt-gpu" "failure" "FLOAT16_FALLBACK_FAILED_VERIFICATION" "Wisp v0.9 reported an INT8-to-float16 fallback, but an independent float16 construction/warm-up did not succeed." ($modelEvidence + "`nIndependent float16 verification:`n" + $verificationEvidence)
+                Add-Conclusion "stt-gpu" "failure" "FLOAT16_FALLBACK_FAILED_VERIFICATION" "OpenWand v0.9 reported an INT8-to-float16 fallback, but an independent float16 construction/warm-up did not succeed." ($modelEvidence + "`nIndependent float16 verification:`n" + $verificationEvidence)
             }
         } elseif ([string]$modelResult.device -eq "cuda" -and [string]$modelResult.compute -ne $Compute) {
-            Add-Conclusion "stt-gpu" "warning" "GPU_WORKS_WITH_COMPUTE_FALLBACK" "GPU STT works, but not with the requested compute type; Wisp used $($modelResult.compute) instead of $Compute." $modelEvidence
+            Add-Conclusion "stt-gpu" "warning" "GPU_WORKS_WITH_COMPUTE_FALLBACK" "GPU STT works, but not with the requested compute type; OpenWand used $($modelResult.compute) instead of $Compute." $modelEvidence
         } elseif ([string]$modelResult.device -eq "cuda") {
             Add-Conclusion "stt-gpu" "pass" "GPU_STT_WARMUP_OK" "The released EXE constructed and warmed Whisper on CUDA using $($modelResult.compute)." $modelEvidence
         } else {

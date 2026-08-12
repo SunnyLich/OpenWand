@@ -188,12 +188,12 @@ class CalcActionAdapter:
     @staticmethod
     def _default_action_executor(plan: ActionPlan) -> dict[str, Any]:
         """Use a focusless API session; never silently fall back to UI automation."""
-        pipe_name = str(os.environ.get("WISP_CALC_UNO_PIPE") or "").strip()
+        pipe_name = str(os.environ.get("OPENWAND_CALC_UNO_PIPE") or "").strip()
         if pipe_name:
             return CalcActionAdapter._execute_uno_action(plan, pipe_name=pipe_name)
         raise RuntimeError(
-            "Wisp's local Calc action pipe is not loaded in this runtime. "
-            "Restart Wisp once; Wisp refused to use the obsolete socket or the chart wizard."
+            "OpenWand's local Calc action pipe is not loaded in this runtime. "
+            "Restart OpenWand once; OpenWand refused to use the obsolete socket or the chart wizard."
         )
 
     @staticmethod
@@ -222,7 +222,7 @@ class CalcActionAdapter:
         if not libreoffice_python.is_file() or not helper.is_file():
             raise RuntimeError("LibreOffice's automation runtime is unavailable.")
         if not str(pipe_name or "").strip():
-            raise RuntimeError("Wisp's local Calc action pipe is missing.")
+            raise RuntimeError("OpenWand's local Calc action pipe is missing.")
         operation = plan.operations[0]
         command = [
                 str(libreoffice_python),
@@ -315,7 +315,7 @@ class CalcActionAdapter:
             time.sleep(0.05)
         if not finished:
             _try_undo(uia, root, uiac)
-            raise RuntimeError("Calc opened the chart tool but Wisp could not finish it safely.")
+            raise RuntimeError("Calc opened the chart tool but OpenWand could not finish it safely.")
 
         verify_deadline = time.monotonic() + 2.0
         while time.monotonic() < verify_deadline:
@@ -327,7 +327,7 @@ class CalcActionAdapter:
                 }
             time.sleep(0.05)
         _try_undo(uia, root, uiac)
-        raise RuntimeError("Calc did not expose the new chart, so Wisp rolled the action back.")
+        raise RuntimeError("Calc did not expose the new chart, so OpenWand rolled the action back.")
 
 
 def action_plan_from_dict(value: dict[str, Any]) -> ActionPlan:

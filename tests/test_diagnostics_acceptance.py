@@ -46,7 +46,7 @@ def _dispose_dialog(dialog, qapp) -> None:
     [
         ("available", "download", "Version 1.3.0 is available."),
         ("no_platform_asset", "check", "no windows-x64 build was published"),
-        ("up_to_date", "check", "Wisp is up to date."),
+        ("up_to_date", "check", "OpenWand is up to date."),
         ("error", "check", "Update check failed: release service unavailable"),
     ],
 )
@@ -64,7 +64,7 @@ def test_packaged_update_check_real_button_result_matrix(
     from core import updater
     from scripts.runtime_test_harness import QtUserDriver
 
-    asset = updater.UpdateAsset("windows-x64", "Wisp.zip", "https://example.invalid/Wisp.zip")
+    asset = updater.UpdateAsset("windows-x64", "OpenWand.zip", "https://example.invalid/OpenWand.zip")
     entered = threading.Event()
     release = threading.Event()
 
@@ -120,14 +120,14 @@ def test_packaged_update_real_button_download_apply_retry_matrix(
     from core import updater
     from scripts.runtime_test_harness import QtUserDriver
 
-    asset = updater.UpdateAsset("windows-x64", "Wisp.zip", "https://example.invalid/Wisp.zip")
+    asset = updater.UpdateAsset("windows-x64", "OpenWand.zip", "https://example.invalid/OpenWand.zip")
     result = updater.UpdateCheckResult("1.2.3", "1.3.0", True, asset)
     monkeypatch.setattr(updater, "check_for_updates", lambda: result)
 
     download_entered = threading.Event()
     download_release = threading.Event()
     download_outcome = {"error": True}
-    downloaded = tmp_path / "Wisp-1.3.0.zip"
+    downloaded = tmp_path / "OpenWand-1.3.0.zip"
 
     def download_update(received_asset):
         assert received_asset == asset
@@ -209,7 +209,7 @@ def test_packaged_update_real_button_download_apply_retry_matrix(
         assert quit_calls == [True]
         assert not dialog._update_btn.isEnabled()
         assert dialog._update_btn.text() == "Applying..."
-        assert "Wisp will close now" in dialog._update_status_lbl.text()
+        assert "OpenWand will close now" in dialog._update_status_lbl.text()
     finally:
         download_release.set()
         _dispose_dialog(dialog, qapp)
@@ -218,7 +218,7 @@ def test_packaged_update_real_button_download_apply_retry_matrix(
 @pytest.mark.parametrize(
     ("state", "expected_status"),
     [
-        ("updated", "Repo updated. Restart Wisp"),
+        ("updated", "Repo updated. Restart OpenWand"),
         ("current", "Repo is already up to date."),
         ("error", "Repo update failed: origin is unreachable"),
     ],
@@ -292,7 +292,7 @@ def test_crash_report_real_settings_button_creates_reveals_and_reviews_safe_zip(
     from scripts.runtime_test_harness import QtUserDriver
     from ui.settings_panel import env as settings_env
 
-    data_root = tmp_path / "Wisp"
+    data_root = tmp_path / "OpenWand"
     log_root = data_root / "build_logs"
     log_root.mkdir(parents=True)
     secret = "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890"  # secret-scan: allow
@@ -420,8 +420,8 @@ def test_tray_runtime_status_real_supervisor_to_window_workflow(
     from scripts.runtime_test_harness import QtUserDriver
     from ui.overlay import IconOverlay, OverlaySignals
 
-    monkeypatch.setenv("WISP_MACOS_PY_UI_HOST", "1")
-    monkeypatch.setenv("WISP_RUN_LOG_DIR", str(tmp_path / "run-logs"))
+    monkeypatch.setenv("OPENWAND_MACOS_PY_UI_HOST", "1")
+    monkeypatch.setenv("OPENWAND_RUN_LOG_DIR", str(tmp_path / "run-logs"))
     monkeypatch.setattr(IconOverlay, "_pin_overlay_windows", lambda _self: None)
     opened_folders: list[str] = []
     monkeypatch.setattr(ui_host, "_open_folder", opened_folders.append)
@@ -549,7 +549,7 @@ def _make_uninstall_plan_roots(tmp_path: Path, *, source: bool):
 
     label = "source" if source else "release"
     home = tmp_path / label / "home"
-    data = tmp_path / label / "data" / "Wisp"
+    data = tmp_path / label / "data" / "OpenWand"
     optional = data / "python_packages"
     hub = tmp_path / label / "hf-hub"
     model = hub / "models--hexgrad--Kokoro-82M"
@@ -571,7 +571,7 @@ def _make_uninstall_plan_roots(tmp_path: Path, *, source: bool):
         "environ": {"HF_HUB_CACHE": str(hub)},
     }
     if source:
-        app_root = tmp_path / label / "checkout" / "Wisp"
+        app_root = tmp_path / label / "checkout" / "OpenWand"
         for relative in ("pyproject.toml", "runtime/supervisor/app.py", "core/system/paths.py"):
             path = app_root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -579,9 +579,9 @@ def _make_uninstall_plan_roots(tmp_path: Path, *, source: bool):
         plan = uninstaller.build_uninstall_plan(frozen=False, source_root=app_root, **common)
     else:
         if sys.platform == "darwin":
-            executable = tmp_path / label / "Wisp.app" / "Contents" / "MacOS" / "Wisp"
+            executable = tmp_path / label / "OpenWand.app" / "Contents" / "MacOS" / "OpenWand"
         else:
-            executable = tmp_path / label / "Wisp" / ("Wisp.exe" if sys.platform == "win32" else "wisp")
+            executable = tmp_path / label / "OpenWand" / ("OpenWand.exe" if sys.platform == "win32" else "openwand")
         executable.parent.mkdir(parents=True)
         executable.write_bytes(b"packaged app")
         plan = uninstaller.build_uninstall_plan(frozen=True, executable=executable, **common)
@@ -614,8 +614,8 @@ def test_settings_uninstall_exact_plan_and_isolated_self_removing_helper_matrix(
     helper_parent = tmp_path / "uninstall-helpers"
     helper_parent.mkdir()
     monkeypatch.setattr(uninstaller.tempfile, "gettempdir", lambda: str(helper_parent))
-    monkeypatch.setattr(uninstaller, "remove_wisp_keychain_entries", lambda: [])
-    monkeypatch.setattr(updater, "wisp_wait_pid", lambda _pid=None: 2_147_483_647)
+    monkeypatch.setattr(uninstaller, "remove_openwand_keychain_entries", lambda: [])
+    monkeypatch.setattr(updater, "openwand_wait_pid", lambda _pid=None: 2_147_483_647)
 
     helper_scripts: list[str] = []
 

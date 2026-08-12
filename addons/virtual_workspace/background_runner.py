@@ -10,7 +10,7 @@ parse or compile workspace-owned files:
 
 Processes have no console window, receive no stdin, use a reduced environment,
 and are stopped on cancellation, timeout, or excessive output.  A VM/container
-is still required before Wisp can honestly offer arbitrary untrusted program
+is still required before OpenWand can honestly offer arbitrary untrusted program
 execution with host and network isolation.
 """
 from __future__ import annotations
@@ -218,7 +218,7 @@ class LimitedWorkspaceRunner:
 
         threading.Thread(
             target=worker,
-            name=f"wisp-workspace-check-{request.check.value}",
+            name=f"openwand-workspace-check-{request.check.value}",
             daemon=True,
         ).start()
         return handle

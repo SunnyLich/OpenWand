@@ -26,4 +26,4 @@ Completed physical moves:
 - catalogue and coverage validators: `catalog/`
 - runner, build, dependency, cleanup, and scanner tests: `support/`
 
-`isolated_host` tests are skipped unless `WISP_ISOLATED_TEST_HOST=1` is set. That flag belongs only on disposable VMs or dedicated self-hosted test machines.
+`isolated_host` tests are skipped unless `OPENWAND_ISOLATED_TEST_HOST=1` is set. That flag belongs only on disposable VMs or dedicated self-hosted test machines.

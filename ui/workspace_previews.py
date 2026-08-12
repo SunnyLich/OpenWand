@@ -1,4 +1,4 @@
-"""Native, network-isolated previews for files in Wisp's shared workspace.
+"""Native, network-isolated previews for files in OpenWand's shared workspace.
 
 The widget deliberately uses Qt's document and media renderers rather than an
 OS browser.  Merely switching a preview never launches another application or
@@ -275,7 +275,7 @@ class WorkspacePreview(QWidget):
             return self._show_error(name, "Qt could not decode this image.")
         if kind == "pdf":
             if self.pdf_document is None or self.pdf_view is None:
-                return self._show_error(name, "PDF preview is not included in this Wisp build.")
+                return self._show_error(name, "PDF preview is not included in this OpenWand build.")
             self._pdf_buffer = QBuffer(self)
             self._pdf_buffer.setData(QByteArray(data))
             if not self._pdf_buffer.open(QIODevice.OpenModeFlag.ReadOnly):

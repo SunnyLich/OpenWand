@@ -364,7 +364,7 @@ def apply(pipe_name: str, plan: dict, *, port: int = 0) -> dict:
     manager = document.getUndoManager()
     context_open = False
     try:
-        manager.enterUndoContext("Wisp: exact Rewrite")
+        manager.enterUndoContext("OpenWand: exact Rewrite")
         context_open = True
         cursor = container.createTextCursor()
         cursor.gotoStart(False)

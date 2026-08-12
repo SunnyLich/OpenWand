@@ -373,15 +373,15 @@ def test_search_online_for_tool_clamps_limits_and_falls_back(monkeypatch):
     monkeypatch.setattr(context_fetcher, "_search_online", _provider)
     monkeypatch.setattr(context_fetcher, "_search_duckduckgo_html", _fallback)
 
-    results = context_fetcher.search_online_for_tool("wisp", max_results="not-a-number")
+    results = context_fetcher.search_online_for_tool("openwand", max_results="not-a-number")
     assert results == [{"title": "T", "url": "https://e.com", "snippet": ""}]
     assert calls == [("provider", 5), ("fallback", 5)]
 
     calls.clear()
-    context_fetcher.search_online_for_tool("wisp", max_results=99)
+    context_fetcher.search_online_for_tool("openwand", max_results=99)
     assert calls[0] == ("provider", 10)
     calls.clear()
-    context_fetcher.search_online_for_tool("wisp", max_results=-2)
+    context_fetcher.search_online_for_tool("openwand", max_results=-2)
     assert calls[0] == ("provider", 1)
 
 
@@ -394,7 +394,7 @@ def test_search_online_for_tool_prefers_provider_results(monkeypatch):
         lambda q, n: pytest.fail("fallback must not run when the provider returns results"),
     )
 
-    assert context_fetcher.search_online_for_tool("wisp", max_results=2) == provider_rows[:2]
+    assert context_fetcher.search_online_for_tool("openwand", max_results=2) == provider_rows[:2]
 
 
 _DDG_HTML = """
@@ -446,13 +446,13 @@ def test_search_duckduckgo_html_parses_normalizes_and_dedupes(monkeypatch):
 
     monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
 
-    results = context_fetcher._search_duckduckgo_html("wisp overlay", max_results=5)
+    results = context_fetcher._search_duckduckgo_html("openwand overlay", max_results=5)
 
     assert results == [
         {"title": "Example Docs", "url": "https://example.com/docs", "snippet": "The official documentation."},
         {"title": "Second Result", "url": "https://second.example.org/page", "snippet": "Another snippet."},
     ]
-    assert seen_urls and "wisp+overlay" in seen_urls[0]
+    assert seen_urls and "openwand+overlay" in seen_urls[0]
 
     assert context_fetcher._search_duckduckgo_html("   ") == []
     assert len(seen_urls) == 1  # the blank query never touched the network
@@ -466,5 +466,5 @@ def test_search_duckduckgo_html_returns_empty_on_network_failure(monkeypatch, ca
 
     monkeypatch.setattr(urllib.request, "urlopen", _fail)
 
-    assert context_fetcher._search_duckduckgo_html("wisp") == []
+    assert context_fetcher._search_duckduckgo_html("openwand") == []
     assert "DuckDuckGo search failed" in capsys.readouterr().out

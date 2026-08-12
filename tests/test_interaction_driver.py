@@ -1,4 +1,4 @@
-"""Deterministic Slice 1 tests for Wisp's semantic interaction fallback."""
+"""Deterministic Slice 1 tests for OpenWand's semantic interaction fallback."""
 
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ from core.actions.interaction.driver import (
 )
 from core.actions.progress import ActionProgress, ActionProgressUpdate
 
-APP = ApplicationIdentity("wisp_test_form", process_id=42, executable="wisp-test-form.exe")
-WINDOW = WindowIdentity("window-7", "Wisp interaction test form")
+APP = ApplicationIdentity("openwand_test_form", process_id=42, executable="openwand-test-form.exe")
+WINDOW = WindowIdentity("window-7", "OpenWand interaction test form")
 
 
 def _element(
@@ -61,7 +61,7 @@ def _plan(*operations: SemanticOperation) -> InteractionPlan:
         plan_id="plan-1",
         application=APP,
         window=WINDOW,
-        summary="Update the Wisp-owned test form",
+        summary="Update the OpenWand-owned test form",
         operations=operations,
     )
 
@@ -244,10 +244,10 @@ def test_full_preview_apply_progress_is_monotonic_and_truthful() -> None:
             self.carets: list[tuple[Bounds, str]] = []
             self.clear_count = 0
 
-        def show_mouse(self, bounds: Bounds, label: str = "Wisp", *, pulse: bool = False) -> None:
+        def show_mouse(self, bounds: Bounds, label: str = "OpenWand", *, pulse: bool = False) -> None:
             self.mouse.append((bounds, label, pulse))
 
-        def show_text_caret(self, bounds: Bounds, label: str = "Wisp agent") -> None:
+        def show_text_caret(self, bounds: Bounds, label: str = "OpenWand agent") -> None:
             self.carets.append((bounds, label))
 
         def clear(self) -> None:
@@ -297,11 +297,11 @@ def test_text_value_operation_uses_agent_caret_not_mouse_indicator() -> None:
             self.mouse_count = 0
             self.carets: list[tuple[Bounds, str]] = []
 
-        def show_mouse(self, _bounds: Bounds, label: str = "Wisp", *, pulse: bool = False) -> None:
+        def show_mouse(self, _bounds: Bounds, label: str = "OpenWand", *, pulse: bool = False) -> None:
             del label, pulse
             self.mouse_count += 1
 
-        def show_text_caret(self, bounds: Bounds, label: str = "Wisp agent") -> None:
+        def show_text_caret(self, bounds: Bounds, label: str = "OpenWand agent") -> None:
             self.carets.append((bounds, label))
 
         def clear(self) -> None:
@@ -323,7 +323,7 @@ def test_text_value_operation_uses_agent_caret_not_mouse_indicator() -> None:
 
     assert result.status == "complete"
     assert indicator.mouse_count == 0
-    assert [label for _bounds, label in indicator.carets] == ["Wisp agent", "Wisp agent"]
+    assert [label for _bounds, label in indicator.carets] == ["OpenWand agent", "OpenWand agent"]
 
 
 def test_bounded_inspector_redacts_editable_values() -> None:

@@ -271,6 +271,8 @@ def test_trust_privacy_mode_defaults_on():
         assert config.TRUST_PRIVACY_MODE is True
         assert config.PRIVACY_MODE == "builtin"
         assert config.get_settings().privacy.trust_privacy_mode is True
+        assert config.get_settings().privacy.hide_secrets is True
+        assert config.get_settings().privacy.hide_contact_details is True
     finally:
         _restore_config_globals(previous_config)
 
@@ -294,5 +296,31 @@ def test_explicit_privacy_mode_derives_legacy_compatibility_flags():
         assert config.TRUST_PRIVACY_MODE is True
         assert config.PRIVACY_AI_ENABLED is True
         assert config.get_settings().privacy.mode == "advanced"
+    finally:
+        _restore_config_globals(previous_config)
+
+
+def test_privacy_category_settings_are_independently_configurable():
+    previous_config = _snapshot_config_globals()
+    try:
+        with patch("config.load_dotenv"), patch.dict(
+            os.environ,
+            {
+                "PRIVACY_HIDE_SECRETS": "false",
+                "PRIVACY_HIDE_CONTACT_DETAILS": "true",
+                "PRIVACY_HIDE_FINANCIAL_DETAILS": "false",
+                "PRIVACY_HIDE_GOVERNMENT_IDS": "true",
+                "PRIVACY_HIDE_URLS": "false",
+            },
+            clear=True,
+        ):
+            config.reload()
+
+        privacy = config.get_settings().privacy
+        assert privacy.hide_secrets is False
+        assert privacy.hide_contact_details is True
+        assert privacy.hide_financial_details is False
+        assert privacy.hide_government_ids is True
+        assert privacy.hide_urls is False
     finally:
         _restore_config_globals(previous_config)

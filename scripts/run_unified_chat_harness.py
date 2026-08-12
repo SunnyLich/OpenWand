@@ -19,7 +19,7 @@ from core.llm_clients.chat_flow_harness import (  # noqa: E402
     synthetic_live_scenarios,
     write_harness_artifacts,
 )
-from core.llm_clients.chat_tool_loop import WispToolCall  # noqa: E402
+from core.llm_clients.chat_tool_loop import OpenWandToolCall  # noqa: E402
 
 
 def main() -> int:
@@ -38,7 +38,7 @@ def main() -> int:
     parser.add_argument(
         "--real-tools",
         action="store_true",
-        help="With --live-chatgpt, execute real local Wisp tools instead of synthetic safe fixtures.",
+        help="With --live-chatgpt, execute real local OpenWand tools instead of synthetic safe fixtures.",
     )
     parser.add_argument(
         "--model",
@@ -93,19 +93,19 @@ def main() -> int:
         "unified",
         {
             "needs_file_context": [
-                ScriptedModelStep(tool_calls=[WispToolCall(id="list_1", name="list_files")]),
+                ScriptedModelStep(tool_calls=[OpenWandToolCall(id="list_1", name="list_files")]),
                 ScriptedModelStep(
-                    tool_calls=[WispToolCall(id="read_1", name="read_file", arguments={"path": "config.py"})]
+                    tool_calls=[OpenWandToolCall(id="read_1", name="read_file", arguments={"path": "config.py"})]
                 ),
                 ScriptedModelStep(final="Settings storage is defined from config.py.", status="handled"),
             ],
             "edit_plus_verification": [
                 ScriptedModelStep(
-                    tool_calls=[WispToolCall(id="read_1", name="read_file", arguments={"path": "app.py"})]
+                    tool_calls=[OpenWandToolCall(id="read_1", name="read_file", arguments={"path": "app.py"})]
                 ),
                 ScriptedModelStep(
                     tool_calls=[
-                        WispToolCall(
+                        OpenWandToolCall(
                             id="edit_1",
                             name="edit_file",
                             arguments={"path": "app.py", "old": "bad", "new": "good"},
@@ -114,7 +114,7 @@ def main() -> int:
                 ),
                 ScriptedModelStep(
                     tool_calls=[
-                        WispToolCall(
+                        OpenWandToolCall(
                             id="verify_1",
                             name="run_command",
                             arguments={"args": ["python", "-m", "py_compile", "app.py"]},

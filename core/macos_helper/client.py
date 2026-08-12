@@ -24,7 +24,7 @@ from typing import Any
 
 from core.macos_helper import protocol
 
-log = logging.getLogger("wisp.macos_helper")
+log = logging.getLogger("openwand.macos_helper")
 
 # Repo root = .../<root>/core/macos_helper/client.py → parents[2]. Used as cwd so
 # `-m core.macos_helper.host` resolves regardless of where the app was launched.

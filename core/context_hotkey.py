@@ -8,7 +8,7 @@ from typing import Any
 
 from core import context_fetcher
 
-log = logging.getLogger("wisp.context.hotkey")
+log = logging.getLogger("openwand.context.hotkey")
 
 
 def window_pid_win(hwnd: int, *, is_win: bool) -> int:

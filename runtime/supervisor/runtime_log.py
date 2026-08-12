@@ -26,7 +26,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-_FLUSH_THREAD_NAME = "wisp-runtime-log-flush"
+_FLUSH_THREAD_NAME = "openwand-runtime-log-flush"
 _MAX_EVENTS = 500
 _MAX_TITLE_CHARS = 500
 _MAX_DETAIL_CHARS = 8000
@@ -261,7 +261,7 @@ class RuntimeEventLog:
     def _installer_status_files() -> list[Path]:
         """Return every known installer status file, newest first."""
         roots: list[Path] = []
-        run_log_dir = os.environ.get("WISP_RUN_LOG_DIR")
+        run_log_dir = os.environ.get("OPENWAND_RUN_LOG_DIR")
         if run_log_dir:
             roots.append(Path(run_log_dir).expanduser() / "installers")
         try:
@@ -392,7 +392,7 @@ class RuntimeLogHandler(logging.Handler):
         """Append one logging record as a runtime event."""
         if threading.current_thread().name == _FLUSH_THREAD_NAME:
             return  # never let publish-path logging feed back into the log
-        if record.name == "wisp.worker_stderr":
+        if record.name == "openwand.worker_stderr":
             return  # stderr lines already arrive via on_stderr_line listeners
         try:
             message = record.getMessage()

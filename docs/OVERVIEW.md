@@ -1,6 +1,6 @@
-# Wisp Code Overview
+# OpenWand Code Overview
 
-Wisp is a desktop assistant with one Python application architecture across
+OpenWand is a desktop assistant with one Python application architecture across
 Windows, macOS, and Linux. The shared pure-Python supervisor splits UI, native
 OS work, audio, and brain/model work into isolated worker processes.
 
@@ -45,7 +45,7 @@ OS work, audio, and brain/model work into isolated worker processes.
 
 Addons belong in the shared Python runtime layer: Python packages under
 `addons/<id>/` with an `addon.toml` manifest. Each enabled addon runs in its own
-Python host process and communicates with Wisp over JSON IPC. Windows, macOS,
+Python host process and communicates with OpenWand over JSON IPC. Windows, macOS,
 and Linux discover the same addon metadata, hooks, tray actions, settings, and
 model-callable tools from that shared layer.
 
@@ -117,7 +117,7 @@ Run the full test suite from the repository root:
 
 On Windows, the pytest harness suppresses modal native crash dialogs from child
 processes so a failing worker cannot block the run. If you still see repeated
-`python.exe` access-violation events, check the venv version first: Wisp is
+`python.exe` access-violation events, check the venv version first: OpenWand is
 targeting Python `3.12`, and a stale Python 3.14 venv should be rebuilt with
 `.\scripts\setup_dev.ps1`.
 

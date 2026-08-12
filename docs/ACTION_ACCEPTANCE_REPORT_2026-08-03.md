@@ -1,4 +1,4 @@
-# Wisp multi-app action acceptance report — 2026-08-03
+# OpenWand multi-app action acceptance report — 2026-08-03
 
 This report distinguishes real application execution, production picker
 acceptance, fake-client contract coverage, and blocked integrations. A picker
@@ -10,13 +10,13 @@ application mutation.
 | Surface | Detection/picker | Real mutation | Evidence | Remaining blocker |
 | --- | --- | --- | --- | --- |
 | PowerPoint desktop | Pass; three live actions | Pass through shared `ActionRunner` and COM; exact slide readback; foreground HWND unchanged | `.codex_tmp/acceptance_report/presentation/shared-runner/` | Broader ordinary-session user acceptance |
-| PowerPoint web | Pass; two disabled actions | Not attempted | `.codex_tmp/acceptance_report/provider-pickers/powerpoint-web.png` | Wisp Office.js bridge and authentication |
+| PowerPoint web | Pass; two disabled actions | Not attempted | `.codex_tmp/acceptance_report/provider-pickers/powerpoint-web.png` | OpenWand Office.js bridge and authentication |
 | Google Slides | Pass; three disabled actions | Not attempted | `.codex_tmp/acceptance_report/provider-pickers/google-slides.png` | Concrete Slides REST client and Google OAuth |
 | Excel desktop | Adapter acceptance pass | Pass in a hidden disposable `DispatchEx` workbook; table/chart readback, source preservation, and unchanged focus | `.codex_tmp/acceptance_report/excel/` | Production picker/shared-runner route and complete rollback |
 | LibreOffice Calc | Pass; four app actions | Existing managed UNO acceptances pass for chart, formatting, sort, verification, and Undo | `.codex_tmp/acceptance_report/calc/` | Advanced formula/filter/deduplication/conditional-format/pivot executors |
 | Google Sheets | Pass from canonical URL or foreground title; two disabled actions | Not attempted | `.codex_tmp/acceptance_report/provider-pickers/google-sheets.png` | Concrete Sheets executor and Google OAuth |
 | VS Code saved file | Pass; fix/refactor live | Pass with fingerprint revalidation and disk readback | `.codex_tmp/acceptance_report/vscode/` | Broader multi-file operations |
-| VS Code Untitled | Pass in isolated owned session | Pass through official Extension API; version 1 to 2; exact readback; no focus activation | `.codex_tmp/acceptance_report/vscode/` | Automatic bridge loading for ordinary Wisp-managed sessions |
+| VS Code Untitled | Pass in isolated owned session | Pass through official Extension API; version 1 to 2; exact readback; no focus activation | `.codex_tmp/acceptance_report/vscode/` | Automatic bridge loading for ordinary OpenWand-managed sessions |
 | Gmail web | Pass; draft/label rows visibly disabled | Not attempted | `.codex_tmp/acceptance_report/account-pickers/gmail.png` | OAuth/token storage and concrete Gmail/Calendar clients |
 | Outlook mail web/desktop | Pass; draft/category/disabled-rule rows visibly disabled | Not attempted | `.codex_tmp/acceptance_report/account-pickers/outlook-mail.png` | OAuth/token storage, concrete Graph clients, live acceptance |
 | Google Calendar | Pass; create/reschedule visibly disabled | Not attempted | `.codex_tmp/acceptance_report/account-pickers/google-calendar.png` | OAuth/token storage and concrete Calendar client |
@@ -25,7 +25,7 @@ application mutation.
 
 No email, calendar, category, rule, or attendee state was changed during this
 audit. The environment contains no matching Google/Microsoft OAuth configuration
-or Wisp token cache, and Wisp does not yet contain concrete authenticated account
+or OpenWand token cache, and OpenWand does not yet contain concrete authenticated account
 clients. The account tests use normalized fake clients and are not presented as
 live acceptance.
 
@@ -48,7 +48,7 @@ live acceptance.
 6. An unwritable action telemetry log raised `PermissionError` and crashed Calc,
    VS Code, and browser action tests. Timing diagnostics are now best-effort and
    cannot block an approved action.
-7. An explicit `WISP_ADDONS_DIR` test/runtime override was contaminated by
+7. An explicit `OPENWAND_ADDONS_DIR` test/runtime override was contaminated by
    automatically seeded bundled addons. Explicit addon roots are now isolated.
 8. Feature-acceptance manifests still claimed a removed external-transcript
    push UI was accepted. The manifest now truthfully records one component-only

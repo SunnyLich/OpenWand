@@ -75,9 +75,9 @@ def test_legacy_rows_and_low_setup_are_copied_to_complete_profile_files(tmp_path
         "PROFILE_1_LLM_MODEL": "gpt-5.5",
         "ACTIVE_PROFILE": "default",
         "SETTINGS_PROFILE": "default",
-        "WISP_SETTINGS_PRESET": "low_setup",
-        "WISP_PRESET_LOW_SETUP_LLM_PROVIDER": "ollama",
-        "WISP_PRESET_LOW_SETUP_LLM_MODEL": "corrupted-preset-model",
+        "OPENWAND_SETTINGS_PRESET": "low_setup",
+        "OPENWAND_PRESET_LOW_SETUP_LLM_PROVIDER": "ollama",
+        "OPENWAND_PRESET_LOW_SETUP_LLM_MODEL": "corrupted-preset-model",
         "LLM_PROVIDER": "ollama",
         "LLM_MODEL": "working-copy-model",
         "THEME_MODE": "dark",
@@ -108,8 +108,8 @@ def test_legacy_rows_and_low_setup_are_copied_to_complete_profile_files(tmp_path
     assert low_setup["LLM_PROVIDER"] == "chatgpt"
     assert low_setup["LLM_MODEL"] == "gpt-5.5"
     assert low_setup["THEME_MODE"] == "dark"
-    assert "WISP_SETTINGS_PRESET" not in low_setup
-    assert not any(key.startswith("WISP_PRESET_") for key in low_setup)
+    assert "OPENWAND_SETTINGS_PRESET" not in low_setup
+    assert not any(key.startswith("OPENWAND_PRESET_") for key in low_setup)
 
     # Migration is idempotent and never rewrites an already isolated profile.
     save_profile(env_path, "a", "A", {"LLM_MODEL": "user-edited-a"})
@@ -131,7 +131,7 @@ def test_profile_files_never_store_credentials_or_registry_metadata(tmp_path: Pa
             "ACTIVE_PROFILE": "old",
             "PROFILE_COUNT": "9",
             "ANTHROPIC_API_KEY": "secret",
-            "WISP_CONNECTION_ALIAS_ANTHROPIC": "Work key",
+            "OPENWAND_CONNECTION_ALIAS_ANTHROPIC": "Work key",
             "LLM_MODEL": "claude-test",
         },
     )

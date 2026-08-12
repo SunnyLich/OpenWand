@@ -81,14 +81,14 @@ _SEED: list[tuple[str, str, str, float, float]] = [
      "Long LLM calls must run off the Qt main thread; the app uses worker "
      "threads guarded by a GenerationCounter to cancel stale queries.",
      "code_note", 8, 0.6),
-    ("wisp-arch-020",
-     "The Wisp AI assistant overlay captures ambient context (active window, "
+    ("openwand-arch-020",
+     "The OpenWand AI assistant overlay captures ambient context (active window, "
      "clipboard, UI automation) and feeds it into the LLM prompt builder.",
      "project_doc", 25, 0.8),
-    ("wisp-context-fetcher-021",
+    ("openwand-context-fetcher-021",
      "context_fetcher.py writes a redacted JSON snapshot to a temp file so any "
      "part of the app can read it without re-fetching.", "code_note", 15, 0.6),
-    ("wisp-hotkey-022",
+    ("openwand-hotkey-022",
      "The overlay is triggered by a global hotkey; the window captured at "
      "hotkey time is cached so the overlay does not shadow the user's document.",
      "code_note", 10, 0.5),

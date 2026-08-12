@@ -1,4 +1,4 @@
-# Runs the cross-platform CI checks for Wisp pull requests and branch pushes.
+# Runs the cross-platform CI checks for OpenWand pull requests and branch pushes.
 name: CI
 
 on:

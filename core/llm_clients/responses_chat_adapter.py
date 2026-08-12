@@ -8,9 +8,9 @@ from core.llm_clients.chat_tool_loop import (
     ChatLoopModel,
     ChatModelTurn,
     ChatToolRequest,
-    WispObservation,
-    WispToolCall,
-    WispToolResult,
+    OpenWandObservation,
+    OpenWandToolCall,
+    OpenWandToolResult,
 )
 
 
@@ -44,8 +44,8 @@ class ResponsesChatLoopModel(ChatLoopModel):
     def next_turn(
         self,
         request: ChatToolRequest,
-        observations: list[WispObservation],
-        _tool_calls: list[WispToolCall],
+        observations: list[OpenWandObservation],
+        _tool_calls: list[OpenWandToolCall],
     ) -> ChatModelTurn:
         """Call Responses and normalize the result into one model turn."""
         from core.llm_clients import client as llm
@@ -88,7 +88,7 @@ class ResponsesChatLoopModel(ChatLoopModel):
         if calls:
             return ChatModelTurn(
                 tool_calls=[
-                    WispToolCall(
+                    OpenWandToolCall(
                         id=call["call_id"],
                         name=call["name"],
                         arguments=json_object(call.get("arguments") or "{}"),
@@ -103,7 +103,7 @@ class ResponsesChatLoopModel(ChatLoopModel):
             status="final",
         )
 
-    def _next_kwargs(self, request: ChatToolRequest, observations: list[WispObservation]) -> dict[str, Any]:
+    def _next_kwargs(self, request: ChatToolRequest, observations: list[OpenWandObservation]) -> dict[str, Any]:
         """Build the next Responses API kwargs."""
         if self._response is None:
             self._transcript_input = self._initial_request_input(request)
@@ -151,7 +151,7 @@ class ResponsesChatLoopModel(ChatLoopModel):
             "content": request_input_content(request),
         }]
 
-    def _input_after_observation(self, observation: WispObservation) -> list[dict[str, Any]]:
+    def _input_after_observation(self, observation: OpenWandObservation) -> list[dict[str, Any]]:
         """Append one observation to the stateless transcript and return it."""
 
         if observation.tool_results:
@@ -172,7 +172,7 @@ class ResponsesChatLoopModel(ChatLoopModel):
 
 
 class LiveModelToolExecutor:
-    """Execute real Wisp model tools while returning normalized results."""
+    """Execute real OpenWand model tools while returning normalized results."""
 
     def __init__(self, *, allowed_tools: list[str] | None = None, clip_results: bool = True):
         """Initialize live tool executor."""
@@ -180,8 +180,8 @@ class LiveModelToolExecutor:
         self.clip_results = clip_results
         self._spent_chars = 0
 
-    def execute(self, call: WispToolCall) -> WispToolResult:
-        """Execute a real Wisp model tool."""
+    def execute(self, call: OpenWandToolCall) -> OpenWandToolResult:
+        """Execute a real OpenWand model tool."""
         from core.llm_clients import client as llm
 
         content = llm._execute_model_tool(call.name, call.arguments, allowed_tools=self.allowed_tools)
@@ -190,7 +190,7 @@ class LiveModelToolExecutor:
             clipped_content, self._spent_chars = llm._clip_tool_result_for_turn(content, self._spent_chars)
             clipped = clipped_content != str(content or "")
             content = clipped_content
-        return WispToolResult(
+        return OpenWandToolResult(
             call_id=call.id,
             name=call.name,
             ok=not looks_like_tool_failure(content),
@@ -199,7 +199,7 @@ class LiveModelToolExecutor:
         )
 
 
-def function_outputs_from_observation(observation: WispObservation) -> list[dict[str, str]]:
+def function_outputs_from_observation(observation: OpenWandObservation) -> list[dict[str, str]]:
     """Convert neutral tool results into Responses function_call_output items."""
     outputs: list[dict[str, str]] = []
     for result in observation.tool_results:

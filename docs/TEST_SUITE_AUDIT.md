@@ -9,7 +9,7 @@
 > internal/user-path and GitHub-safe/isolated-host. The historical findings
 > below are retained to explain why those changes were made.
 
-**Repository:** Wisp (`Python-AI-assistant-overlay`)
+**Repository:** OpenWand (`Python-AI-assistant-overlay`)
 **Audit date:** 2026-07-20
 **Scope:** Test layout, discovery, configuration, runners, CI selection, release checks, and generated test artifacts
 **Method:** Read-only repository inspection plus pytest collection; no full test execution was performed

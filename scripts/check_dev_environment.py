@@ -1,4 +1,4 @@
-"""Non-mutating preflight check for Wisp's local developer environment."""
+"""Non-mutating preflight check for OpenWand's local developer environment."""
 
 from __future__ import annotations
 

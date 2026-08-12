@@ -1,19 +1,19 @@
 """MCP Bridge addon — both directions of the Model Context Protocol.
 
 Client side (this module): connects to one or more MCP servers listed in
-``servers.json`` and re-exposes every tool they advertise as a Wisp tool via
+``servers.json`` and re-exposes every tool they advertise as a OpenWand tool via
 ``get_tools()``. One addon imports an entire external toolkit. Each server
 stays its own process (any language, local or via a launcher), and this addon
-translates between Wisp's tool registry and the MCP wire protocol. The client
+translates between OpenWand's tool registry and the MCP wire protocol. The client
 is synchronous on purpose so it matches the addon host's synchronous hook
 model.
 
 Server side (``context_server.py``): a standalone MCP stdio server that
 external MCP clients (Claude Desktop, Cursor, ...) launch themselves to read
 the user's desktop context — selection, clipboard, active window, browser
-page, screen — through Wisp's capture machinery. This module only publishes
+page, screen — through OpenWand's capture machinery. This module only publishes
 the ready-to-paste client config snippet for it (see ``on_startup``); the
-running Wisp app never hosts the server.
+running OpenWand app never hosts the server.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ CLIENT_SNIPPET_FILE = ADDON_DIR / "claude_config_snippet.json"  # gitignored
 _DEFAULT_TIMEOUT = 8.0  # stay under the host's 8s execute_tool cap
 
 # Live clients keyed by server name, and a map from the tool name we expose to
-# Wisp back to (server name, original MCP tool name). Both persist for the life
+# OpenWand back to (server name, original MCP tool name). Both persist for the life
 # of the addon host process, so get_tools() and executors share them.
 _clients: dict[str, MCPStdioClient] = {}
 _tool_index: dict[str, tuple[str, str]] = {}
@@ -121,7 +121,7 @@ class MCPStdioClient:
         self._request("initialize", {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
-            "clientInfo": {"name": "wisp-mcp-bridge", "version": "1.0.0"},
+            "clientInfo": {"name": "openwand-mcp-bridge", "version": "1.0.0"},
         })
         self._notify("notifications/initialized", {})
 
@@ -282,7 +282,7 @@ def _make_executor(exposed: str):
 
 
 def get_tools() -> list:
-    """Discover every enabled server's tools and expose them to Wisp."""
+    """Discover every enabled server's tools and expose them to OpenWand."""
     tools = []
     _tool_index.clear()
     tag = str(_setting("description_tag", "")).strip()
@@ -336,7 +336,7 @@ def get_settings() -> list:
          "help": "How long to wait for an MCP tool result before giving up."},
         {"key": "max_tools_per_server", "label": "Max tools per server", "type": "number",
          "default": "50",
-         "help": "Cap on how many tools each server may expose to Wisp."},
+         "help": "Cap on how many tools each server may expose to OpenWand."},
         {"key": "server_enabled", "label": "Enable context server", "type": "bool",
          "default": "true",
          "help": "Allow external MCP clients (Claude Desktop, Cursor, ...) to launch "
@@ -348,13 +348,13 @@ def get_settings() -> list:
 def client_config_snippet() -> str:
     """Ready-to-paste MCP client config pointing at the context server.
 
-    Built from sys.executable so the snippet always names Wisp's own
-    interpreter — the capture stack needs Wisp's installed dependencies, and a
+    Built from sys.executable so the snippet always names OpenWand's own
+    interpreter — the capture stack needs OpenWand's installed dependencies, and a
     hand-typed system-Python path is the most common way this setup fails.
     """
     return json.dumps({
         "mcpServers": {
-            "wisp-context": {
+            "openwand-context": {
                 "command": sys.executable,
                 "args": [str(CONTEXT_SERVER_FILE)],
             }

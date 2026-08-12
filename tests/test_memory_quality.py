@@ -42,7 +42,7 @@ def test_memory_manager_tolerates_storage_directory_creation_failure():
 
 def test_memory_uses_json_store_even_when_macos_safe_mode_is_disabled():
     with patch.object(store.macos_safety.sys, "platform", "darwin"), \
-         patch.dict(store.macos_safety.os.environ, {"WISP_MACOS_SAFE_MODE": "0"}, clear=True), \
+         patch.dict(store.macos_safety.os.environ, {"OPENWAND_MACOS_SAFE_MODE": "0"}, clear=True), \
          patch.object(store.os, "makedirs", return_value=None), \
          patch.object(store.MemoryManager, "_sync_consolidation_timer", autospec=True, return_value=None):
         manager = store.MemoryManager()

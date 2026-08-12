@@ -127,9 +127,9 @@ def test_app_settings_starts_with_conversation_harness_selector():
         assert header is not None
         assert header.text() == t("Run conversations with").upper()
         combo = dialog._fields["CHAT_EXECUTION_MODE"]
-        assert [combo.itemData(index) for index in range(combo.count())] == ["wisp", "codex", "claude"]
+        assert [combo.itemData(index) for index in range(combo.count())] == ["openwand", "codex", "claude"]
         owner = dialog._fields["CHAT_CONVERSATION_OWNER"]
-        assert [owner.itemData(index) for index in range(owner.count())] == ["wisp", "agent"]
+        assert [owner.itemData(index) for index in range(owner.count())] == ["openwand", "agent"]
         assert owner.isEnabled() is False
         assert dialog._harness_auth_widget.isHidden() is True
         combo.setCurrentIndex(combo.findData("codex"))
@@ -140,9 +140,9 @@ def test_app_settings_starts_with_conversation_harness_selector():
         assert dialog._harness_auth_title_lbl.text() == t("ChatGPT login")
         assert dialog._harness_login_btn.objectName() == "settingsHarnessLoginButton"
         assert dialog._harness_logout_btn.objectName() == "settingsHarnessLogoutButton"
-        owner.setCurrentIndex(owner.findData("wisp"))
+        owner.setCurrentIndex(owner.findData("openwand"))
         combo.setCurrentIndex(combo.findData("claude"))
-        assert owner.currentData() == "wisp"
+        assert owner.currentData() == "openwand"
         assert dialog._harness_auth_title_lbl.text() == t("Claude Agent login")
     finally:
         tab.deleteLater()
@@ -192,9 +192,11 @@ def test_tts_voice_tab_exposes_stt_settings():
     try:
         assert {"STT_MODEL", "STT_COMPUTE_TYPE", "STT_LANGUAGE"} <= set(dialog._fields)
         labels = {label.text() for label in tab.findChildren(QLabel)}
-        assert t("Whisper model") in labels
-        assert t("Compute type") in labels
-        assert t("Speech language") in labels
+        assert not any("Chunking controls for read-aloud TTS" in label for label in labels)
+        assert not any("Hands-free conversation with Gemini Live" in label for label in labels)
+        assert f"{t('Whisper model')}  ⓘ" in labels
+        assert f"{t('Compute type')}  ⓘ" in labels
+        assert f"{t('Speech language')}  ⓘ" in labels
         stt_model = dialog._fields["STT_MODEL"]
         assert not stt_model.isEditable()
         model_values = {
@@ -507,7 +509,7 @@ def test_settings_voice_status_check_runs_once_per_dialog(monkeypatch):
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_optional_tts_install_launches_external_terminal(monkeypatch, tmp_path):
-    """Optional TTS installs should launch the Wisp installer dialog in source builds."""
+    """Optional TTS installs should launch the OpenWand installer dialog in source builds."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
@@ -559,7 +561,7 @@ def test_optional_tts_install_launches_external_terminal(monkeypatch, tmp_path):
         )
 
         assert ok is True
-        assert launched["title"] == "Wisp Kokoro installer"
+        assert launched["title"] == "OpenWand Kokoro installer"
         assert launched["shown"] is True
         assert launched["mirror_output_to_log"] is False
         command = launched["command"]
@@ -570,9 +572,9 @@ def test_optional_tts_install_launches_external_terminal(monkeypatch, tmp_path):
         assert '"kokoro==0.9.4"' in plan
         assert '"post_install": "kokoro_prepare"' in plan
         # Staged restart-apply installs are used on every platform so pip
-        # never writes into the live package folder while Wisp is running.
+        # never writes into the live package folder while OpenWand is running.
         assert '"restart_apply": true' in plan
-        assert "Wisp installer window" in dialog._kokoro_install_status_lbl.text()
+        assert "OpenWand installer window" in dialog._kokoro_install_status_lbl.text()
     finally:
         dialog._kokoro_install_btn.deleteLater()
         dialog._kokoro_install_status_lbl.deleteLater()
@@ -581,7 +583,7 @@ def test_optional_tts_install_launches_external_terminal(monkeypatch, tmp_path):
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_optional_tts_install_launches_external_terminal_in_frozen_build(monkeypatch, tmp_path):
-    """Portable builds should launch the bundled installer worker in the Wisp dialog."""
+    """Portable builds should launch the bundled installer worker in the OpenWand dialog."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
@@ -612,7 +614,7 @@ def test_optional_tts_install_launches_external_terminal_in_frozen_build(monkeyp
         def activateWindow(self):
             launched["activated"] = True
 
-    fake_exe = tmp_path / "Wisp.exe"
+    fake_exe = tmp_path / "OpenWand.exe"
     fake_exe.write_text("", encoding="utf-8")
     monkeypatch.setattr(optional_deps, "OPTIONAL_PACKAGES_DIR", tmp_path / "python_packages")
     monkeypatch.setattr(dialog_mod, "OptionalInstallDialog", FakeInstallDialog)
@@ -753,7 +755,7 @@ def test_optional_installer_finish_prompts_restart_for_restart_apply(monkeypatch
         "_read_optional_install_status",
         lambda *_args, **_kwargs: {
             "ok": None,
-            "message": "STT packages are staged. Wisp will close, replace locked files, verify the install, and reopen.",
+            "message": "STT packages are staged. OpenWand will close, replace locked files, verify the install, and reopen.",
             "restart_apply": True,
         },
     )
@@ -842,7 +844,7 @@ def test_stt_install_uses_optional_installer(monkeypatch, tmp_path):
             "stt_device": "auto",
             "stt_compute_type": "int8",
             "settings_updates": {
-                "WISP_STT_PREFERENCE": "local",
+                "OPENWAND_STT_PREFERENCE": "local",
                 "STT_PROVIDER": "local",
                 "STT_MODEL": "base",
                 "STT_DEVICE": "auto",
@@ -874,7 +876,7 @@ def test_optional_install_terminal_closes_on_windows(monkeypatch, tmp_path):
     ok = dialog_mod._launch_terminal_command(
         ["python", "-m", "installer"],
         cwd=tmp_path,
-        title="Wisp installer",
+        title="OpenWand installer",
     )
 
     assert ok is True
@@ -883,13 +885,13 @@ def test_optional_install_terminal_closes_on_windows(monkeypatch, tmp_path):
     assert "python -m installer" in cmdline
     assert "/K" not in launched["command"]
     assert "if errorlevel 1" in cmdline
-    assert "Wisp installer failed with exit code !WISP_INSTALL_EXIT!." in cmdline
+    assert "OpenWand installer failed with exit code !OPENWAND_INSTALL_EXIT!." in cmdline
     assert "pause > nul" in cmdline.lower()
     assert launched["creationflags"] == 16
 
 
 def test_terminal_command_forwards_isolated_environment_on_windows(monkeypatch, tmp_path):
-    """Visible Codex login terminals inherit Wisp's private state roots."""
+    """Visible Codex login terminals inherit OpenWand's private state roots."""
     from ui.settings_panel import dialog as dialog_mod
 
     launched: dict[str, object] = {}
@@ -905,13 +907,13 @@ def test_terminal_command_forwards_isolated_environment_on_windows(monkeypatch, 
         ["codex", "login"],
         cwd=tmp_path,
         title="ChatGPT sign-in",
-        environment={"CODEX_HOME": "wisp-codex", "CODEX_SQLITE_HOME": "wisp-codex"},
+        environment={"CODEX_HOME": "openwand-codex", "CODEX_SQLITE_HOME": "openwand-codex"},
     )
 
     assert ok is True
     environment = launched["env"]
-    assert environment["CODEX_HOME"] == "wisp-codex"
-    assert environment["CODEX_SQLITE_HOME"] == "wisp-codex"
+    assert environment["CODEX_HOME"] == "openwand-codex"
+    assert environment["CODEX_SQLITE_HOME"] == "openwand-codex"
 
 
 def test_terminal_shell_command_scopes_isolated_environment(tmp_path):
@@ -922,10 +924,10 @@ def test_terminal_shell_command_scopes_isolated_environment(tmp_path):
         ["codex", "login"],
         tmp_path,
         "ChatGPT sign-in",
-        environment={"CODEX_HOME": "/wisp/codex", "CODEX_SQLITE_HOME": "/wisp/codex"},
+        environment={"CODEX_HOME": "/openwand/codex", "CODEX_SQLITE_HOME": "/openwand/codex"},
     )
 
-    assert "env CODEX_HOME=/wisp/codex CODEX_SQLITE_HOME=/wisp/codex codex login" in command
+    assert "env CODEX_HOME=/openwand/codex CODEX_SQLITE_HOME=/openwand/codex codex login" in command
 
 
 def test_optional_install_terminal_auto_closes_on_macos(monkeypatch, tmp_path):
@@ -943,7 +945,7 @@ def test_optional_install_terminal_auto_closes_on_macos(monkeypatch, tmp_path):
     ok = dialog_mod._launch_terminal_command(
         ["python", "-m", "installer"],
         cwd=tmp_path,
-        title="Wisp installer",
+        title="OpenWand installer",
     )
 
     assert ok is True
@@ -952,7 +954,7 @@ def test_optional_install_terminal_auto_closes_on_macos(monkeypatch, tmp_path):
     assert "activate" in script
     assert "exit" in script
     assert "close (window of targetTab) saving no" in script
-    assert "Wisp installer failed with exit code" in script
+    assert "OpenWand installer failed with exit code" in script
     assert "Press Enter to close this window" in script
     assert "read -r _" in script
     assert "read -n" not in script
@@ -979,7 +981,7 @@ def test_optional_install_terminal_auto_closes_on_linux(monkeypatch, tmp_path):
     ok = dialog_mod._launch_terminal_command(
         ["python", "-m", "installer"],
         cwd=tmp_path,
-        title="Wisp installer",
+        title="OpenWand installer",
     )
 
     assert ok is True
@@ -990,7 +992,7 @@ def test_optional_install_terminal_auto_closes_on_linux(monkeypatch, tmp_path):
     assert launched["stderr"] == dialog_mod.subprocess.DEVNULL
     shell_cmd = command[-1]
     assert "python -m installer" in shell_cmd
-    assert "Wisp installer failed with exit code" in shell_cmd
+    assert "OpenWand installer failed with exit code" in shell_cmd
     assert "Press Enter to close this window" in shell_cmd
     assert "read -r -p" not in shell_cmd
     assert "read -r _" in shell_cmd
@@ -1035,14 +1037,14 @@ def test_optional_install_terminal_falls_back_to_konsole_on_linux(monkeypatch, t
     ok = dialog_mod._launch_terminal_command(
         ["python", "-m", "installer"],
         cwd=tmp_path,
-        title="Wisp installer",
+        title="OpenWand installer",
     )
 
     assert ok is True
     assert launched[0][:2] == ["x-terminal-emulator", "-e"]
     assert launched[1][:2] == ["konsole", "--workdir"]
     assert "--title" in launched[1]
-    assert "Wisp installer" in launched[1]
+    assert "OpenWand installer" in launched[1]
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
@@ -1192,18 +1194,18 @@ def test_provider_model_lists_include_current_defaults():
         "anthropic": {"claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"},
         "groq": {"openai/gpt-oss-120b", "meta-llama/llama-4-scout-17b-16e-instruct"},
         "xai": {"grok-4.3", "grok-4"},
-        "ollama": {"llama3.3", "qwen3", "deepseek-r1"},
     }
 
     for provider, models in expected.items():
         assert models <= set(_PROVIDER_MODELS[provider])
+    assert _PROVIDER_MODELS["ollama"] == []
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_app_tab_exposes_assistant_language_setting():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QFrame, QLabel
+    from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QFrame, QLabel, QPushButton
 
     import config
     from ui import i18n
@@ -1224,10 +1226,25 @@ def test_app_tab_exposes_assistant_language_setting():
         assert "START_ON_LOGIN" in dialog._fields
         labels = {label.text() for label in tab.findChildren(QLabel)}
         checkboxes = {checkbox.text() for checkbox in tab.findChildren(QCheckBox)}
-        assert "App language" in labels
-        assert "Assistant language" in labels
-        assert "Review detected private information before sending" in checkboxes
-        assert "Start Wisp when you sign in" in checkboxes
+        assert "App language  ⓘ" in labels
+        assert "Assistant language  ⓘ" in labels
+        assert "Ask me before sending when private text is found" in checkboxes
+        assert {
+            "Secrets and credentials",
+            "Contact details",
+            "Financial information",
+            "Government IDs",
+            "Web addresses",
+        } <= checkboxes
+        assert "Start OpenWand when you sign in" in checkboxes
+        app_form = dialog._fields["START_ON_LOGIN"].parentWidget().layout()
+        auto_hide_row, _ = app_form.getWidgetPosition(dialog._fields["ICON_AUTO_HIDE"])
+        start_on_login_row, _ = app_form.getWidgetPosition(dialog._fields["START_ON_LOGIN"])
+        bubble_scroll_row, _ = app_form.getWidgetPosition(
+            dialog._fields["BUBBLE_SCROLL_SNAP_ENABLED"]
+        )
+        assert bubble_scroll_row < auto_hide_row < start_on_login_row
+        assert start_on_login_row == app_form.rowCount() - 1
         privacy_selector = dialog._fields["PRIVACY_MODE"]
         assert isinstance(privacy_selector, QComboBox)
         assert {
@@ -1245,14 +1262,38 @@ def test_app_tab_exposes_assistant_language_setting():
         while privacy_card is not None and privacy_card.objectName() != "card":
             privacy_card = privacy_card.parentWidget()
         assert privacy_card is not None
+        privacy_help = {
+            label.property("privacyHelpKey"): label
+            for label in privacy_card.findChildren(QLabel)
+            if label.property("privacyHelpKey")
+        }
+        assert set(privacy_help) == {"mode", "review", "protected-content", "advanced-model"}
+        assert privacy_help["mode"].accessibleName() == "Protection level"
+        assert "Screenshots and images are not inspected" in privacy_help["mode"].toolTip()
+        assert "send the original text" in privacy_help["review"].toolTip()
+        assert "prompt, captured app or document context" in privacy_help["protected-content"].toolTip()
+        assert "Screenshots and other images are not inspected" in privacy_help["protected-content"].toolTip()
+        assert "about 2.8 GB plus its runtime" in privacy_help["advanced-model"].toolTip()
+        assert "still sent to the model provider" in privacy_help["advanced-model"].toolTip()
+        assert all(label.text().endswith("ⓘ") for label in privacy_help.values())
         privacy_headers = {
             label.text()
             for label in privacy_card.findChildren(QLabel)
             if label.objectName() == "sectionHeader"
         }
-        assert "PRIVACY PROTECTION" in privacy_headers
+        assert "TEXT PRIVACY BEFORE MODEL REQUESTS" in privacy_headers
+        assert "Built-in categories to hide" in privacy_headers
         cards = [frame for frame in tab.findChildren(QFrame) if frame.objectName() == "card"]
-        assert cards[-1] is privacy_card
+        profile_setup_button = next(
+            button
+            for button in tab.findChildren(QPushButton)
+            if button.text() == "Run profile setup"
+        )
+        profile_card = profile_setup_button.parentWidget()
+        while profile_card is not None and profile_card.objectName() != "card":
+            profile_card = profile_card.parentWidget()
+        assert profile_card is not None
+        assert cards[-2:] == [privacy_card, profile_card]
         app_values = {
             dialog._fields["APP_LANGUAGE"].itemData(i)
             for i in range(dialog._fields["APP_LANGUAGE"].count())
@@ -1263,6 +1304,20 @@ def test_app_tab_exposes_assistant_language_setting():
             for i in range(dialog._fields["ASSISTANT_LANGUAGE"].count())
         }
         assert {"", "match_user", "English", "Chinese", "Chinese (Traditional)", "Spanish"} <= values
+
+        config.APP_LANGUAGE = "zh-Hant"
+        i18n.set_language("zh-Hant", app=app)
+        i18n.localize_widget_tree(tab)
+        assert privacy_help["mode"].accessibleName() == i18n.t("Protection level")
+        assert "螢幕截圖" in privacy_help["mode"].toolTip()
+        assert privacy_help["advanced-model"].accessibleName() == "進階模型要求"
+        translated_labels = {label.text() for label in tab.findChildren(QLabel)}
+        assert "程式語言  ⓘ" in translated_labels
+        assert "助手回覆語言  ⓘ" in translated_labels
+        translated_app_language = next(
+            label for label in tab.findChildren(QLabel) if label.accessibleName() == "程式語言"
+        )
+        assert translated_app_language.toolTip() == "程式菜單、對話框和控制項使用的語言。"
     finally:
         config.APP_LANGUAGE = old_language
         i18n.set_language(app=app)
@@ -1291,7 +1346,7 @@ def test_advanced_privacy_warmup_tooltip_is_translated(
 
     source = (
         "Advanced privacy loads a local 2.8 GB AI model into memory and warms it in the "
-        "background when Wisp starts. Warm-up may take tens of seconds on CPU. If you send "
+        "background when OpenWand starts. Warm-up may take tens of seconds on CPU. If you send "
         "a request before it finishes, that request waits; later requests are faster. The "
         "privacy model never uploads your text."
     )
@@ -1331,7 +1386,7 @@ def test_harness_login_surface_is_translated(
     from ui.settings_panel import dialog
 
     description = (
-        "Wisp uses the account saved by the selected local agent CLI. "
+        "OpenWand uses the account saved by the selected local agent CLI. "
         "Sign-in opens its terminal and browser flow."
     )
     app = QApplication.instance() or QApplication(sys.argv)
@@ -1444,7 +1499,7 @@ def test_privacy_model_removal_failure_matrix_is_controlled(monkeypatch):
 
 
 def test_privacy_model_installer_reuses_per_user_huggingface_token(monkeypatch):
-    """Wisp should forward saved HF auth without ever embedding a shared token."""
+    """OpenWand should forward saved HF auth without ever embedding a shared token."""
     import ui.settings_panel.dialog as dialog_mod
     from core import secret_store
 
@@ -1464,7 +1519,7 @@ def test_privacy_model_installer_reuses_per_user_huggingface_token(monkeypatch):
 
 
 def test_privacy_model_installer_preserves_existing_hf_token(monkeypatch):
-    """An explicit process token takes precedence over Wisp's saved provider key."""
+    """An explicit process token takes precedence over OpenWand's saved provider key."""
     import ui.settings_panel.dialog as dialog_mod
     from core import secret_store
 
@@ -1599,6 +1654,49 @@ def test_about_page_exposes_packaged_update_controls(monkeypatch):
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_about_page_wrapped_translations_keep_content_sized_rows(monkeypatch):
+    """Long translated descriptions must grow instead of overlapping the next row."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QLabel, QSizePolicy
+
+    import config
+    from core import updater
+    from ui import i18n
+    from ui.settings_panel.dialog import SettingsDialog
+
+    monkeypatch.setattr(updater, "is_repo_checkout", lambda: False)
+    monkeypatch.setattr(config, "APP_LANGUAGE", "zh-Hant")
+    app = QApplication.instance() or QApplication(sys.argv)
+    i18n.set_language("zh-Hant", app)
+    dialog = SettingsDialog.__new__(SettingsDialog)
+    dialog._fields = {}
+    general = SettingsDialog._tab_app(dialog)
+    tab = SettingsDialog._tab_about(dialog)
+    tab.resize(760, 520)
+    tab.show()
+
+    try:
+        for _ in range(4):
+            app.processEvents()
+        labels = [
+            label
+            for label in dialog._about_crash_card.findChildren(QLabel)
+            if bool(label.property("description"))
+        ]
+        assert len(labels) == 1
+        description = labels[0]
+        status = dialog._crash_report_status_lbl
+        assert description.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Minimum
+        assert description.height() >= description.sizeHint().height()
+        assert description.geometry().bottom() < status.geometry().top()
+    finally:
+        tab.close()
+        tab.deleteLater()
+        general.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_about_page_exposes_repo_update_controls(monkeypatch):
     """Verify source checkouts expose a git fast-forward update action on About."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -1651,7 +1749,7 @@ def test_update_download_switches_button_to_apply(monkeypatch, tmp_path):
     try:
         carrier = _UpdateSignals()
         dialog._update_signal_carriers.append(carrier)
-        downloaded = tmp_path / "Wisp-test-windows-x64.zip"
+        downloaded = tmp_path / "OpenWand-test-windows-x64.zip"
         downloaded.write_bytes(b"fake")
 
         SettingsDialog._finish_update_download(dialog, carrier, str(downloaded), "")
@@ -1690,6 +1788,33 @@ def test_localize_widget_tree_uses_app_language(monkeypatch):
     finally:
         config.APP_LANGUAGE = old_language
         widget.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_localize_widget_tree_translates_attached_parentless_action():
+    """Actions attached to a live widget remain translatable without a QObject parent."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QAction
+    from PySide6.QtWidgets import QApplication, QWidget
+
+    import config
+    from ui import i18n
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    old_language = getattr(config, "APP_LANGUAGE", "")
+    config.APP_LANGUAGE = "zh"
+    host = QWidget()
+    action = QAction("Settings")
+    host.addAction(action)
+    try:
+        i18n.set_language(app=app)
+        i18n.localize_widget_tree(host)
+        assert action.text() == "\u8bbe\u7f6e"
+    finally:
+        config.APP_LANGUAGE = old_language
+        i18n.set_language(app=app)
+        host.deleteLater()
         app.processEvents()
 
 
@@ -1734,10 +1859,11 @@ def test_i18n_uses_qt_catalog_without_dynamic_matching(monkeypatch):
 
 def test_i18n_supports_traditional_chinese(monkeypatch):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QLabel
 
     import config
     from ui import i18n
+    from ui.settings_panel.dialog import SettingsDialog, _translate_status_message
 
     app = QApplication.instance() or QApplication(sys.argv)
     old_language = getattr(config, "APP_LANGUAGE", "")
@@ -1756,6 +1882,44 @@ def test_i18n_supports_traditional_chinese(monkeypatch):
         assert i18n.t("Timeout ms:") == "\u903e\u6642\uff08\u6beb\u79d2\uff09\uff1a"
         assert i18n.t("App Settings") == "\u7a0b\u5f0f\u8a2d\u5b9a"
         assert i18n.t("Memory Settings") == "\u8a18\u61b6\u8a2d\u5b9a"
+        assert i18n.t("Unsaved changes: {pages}").format(
+            pages=i18n.t("General")
+        ) == "\u672a\u5132\u5b58\u7684\u8b8a\u66f4\uff1a\u901a\u7528"
+        assert i18n.t("Current version: {version}").format(
+            version="0.10.2"
+        ) == "\u76ee\u524d\u7248\u672c\uff1a0.10.2"
+        assert i18n.t("Testing...") == "\u6b63\u5728\u6e2c\u8a66..."
+        pending_label = QLabel()
+        SettingsDialog._set_test_pending(SettingsDialog.__new__(SettingsDialog), pending_label)
+        assert pending_label.text() == "\u6b63\u5728\u6e2c\u8a66..."
+        pending_label.deleteLater()
+        assert _translate_status_message(
+            "\u2713 Primary \u2014 chatgpt / gpt-5.5: OK"
+        ) == "\u2713 \u4e3b\u8981 \u2014 chatgpt / gpt-5.5\uff1a\u901a\u904e"
+        assert _translate_status_message(
+            "\u2717 Fallback 2 \u2014 google / gemini-2.5-flash: "
+            "Fallback 2 route uses 'google', but its API key is not configured."
+        ) == (
+            "\u2717 \u5f8c\u5099 2 \u2014 google / gemini-2.5-flash\uff1a"
+            "\u5f8c\u5099 2\u8def\u7531\u4f7f\u7528 'google'\uff0c\u4f46\u5c1a\u672a\u8a2d\u5b9a\u5176 API \u91d1\u9470\u3002"
+        )
+        assert _translate_status_message(
+            "\u2717 Primary \u2014 unknown / model: Unknown LLM provider: unknown"
+        ) == (
+            "\u2717 \u4e3b\u8981 \u2014 unknown / model\uff1a"
+            "\u672a\u77e5\u7684 LLM \u63d0\u4f9b\u8005\uff1aunknown"
+        )
+        assert _translate_status_message(
+            "Primary works. 2 fallback(s) failed (Fallback 1, Fallback 2) "
+            "\u2014 fix or remove just those rows."
+        ) == (
+            "\u4e3b\u8981\u8def\u7531\u53ef\u7528\u30022 \u500b\u5f8c\u5099\u8def\u7531\u5931\u6557\uff08"
+            "\u5f8c\u5099 1, \u5f8c\u5099 2\uff09\u2014 \u8acb\u53ea\u4fee\u6b63\u6216\u79fb\u9664\u9019\u4e9b\u5217\u3002"
+        )
+        assert i18n.t(
+            "Larger models improve Mandarin/Cantonese speech accuracy but use more disk and CPU."
+        ).startswith("\u8f03\u5927\u7684\u6a21\u578b")
+        assert i18n.t("Checking STT install status...").startswith("\u6b63\u5728\u6aa2\u67e5 STT")
         assert i18n.t("Dictation (hold to type)") == "\u807d\u5beb\uff08\u6309\u4f4f\u5373\u53ef\u8f38\u5165\uff09"
         assert i18n.t("OpenAI API") == "OpenAI API"
         assert i18n.t("unavailable") == "\u7121\u6cd5\u4f7f\u7528"
@@ -1795,6 +1959,7 @@ def test_settings_status_messages_translate_nested_values(monkeypatch):
         "Installing Kokoro: {detail}.": "\u6b63\u5728\u5b89\u88dd Kokoro\uff1a{detail}\u3002",
         "Installing STT: {detail}.": "\u6b63\u5728\u5b89\u88dd STT\uff1a{detail}\u3002",
         "STT model configured: {model}, but STT verification failed: {error}": "\u5df2\u8a2d\u5b9a STT \u6a21\u578b\uff1a{model}\uff0c\u4f46 STT \u9a57\u8b49\u5931\u6557\uff1a{error}",
+        "Windows CUDA runtime is incomplete or unloadable: {files}": "Windows CUDA \u57f7\u884c\u74b0\u5883\u4e0d\u5b8c\u6574\u6216\u7121\u6cd5\u8f09\u5165\uff1a{files}",
         "downloading packages": "\u6b63\u5728\u4e0b\u8f09\u5957\u4ef6",
         "still running for {elapsed}; no installer output for {quiet}": "\u5df2\u57f7\u884c {elapsed}\uff1b{quiet} \u6c92\u6709\u5b89\u88dd\u5668\u8f38\u51fa",
         "unavailable": "\u7121\u6cd5\u4f7f\u7528",
@@ -1817,8 +1982,12 @@ def test_settings_status_messages_translate_nested_values(monkeypatch):
         == "\u6b63\u5728\u5b89\u88dd Kokoro\uff1a\u5df2\u57f7\u884c 2m 40s\uff1b2m 40s \u6c92\u6709\u5b89\u88dd\u5668\u8f38\u51fa\u3002"
     )
     assert dialog._translate_status_message(
-        "STT model configured: small, but STT verification failed: model unavailable"
-    ) == "\u5df2\u8a2d\u5b9a STT \u6a21\u578b\uff1asmall\uff0c\u4f46 STT \u9a57\u8b49\u5931\u6557\uff1amodel unavailable"
+        "STT model configured: small, but STT verification failed: "
+        "Windows CUDA runtime is incomplete or unloadable: cublas64_12.dll"
+    ) == (
+        "\u5df2\u8a2d\u5b9a STT \u6a21\u578b\uff1asmall\uff0c\u4f46 STT \u9a57\u8b49\u5931\u6557\uff1a"
+        "Windows CUDA \u57f7\u884c\u74b0\u5883\u4e0d\u5b8c\u6574\u6216\u7121\u6cd5\u8f09\u5165\uff1acublas64_12.dll"
+    )
 
 
 def test_kokoro_install_progress_text_classifies_pip_output():
@@ -1863,14 +2032,14 @@ def test_kokoro_install_progress_text_classifies_pip_output():
 
 
 def test_optional_install_plan_and_env_follow_app_language(monkeypatch, tmp_path):
-    """Detached optional installers should inherit Wisp's selected UI language."""
+    """Detached optional installers should inherit OpenWand's selected UI language."""
     import config
     from core import optional_deps, updater
     from ui.settings_panel import dialog as dialog_mod
 
     monkeypatch.setattr(config, "APP_LANGUAGE", "zh-Hant", raising=False)
     monkeypatch.setattr(optional_deps, "OPTIONAL_PACKAGES_DIR", tmp_path / "python_packages")
-    monkeypatch.setattr(updater, "wisp_wait_pid", lambda: 1234)
+    monkeypatch.setattr(updater, "openwand_wait_pid", lambda: 1234)
     monkeypatch.setattr(dialog_mod.sys, "frozen", False, raising=False)
 
     command, _root, _log_path, _status_path = dialog_mod._optional_install_plan_command(
@@ -1887,13 +2056,13 @@ def test_optional_install_no_output_timeout_is_opt_in(monkeypatch):
     """Silent optional installs should keep running unless a watchdog is configured."""
     from ui.settings_panel.dialog import _optional_install_no_output_timeout_seconds
 
-    monkeypatch.delenv("WISP_OPTIONAL_INSTALL_NO_OUTPUT_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("OPENWAND_OPTIONAL_INSTALL_NO_OUTPUT_TIMEOUT_SECONDS", raising=False)
     assert _optional_install_no_output_timeout_seconds() == 0
 
-    monkeypatch.setenv("WISP_OPTIONAL_INSTALL_NO_OUTPUT_TIMEOUT_SECONDS", "1800")
+    monkeypatch.setenv("OPENWAND_OPTIONAL_INSTALL_NO_OUTPUT_TIMEOUT_SECONDS", "1800")
     assert _optional_install_no_output_timeout_seconds() == 1800
 
-    monkeypatch.setenv("WISP_OPTIONAL_INSTALL_NO_OUTPUT_TIMEOUT_SECONDS", "not-a-number")
+    monkeypatch.setenv("OPENWAND_OPTIONAL_INSTALL_NO_OUTPUT_TIMEOUT_SECONDS", "not-a-number")
     assert _optional_install_no_output_timeout_seconds() == 0
 
 
@@ -2046,7 +2215,7 @@ def test_kokoro_status_preserves_staged_apply_retry():
             install_status={
                 "ok": False,
                 "restart_apply": True,
-                "message": "Kokoro staged install failed: PermissionError: c10.dll. Wisp will retry at the next restart.",
+                "message": "Kokoro staged install failed: PermissionError: c10.dll. OpenWand will retry at the next restart.",
             },
         )
 
@@ -2798,7 +2967,7 @@ def test_elevenlabs_status_preserves_staged_apply_retry():
             install_status={
                 "ok": False,
                 "restart_apply": True,
-                "message": "ElevenLabs staged install failed: PermissionError: locked file. Wisp will retry at the next restart.",
+                "message": "ElevenLabs staged install failed: PermissionError: locked file. OpenWand will retry at the next restart.",
             },
         )
 
@@ -3052,10 +3221,14 @@ def test_llm_model_routing_surface_translates_to_traditional_chinese(isolated_de
             "\u767b\u5165\u6216\u5132\u5b58\u63d0\u4f9b\u8005 API \u91d1\u9470" in text
             for text in label_texts
         )
-        assert any(
-            "\u767b\u5165\u6703\u5728\u700f\u89bd\u5668\u4e2d\u958b\u555f GitHub" in text
-            for text in label_texts
-        )
+        assert i18n.t("OAuth logins").upper() in label_texts
+        assert i18n.t("ChatGPT OAuth") in label_texts
+        assert i18n.t("Allows you to use ChatGPT subscription models in Model settings.") in label_texts
+        assert i18n.t(
+            "Allows authenticated GitHub tools to give the model repository metadata and "
+            "issues/PRs as context, and lets you use Copilot models when your account has "
+            "Copilot access."
+        ) in label_texts
         assert any(
             "\u65b0\u589e\u4f60\u4f7f\u7528\u7684\u63d0\u4f9b\u8005" in text
             for text in label_texts
@@ -3063,7 +3236,10 @@ def test_llm_model_routing_surface_translates_to_traditional_chinese(isolated_de
         assert "<small><b>\u5225\u540d</b></small>" in label_texts
         assert "\u5225\u540d\uff08\u9078\u586b\uff09" in placeholder_texts
         assert "\u81ea\u8a02\u63d0\u4f9b\u8005".upper() in label_texts
-        assert any("\u4efb\u4f55\u76f8\u5bb9 OpenAI" in text for text in label_texts)
+        custom_endpoint_note = i18n.t(
+            "Choose a known OpenAI-compatible endpoint, or select Custom endpoint to enter an address. Select Custom in a model row below to use it."
+        )
+        assert any(custom_endpoint_note in text for text in label_texts)
         assert "\u8a9e\u97f3\u8f49\u6587\u5b57".upper() in label_texts
         assert any("\u6309\u4f4f\u8aaa\u8a71\u8f49\u5beb\u4f7f\u7528\u7684 Whisper" in text for text in label_texts)
         assert "\u88dd\u7f6e" in label_texts
@@ -3223,14 +3399,16 @@ def test_app_settings_surface_translates_to_traditional_chinese():
             "Text bubble width (px)",
             "Text bubble lines",
             "Text bubble font size (pt)",
-            "Uninstall Wisp",
+            "Uninstall OpenWand",
         ):
             assert not any(fragment in text for text in visible_texts)
 
-        assert "\u5167\u5efa\u96b1\u79c1\u7be9\u9078\u5668" in visible_texts
+        assert "\u5167\u5efa\u898f\u5247 \u2014 \u7121\u9700\u4e0b\u8f09" in visible_texts
+        assert "\u6a5f\u5bc6\u8207\u767b\u5165\u6191\u8b49" in visible_texts
+        assert "\u806f\u7d61\u8cc7\u6599" in visible_texts
         assert "\u5141\u8a31\u6efe\u8f2a\u6372\u52d5\u6587\u5b57\u6c23\u6ce1" in visible_texts
         assert "\u6717\u8b80\u6642\u81ea\u52d5\u6372\u56de\u76ee\u524d\u4f4d\u7f6e" in visible_texts
-        assert "\u89e3\u9664\u5b89\u88dd Wisp" in visible_texts
+        assert "\u89e3\u9664\u5b89\u88dd OpenWand" in visible_texts
     finally:
         config.APP_LANGUAGE = old_language
         i18n.set_language(app=app)
@@ -3302,7 +3480,7 @@ def test_elaborate_prompt_field_follows_auto_elaborate_checkbox():
 def test_llm_tab_hides_advanced_chat_harness_controls_until_expanded():
     """Verify chat harness settings live in a closed LLM Advanced drawer."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication, QPushButton
+    from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
     from ui.settings_panel.dialog import SettingsDialog
 
@@ -3316,9 +3494,9 @@ def test_llm_tab_hides_advanced_chat_harness_controls_until_expanded():
 
         for key in (
             "CHAT_TOOL_TRACE_UI",
-            "WISP_PLANNED_CHUNKING",
-            "WISP_PLANNED_CHUNKING_CHUNKS",
-            "WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS",
+            "OPENWAND_PLANNED_CHUNKING",
+            "OPENWAND_PLANNED_CHUNKING_CHUNKS",
+            "OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS",
             "CHAT_REASONING_EFFORT",
             "CHAT_AUTO_ELABORATE",
             "CHAT_ELABORATE_PROMPT",
@@ -3334,9 +3512,35 @@ def test_llm_tab_hides_advanced_chat_harness_controls_until_expanded():
         assert not dialog._fields["CHAT_REASONING_EFFORT"].isVisible()
 
         advanced_button.setChecked(True)
+        dialog._fields["CHAT_AUTO_ELABORATE"].setChecked(True)
         app.processEvents()
 
         assert dialog._fields["CHAT_REASONING_EFFORT"].isVisible()
+        info_icons = {
+            label.property("_openwand_info_for"): label
+            for label in current_tab.findChildren(QLabel)
+            if label.property("_openwand_info_for")
+        }
+        checkbox_keys = (
+            "CHAT_TOOL_TRACE_UI",
+            "OPENWAND_PLANNED_CHUNKING",
+            "CHAT_AUTO_ELABORATE",
+        )
+        assert set(info_icons) == set(checkbox_keys)
+        for key in checkbox_keys:
+            assert info_icons[key].text() == "ⓘ"
+            assert info_icons[key].toolTip()
+            assert info_icons[key].toolTip() == dialog._fields[key].toolTip()
+
+        value_fields = (
+            dialog._fields["OPENWAND_PLANNED_CHUNKING_CHUNKS"],
+            dialog._fields["OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS"],
+            dialog._fields["CHAT_REASONING_EFFORT"],
+            dialog._fields["CHAT_ELABORATE_PROMPT"],
+        )
+        checkbox_rows = [dialog._fields[key].parentWidget() for key in checkbox_keys]
+        assert min(row.y() for row in checkbox_rows) > max(field.y() for field in value_fields)
+        assert [row.y() for row in checkbox_rows] == sorted(row.y() for row in checkbox_rows)
     finally:
         dialog.deleteLater()
         app.processEvents()
@@ -3346,11 +3550,13 @@ def test_settings_open_requests_are_coalesced(monkeypatch):
     from ui.settings_panel import dialog as settings_dialog
 
     callbacks = []
+    opened = []
 
     def fake_single_shot(_delay, callback):
         callbacks.append(callback)
 
-    def fake_open_now(**_kwargs):
+    def fake_open_now(**kwargs):
+        opened.append(kwargs)
         settings_dialog._settings_open_pending = False
 
     monkeypatch.setattr(settings_dialog.QTimer, "singleShot", fake_single_shot)
@@ -3358,11 +3564,12 @@ def test_settings_open_requests_are_coalesced(monkeypatch):
     settings_dialog._settings_open_pending = False
 
     try:
-        settings_dialog.open_settings(parent=None, on_apply=None)
+        settings_dialog.open_settings(parent=None, on_apply=None, initial_page="LLM")
         settings_dialog.open_settings(parent=None, on_apply=None)
         assert len(callbacks) == 1
 
         callbacks.pop()()
+        assert opened[-1]["initial_page"] == "LLM"
         settings_dialog.open_settings(parent=None, on_apply=None)
         assert len(callbacks) == 1
     finally:
@@ -3472,7 +3679,7 @@ def test_cancel_status_refresh_invalidates_pending_results():
     dialog = SettingsDialog.__new__(SettingsDialog)
     dialog._status_refresh_token = 3
     dialog._status_refresh_running = True
-    dialog._pending_status_results = [(3, "_copilot_status_lbl", None, "Checking status...")]
+    dialog._pending_status_results = [(3, "_github_status_lbl", None, "Checking status...")]
     dialog._pending_status_results_lock = threading.Lock()
     dialog._status_result_timer = FakeTimer()
 
@@ -3616,7 +3823,6 @@ def test_open_status_refresh_starts_independent_auth_workers(monkeypatch):
     dialog._status_result_timer = FakeTimer()
     dialog._chatgpt_status_lbl = QLabel()
     dialog._github_status_lbl = QLabel()
-    dialog._copilot_status_lbl = QLabel()
     monkeypatch.setattr("ui.settings_panel.dialog.threading.Thread", FakeThread)
     monkeypatch.setattr(
         "ui.settings_panel.dialog.QTimer.singleShot",
@@ -3629,19 +3835,17 @@ def test_open_status_refresh_starts_independent_auth_workers(monkeypatch):
         assert started == [
             "settings-status-chatgpt",
             "settings-status-github",
-            "settings-status-copilot",
         ]
         assert dialog._status_refresh_running is True
         assert dialog._pending_status_attrs == {
             "_chatgpt_status_lbl",
             "_github_status_lbl",
-            "_copilot_status_lbl",
         }
         assert dialog._chatgpt_status_lbl.text() == "Checking status..."
         assert dialog._github_status_lbl.text() == "Checking status..."
         assert single_shots
     finally:
-        for label in (dialog._chatgpt_status_lbl, dialog._github_status_lbl, dialog._copilot_status_lbl):
+        for label in (dialog._chatgpt_status_lbl, dialog._github_status_lbl):
             label.deleteLater()
         app.processEvents()
 
@@ -3699,7 +3903,7 @@ def test_ui_host_skips_direct_stt_reset_thread(monkeypatch):
     def fail_thread_start(*_args, **_kwargs):
         raise AssertionError("UI host must not start an STT reset thread")
 
-    monkeypatch.setenv("WISP_MACOS_PY_UI_HOST", "1")
+    monkeypatch.setenv("OPENWAND_MACOS_PY_UI_HOST", "1")
     monkeypatch.setattr(threading, "Thread", fail_thread_start)
 
     SettingsDialog._reset_stt_model_in_background()
@@ -3723,22 +3927,22 @@ def test_reset_page_key_mapping_is_scoped():
         "APP_LANGUAGE": "zh",
         "ASSISTANT_LANGUAGE": "Chinese",
         "CHAT_TOOL_TRACE_UI": "True",
-        "WISP_PLANNED_CHUNKING": "True",
-        "WISP_PLANNED_CHUNKING_CHUNKS": "3",
-        "WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS": "80",
+        "OPENWAND_PLANNED_CHUNKING": "True",
+        "OPENWAND_PLANNED_CHUNKING_CHUNKS": "3",
+        "OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS": "80",
         "CHAT_REASONING_EFFORT": "high",
         "CHAT_AUTO_ELABORATE": "True",
         "CHAT_ELABORATE_PROMPT": "Please elaborate.",
         "CUSTOM_BASE_URL": "http://localhost:1234/v1",
-        "WISP_CONNECTION_ALIAS_OPENAI": "Work",
+        "OPENWAND_CONNECTION_ALIAS_OPENAI": "Work",
     }
 
     assert SettingsDialog._reset_env_keys_for_page("LLM", env) >= {
         "LLM_PROVIDER",
         "CHAT_TOOL_TRACE_UI",
-        "WISP_PLANNED_CHUNKING",
-        "WISP_PLANNED_CHUNKING_CHUNKS",
-        "WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS",
+        "OPENWAND_PLANNED_CHUNKING",
+        "OPENWAND_PLANNED_CHUNKING_CHUNKS",
+        "OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS",
         "CHAT_REASONING_EFFORT",
         "CHAT_AUTO_ELABORATE",
         "CHAT_ELABORATE_PROMPT",
@@ -3746,7 +3950,7 @@ def test_reset_page_key_mapping_is_scoped():
     assert "GROQ_API_KEY" not in SettingsDialog._reset_env_keys_for_page("LLM", env)
     assert SettingsDialog._reset_env_keys_for_page("Connections", env) >= {
         "CUSTOM_BASE_URL",
-        "WISP_CONNECTION_ALIAS_OPENAI",
+        "OPENWAND_CONNECTION_ALIAS_OPENAI",
     }
     assert SettingsDialog._reset_env_keys_for_page("Keybinds", env) >= {
         "CALLER_COUNT",
@@ -3777,7 +3981,7 @@ def test_settings_tab_strip_uses_theme_background():
     assert "QTabWidget#settingsTabs" in style
     assert "QTabWidget#settingsTabs::tab-bar" in style
     assert "QTabBar#settingsTabBar" in style
-    assert "QWidget#wispWindowContent" in style
+    assert "QWidget#openwandWindowContent" in style
     assert f"background: {colors['bg']};" in style
     assert "QTabBar { background: transparent" not in style
     assert "QWidget { background-color: transparent" not in style
@@ -3865,12 +4069,12 @@ def test_system_prompt_page_has_separate_provider_tabs_and_real_placeholders():
     try:
         tabs = dialog._system_prompt_tabs
         assert [tabs.tabText(index) for index in range(tabs.count())] == [
-            "Wisp",
+            "OpenWand",
             "ChatGPT",
             "Claude",
         ]
-        chatgpt = dialog._fields["WISP_CODEX_SYSTEM_PROMPT"]
-        claude = dialog._fields["WISP_CLAUDE_SYSTEM_PROMPT"]
+        chatgpt = dialog._fields["OPENWAND_CODEX_SYSTEM_PROMPT"]
+        claude = dialog._fields["OPENWAND_CLAUDE_SYSTEM_PROMPT"]
         chatgpt.clear()
         claude.clear()
         assert chatgpt.toPlainText() == ""
@@ -4151,7 +4355,11 @@ def test_ollama_is_direct_model_route_and_fetches_installed_models_automatically
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
-    from ui.settings_panel.dialog import _CONNECTION_PROVIDER_IDS, SettingsDialog
+    from ui.settings_panel.dialog import (
+        _CONNECTION_PROVIDER_IDS,
+        _CUSTOM_MODEL_SENTINEL,
+        SettingsDialog,
+    )
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
@@ -4182,6 +4390,9 @@ def test_ollama_is_direct_model_route_and_fetches_installed_models_automatically
         provider_combo.setCurrentIndex(provider_combo.findData("ollama"))
 
         assert fetches[-1] == (row, True)
+        assert row["model_combo"].count() == 0
+        assert row["model_combo"].placeholderText() == "Finding installed Ollama models…"
+        assert row["model_combo"].findData(_CUSTOM_MODEL_SENTINEL) == -1
 
         row["_fetch_token"] = 17
         dialog._on_models_fetched(
@@ -4195,8 +4406,15 @@ def test_ollama_is_direct_model_route_and_fetches_installed_models_automatically
             row["model_combo"].itemData(index)
             for index in range(row["model_combo"].count())
         }
-        assert {"gemma3:latest", "qwen3:8b"} <= model_ids
+        assert model_ids == {"gemma3:latest", "qwen3:8b"}
         assert row["refresh_btn"].toolTip() == "Live: 2 models"
+
+        saved_row = dialog._add_model_section_row("LLM", "ollama", "my-local-model:latest")
+        assert saved_row["model_combo"].count() == 1
+        assert saved_row["model_combo"].currentData() == "my-local-model:latest"
+        assert saved_row["model_combo"].findData(_CUSTOM_MODEL_SENTINEL) == -1
+        app.processEvents()
+        assert (saved_row, True) in fetches
     finally:
         dialog.deleteLater()
         app.processEvents()
@@ -4280,20 +4498,22 @@ def test_custom_provider_is_model_route_and_api_key_table_option():
     dialog = SettingsDialog()
 
     try:
+        api_key_row = dialog._add_api_key_row("custom")
+        route_id = f"custom@{api_key_row['connection_id']}"
         options = dialog._get_api_key_display_options()
-        assert "custom" in {provider for _label, provider in options}
+        assert route_id in {provider for _label, provider in options}
 
         for rows in dialog._model_section_rows.values():
             for row in rows:
-                assert row["api_key_combo"].findData("custom") >= 0
+                assert row["api_key_combo"].findData(route_id) >= 0
 
-        dialog._fields["CUSTOM_API_KEY"].setText("not-a-real-key")
-        assert dialog._effective_secret_value_from_provider("custom") == "not-a-real-key"
+        api_key_row["key"].setText("not-a-real-key")
+        assert dialog._effective_secret_value_from_provider(route_id) == "not-a-real-key"
 
-        api_key_row = dialog._add_api_key_row("custom")
         assert api_key_row["provider"].findData("custom") >= 0
         assert api_key_row["provider"].currentData() == "custom"
         assert "custom endpoint" in api_key_row["key"].placeholderText()
+        assert not api_key_row["custom_details"].isHidden()
         assert "Test custom" not in {button.text() for button in dialog.findChildren(QPushButton)}
     finally:
         dialog.deleteLater()
@@ -4301,15 +4521,12 @@ def test_custom_provider_is_model_route_and_api_key_table_option():
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
-def test_copilot_is_api_key_provider_option(monkeypatch):
+def test_copilot_is_api_key_provider_option():
     """Verify Copilot can be entered through the API key provider list."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QPushButton
 
-    from core.auth import copilot_auth
     from ui.settings_panel.dialog import SettingsDialog
-
-    monkeypatch.setattr(copilot_auth, "token_status", lambda: (False, "Not configured"))
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
@@ -4320,7 +4537,10 @@ def test_copilot_is_api_key_provider_option(monkeypatch):
         assert api_key_row["provider"].findData("copilot") >= 0
         assert api_key_row["provider"].currentData() == "copilot"
         assert "github_pat_" in api_key_row["key"].placeholderText()
-        assert dialog._copilot_status_lbl is not None
+        button_texts = {button.text() for button in dialog.findChildren(QPushButton)}
+        assert "Connect token" not in button_texts
+        assert "Test connection" not in button_texts
+        assert "Clear token" not in button_texts
     finally:
         dialog.deleteLater()
         app.processEvents()
@@ -4494,9 +4714,9 @@ def test_llm_tab_groups_credentials_and_models_under_full_height_rails():
 
         first_group_headers = {
             dialog._warning_header_base_texts.get(key)
-            for key in ("Provider credentials", "Authentication")
+            for key in ("Provider credentials", "OAuth logins")
         }
-        assert first_group_headers == {"Provider credentials", "Authentication"}
+        assert first_group_headers == {"Provider credentials", "OAuth logins"}
         assert groups[0].findChildren(QFrame, "areaAccentLine")
         assert groups[1].findChildren(QFrame, "areaAccentLine")
     finally:
@@ -4531,6 +4751,54 @@ def test_subscription_warning_marks_provider_credentials_headline():
 
         assert dialog._warning_headers["Provider credentials"].text().startswith("\u26a0 ")
         assert dialog._warning_headers["Provider credentials"].toolTip()
+    finally:
+        dialog.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_each_model_tab_only_shows_its_own_subscription_warning():
+    """Chat and Image tabs must not aggregate each other's route warning."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ui.settings_panel.dialog import SettingsDialog
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    dialog = SettingsDialog()
+
+    try:
+        if not dialog._caller_blocks:
+            dialog._add_caller_block()
+        caller_screenshot = dialog._caller_blocks[0]["context_screenshot"]
+        caller_screenshot.setCurrentIndex(caller_screenshot.findData("auto"))
+        voice_screenshot = dialog._voice_block["context_screenshot"]
+        voice_screenshot.setCurrentIndex(voice_screenshot.findData("model"))
+        warnings, targets = dialog._capability_warnings_for_values(
+            {
+                "LLM_PROVIDER": "chatgpt",
+                "LLM_MODEL": "gpt-5.5",
+                "VISION_LLM_PROVIDER": "copilot",
+                "VISION_LLM_MODEL": "gpt-4.1",
+            }
+        )
+        assert len([warning for warning in warnings if "subscription/OAuth" in warning]) == 2
+        assert any("Chat model uses" in warning for warning in targets["LLM"])
+        assert not any("Image model uses" in warning for warning in targets["LLM"])
+        assert any("Image model uses" in warning for warning in targets["VISION_LLM"])
+        assert not any("Chat model uses" in warning for warning in targets["VISION_LLM"])
+        assert any("Chat model uses" in warning for warning in targets["Provider credentials"])
+        assert any("Image model uses" in warning for warning in targets["Provider credentials"])
+        assert any("Copilot cannot read screenshots" in warning for warning in targets["VISION_LLM"])
+        assert not any("Copilot cannot read screenshots" in warning for warning in targets["LLM"])
+        assert any("'Let model decide'" in warning for warning in targets["LLM"])
+        assert not any("'Let model decide'" in warning for warning in targets["VISION_LLM"])
+
+        dialog._set_warning_markers(targets)
+        assert "Chat model uses" in dialog._warning_headers["LLM"].toolTip()
+        assert "Image model uses" not in dialog._warning_headers["LLM"].toolTip()
+        assert "Image model uses" in dialog._warning_headers["VISION_LLM"].toolTip()
+        assert "Chat model uses" not in dialog._warning_headers["VISION_LLM"].toolTip()
     finally:
         dialog.deleteLater()
         app.processEvents()
@@ -4766,11 +5034,11 @@ def test_settings_has_reset_page_button():
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
-def test_settings_search_filters_to_matching_page():
+def test_settings_search_filters_to_matching_page(monkeypatch, tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication, QLabel, QLineEdit
+    from PySide6.QtWidgets import QApplication, QFileDialog, QLabel, QLineEdit, QListWidget, QPushButton
 
-    from ui.settings_panel.dialog import SettingsDialog
+    from ui.settings_panel.dialog import SettingsDialog, _FolderListEditor
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()
@@ -4791,8 +5059,69 @@ def test_settings_search_filters_to_matching_page():
         assert visible_pages == {"Advanced"}
 
         allowed_roots = dialog._fields["TOOL_FILE_ROOTS"]
+        assert isinstance(allowed_roots, _FolderListEditor)
+        folder_list = allowed_roots.findChild(QListWidget, "settingsModelFileFolderList")
+        add_folder = allowed_roots.findChild(QPushButton, "settingsModelFileFolderAdd")
+        remove_folder = allowed_roots.findChild(QPushButton, "settingsModelFileFolderRemove")
+        assert folder_list is not None
+        assert add_folder is not None
+        assert remove_folder is not None
+
+        chosen = tmp_path / "chosen-folder"
+        chosen.mkdir()
+        allowed_roots.setText("")
+        empty_list_height = folder_list.height()
+        picker_calls = []
+        monkeypatch.setattr(
+            QFileDialog,
+            "getExistingDirectory",
+            lambda parent, caption, start, options: picker_calls.append(
+                (parent, caption, start, options)
+            )
+            or str(chosen),
+        )
+        add_folder.click()
+        app.processEvents()
+        assert picker_calls
+        assert allowed_roots.paths() == [str(chosen)]
+        one_row_height = folder_list.height()
+        assert one_row_height == empty_list_height
+        add_folder.click()
+        assert allowed_roots.paths() == [str(chosen)]
+        folder_list.setCurrentRow(0)
+        remove_folder.click()
+        assert allowed_roots.paths() == []
+
+        second = tmp_path / "second-folder"
+        second.mkdir()
+        allowed_roots.setText(f"{chosen}\n{second}\n{chosen}")
+        assert allowed_roots.paths() == [str(chosen), str(second)]
+        assert allowed_roots.text() == f"{chosen}\n{second}"
+        assert folder_list.height() > one_row_height
+        more_folders = [tmp_path / f"folder-{index}" for index in range(6)]
+        allowed_roots.setText("\n".join(str(path) for path in more_folders))
+        capped_height = folder_list.height()
+        allowed_roots.setText("\n".join(str(path) for path in more_folders[:5]))
+        assert folder_list.height() == capped_height
+        allowed_roots.setText(f"{chosen}\n{second}")
+        assert dialog._snapshot_settings()["TOOL_FILE_ROOTS"] == f"{chosen}\n{second}"
         blocked_globs = dialog._fields["TOOL_FILE_BLOCKED_GLOBS"]
         allowed_label = allowed_roots.parentWidget().layout().labelForField(allowed_roots)
+        blocked_label = blocked_globs.parentWidget().layout().labelForField(blocked_globs)
+        assert blocked_label.text() == "Files and folders to block  ⓘ"
+        assert blocked_label.objectName() == "settingsInfoLabel"
+        assert "Add one rule per line" in blocked_label.toolTip()
+        assert ".env*" in blocked_label.toolTip()
+        assert "**/secrets/**" in blocked_label.toolTip()
+        assert "*.pem" in blocked_label.toolTip()
+        info_labels = [
+            label
+            for label in dialog.findChildren(QLabel)
+            if label.objectName() == "settingsInfoLabel"
+        ]
+        assert len(info_labels) >= 60
+        assert all("ⓘ" in label.text() for label in info_labels)
+        assert all(label.toolTip().strip() for label in info_labels)
         local_file_card = allowed_roots.parentWidget().parentWidget()
         context_card = dialog._fields["CONTEXT_BROWSER_MAX_CHARS"].parentWidget().parentWidget()
         assert local_file_card.objectName() == "card"
@@ -4813,7 +5142,7 @@ def test_settings_search_filters_to_matching_page():
         assert not allowed_roots.isHidden()
         assert not blocked_globs.isHidden()
 
-        search.setText("Private file patterns")
+        search.setText("Files and folders to block")
         app.processEvents()
         assert allowed_roots.isHidden()
         assert not blocked_globs.isHidden()
@@ -4930,6 +5259,61 @@ def test_settings_apply_clears_dirty_before_showing_save_warning(monkeypatch):
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_ordinary_settings_save_skips_expensive_theme_repaint(monkeypatch):
+    """A non-visual edit must not rebuild the whole app and dialog theme."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    import config
+    from core import tts
+    from core.llm_clients import client as llm_client
+    from ui.settings_panel import dialog as settings_dialog
+    from ui.settings_panel.dialog import SettingsDialog
+    from ui.shared import theme
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    dialog = SettingsDialog()
+    dialog._build_deferred_pages()
+    theme_calls: list[str] = []
+    new_env = dict(dialog._env)
+    new_env["CHAT_TOOL_TRACE_UI"] = (
+        "False" if new_env.get("CHAT_TOOL_TRACE_UI", "False").lower() == "true" else "True"
+    )
+
+    try:
+        monkeypatch.setattr(dialog, "_do_save", lambda: True)
+        monkeypatch.setattr(config, "reload", lambda: None)
+        monkeypatch.setattr(llm_client, "reset_clients", lambda: None)
+        monkeypatch.setattr(tts, "reset_connections", lambda: None)
+        monkeypatch.setattr(settings_dialog, "_read_env", lambda: dict(new_env))
+        monkeypatch.setattr(theme, "apply_app_theme", lambda: theme_calls.append("app"))
+        monkeypatch.setattr(dialog, "_apply_dialog_theme", lambda: theme_calls.append("dialog"))
+
+        assert dialog._apply_settings() is True
+        assert theme_calls == []
+    finally:
+        dialog.deleteLater()
+        app.processEvents()
+
+
+def test_theme_repaint_is_limited_to_settings_consumed_by_shared_theme():
+    from ui.settings_panel.dialog import _settings_change_requires_theme_repaint
+
+    for key in (
+        "THEME_MODE",
+        "THEME_DARK_BG",
+        "THEME_DARK_ACCENT",
+        "THEME_LIGHT_SURFACE",
+        "DARK_MODE",
+    ):
+        assert _settings_change_requires_theme_repaint({key}) is True
+
+    assert _settings_change_requires_theme_repaint({"TTS_PROVIDER"}) is False
+    assert _settings_change_requires_theme_repaint({"BUBBLE_COLOR"}) is False
+    assert _settings_change_requires_theme_repaint({"ADDON_ENABLED"}) is False
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_settings_do_save_localizes_qtextedit_prompt_fields(tmp_path, monkeypatch):
     """The real save path should localize WASD prompt QTextEdits without crashing."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -4978,11 +5362,16 @@ def test_settings_do_save_localizes_qtextedit_prompt_fields(tmp_path, monkeypatc
         _set(dialog._fields["ASSISTANT_LANGUAGE"], "Chinese (Traditional)")
         _set(dialog._fields["TTS_PROVIDER"], "kokoro")
         _set(dialog._fields["CHAT_ELABORATE_PROMPT"], "Please elaborate on that.")
-        dialog._fields["WISP_CODEX_SYSTEM_PROMPT"].setPlainText("ChatGPT-only rules.")
-        dialog._fields["WISP_CLAUDE_SYSTEM_PROMPT"].setPlainText("")
-        dialog._fields["WISP_PLANNED_CHUNKING"].setChecked(True)
-        dialog._fields["WISP_PLANNED_CHUNKING_CHUNKS"].setText("4")
-        dialog._fields["WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS"].setText("120")
+        dialog._fields["OPENWAND_CODEX_SYSTEM_PROMPT"].setPlainText("ChatGPT-only rules.")
+        dialog._fields["OPENWAND_CLAUDE_SYSTEM_PROMPT"].setPlainText("")
+        dialog._fields["OPENWAND_PLANNED_CHUNKING"].setChecked(True)
+        dialog._fields["OPENWAND_PLANNED_CHUNKING_CHUNKS"].setText("4")
+        dialog._fields["OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS"].setText("120")
+        first_root = tmp_path / "model-files-one"
+        second_root = tmp_path / "model-files-two"
+        first_root.mkdir()
+        second_root.mkdir()
+        dialog._fields["TOOL_FILE_ROOTS"].setText(f"{first_root}\n{second_root}")
         dialog._add_api_key_row("openai", alias="Work")
         row = dialog._caller_blocks[0]["intent_rows"][0]
         assert isinstance(row["prompt"], QTextEdit)
@@ -4996,13 +5385,14 @@ def test_settings_do_save_localizes_qtextedit_prompt_fields(tmp_path, monkeypatc
         assert (tmp_path / "callers" / "general" / "what_is_this.toml").is_file()
         assert captured["CHAT_ELABORATE_PROMPT"] == "\u8acb\u8a73\u7d30\u8aaa\u660e\u4e00\u4e0b\u3002"
         assert _get(dialog._fields["CHAT_ELABORATE_PROMPT"]) == captured["CHAT_ELABORATE_PROMPT"]
-        assert captured["WISP_CODEX_SYSTEM_PROMPT"] == "ChatGPT-only rules."
-        assert captured["WISP_CLAUDE_SYSTEM_PROMPT"] == ""
-        assert captured["WISP_PLANNED_CHUNKING"] == "True"
-        assert captured["WISP_PLANNED_CHUNKING_CHUNKS"] == "4"
-        assert captured["WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS"] == "120"
+        assert captured["OPENWAND_CODEX_SYSTEM_PROMPT"] == "ChatGPT-only rules."
+        assert captured["OPENWAND_CLAUDE_SYSTEM_PROMPT"] == ""
+        assert captured["OPENWAND_PLANNED_CHUNKING"] == "True"
+        assert captured["OPENWAND_PLANNED_CHUNKING_CHUNKS"] == "4"
+        assert captured["OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS"] == "120"
+        assert captured["TOOL_FILE_ROOTS"] == f"{first_root}\n{second_root}"
         assert captured["TTS_PROVIDER"] == "kokoro"
-        assert captured["WISP_CONNECTION_ALIAS_OPENAI"] == "Work"
+        assert captured["OPENWAND_CONNECTION_ALIAS_OPENAI"] == "Work"
         assert 'hotkey_2 = "ctrl+win+1"' in (tmp_path / "callers" / "callers.toml").read_text(encoding="utf-8")
         assert captured["HOTKEY_ADD_CONTEXT_2"] == "ctrl+shift+win+1"
         assert captured["HOTKEY_ADD_CONTEXT_ENABLED"] == "False"
@@ -5366,7 +5756,7 @@ def test_builtin_profile_selection_updates_label_and_replaces_custom_runtime_pro
         saved = settings_env.read_settings_env()
         assert saved["ACTIVE_PROFILE"] == "low_setup"
         assert saved["SETTINGS_PROFILE"] == "low_setup"
-        assert "WISP_SETTINGS_PRESET" not in saved
+        assert "OPENWAND_SETTINGS_PRESET" not in saved
     finally:
         dialog.deleteLater()
         app.processEvents()
@@ -5384,7 +5774,7 @@ def test_legacy_low_setup_is_staged_as_a_saveable_profile_without_detected_statu
     env_path = tmp_path / ".env"
     env_path.write_text(
         "\n".join([
-            "WISP_SETTINGS_PRESET=low_setup",
+            "OPENWAND_SETTINGS_PRESET=low_setup",
             "ACTIVE_PROFILE=default",
             "SETTINGS_PROFILE=default",
             "LLM_PROVIDER=chatgpt",
@@ -5431,7 +5821,7 @@ def test_custom_profile_selection_clears_builtin_profile_marker(tmp_path, monkey
     env_path = tmp_path / ".env"
     env_path.write_text(
         "\n".join([
-            "WISP_SETTINGS_PRESET=low_setup",
+            "OPENWAND_SETTINGS_PRESET=low_setup",
             "PROFILE_COUNT=1",
             "PROFILE_1_ID=a",
             "PROFILE_1_LABEL=A",
@@ -5471,7 +5861,7 @@ def test_custom_profile_selection_clears_builtin_profile_marker(tmp_path, monkey
         saved = settings_env.read_settings_env()
         assert saved["ACTIVE_PROFILE"] == "a"
         assert saved["SETTINGS_PROFILE"] == "a"
-        assert "WISP_SETTINGS_PRESET" not in saved
+        assert "OPENWAND_SETTINGS_PRESET" not in saved
     finally:
         dialog.deleteLater()
         app.processEvents()
@@ -6000,7 +6390,7 @@ def test_update_check_download_repo_failure_matrix_is_in_band(tmp_path, monkeypa
         def __init__(self, *, target, daemon, name):
             self.target = target
             assert daemon is True
-            assert name.startswith("wisp-")
+            assert name.startswith("openwand-")
 
         def start(self):
             self.target()
@@ -6008,7 +6398,7 @@ def test_update_check_download_repo_failure_matrix_is_in_band(tmp_path, monkeypa
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = settings_dialog.SettingsDialog()
     monkeypatch.setattr(settings_dialog.threading, "Thread", ImmediateThread)
-    asset = updater.UpdateAsset("windows-x64", "Wisp.zip", "https://example.invalid/Wisp.zip")
+    asset = updater.UpdateAsset("windows-x64", "OpenWand.zip", "https://example.invalid/OpenWand.zip")
     faults = (
         ConnectionError("network access is unavailable"),
         FileNotFoundError("package source is unavailable"),
@@ -6041,7 +6431,7 @@ def test_update_check_download_repo_failure_matrix_is_in_band(tmp_path, monkeypa
 
         # Applying is the destructive/cancellable stage. Cancellation must not
         # invoke the helper or discard the verified download.
-        downloaded = tmp_path / "Wisp.zip"
+        downloaded = tmp_path / "OpenWand.zip"
         downloaded.write_bytes(b"verified update")
         dialog._update_download_path = downloaded
         dialog._update_mode = "apply"
@@ -6192,7 +6582,7 @@ def test_memory_panel_refresh_runs_on_background_thread(monkeypatch):
         panel.refresh_facts()
 
         assert started
-        assert started[0]["name"] == "wisp-memory-refresh"
+        assert started[0]["name"] == "openwand-memory-refresh"
         assert started[0]["daemon"] is True
         assert started[0]["started"] is True
     finally:
@@ -6266,7 +6656,7 @@ def test_memory_panel_add_runs_on_background_thread(monkeypatch):
 
         assert panel._add_text.text() == "I prefer fast settings"
         assert started
-        assert started[0]["name"] == "wisp-memory-add"
+        assert started[0]["name"] == "openwand-memory-add"
         assert started[0]["daemon"] is True
         assert started[0]["started"] is True
     finally:
@@ -6288,7 +6678,7 @@ def test_memory_fact_add_failure_matrix_keeps_input_retryable(monkeypatch):
     class ImmediateThread:
         def __init__(self, *, target, name, daemon):
             self.target = target
-            assert name == "wisp-memory-add"
+            assert name == "openwand-memory-add"
             assert daemon is True
 
         def start(self):
@@ -6344,7 +6734,7 @@ def test_memory_fact_delete_failure_matrix_keeps_retryable_row(monkeypatch):
     class ImmediateThread:
         def __init__(self, *, target, name, daemon):
             self.target = target
-            assert name == "wisp-memory-delete"
+            assert name == "openwand-memory-delete"
             assert daemon is True
 
         def start(self):
@@ -6402,7 +6792,7 @@ def test_memory_fact_project_move_failure_matrix_keeps_editor_retryable(monkeypa
     class ImmediateThread:
         def __init__(self, *, target, name, daemon):
             self.target = target
-            assert name == "wisp-memory-update"
+            assert name == "openwand-memory-update"
             assert daemon is True
 
         def start(self):
@@ -6551,6 +6941,11 @@ def test_settings_shortcuts_are_categorized_with_two_bindings_and_inline_details
             t("Voice shortcuts"),
             t("Context shortcuts"),
         } <= section_titles
+        assert t("Application actions") not in labels
+        assert not any(
+            t("These actions come from app folders") in label.text()
+            for label in all_labels
+        )
 
         for key in (
             "HOTKEY_ADD_CONTEXT",
@@ -6772,6 +7167,8 @@ def test_settings_opens_with_only_the_first_page_built():
                 break
         assert not dialog._pending_page_builds
         assert dialog._values_loaded
+        assert dialog.select_page("LLM") is True
+        assert dialog._tab_base_names[dialog._tabs.currentIndex()] == "LLM"
     finally:
         dialog.deleteLater()
         app.processEvents()

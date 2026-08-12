@@ -24,7 +24,7 @@ from runtime.supervisor import flow_context, flow_estimates, flow_utils, tool_mo
 from runtime.supervisor.runtime_log import RuntimeEventLog, normalize_severity
 from ui.i18n import t
 
-log = logging.getLogger("wisp.runtime.flows")
+log = logging.getLogger("openwand.runtime.flows")
 _INTERACTIVE_LLM_TIMEOUT_SECONDS = 120.0
 _INTERACTIVE_LLM_TOOL_TIMEOUT_SECONDS = 300.0
 _SLOW_RESPONSE_NOTICE_SECONDS = 3.0
@@ -128,12 +128,12 @@ _PRIVACY_CONFIG_KEYS = {
 }
 _HARNESS_CONFIG_KEYS = {
     "CHAT_EXECUTION_MODE",
-    "WISP_CLAUDE_CLI",
-    "WISP_CLAUDE_SYSTEM_PROMPT",
-    "WISP_CLAUDE_WORKSPACE",
-    "WISP_CODEX_CLI",
-    "WISP_CODEX_SYSTEM_PROMPT",
-    "WISP_CODEX_WORKSPACE",
+    "OPENWAND_CLAUDE_CLI",
+    "OPENWAND_CLAUDE_SYSTEM_PROMPT",
+    "OPENWAND_CLAUDE_WORKSPACE",
+    "OPENWAND_CODEX_CLI",
+    "OPENWAND_CODEX_SYSTEM_PROMPT",
+    "OPENWAND_CODEX_WORKSPACE",
 }
 
 
@@ -141,7 +141,7 @@ def _configured_harness_workspace(provider: str) -> str:
     """Return an existing provider-specific workspace, or automatic mode."""
     import config
 
-    key = "WISP_CLAUDE_WORKSPACE" if provider == "claude" else "WISP_CODEX_WORKSPACE"
+    key = "OPENWAND_CLAUDE_WORKSPACE" if provider == "claude" else "OPENWAND_CODEX_WORKSPACE"
     raw = str(getattr(config, key, "") or "").strip()
     if not raw:
         return ""
@@ -241,9 +241,12 @@ class RewriteAnnotationRequest:
     structured_plan: Any = None
 
 
+_REWRITE_NUMBER_RESERVED_STATES = {"composing", "held", "queued", "processing"}
+
+
 @dataclass
 class UndoableEdit:
-    """The most recent successful paste-back that Wisp can safely undo."""
+    """The most recent successful paste-back that OpenWand can safely undo."""
 
     original_text: str
     replacement_text: str
@@ -461,8 +464,10 @@ class FlowController:
         self.audio.on_event("audio.warmup.progress", self._on_audio_warmup_progress)
         self.audio.on_event("audio.warmup.done", self._on_audio_warmup_done)
         self.audio.on_event("audio.playback.started", self._on_audio_playback_started)
+        self.audio.on_event("audio.playback.amplitude", self._on_audio_playback_amplitude)
         self.audio.on_event("audio.playback.done", self._on_audio_playback_done)
         self.audio.on_event("audio.live.state", self._on_audio_live_state)
+        self.audio.on_event("audio.live.amplitude", self._on_audio_playback_amplitude)
         self.audio.on_event("audio.live.transcript", self._on_audio_live_transcript)
         self.audio.on_event("audio.live.error", self._on_audio_live_error)
         self.audio.on_event("audio.live.ended", self._on_audio_live_ended)
@@ -508,7 +513,7 @@ class FlowController:
             except Exception:
                 log.exception("audio prewarm did not start")
         # Surface results that detached installers (staged applies, model
-        # downloads) wrote while Wisp was closed, right at startup.
+        # downloads) wrote while OpenWand was closed, right at startup.
         try:
             self.runtime_log.ingest_installer_statuses()
         except Exception:  # noqa: BLE001 - installer status files are best-effort
@@ -531,7 +536,7 @@ class FlowController:
         if not result.get("started"):
             reason = str(result.get("reason") or result.get("error") or "unknown error")
             log.warning("native hotkeys did not start: %s", reason)
-            self._notice("Global hotkeys did not start. Click the Wisp icon to summon it.", severity="warning")
+            self._notice("Global hotkeys did not start. Click the OpenWand icon to summon it.", severity="warning")
         self._show_addon_notifications()
         return result
 
@@ -620,8 +625,8 @@ class FlowController:
         self._set_idle()
 
     def _on_rewrite_undo(self, _data: dict[str, Any], _req_id: Any = None) -> None:
-        """Restore the text replaced by the most recent Wisp rewrite."""
-        self._schedule(self.undo_last_wisp_edit)
+        """Restore the text replaced by the most recent OpenWand rewrite."""
+        self._schedule(self.undo_last_openwand_edit)
 
     def _on_rewrite_annotation_submitted(self, data: dict[str, Any], _req_id: Any = None) -> None:
         """Generate a delayed-edit proposal from one Rewrite comment popup."""
@@ -790,13 +795,13 @@ class FlowController:
         """Handle memory delete events."""
         self._schedule(self.memory_delete, data or {})
 
-    def _on_settings_open_requested(self, _data: dict[str, Any], _req_id: Any = None) -> None:
+    def _on_settings_open_requested(self, data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle settings open requested events."""
-        self._schedule(self.open_settings)
+        self._schedule(self.open_settings, str((data or {}).get("initial_page") or ""))
 
-    def _on_addons_open_requested(self, _data: dict[str, Any], _req_id: Any = None) -> None:
+    def _on_addons_open_requested(self, data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle addons open requested events."""
-        self._schedule(self.open_addons)
+        self._schedule(self.open_addons, str((data or {}).get("addon_id") or ""))
 
     def _on_runtime_status_open_requested(self, _data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle runtime status open requested events."""
@@ -1174,6 +1179,14 @@ class FlowController:
         self._safe_call(self.ui, "ui.overlay.state", {"state": "speaking"}, timeout=30.0)
         self._safe_call(self.ui, "ui.reply.start_reveal", timeout=30.0)
 
+    def _on_audio_playback_amplitude(self, data: dict[str, Any], _req_id: Any = None) -> None:
+        """Forward the PCM level without blocking audio playback on the UI."""
+        self._fire(
+            self.ui,
+            "ui.overlay.amplitude",
+            {"amplitude": float((data or {}).get("amplitude") or 0.0)},
+        )
+
     def _on_audio_playback_done(self, _data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle audio playback done events."""
         if self._tts_sequence_is_active():
@@ -1442,7 +1455,7 @@ class FlowController:
         # it - audio.stop just flips a flag in the audio worker.
         self._fire(self.audio, "audio.stop")
         self._fire(self.ui, "ui.overlay.state", {"state": "listening"})
-        # Capture the desktop before showing Wisp, but defer active-app and
+        # Capture the desktop before showing OpenWand, but defer active-app and
         # selection capture until the non-activating picker shell is visible.
         # App-specific actions are injected into that shell as soon as the
         # hotkey-time context arrives.
@@ -1538,7 +1551,7 @@ class FlowController:
                     break
         except Exception as exc:  # noqa: BLE001 - app adapters fail at a user-visible boundary
             log.warning("structured Rewrite target capture failed: %s", exc)
-            self._notice(f"Wisp couldn't safely read that app selection: {exc}", severity="warning")
+            self._notice(f"OpenWand couldn't safely read that app selection: {exc}", severity="warning")
             return
         if structured_target:
             context["selected_text"] = str(structured_target["grid_text"])
@@ -1586,13 +1599,7 @@ class FlowController:
         )
         session_key = self._rewrite_annotation_session_key(context)
         with self._lock:
-            used_numbers = {
-                max(1, int(item.display_number or 1))
-                for item in self._rewrite_annotations.values()
-            }
-            display_number = next(
-                number for number in itertools.count(1) if number not in used_numbers
-            )
+            display_number = self._next_rewrite_display_number()
         request = RewriteAnnotationRequest(
             annotation_id=annotation_id,
             pending=pending,
@@ -1637,6 +1644,7 @@ class FlowController:
         ):
             with self._lock:
                 self._rewrite_annotations.pop(annotation_id, None)
+            self._release_rewrite_annotation_anchor(request)
 
     @staticmethod
     def _rewrite_annotation_session_key(context: dict[str, Any]) -> str:
@@ -1646,6 +1654,22 @@ class FlowController:
         pid = int(active.get("pid") or 0)
         process = str(active.get("process_name") or active.get("name") or "app").strip().casefold()
         return f"{platform}:{pid}:{process}"
+
+    def _next_rewrite_display_number(
+        self,
+        *,
+        excluding: RewriteAnnotationRequest | None = None,
+    ) -> int:
+        """Return the smallest number still needed by unfinished generation work."""
+        used_numbers = {
+            max(1, int(item.display_number or 1))
+            for item in self._rewrite_annotations.values()
+            if item is not excluding and item.state in _REWRITE_NUMBER_RESERVED_STATES
+        }
+        preferred = max(1, int(excluding.display_number or 1)) if excluding else 0
+        if preferred and preferred not in used_numbers:
+            return preferred
+        return next(number for number in itertools.count(1) if number not in used_numbers)
 
     def _capture_vscode_rewrite_target(
         self,
@@ -1844,7 +1868,7 @@ class FlowController:
         context: dict[str, Any],
         active_app: dict[str, Any],
     ) -> dict[str, Any]:
-        """Bind editable DOM text when the tab belongs to Wisp's managed browser."""
+        """Bind editable DOM text when the tab belongs to OpenWand's managed browser."""
         from core.actions.adapters.browser import is_browser_app
         from core.rewrite_browser import BrowserRewriteSnapshot
 
@@ -2017,14 +2041,20 @@ class FlowController:
         clean_comment = str(comment or "").strip()
         with self._lock:
             request = self._rewrite_annotations.get(key)
-        if request is None or not clean_comment:
-            return
-        request.comment = clean_comment
-        request.include_document = bool(include_document)
-        request.state = "processing"
-        request.stream_id = None
+            if request is None or not clean_comment:
+                return
+            request.display_number = self._next_rewrite_display_number(excluding=request)
+            request.comment = clean_comment
+            request.include_document = bool(include_document)
+            request.state = "processing"
+            request.stream_id = None
+            display_number = request.display_number
         self._publish_rewrite_held_count()
-        self._fire(self.ui, "ui.rewrite.annotation.processing", {"annotation_id": key})
+        self._fire(
+            self.ui,
+            "ui.rewrite.annotation.processing",
+            {"annotation_id": key, "display_number": display_number},
+        )
 
         session = self._rewrite_app_sessions.setdefault(
             request.session_key,
@@ -2094,13 +2124,13 @@ class FlowController:
             )
         elif structured_kind == "browser_text_range":
             structured_requirement = (
-                " The target is an exact editable text range in a Wisp-managed browser tab. "
+                " The target is an exact editable text range in a OpenWand-managed browser tab. "
                 "Return only the replacement text, without commentary or a Markdown code fence."
             )
         delegated_prompt = (
             f"{clean_comment}\n\n"
             "Execution requirement: delegate this edit to a sub-agent when the active model/runtime "
-            "supports sub-agents. Wisp is issuing this edit as a separate managed call when native "
+            "supports sub-agents. OpenWand is issuing this edit as a separate managed call when native "
             "sub-agents are unavailable. Return only the proposed replacement through the rewrite tool."
             f"{structured_requirement}"
         )
@@ -2271,13 +2301,6 @@ class FlowController:
                 return
             visible = bool(anchor.get("visible"))
             rect = dict(anchor.get("selection_rect") or {}) if visible else {}
-            log.info(
-                "rewrite anchor refresh: annotation=%s source=%s visible=%s rect=%r",
-                key,
-                anchor.get("source"),
-                visible,
-                rect,
-            )
             if visible:
                 context["selection_rect"] = rect
                 context["selection_anchor_source"] = str(anchor.get("source") or "")
@@ -2295,6 +2318,15 @@ class FlowController:
             with self._lock:
                 self._rewrite_anchor_refreshing.discard(key)
 
+    def _release_rewrite_annotation_anchor(self, request: RewriteAnnotationRequest) -> None:
+        token = int(request.pending.context.get("focus_token") or 0)
+        if token:
+            self._fire(
+                self.native,
+                "native.selection.anchor.release",
+                {"focus_token": token},
+            )
+
     def cancel_rewrite_annotation(self, annotation_id: str) -> None:
         """Cancel the correct managed model call and clear its state."""
         key = str(annotation_id or "")
@@ -2302,13 +2334,17 @@ class FlowController:
             request = self._rewrite_annotations.pop(key, None)
         if request is not None and request.stream_id is not None:
             self._safe_call(self.brain, "brain.cancel", {"target": request.stream_id}, timeout=5.0)
+        if request is not None:
+            self._release_rewrite_annotation_anchor(request)
         self._publish_rewrite_held_count()
 
     def decline_rewrite_annotation(self, annotation_id: str) -> None:
         """Discard a composed or completed proposal."""
         key = str(annotation_id or "")
         with self._lock:
-            self._rewrite_annotations.pop(key, None)
+            request = self._rewrite_annotations.pop(key, None)
+        if request is not None:
+            self._release_rewrite_annotation_anchor(request)
         self._publish_rewrite_held_count()
 
     def revise_rewrite_annotation(self, annotation_id: str, feedback: str) -> None:
@@ -2352,7 +2388,7 @@ class FlowController:
                 timeout=30.0,
             )
             self._notice(
-                "Wisp could not safely update that app selection. The proposal is still available to copy.",
+                "OpenWand could not safely update that app selection. The proposal is still available to copy.",
                 severity="warning",
             )
             return
@@ -2404,7 +2440,7 @@ class FlowController:
             },
             timeout=30.0,
         )
-        self._notice("Wisp could not safely edit this selection in place. Use Copy instead.", severity="warning")
+        self._notice("OpenWand could not safely edit this selection in place. Use Copy instead.", severity="warning")
 
     def begin_snip(self) -> None:
         """Handle begin snip for flow controller."""
@@ -2802,7 +2838,7 @@ class FlowController:
         selected_text = str(context.get("selected_text") or "")
         routing = self._validated_intent_routing(pending, intent_routing)
         if routing.get("mode") == "invalid":
-            self._notice("Wisp could not verify the selected app action. Nothing was changed.", severity="warning")
+            self._notice("OpenWand could not verify the selected app action. Nothing was changed.", severity="warning")
             self._set_idle()
         elif routing.get("mode") == "file":
             self._run_action_file(pending, prompt, routing)
@@ -2986,7 +3022,7 @@ class FlowController:
             if not document_text and not selected_text:
                 app_name = document_providers[provider_id]
                 self._notice(
-                    f"Wisp couldn't read the active {app_name} document. "
+                    f"OpenWand couldn't read the active {app_name} document. "
                     f"Return to {app_name}, select some text, and try again.",
                     severity="warning",
                 )
@@ -3017,7 +3053,7 @@ class FlowController:
             if not browser_content and not selected_text:
                 product = browser_document_providers[provider_id]
                 self._notice(
-                    f"Wisp couldn't read the active {product} slide text. "
+                    f"OpenWand couldn't read the active {product} slide text. "
                     "Select the relevant slide text and try again.",
                     severity="warning",
                 )
@@ -3052,7 +3088,7 @@ class FlowController:
             app_name = "Excel" if provider_id == "excel" else "Calc"
             log.warning("could not attach %s answer context: %s", app_name, exc)
             self._notice(
-                f"Wisp couldn't read the selected {app_name} cells. "
+                f"OpenWand couldn't read the selected {app_name} cells. "
                 f"Return to {app_name}, select the range, and try again.",
                 severity="warning",
             )
@@ -3061,7 +3097,7 @@ class FlowController:
         selected_text = str(selection.get("selected_text") or "").strip()
         if not selected_text:
             self._notice(
-                "Wisp couldn't read any selected spreadsheet cells. Select a non-empty range and try again.",
+                "OpenWand couldn't read any selected spreadsheet cells. Select a non-empty range and try again.",
                 severity="warning",
             )
             return False
@@ -3212,7 +3248,7 @@ class FlowController:
                 provider_id=str(routing.get("provider_id") or ""),
             )
             return
-        self._notice("This app action is not available in the current Wisp build.", severity="warning")
+        self._notice("This app action is not available in the current OpenWand build.", severity="warning")
         self._set_idle()
 
     def _run_powerpoint_action(
@@ -3366,7 +3402,7 @@ class FlowController:
             trace.finish("failed", error_type=type(exc).__name__)
             if self._is_current(gen):
                 self._notice(
-                    f"Wisp couldn't apply the {product_name} action: {self._friendly_error(exc)}",
+                    f"OpenWand couldn't apply the {product_name} action: {self._friendly_error(exc)}",
                     severity="warning",
                 )
                 self._set_idle()
@@ -3398,7 +3434,7 @@ class FlowController:
 
         raw_action = routing.get("action_file")
         if not isinstance(raw_action, dict):
-            self._notice("Wisp could not verify the selected action file. Nothing ran.", severity="warning")
+            self._notice("OpenWand could not verify the selected action file. Nothing ran.", severity="warning")
             self._set_idle()
             return
         action = action_from_dict(raw_action)
@@ -3477,7 +3513,7 @@ class FlowController:
             log.exception("action file failed: %s", action.path)
             if self._is_current(gen):
                 self._notice(
-                    f"Wisp couldn't run {action.label}: {self._friendly_error(exc)}",
+                    f"OpenWand couldn't run {action.label}: {self._friendly_error(exc)}",
                     severity="warning",
                 )
                 self._set_idle()
@@ -3502,7 +3538,7 @@ class FlowController:
                 timeout=30.0,
             )
             if not (isinstance(paste, dict) and paste.get("ok")):
-                self._notice("The action finished, but Wisp could not paste its output.", severity="warning")
+                self._notice("The action finished, but OpenWand could not paste its output.", severity="warning")
         elif output:
             self._safe_call(self.ui, "ui.reply.reset", timeout=30.0)
             self._safe_call(self.ui, "ui.reply.chunk", {"text": output}, timeout=30.0)
@@ -3521,7 +3557,7 @@ class FlowController:
         app_selection: dict[str, Any],
         selected_text: str,
     ) -> None:
-        """Force a supported-app custom prompt through Wisp's typed intent boundary."""
+        """Force a supported-app custom prompt through OpenWand's typed intent boundary."""
         provider = pending.action_provider_context
         suggestions = provider.get("suggested_intents") if isinstance(provider, dict) else []
         action_suggestions = [
@@ -3552,7 +3588,7 @@ class FlowController:
                 return
             self._on_reply_chunk(
                 {
-                    "text": "Wisp is still deciding whether this request needs an app action; this may take a few more seconds.",
+                    "text": "OpenWand is still deciding whether this request needs an app action; this may take a few more seconds.",
                     "is_progress": True,
                 },
                 thought_parser=None,
@@ -3630,7 +3666,7 @@ class FlowController:
             result = self._brain_reply_call_with_events(
                 "brain.action.plan",
                 {
-                    "planning_tool_name": "wisp_choose_app_response",
+                    "planning_tool_name": "openwand_choose_app_response",
                     "planning_tool_description": (
                         "Classify the user's prompt for the detected app. Choose action only when the user clearly "
                         "requests a mutation covered by one available capability. Answer informational requests "
@@ -3646,7 +3682,7 @@ class FlowController:
             )
         except Exception as exc:  # noqa: BLE001 - no application mutation has occurred
             if self._is_current(gen):
-                self._notice(f"Wisp couldn't interpret this app request: {self._friendly_error(exc)}", severity="error")
+                self._notice(f"OpenWand couldn't interpret this app request: {self._friendly_error(exc)}", severity="error")
                 self._set_idle()
             return
         finally:
@@ -3655,8 +3691,8 @@ class FlowController:
         if not self._is_current(gen):
             return
 
-        if not isinstance(result, dict) or str(result.get("tool_name") or "") != "wisp_choose_app_response":
-            self._notice("The model did not use Wisp's required app-response tool. Nothing was changed.", severity="warning")
+        if not isinstance(result, dict) or str(result.get("tool_name") or "") != "openwand_choose_app_response":
+            self._notice("The model did not use OpenWand's required app-response tool. Nothing was changed.", severity="warning")
             self._set_idle()
             return
         arguments = result.get("arguments") if isinstance(result, dict) else {}
@@ -3774,8 +3810,8 @@ class FlowController:
             progress.advance(ActionProgressStage.FAILED, "The browser page is not ready for a safe action.")
             trace.finish("failed", failure_stage="snapshot", error_type=error.split(":", 1)[0][:80])
             self._notice(
-                "Wisp could not inspect this page through its private browser API. "
-                "Reopen Chrome through Wisp control and try again.",
+                "OpenWand could not inspect this page through its private browser API. "
+                "Reopen Chrome through OpenWand control and try again.",
                 severity="warning",
                 technical_detail=error,
             )
@@ -3793,7 +3829,7 @@ class FlowController:
         except Exception as exc:  # noqa: BLE001 - malformed native state must never reach Apply
             progress.advance(ActionProgressStage.FAILED, "The browser fields did not pass safety checks.")
             trace.finish("failed", failure_stage="snapshot_validation", error_type=type(exc).__name__)
-            self._notice(f"Wisp couldn't prepare this browser action: {exc}", severity="warning")
+            self._notice(f"OpenWand couldn't prepare this browser action: {exc}", severity="warning")
             self._set_idle()
             return
 
@@ -3882,7 +3918,7 @@ class FlowController:
         except Exception as exc:  # noqa: BLE001 - invalid model output never reaches the page
             progress.advance(ActionProgressStage.FAILED, "The proposed values could not form a safe browser action.")
             trace.finish("failed", failure_stage="preview_build", error_type=type(exc).__name__)
-            self._notice(f"Wisp couldn't build a safe form preview: {exc}", severity="warning")
+            self._notice(f"OpenWand couldn't build a safe form preview: {exc}", severity="warning")
             self._set_idle()
             return
 
@@ -3936,12 +3972,12 @@ class FlowController:
         error = str((response or {}).get("error") or "The browser did not verify the reviewed field values.")
         progress.advance(ActionProgressStage.FAILED, "The reviewed browser action could not be verified.")
         trace.finish("failed", failure_stage="apply", error_type=error.split(":", 1)[0][:80])
-        self._notice(f"Wisp couldn't fill the browser form: {error}", severity="warning")
+        self._notice(f"OpenWand couldn't fill the browser form: {error}", severity="warning")
         self._set_idle()
 
     @staticmethod
     def _is_calc_chart_action(prompt: str, app_selection: dict[str, Any]) -> bool:
-        """Recognize the narrow local fast path Wisp can execute exactly."""
+        """Recognize the narrow local fast path OpenWand can execute exactly."""
         if app_selection.get("app") != "libreoffice_calc":
             return False
         text = " ".join(str(prompt or "").casefold().split())
@@ -3992,7 +4028,7 @@ class FlowController:
             connection_finished,
             progress,
             ActionProgressStage.TARGETING,
-            "Calc is still starting its private action connection; Wisp is waiting without taking focus.",
+            "Calc is still starting its private action connection; OpenWand is waiting without taking focus.",
         )
         try:
             status = self._safe_call(self.native, "native.action.calc.status", {}, timeout=25.0)
@@ -4005,14 +4041,14 @@ class FlowController:
             trace.finish("failed", failure_stage="availability", error_type=reason[:80])
             if reason == "bridge_pending_restart":
                 self._notice(
-                    "Wisp installed its Calc action connection, but this LibreOffice process was already running "
+                    "OpenWand installed its Calc action connection, but this LibreOffice process was already running "
                     "before that one-time integration update. Reopen LibreOffice once to load it. After that, "
-                    "Calc and Wisp can be opened in either order.",
+                    "Calc and OpenWand can be opened in either order.",
                     severity="warning",
                 )
             else:
                 self._notice(
-                    "Focusless Calc actions are not available in this session. Wisp did not change the spreadsheet.",
+                    "Focusless Calc actions are not available in this session. OpenWand did not change the spreadsheet.",
                     severity="warning",
                 )
             self._set_idle()
@@ -4047,7 +4083,7 @@ class FlowController:
             progress.advance(ActionProgressStage.FAILED, "The selected Calc range could not be read.")
             trace.finish("failed", failure_stage="snapshot", error_type=error.split(":", 1)[0][:80])
             self._notice(
-                f"Wisp couldn't read the selected Calc cells: {error}",
+                f"OpenWand couldn't read the selected Calc cells: {error}",
                 severity="warning",
             )
             self._set_idle()
@@ -4070,7 +4106,7 @@ class FlowController:
             if capability_type == "calc.add_chart@1":
                 planning_description = (
                     "Plan one vertical bar chart title for the captured Calc selection. The range and chart kind "
-                    "are fixed by Wisp and this tool cannot edit cells or create other objects."
+                    "are fixed by OpenWand and this tool cannot edit cells or create other objects."
                 )
                 planning_schema = {
                     "type": "object",
@@ -4109,7 +4145,7 @@ class FlowController:
                     raise ValueError("Sorting requires at least one unique, non-empty header in the first selected row.")
                 planning_description = (
                     "Plan one row sort for the captured Calc selection. Choose one exact available header and a "
-                    "direction. Wisp keeps the header fixed and always moves complete rows together."
+                    "direction. OpenWand keeps the header fixed and always moves complete rows together."
                 )
                 planning_schema = {
                     "type": "object",
@@ -4242,7 +4278,7 @@ class FlowController:
         except Exception as exc:  # noqa: BLE001 - keep malformed app state away from paste-back
             progress.advance(ActionProgressStage.FAILED, "The Calc action preview could not be prepared.")
             trace.finish("failed", failure_stage="preview_build", error_type=type(exc).__name__)
-            self._notice(f"Wisp couldn't prepare the Calc action preview: {exc}", severity="warning")
+            self._notice(f"OpenWand couldn't prepare the Calc action preview: {exc}", severity="warning")
             self._set_idle()
             return
 
@@ -4295,7 +4331,7 @@ class FlowController:
         error = str((response or {}).get("error") or "Calc did not confirm the change.")
         progress.advance(ActionProgressStage.FAILED, "Calc could not verify the reviewed action.")
         trace.finish("failed", failure_stage="apply", error_type=error.split(":", 1)[0][:80])
-        self._notice(f"Wisp couldn't apply the Calc action: {error}", severity="warning")
+        self._notice(f"OpenWand couldn't apply the Calc action: {error}", severity="warning")
         self._set_idle()
 
     @staticmethod
@@ -4402,12 +4438,12 @@ class FlowController:
             if self._is_vscode_save_required_error(error):
                 progress.advance(
                     ActionProgressStage.FAILED,
-                    f"This {editor_label} tab must be saved before Wisp can change it safely.",
+                    f"This {editor_label} tab must be saved before OpenWand can change it safely.",
                 )
                 trace.finish("failed", failure_stage="save_required", error_type="unsaved_editor")
                 self._notice(
                     "Save this tab once, then press Ctrl+Shift+Q again. "
-                    "Wisp did not change anything.\n\n"
+                    "OpenWand did not change anything.\n\n"
                     "Recommendation: Press Ctrl+S to choose a filename, then run the same request again.",
                     severity="warning",
                 )
@@ -4415,7 +4451,7 @@ class FlowController:
                 return
             progress.advance(ActionProgressStage.FAILED, "The active saved file could not be read safely.")
             trace.finish("failed", failure_stage="snapshot", error_type=error.split(":", 1)[0][:80])
-            self._notice(f"Wisp couldn't prepare the {editor_label} action: {error}", severity="warning")
+            self._notice(f"OpenWand couldn't prepare the {editor_label} action: {error}", severity="warning")
             self._set_idle()
             return
 
@@ -4431,7 +4467,7 @@ class FlowController:
         except Exception as exc:  # noqa: BLE001 - malformed native state must not reach the model
             progress.advance(ActionProgressStage.FAILED, "The saved-file target did not pass safety checks.")
             trace.finish("failed", failure_stage="snapshot_validation", error_type=type(exc).__name__)
-            self._notice(f"Wisp couldn't prepare the {editor_label} action: {exc}", severity="warning")
+            self._notice(f"OpenWand couldn't prepare the {editor_label} action: {exc}", severity="warning")
             self._set_idle()
             return
 
@@ -4560,7 +4596,7 @@ class FlowController:
         if not isinstance(result, dict) or str(result.get("tool_name") or "") != planning_tool:
             progress.advance(ActionProgressStage.FAILED, "The model did not return the required code planning tool.")
             trace.finish("failed", failure_stage="model_contract", error_type="wrong_planning_tool")
-            self._notice("Wisp couldn't build a safe code plan because the required tool was not returned.", severity="warning")
+            self._notice("OpenWand couldn't build a safe code plan because the required tool was not returned.", severity="warning")
             self._set_idle()
             return
         planned_arguments = (
@@ -4600,7 +4636,7 @@ class FlowController:
         except Exception as exc:  # noqa: BLE001 - invalid model output never reaches Apply
             progress.advance(ActionProgressStage.FAILED, "The proposed code could not form a safe diff.")
             trace.finish("failed", failure_stage="preview_build", error_type=type(exc).__name__)
-            self._notice(f"Wisp couldn't build a safe code diff: {exc}", severity="warning")
+            self._notice(f"OpenWand couldn't build a safe code diff: {exc}", severity="warning")
             self._set_idle()
             return
 
@@ -4687,7 +4723,7 @@ class FlowController:
         error = str((response or {}).get("error") or f"{editor_label} did not confirm the file change.")
         progress.advance(ActionProgressStage.FAILED, "The reviewed code change could not be verified.")
         trace.finish("failed", failure_stage="apply", error_type=error.split(":", 1)[0][:80])
-        self._notice(f"Wisp couldn't apply the code change: {error}", severity="warning")
+        self._notice(f"OpenWand couldn't apply the code change: {error}", severity="warning")
         self._set_idle()
 
     def _run_vscode_untitled_action(
@@ -4707,7 +4743,7 @@ class FlowController:
         if not focus_token:
             progress.advance(
                 ActionProgressStage.FAILED,
-                "Wisp could not capture the exact Untitled editor target safely.",
+                "OpenWand could not capture the exact Untitled editor target safely.",
             )
             trace.finish("failed", failure_stage="focus_capture", error_type="missing_focus_token")
             self._notice(
@@ -4806,7 +4842,7 @@ class FlowController:
         if not isinstance(result, dict) or str(result.get("tool_name") or "") != planning_tool:
             progress.advance(ActionProgressStage.FAILED, "The model did not return the required code planning tool.")
             trace.finish("failed", failure_stage="model_contract", error_type="wrong_planning_tool")
-            self._notice("Wisp couldn't build a safe code plan because the required tool was not returned.", severity="warning")
+            self._notice("OpenWand couldn't build a safe code plan because the required tool was not returned.", severity="warning")
             self._set_idle()
             return
         planned_arguments = (
@@ -4823,7 +4859,7 @@ class FlowController:
         if not replacement.strip() or len(replacement) > 24_000:
             progress.advance(ActionProgressStage.FAILED, "The proposed code could not form a safe diff.")
             trace.finish("failed", failure_stage="replacement_validation", error_type="invalid_replacement")
-            self._notice("Wisp couldn't build a safe code diff for the Untitled tab.", severity="warning")
+            self._notice("OpenWand couldn't build a safe code diff for the Untitled tab.", severity="warning")
             self._set_idle()
             return
 
@@ -4887,11 +4923,11 @@ class FlowController:
             return
 
         error = str((paste or {}).get("error") or "The captured editor target was no longer available.")
-        progress.advance(ActionProgressStage.FAILED, "Wisp could not write to the captured Untitled editor target.")
+        progress.advance(ActionProgressStage.FAILED, "OpenWand could not write to the captured Untitled editor target.")
         trace.finish("failed", failure_stage="paste_back", error_type=error.split(":", 1)[0][:80])
         self._notice(
-            "Wisp could not reach this live VS Code editor through its private API bridge.\n\n"
-            "Recommendation: Reopen VS Code through Wisp control, keep the caret in that tab, and try again.",
+            "OpenWand could not reach this live VS Code editor through its private API bridge.\n\n"
+            "Recommendation: Reopen VS Code through OpenWand control, keep the caret in that tab, and try again.",
             severity="warning",
             technical_detail=error,
         )
@@ -4913,7 +4949,7 @@ class FlowController:
                 "tab is unsaved",
                 "save it once",
                 "save the active vs code file",
-                "before asking wisp to change it",
+                "before asking openwand to change it",
             )
         )
 
@@ -5085,7 +5121,17 @@ class FlowController:
         gen = self._new_generation()
         self._safe_call(self.audio, "audio.stop", timeout=5.0)
         self._safe_call(self.ui, "ui.reply.reset", timeout=30.0)
-        self._safe_call(self.ui, "ui.reply.reading", {"text": text}, timeout=30.0)
+        self._safe_call(
+            self.ui,
+            "ui.reply.labeled_text",
+            {
+                "label": t("Preparing speech"),
+                "text": text,
+                "timeout_ms": 0,
+                "cancel_on_close": True,
+            },
+            timeout=30.0,
+        )
         if not self._read_aloud_text(text, generation=gen) and not self._reply_bubble_cancelled(gen):
             self._notice(t("Could not read selected text aloud."))
 
@@ -5425,12 +5471,12 @@ class FlowController:
             return  # silent success - the pasted text is the confirmation
         if paste.get("clipboard_ok"):
             self._native_notify(
-                "Wisp - dictation on clipboard",
+                "OpenWand - dictation on clipboard",
                 f"Couldn't focus the field. Press {self._paste_shortcut()} to paste.",
             )
         else:
             log.error("dictation paste failed: %s", paste.get("error") or paste)
-            self._native_notify("Wisp - dictation failed", "Couldn't paste the text. See native.stderr.log.")
+            self._native_notify("OpenWand - dictation failed", "Couldn't paste the text. See native.stderr.log.")
 
     def reload_settings(self, changed_keys: list[str] | None = None) -> None:
         """Handle reload settings for flow controller."""
@@ -5468,7 +5514,7 @@ class FlowController:
             timeout=10.0,
         ) or {}
         if isinstance(result, dict) and not result.get("started"):
-            self._notice("Global hotkeys did not start. Click the Wisp icon to summon it.", severity="warning")
+            self._notice("Global hotkeys did not start. Click the OpenWand icon to summon it.", severity="warning")
 
     def _prewarm_privacy(self) -> None:
         """Start best-effort Advanced Privacy warmup in the brain worker."""
@@ -5563,6 +5609,8 @@ class FlowController:
                     },
                     timeout=30.0,
                 )
+            elif event == "model_tool.ui.request":
+                self._handle_model_tool_ui_request(payload)
             elif event == "live_file.approval.request":
                 self._handle_live_file_approval_request(payload)
             elif event == "privacy.review.request":
@@ -5610,14 +5658,14 @@ class FlowController:
             "pinned_tools": pinned_tools,
             "file_access_mode": file_access_mode,
         }
-        harness_mode = str(getattr(config, "CHAT_EXECUTION_MODE", "wisp") or "wisp").strip().lower()
-        if harness_mode not in {"wisp", "codex", "claude"}:
-            harness_mode = "wisp"
+        harness_mode = str(getattr(config, "CHAT_EXECUTION_MODE", "openwand") or "openwand").strip().lower()
+        if harness_mode not in {"openwand", "codex", "claude"}:
+            harness_mode = "openwand"
         chat_params["harness_provider"] = harness_mode
         conversation_owner = str(
-            getattr(config, "CHAT_CONVERSATION_OWNER", "wisp") or "wisp"
+            getattr(config, "CHAT_CONVERSATION_OWNER", "openwand") or "openwand"
         ).strip().lower()
-        chat_params["conversation_owner"] = conversation_owner if conversation_owner in {"wisp", "agent"} else "wisp"
+        chat_params["conversation_owner"] = conversation_owner if conversation_owner in {"openwand", "agent"} else "openwand"
         harness_sessions = data.get("harness_sessions") if isinstance(data.get("harness_sessions"), dict) else {}
         if harness_mode in {"codex", "claude"}:
             selected_session = harness_sessions.get(harness_mode)
@@ -5797,7 +5845,7 @@ class FlowController:
             timeout=30.0,
         )
 
-    def open_addons(self) -> None:
+    def open_addons(self, addon_id: str = "") -> None:
         """Open addons."""
         result = self._safe_call(self.brain, "brain.addons.list", timeout=30.0) or {}
         if not isinstance(result, dict):
@@ -5811,6 +5859,22 @@ class FlowController:
             },
             timeout=30.0,
         )
+        if addon_id:
+            addon = next(
+                (
+                    item
+                    for item in result.get("addons") or []
+                    if isinstance(item, dict) and str(item.get("id") or "") == addon_id
+                ),
+                None,
+            )
+            if addon is not None:
+                self._safe_call(
+                    self.ui,
+                    "ui.show_addon_settings",
+                    {"addon": addon},
+                    timeout=30.0,
+                )
 
     def _load_addon_tray_actions(
         self,
@@ -5868,15 +5932,18 @@ class FlowController:
             )
 
     def refresh_addon_tray_actions(self) -> None:
-        """Mirror enabled addon actions into the existing native Wisp tray."""
+        """Mirror enabled addon actions into the existing native OpenWand tray."""
         self._publish_addon_tray_actions(self._load_addon_tray_actions())
 
-    def open_settings(self) -> None:
+    def open_settings(self, initial_page: str = "") -> None:
         """Open settings with live addon model tools from the brain process."""
         self._safe_call(
             self.ui,
             "ui.show_settings",
-            {"extra_tools": self._addon_model_tool_payloads()},
+            {
+                "extra_tools": self._addon_model_tool_payloads(),
+                "initial_page": initial_page or None,
+            },
             timeout=30.0,
         )
 
@@ -5928,7 +5995,7 @@ class FlowController:
             "ui.runtime_status.show",
             {
                 "workers": workers,
-                "log_dir": os.environ.get("WISP_RUN_LOG_DIR", ""),
+                "log_dir": os.environ.get("OPENWAND_RUN_LOG_DIR", ""),
                 "events": self.runtime_log.snapshot(),
             },
             timeout=30.0,
@@ -5963,6 +6030,25 @@ class FlowController:
                 workspace_opened = True
         if not workspace_opened:
             self._notice(message)
+        self.refresh_addon_tray_actions()
+
+    def _handle_model_tool_ui_request(self, payload: Any) -> None:
+        """Apply a bounded UI request emitted by a successfully executed model tool."""
+        request = payload if isinstance(payload, dict) else {}
+        if str(request.get("action") or "") != "show_virtual_workspace":
+            return
+        endpoint = str(request.get("endpoint") or "")
+        opened = self._safe_call(
+            self.ui,
+            "ui.show_virtual_workspace",
+            {"endpoint": endpoint, "activate": False},
+            timeout=10.0,
+        )
+        if not (isinstance(opened, dict) and opened.get("shown")):
+            self._notice(
+                "The virtual workspace started, but its window could not be shown.",
+                severity="warning",
+            )
         self.refresh_addon_tray_actions()
 
     def chat_message_actions(self, data: dict[str, Any] | None = None) -> None:
@@ -6141,7 +6227,7 @@ class FlowController:
                     self.native,
                     "native.notify",
                     {
-                        "title": str(notify.get("title") or "Wisp"),
+                        "title": str(notify.get("title") or "OpenWand"),
                         "message": str(notify.get("message") or ""),
                     },
                     timeout=10.0,
@@ -6205,7 +6291,7 @@ class FlowController:
                     self.native,
                     "native.notify",
                     {
-                        "title": str(item.get("title") or addon.get("name") or "Wisp"),
+                        "title": str(item.get("title") or addon.get("name") or "OpenWand"),
                         "message": message,
                     },
                     timeout=10.0,
@@ -6485,14 +6571,14 @@ class FlowController:
             response_activity.set()
             slow_notice_timer.cancel()
             raise
-        harness_mode = str(getattr(config, "CHAT_EXECUTION_MODE", "wisp") or "wisp").strip().lower()
-        if harness_mode not in {"wisp", "codex", "claude"}:
-            harness_mode = "wisp"
+        harness_mode = str(getattr(config, "CHAT_EXECUTION_MODE", "openwand") or "openwand").strip().lower()
+        if harness_mode not in {"openwand", "codex", "claude"}:
+            harness_mode = "openwand"
         params["harness_provider"] = harness_mode
         conversation_owner = str(
-            getattr(config, "CHAT_CONVERSATION_OWNER", "wisp") or "wisp"
+            getattr(config, "CHAT_CONVERSATION_OWNER", "openwand") or "openwand"
         ).strip().lower()
-        params["conversation_owner"] = conversation_owner if conversation_owner in {"wisp", "agent"} else "wisp"
+        params["conversation_owner"] = conversation_owner if conversation_owner in {"openwand", "agent"} else "openwand"
         configured_harness_workspace = (
             _configured_harness_workspace(harness_mode)
             if harness_mode in {"codex", "claude"}
@@ -6601,6 +6687,8 @@ class FlowController:
                         },
                         timeout=30.0,
                     )
+            elif event == "model_tool.ui.request":
+                self._handle_model_tool_ui_request(payload)
             elif event == "live_file.approval.request":
                 self._handle_live_file_approval_request(payload)
             elif event == "privacy.review.request":
@@ -6908,7 +6996,7 @@ class FlowController:
                 timeout=30.0,
             )
         if not visible_text and text:
-            visible_text = "Replacement pasted."
+            visible_text = t("Replacement pasted.")
         log.info("rewrite result: text_chars=%d visible_chars=%d", len(text), len(visible_text))
         bubble_cancelled = self._reply_bubble_cancelled(gen)
         if text and self._is_current(gen) and not bubble_cancelled:
@@ -6943,8 +7031,8 @@ class FlowController:
             if paste.get("ok"):
                 if paste.get("clipboard_ok") and paste.get("clipboard_restored") is False:
                     self._native_notify(
-                        t("Wisp pasted the rewrite"),
-                        t("The text was replaced, but Wisp couldn't restore your previous clipboard."),
+                        t("OpenWand pasted the rewrite"),
+                        t("The text was replaced, but OpenWand couldn't restore your previous clipboard."),
                     )
                 with self._lock:
                     self._last_undoable_edit = UndoableEdit(
@@ -6973,12 +7061,15 @@ class FlowController:
                     paste.get("clipboard_restored"),
                 )
                 self._native_notify(
-                    "Wisp rewrite could not paste",
-                    "Couldn't replace the selected text. Your clipboard was restored.",
+                    t("OpenWand rewrite could not paste"),
+                    t("Couldn't replace the selected text. Your clipboard was restored."),
                 )
             else:
                 log.error("rewrite paste-back failed: %s", paste.get("error") or paste)
-                self._native_notify("Wisp - rewrite failed", "Couldn't paste the rewrite. See native.stderr.log.")
+                self._native_notify(
+                    t("OpenWand - rewrite failed"),
+                    t("Couldn't paste the rewrite. See native.stderr.log."),
+                )
             self._safe_call(
                 self.ui,
                     "ui.chat.add_conversation",
@@ -6994,16 +7085,19 @@ class FlowController:
             )
         elif self._is_current(gen) and not bubble_cancelled:
             log.warning("rewrite returned empty text; paste-back skipped")
-            self._native_notify("Wisp rewrite returned nothing", "The model returned no replacement text.")
+            self._native_notify(
+                t("OpenWand rewrite returned nothing"),
+                t("The model returned no replacement text."),
+            )
         self._set_idle()
 
-    def undo_last_wisp_edit(self) -> None:
+    def undo_last_openwand_edit(self) -> None:
         """Undo the most recent confirmed rewrite, or copy its original text."""
         with self._lock:
             edit = self._last_undoable_edit
             self._last_undoable_edit = None
         if edit is None:
-            self._undo_result_notice("There is no recent Wisp edit to undo.", severity="warning")
+            self._undo_result_notice("There is no recent OpenWand edit to undo.", severity="warning")
             return
         if time.monotonic() - edit.created_at > _UNDO_EDIT_WINDOW_SECONDS:
             copied = self._safe_call(
@@ -7039,7 +7133,7 @@ class FlowController:
             result = {"ok": False, "clipboard_ok": False, "error": str(exc)}
         result = result if isinstance(result, dict) else {}
         if result.get("ok"):
-            self._undo_result_notice("Last Wisp edit undone.")
+            self._undo_result_notice("Last OpenWand edit undone.")
         elif result.get("clipboard_ok"):
             self._undo_result_notice(
                 "Couldn't safely undo in the app. Original text copied to clipboard.",
@@ -7047,7 +7141,7 @@ class FlowController:
             )
         else:
             self._undo_result_notice(
-                "Couldn't undo the last Wisp edit or copy the original text.",
+                "Couldn't undo the last OpenWand edit or copy the original text.",
                 severity="error",
             )
 
@@ -7841,6 +7935,14 @@ class FlowController:
             target_id = self._intent_target_id(context)
             pending.context = context
             pending.action_provider_context = self._action_provider_picker_context(context)
+            provider_suggestions = pending.action_provider_context.get("suggested_intents")
+            log.info(
+                "caller %d action provider id=%r app=%r suggestions=%d",
+                pending.caller_idx,
+                pending.action_provider_context.get("id"),
+                pending.action_provider_context.get("app"),
+                len(provider_suggestions) if isinstance(provider_suggestions, list) else 0,
+            )
             pending.screenshot_b64 = screenshot_b64
             pending.screenshot_tool_b64 = screenshot_tool_b64
             pending.intent_target_pid = target_id
@@ -8547,7 +8649,7 @@ class FlowController:
 
         threading.Thread(
             target=watch,
-            name=f"wisp-background-task-{job_id}",
+            name=f"openwand-background-task-{job_id}",
             daemon=True,
         ).start()
 
@@ -9582,6 +9684,7 @@ class FlowController:
                     return False
                 if not self._is_current(generation) or self._reply_bubble_cancelled(generation):
                     return False
+                self._safe_call(self.ui, "ui.reply.reading", {"text": text}, timeout=30.0)
                 self._safe_call(self.ui, "ui.overlay.state", {"state": "speaking"}, timeout=30.0)
                 play_result = self.audio.call("audio.play_file", {"path": path}, timeout=180.0)
                 played = not (isinstance(play_result, dict) and play_result.get("stopped"))
@@ -9658,6 +9761,8 @@ class FlowController:
                     break
                 if not self._is_current(generation) or self._reply_bubble_cancelled(generation):
                     break
+                if not played_any:
+                    self._safe_call(self.ui, "ui.reply.reading", {"text": text}, timeout=30.0)
                 self._safe_call(self.ui, "ui.overlay.state", {"state": "speaking"}, timeout=30.0)
                 play_result = self.audio.call("audio.play_file", {"path": path}, timeout=180.0)
                 if isinstance(play_result, dict) and play_result.get("stopped"):

@@ -2,7 +2,7 @@
 id = "virtual-workspace"
 name = "Virtual Workspace (Experimental)"
 version = "0.1.0"
-description = "Gives Wisp an isolated file workspace with a local live viewer, audit trail, and user control handoff."
+description = "Gives OpenWand an isolated file workspace with a local live viewer, audit trail, and user control handoff."
 entry = "__init__.py"
 api_version = "1"
 priority = 95
@@ -13,7 +13,7 @@ ui = ["tray", "settings"]
 
 [[settings]]
 key = "allow_model_file_changes"
-label = "Allow Wisp to create workspace files"
+label = "Allow OpenWand to create workspace files"
 type = "bool"
 default = false
-help = "Applies only inside this addon's private workspace. Wisp cannot overwrite, delete, or access normal computer files through this addon."
+help = "Applies only inside this addon's private workspace. OpenWand cannot overwrite, delete, or access normal computer files through this addon."

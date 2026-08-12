@@ -1,1 +1,1 @@
-"""Small subprocess helpers shipped with Wisp's runtime."""
+"""Small subprocess helpers shipped with OpenWand's runtime."""

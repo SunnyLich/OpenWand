@@ -15,6 +15,68 @@ pytestmark = [
 ]
 
 
+def test_numbered_custom_connections_round_trip_and_migrate_legacy() -> None:
+    from core.custom_connections import env_values, load_connections, route_id, secret_name
+
+    connections = [
+        {"id": "studio", "alias": "LM Studio", "base_url": "http://localhost:1234/v1"},
+        {"id": "llama", "alias": "llama.cpp", "base_url": "http://localhost:8080/v1"},
+    ]
+    saved = env_values(connections)
+    assert load_connections(saved) == connections
+    assert route_id("studio") == "custom@studio"
+    assert secret_name("studio") == "OPENWAND_CUSTOM_API_KEY_STUDIO"
+    assert load_connections({"CUSTOM_BASE_URL": "http://legacy.test/v1"}) == [
+        {"id": "legacy", "alias": "", "base_url": "http://legacy.test/v1"}
+    ]
+
+
+def test_runtime_builds_each_custom_route_with_its_own_url_and_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import config
+    from core.llm_clients import client
+
+    monkeypatch.setattr(
+        config,
+        "CUSTOM_CONNECTIONS",
+        [
+            {"id": "studio", "alias": "LM Studio", "base_url": "http://localhost:1234/v1"},
+            {"id": "llama", "alias": "llama.cpp", "base_url": "http://localhost:8080/v1"},
+        ],
+        raising=False,
+    )
+    secrets = {
+        "OPENWAND_CUSTOM_API_KEY_STUDIO": "studio-key",
+        "OPENWAND_CUSTOM_API_KEY_LLAMA": "llama-key",
+    }
+    monkeypatch.setattr(client.secret_store, "get_secret", lambda name: secrets.get(name, ""))
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        client.sdk_clients,
+        "openai_client",
+        lambda **kwargs: calls.append(kwargs) or object(),
+    )
+
+    client._build_dynamic_openai_client("custom@studio")
+    client._build_dynamic_openai_client("custom@llama")
+
+    assert calls == [
+        {
+            "api_key": "studio-key",
+            "base_url": "http://localhost:1234/v1",
+            "max_retries": client._OPENAI_MAX_RETRIES,
+        },
+        {
+            "api_key": "llama-key",
+            "base_url": "http://localhost:8080/v1",
+            "max_retries": client._OPENAI_MAX_RETRIES,
+        },
+    ]
+    assert client._route_endpoint("custom@studio") == "http://localhost:1234/v1"
+    assert client._route_endpoint("custom@llama") == "http://localhost:8080/v1"
+
+
 def _new_dialog(monkeypatch: pytest.MonkeyPatch, *, env: dict[str, str] | None = None):
     from ui.settings_panel import dialog as settings_dialog
 
@@ -40,26 +102,6 @@ def _remove_loaded_rows(dialog) -> None:
             dialog._remove_api_key_row(row)
     finally:
         dialog._loading_values = False
-
-
-def _trigger_real_menu_action(app, button, action_text: str) -> None:
-    """Open a real Qt popup, trigger one visible action, and close its event loop."""
-
-    from PySide6.QtCore import QTimer
-    from PySide6.QtWidgets import QApplication, QMenu
-
-    def choose_active_action() -> None:
-        menu = QApplication.activePopupWidget()
-        assert isinstance(menu, QMenu)
-        try:
-            action = next(action for action in menu.actions() if action.text() == action_text)
-            action.trigger()
-        finally:
-            menu.close()
-
-    QTimer.singleShot(0, choose_active_action)
-    button.click()
-    app.processEvents()
 
 
 def _install_save_boundaries(
@@ -116,11 +158,10 @@ def _install_save_boundaries(
 def test_add_alias_search_filter_and_expand_every_connection_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The actual Add connection modal and list tools work for the full catalog."""
+    """Add connection creates a compact inline provider row for the full catalog."""
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtCore import Qt, QTimer
-    from PySide6.QtWidgets import QApplication, QDialogButtonBox, QLineEdit, QListWidget, QPushButton
+    from PySide6.QtWidgets import QApplication, QPushButton
 
     from ui.settings_panel import dialog as settings_dialog
 
@@ -135,34 +176,27 @@ def test_add_alias_search_filter_and_expand_every_connection_provider(
         )
 
         for index, provider in enumerate(settings_dialog._CONNECTION_PROVIDER_IDS):
-            def choose_provider(provider_id=provider) -> None:
-                modal = QApplication.activeModalWidget()
-                assert modal is not None
-                catalog = modal.findChild(QListWidget, "settingsProviderCatalog")
-                assert catalog is not None
-                search = next(
-                    field
-                    for field in modal.findChildren(QLineEdit)
-                    if field.placeholderText() == "Search providers..."
-                )
-                search.setText(provider_id)
-                item = next(
-                    catalog.item(row)
-                    for row in range(catalog.count())
-                    if catalog.item(row).data(Qt.ItemDataRole.UserRole) == provider_id
-                )
-                assert not item.isHidden()
-                catalog.setCurrentItem(item)
-                box = modal.findChild(QDialogButtonBox)
-                assert box is not None
-                box.button(QDialogButtonBox.StandardButton.Ok).click()
-
-            QTimer.singleShot(0, choose_provider)
             add_button.click()
+            app.processEvents()
             assert len(dialog._api_key_rows) == index + 1
             row = dialog._api_key_rows[-1]
+            assert QApplication.activeModalWidget() is None
+            assert row["provider"].currentData() == ""
+            assert row["provider"].itemText(0) == "Choose a provider"
+            assert {
+                row["provider"].itemData(option)
+                for option in range(1, row["provider"].count())
+            } == set(settings_dialog._CONNECTION_PROVIDER_IDS)
+            assert all(
+                provider_id
+                for _label, provider_id in dialog._get_api_key_display_options()
+            )
+
+            row["provider"].setCurrentIndex(row["provider"].findData(provider))
+            app.processEvents()
             assert row["provider"].currentData() == provider
             assert row["alias"].text() == ""
+            assert row["custom_details"].isHidden() == (provider != "custom")
             row["alias"].setText(f"alias-{provider}")
             assert row["alias"].text() == f"alias-{provider}"
 
@@ -268,7 +302,7 @@ def test_connection_save_keychain_remove_last_and_cancel_matrix(
         assert first["key"].text() == ""
         assert dialog._fields["CUSTOM_API_KEY"].text() == ""
         assert persisted["CUSTOM_BASE_URL"] == "http://localhost:1234/v1"
-        assert persisted["WISP_CONNECTION_ALIAS_OPENAI"] == "Primary"
+        assert persisted["OPENWAND_CONNECTION_ALIAS_OPENAI"] == "Primary"
 
         sibling = dialog._add_api_key_row("openai", alias="Sibling")
         remove_first = next(
@@ -289,7 +323,7 @@ def test_connection_save_keychain_remove_last_and_cancel_matrix(
         dialog._apply_btn.click()
         app.processEvents()
         assert "OPENAI_API_KEY" not in secrets
-        assert "WISP_CONNECTION_ALIAS_OPENAI" not in persisted
+        assert "OPENWAND_CONNECTION_ALIAS_OPENAI" not in persisted
         dialog._load_values()
         assert all(row["provider"].currentData() != "openai" for row in dialog._api_key_rows)
 
@@ -325,33 +359,142 @@ def test_connection_save_keychain_remove_last_and_cancel_matrix(
         _close(dialog, app)
 
 
-def test_every_custom_endpoint_menu_action_updates_real_fields(
+def test_custom_endpoint_selector_lists_presets_and_reveals_custom_address(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Every Endpoints menu action applies its URL, model hint, and key hint."""
+    """Every Custom connection owns its endpoint and reveals its own address."""
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication, QPushButton
+    from PySide6.QtWidgets import QApplication
 
     from ui.settings_panel import dialog as settings_dialog
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = _new_dialog(monkeypatch)
     try:
-        model_row = dialog._model_section_rows["LLM"][0]
-        model_row["api_key_combo"].setCurrentIndex(model_row["api_key_combo"].findData("custom"))
-        endpoint_button = next(
-            button for button in dialog.findChildren(QPushButton) if button.text() == "Endpoints ▾"
-        )
-        for name, url, model_hint, api_key_hint in settings_dialog.SettingsDialog._CUSTOM_ENDPOINTS:
-            dialog._fields["CUSTOM_BASE_URL"].clear()
-            dialog._fields["CUSTOM_API_KEY"].clear()
-            _trigger_real_menu_action(app, endpoint_button, name)
-            assert dialog._fields["CUSTOM_BASE_URL"].text() == url
-            assert model_hint in model_row["model_edit"].placeholderText()
-            assert dialog._fields["CUSTOM_API_KEY"].text() == api_key_hint
+        _remove_loaded_rows(dialog)
+        connection = dialog._add_api_key_row("openai", alias="Local one")
+        assert connection["custom_details"].isHidden()
+        connection["provider"].setCurrentIndex(connection["provider"].findData("custom"))
+        app.processEvents()
+        selector = connection["endpoint_combo"]
+        address = connection["custom_address"]
+        assert selector.objectName() == "settingsCustomConnectionEndpoint"
+        assert not connection["custom_details"].isHidden()
+        assert selector.itemText(selector.count() - 1) == "Custom endpoint"
+        assert selector.itemData(selector.count() - 1) == ""
+        for name, url, _model_hint, _api_key_hint in settings_dialog.SettingsDialog._CUSTOM_ENDPOINTS:
+            selector.setCurrentIndex(selector.count() - 1)
+            app.processEvents()
+            address.clear()
+            index = selector.findData(url)
+            assert index >= 0
+            assert selector.itemText(index) == f"{name} [{url}]"
+            selector.setCurrentIndex(index)
+            app.processEvents()
+            assert address.text() == url
+            assert address.isHidden()
+
+        selector.setCurrentIndex(selector.count() - 1)
+        app.processEvents()
+        assert not address.isHidden()
+        assert address.text() == ""
+        address.setText("https://custom.example.test/v1")
+        assert address.text() == "https://custom.example.test/v1"
+
+        route_id = f"custom@{connection['connection_id']}"
+        assert route_id in {provider for _label, provider in dialog._get_api_key_display_options()}
     finally:
         _close(dialog, app)
+
+
+def test_saved_unknown_endpoint_reopens_as_custom_without_losing_its_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An address outside the preset list must survive reopening as Custom."""
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    saved_url = "https://private-gateway.example.test/v1"
+    app = QApplication.instance() or QApplication(sys.argv)
+    dialog = _new_dialog(
+        monkeypatch,
+        env={
+            "OPENWAND_CUSTOM_CONNECTION_COUNT": "1",
+            "OPENWAND_CUSTOM_CONNECTION_1_ID": "private",
+            "OPENWAND_CUSTOM_CONNECTION_1_ALIAS": "Private gateway",
+            "OPENWAND_CUSTOM_CONNECTION_1_BASE_URL": saved_url,
+        },
+    )
+    try:
+        app.processEvents()
+        custom_rows = [row for row in dialog._api_key_rows if row["provider"].currentData() == "custom"]
+        assert len(custom_rows) == 1
+        row = custom_rows[0]
+        assert row["endpoint_combo"].currentData() == ""
+        assert row["endpoint_combo"].currentText() == "Custom endpoint"
+        assert not row["custom_address"].isHidden()
+        assert row["custom_address"].text() == saved_url
+    finally:
+        _close(dialog, app)
+
+
+def test_two_custom_connections_save_reload_and_route_independently(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two local/custom rows retain distinct URLs, secrets, aliases, and route ids."""
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    persisted: dict[str, str] = {}
+    secrets = _install_save_boundaries(monkeypatch, persisted)
+    dialog = _new_dialog(monkeypatch, env=persisted)
+    try:
+        _remove_loaded_rows(dialog)
+        first = dialog._add_api_key_row("custom", alias="LM Studio")
+        second = dialog._add_api_key_row("custom", alias="llama.cpp")
+        first["custom_address"].setText("http://localhost:1234/v1")
+        second["custom_address"].setText("http://localhost:8080/v1")
+        first["key"].setText("first-secret")
+        second["key"].setText("second-secret")
+
+        first_route = f"custom@{first['connection_id']}"
+        second_route = f"custom@{second['connection_id']}"
+        assert first_route != second_route
+        route_options = dialog._get_api_key_display_options()
+        assert ("Custom (OpenAI-compatible) (LM Studio)", first_route) in route_options
+        assert ("Custom (OpenAI-compatible) (llama.cpp)", second_route) in route_options
+
+        model_row = dialog._model_section_rows["LLM"][0]
+        dialog._fill_credential_combo(model_row["api_key_combo"], second_route)
+        assert model_row["api_key_combo"].currentData() == second_route
+        dialog._refresh_dirty_state()
+        dialog._apply_btn.click()
+        app.processEvents()
+
+        assert persisted["OPENWAND_CUSTOM_CONNECTION_COUNT"] == "2"
+        assert persisted["OPENWAND_CUSTOM_CONNECTION_1_BASE_URL"] == "http://localhost:1234/v1"
+        assert persisted["OPENWAND_CUSTOM_CONNECTION_2_BASE_URL"] == "http://localhost:8080/v1"
+        assert persisted["LLM_PROVIDER"] == second_route
+        assert secrets[f"OPENWAND_CUSTOM_API_KEY_{first['connection_id'].upper().replace('-', '_')}"] == "first-secret"
+        assert secrets[f"OPENWAND_CUSTOM_API_KEY_{second['connection_id'].upper().replace('-', '_')}"] == "second-secret"
+    finally:
+        _close(dialog, app)
+
+    reloaded = _new_dialog(monkeypatch, env=persisted)
+    try:
+        rows = [row for row in reloaded._api_key_rows if row["provider"].currentData() == "custom"]
+        assert [row["alias"].text() for row in rows] == ["LM Studio", "llama.cpp"]
+        assert [row["custom_address"].text() for row in rows] == [
+            "http://localhost:1234/v1",
+            "http://localhost:8080/v1",
+        ]
+        assert reloaded._model_section_rows["LLM"][0]["api_key_combo"].currentData() == second_route
+    finally:
+        _close(reloaded, app)
 
 
 def _wait_until(app, predicate, *, timeout: float = 5.0) -> None:
@@ -391,8 +534,6 @@ def test_model_refresh_and_manual_name_every_provider_matrix(
     dialog = _new_dialog(monkeypatch)
     try:
         _remove_loaded_rows(dialog)
-        dialog._fields["CUSTOM_BASE_URL"].setText("https://custom.example/v1")
-        dialog._fields["CUSTOM_API_KEY"].setText("custom-key")
         dialog._tabs.setCurrentIndex(dialog._tab_base_names.index("LLM"))
         app.processEvents()
         row = dialog._model_section_rows["LLM"][0]
@@ -403,8 +544,14 @@ def test_model_refresh_and_manual_name_every_provider_matrix(
                 if provider in settings_dialog._CONNECTION_PROVIDER_IDS
                 else None
             )
-            dialog._fill_credential_combo(row["api_key_combo"], provider)
-            row["api_key_combo"].setCurrentIndex(row["api_key_combo"].findData(provider))
+            route_provider = provider
+            if provider == "custom":
+                assert connection is not None
+                route_provider = f"custom@{connection['connection_id']}"
+                connection["custom_address"].setText("https://custom.example/v1")
+                connection["key"].setText("custom-key")
+            dialog._fill_credential_combo(row["api_key_combo"], route_provider)
+            row["api_key_combo"].setCurrentIndex(row["api_key_combo"].findData(route_provider))
 
             credential_cases: list[tuple[str, str]]
             if provider in settings_dialog._PROVIDER_KEY_NAMES and provider != "custom":
@@ -416,9 +563,11 @@ def test_model_refresh_and_manual_name_every_provider_matrix(
                     (f"stored-{key_name}", ""),
                 ]
             elif provider == "custom":
+                assert connection is not None
+                secret_name = f"OPENWAND_CUSTOM_API_KEY_{connection['connection_id'].upper().replace('-', '_')}"
                 credential_cases = [
                     ("custom-key", "https://custom.example/v1"),
-                    ("stored-CUSTOM_API_KEY", "https://custom.example/v1"),
+                    (f"stored-{secret_name}", "https://custom.example/v1"),
                 ]
             elif provider == "copilot":
                 assert connection is not None
@@ -430,10 +579,11 @@ def test_model_refresh_and_manual_name_every_provider_matrix(
             for case_index, (expected_key, expected_url) in enumerate(credential_cases):
                 if case_index == 1:
                     if provider == "custom":
-                        dialog._fields["CUSTOM_API_KEY"].clear()
+                        assert connection is not None
+                        connection["key"].clear()
                     elif connection is not None:
                         connection["key"].clear()
-                expected_calls.append((provider, expected_key, expected_url))
+                expected_calls.append((route_provider, expected_key, expected_url))
                 row["refresh_btn"].click()
                 _wait_until(app, row["refresh_btn"].isEnabled)
                 assert calls[-1] == expected_calls[-1]
@@ -441,8 +591,8 @@ def test_model_refresh_and_manual_name_every_provider_matrix(
                     row["model_combo"].itemData(index)
                     for index in range(row["model_combo"].count())
                 ] == [
-                    f"{provider}-live-a",
-                    f"{provider}-live-b",
+                    f"{route_provider}-live-a",
+                    f"{route_provider}-live-b",
                     settings_dialog._CUSTOM_MODEL_SENTINEL,
                 ]
                 assert row["refresh_btn"].toolTip() == "Live: 2 models"
@@ -511,14 +661,14 @@ def test_custom_endpoint_and_exact_manual_model_reach_real_test_button(
         row = dialog._model_section_rows["LLM"][0]
         for fallback in list(dialog._model_section_rows["LLM"])[1:]:
             dialog._remove_model_section_row("LLM", fallback)
-        dialog._fill_credential_combo(row["api_key_combo"], "custom")
-        row["api_key_combo"].setCurrentIndex(row["api_key_combo"].findData("custom"))
+        connection = dialog._add_api_key_row("custom", alias="Route under test")
+        route_id = f"custom@{connection['connection_id']}"
+        dialog._fill_credential_combo(row["api_key_combo"], route_id)
+        row["api_key_combo"].setCurrentIndex(row["api_key_combo"].findData(route_id))
         row["model_combo"].setCurrentIndex(
             row["model_combo"].findData(settings_dialog._CUSTOM_MODEL_SENTINEL)
         )
-        endpoint_button = next(
-            button for button in dialog.findChildren(QPushButton) if button.text() == "Endpoints ▾"
-        )
+        endpoint_selector = connection["endpoint_combo"]
         test_button = next(
             button
             for button in dialog.findChildren(QPushButton)
@@ -530,8 +680,12 @@ def test_custom_endpoint_and_exact_manual_model_reach_real_test_button(
             ("OpenRouter", "https://openrouter.ai/api/v1", "exact/remote-model"),
         )
         for index, (preset, expected_url, exact_model) in enumerate(cases, start=1):
-            _trigger_real_menu_action(app, endpoint_button, preset)
-            dialog._fields["CUSTOM_API_KEY"].setText(f"custom-route-key-{index}")
+            preset_index = endpoint_selector.findData(expected_url)
+            assert preset_index >= 0
+            assert endpoint_selector.itemText(preset_index).startswith(f"{preset} [")
+            endpoint_selector.setCurrentIndex(preset_index)
+            app.processEvents()
+            connection["key"].setText(f"custom-route-key-{index}")
             row["model_edit"].setText(exact_model)
             assert dialog._model_value(row) == exact_model
 
@@ -548,7 +702,7 @@ def test_custom_endpoint_and_exact_manual_model_reach_real_test_button(
                 "base_url": expected_url,
             }
             assert completion_calls[-1]["model"] == exact_model
-            assert "✓ Primary — custom /" in dialog._llm_test_status_lbl.text()
+            assert f"✓ Primary — {route_id} /" in dialog._llm_test_status_lbl.text()
             assert exact_model in dialog._llm_test_status_lbl.text()
     finally:
         _close(dialog, app)
@@ -656,8 +810,9 @@ def test_every_provider_reaches_its_real_chat_route_probe(
                 connection["key"].setText(f"typed-{provider}")
             elif provider == "copilot":
                 connection["key"].setText("typed-copilot")
-        dialog._fields["CUSTOM_BASE_URL"].setText("https://custom.runtime.example/v1")
-        dialog._fields["CUSTOM_API_KEY"].setText("typed-custom")
+            elif provider == "custom":
+                connection["custom_address"].setText("https://custom.runtime.example/v1")
+                connection["key"].setText("typed-custom")
         dialog._tabs.setCurrentIndex(dialog._tab_base_names.index("LLM"))
         app.processEvents()
 
@@ -674,8 +829,13 @@ def test_every_provider_reaches_its_real_chat_route_probe(
         selected_models: dict[str, str] = {}
 
         for provider in providers:
-            dialog._fill_credential_combo(row["api_key_combo"], provider)
-            row["api_key_combo"].setCurrentIndex(row["api_key_combo"].findData(provider))
+            route_provider = (
+                f"custom@{connection_rows['custom']['connection_id']}"
+                if provider == "custom"
+                else provider
+            )
+            dialog._fill_credential_combo(row["api_key_combo"], route_provider)
+            row["api_key_combo"].setCurrentIndex(row["api_key_combo"].findData(route_provider))
             app.processEvents()
             models = list(settings_dialog._PROVIDER_MODELS.get(provider, []))
             model = models[0] if models else f"exact/{provider}-runtime-model"
@@ -690,7 +850,11 @@ def test_every_provider_reaches_its_real_chat_route_probe(
                 row["model_edit"].setText(model)
 
             if provider in settings_dialog._PROVIDER_KEY_NAMES:
-                key_name = settings_dialog._PROVIDER_KEY_NAMES[provider]
+                key_name = (
+                    f"OPENWAND_CUSTOM_API_KEY_{connection_rows['custom']['connection_id'].upper().replace('-', '_')}"
+                    if provider == "custom"
+                    else settings_dialog._PROVIDER_KEY_NAMES[provider]
+                )
                 credential_cases = [
                     (f"typed-{provider}" if provider != "custom" else "typed-custom", False),
                     (f"stored-{key_name}", True),
@@ -700,10 +864,7 @@ def test_every_provider_reaches_its_real_chat_route_probe(
 
             for expected_key, use_stored in credential_cases:
                 if use_stored:
-                    if provider == "custom":
-                        dialog._fields["CUSTOM_API_KEY"].clear()
-                    else:
-                        connection_rows[provider]["key"].clear()
+                    connection_rows[provider]["key"].clear()
                 test_button.click()
                 # The mocked route returns immediately; allow a loaded Windows
                 # runner time to schedule and drain the real Settings worker
@@ -713,7 +874,7 @@ def test_every_provider_reaches_its_real_chat_route_probe(
                     lambda: not dialog._running_test_tokens,
                     timeout=15.0,
                 )
-                assert f"✓ Primary — {provider} / {model}: OK" in dialog._llm_test_status_lbl.text()
+                assert f"✓ Primary — {route_provider} / {model}: Passed" in dialog._llm_test_status_lbl.text()
                 after_counts = (
                     len(openai_requests),
                     len(response_requests),
@@ -722,7 +883,7 @@ def test_every_provider_reaches_its_real_chat_route_probe(
                 )
                 assert sum(after_counts) == sum(before_counts) + 1
                 before_counts = after_counts
-                if provider in llm._OPENAI_COMPAT_PROVIDER_SET:
+                if llm._is_openai_compat_provider(route_provider):
                     factory, request = openai_requests[-1]
                     assert request["model"] == model
                     assert factory["api_key"] == expected_key

@@ -24,7 +24,7 @@ def test_crash_report_redacts_logs_and_excludes_unrelated_user_data(tmp_path, mo
     monkeypatch.setattr(settings_env, "read_settings_env", forbidden)
     monkeypatch.setattr(urllib.request, "urlopen", forbidden)
     log_root = tmp_path / "build_logs"
-    log_dir = log_root / "wisp_crash_20260718-120000"
+    log_dir = log_root / "openwand_crash_20260718-120000"
     log_dir.mkdir(parents=True)
     secret = "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890"  # secret-scan: allow
     home_path = str(tmp_path.parent / "private-user" / "notes.txt")
@@ -47,7 +47,7 @@ def test_crash_report_redacts_logs_and_excludes_unrelated_user_data(tmp_path, mo
         payload = "\n".join(archive.read(name).decode("utf-8") for name in names)
         metadata = json.loads(archive.read("report.json"))
 
-    assert names == ["logs/01-wisp_crash_20260718-120000_supervisor-crash.log", "report.json"]
+    assert names == ["logs/01-openwand_crash_20260718-120000_supervisor-crash.log", "report.json"]
     assert secret not in payload
     assert "person@example.com" not in payload
     assert "[API_KEY]" in payload
@@ -80,8 +80,8 @@ def test_settings_crash_report_action_creates_and_reveals_bundle(tmp_path, monke
     from core.system import file_browser
     from ui.settings_panel.dialog import SettingsDialog
 
-    app = QApplication.instance() or QApplication(["wisp-crash-report-test"])
-    report = tmp_path / "wisp-crash-report.zip"
+    app = QApplication.instance() or QApplication(["openwand-crash-report-test"])
+    report = tmp_path / "openwand-crash-report.zip"
     report.write_bytes(b"zip")
     revealed: list[Path] = []
     messages: list[str] = []
@@ -125,7 +125,7 @@ def test_metadata_diagnostic_surfaces_failure_matrix_is_controlled(monkeypatch):
     from ui import uninstall_dialog
     from ui.settings_panel.dialog import SettingsDialog
 
-    app = QApplication.instance() or QApplication(["wisp-diagnostic-fault-test"])
+    app = QApplication.instance() or QApplication(["openwand-diagnostic-fault-test"])
     monkeypatch.setattr(SettingsDialog, "_schedule_open_status_refresh", lambda _self: None)
     warnings: list[str] = []
     monkeypatch.setattr(QMessageBox, "warning", lambda _p, _t, message: warnings.append(message))

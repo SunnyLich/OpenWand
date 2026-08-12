@@ -1,13 +1,13 @@
 # Dependency Locks
 
-Wisp keeps `requirements/requirements.txt` as the human-edited runtime dependency manifest.
+OpenWand keeps `requirements/requirements.txt` as the human-edited runtime dependency manifest.
 Developer-only tools live in `requirements/requirements-dev.txt`, and packaging-only tools
 live in `requirements/requirements-build.txt`. Installs use exact lock files:
 `requirements/requirements-windows.lock`, `requirements/requirements-linux.lock`,
 `requirements/requirements-macos.lock`, `requirements/requirements-dev.lock`, and
 `requirements/requirements-build.lock`.
 
-The lock matters because Wisp crosses several native macOS boundaries:
+The lock matters because OpenWand crosses several native macOS boundaries:
 PySide6/Qt Cocoa, PortAudio through `sounddevice`, PyObjC Quartz/AppKit,
 PDFium through `liteparse`, Security-framework SSL setup through SDK clients,
 and Torch/ONNX-style binary wheels through local speech/memory tooling. A fresh

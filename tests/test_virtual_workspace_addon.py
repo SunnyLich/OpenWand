@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 
 import pytest
 
+from addons import virtual_workspace as virtual_workspace_addon
 from addons.virtual_workspace import get_tools
 from addons.virtual_workspace.workspace import MAX_PREVIEW_BYTES, WorkspaceController, WorkspaceError
 
@@ -65,6 +66,70 @@ def test_workspace_creates_only_new_entries_and_records_actions(workspace: Works
 
     with pytest.raises(WorkspaceError, match="overwrite"):
         workspace.write_text("notes/plan.txt", "replacement")
+
+
+def test_model_file_work_requests_native_window_without_open_tray_action(
+    workspace: WorkspaceController,
+    monkeypatch,
+) -> None:
+    """Model start/write calls open the native viewer; the tray keeps only controls."""
+    monkeypatch.setattr(virtual_workspace_addon, "_controller", workspace)
+    monkeypatch.setattr(virtual_workspace_addon, "_setting_bool", lambda _key, _default: True)
+
+    start = json.loads(virtual_workspace_addon._start({}))
+    request = start["_openwand_ui_request"]
+    assert request["action"] == "show_virtual_workspace"
+    assert request["endpoint"] == workspace.viewer_url
+
+    written = json.loads(virtual_workspace_addon._write_text({
+        "path": "automatic.txt",
+        "text": "visible",
+    }))
+    assert written["ok"] is True
+    assert written["_openwand_ui_request"]["endpoint"] == workspace.viewer_url
+
+    labels = [item["label"] for item in virtual_workspace_addon.get_tray_actions()]
+    assert "Open Virtual Workspace" not in labels
+    assert labels == ["Pause Virtual Workspace", "Stop Virtual Workspace"]
+
+
+def test_model_tool_ui_request_is_emitted_locally_and_hidden_from_model(monkeypatch) -> None:
+    """The authenticated viewer endpoint must never enter the next cloud-model turn."""
+    from core.llm_clients import client
+
+    endpoint = f"http://127.0.0.1:8765/?token={'t' * 32}"
+
+    class Registry:
+        def execute(self, name, inputs):  # noqa: ANN001
+            assert name == "virtual_workspace_start"
+            assert inputs == {}
+            return json.dumps({
+                "ok": True,
+                "_openwand_ui_request": {
+                    "action": "show_virtual_workspace",
+                    "endpoint": endpoint,
+                },
+            })
+
+    events = []
+    monkeypatch.setattr(client, "_TOOL_REGISTRY", Registry())
+    client.set_live_model_tool_ui_callback(events.append)
+    try:
+        result = client._execute_model_tool(
+            "virtual_workspace_start",
+            {},
+            allowed_tools=["virtual_workspace_start"],
+        )
+    finally:
+        client.set_live_model_tool_ui_callback(None)
+
+    assert json.loads(result) == {"ok": True}
+    assert endpoint not in result
+    assert events == [{
+        "action": "show_virtual_workspace",
+        "endpoint": endpoint,
+        "tool": "virtual_workspace_start",
+    }]
 
 
 @pytest.mark.parametrize(
@@ -338,14 +403,14 @@ def test_activity_is_journaled_to_disk_instead_of_disappearing(
     assert any(item["message"] == "Created folder kept" for item in events)
 
 
-def test_workspace_renders_in_a_native_wisp_window(workspace: WorkspaceController) -> None:
+def test_workspace_renders_in_a_native_openwand_window(workspace: WorkspaceController) -> None:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QFrame, QPushButton
 
     from ui.virtual_workspace_window import VirtualWorkspaceWindow
 
     workspace.create_folder("notes")
-    workspace.write_text("notes/native.txt", "Native Wisp window")
+    workspace.write_text("notes/native.txt", "Native OpenWand window")
     app = QApplication.instance() or QApplication([])
     started = []
     controls = []
@@ -362,7 +427,7 @@ def test_workspace_renders_in_a_native_wisp_window(workspace: WorkspaceControlle
             time.sleep(0.01)
         app.processEvents()
 
-        assert window.windowTitle() == "Wisp Shared Workspace"
+        assert window.windowTitle() == "OpenWand Shared Workspace"
         assert window._last_state["entry_count"] == 2
         assert len(window._desktop.items_by_path) == 2
         assert window._desktop.items_by_path["notes/native.txt"].text(0) == "native.txt"
@@ -380,12 +445,12 @@ def test_workspace_renders_in_a_native_wisp_window(workspace: WorkspaceControlle
 
         window._request_file("notes/native.txt")
         while (
-            window._desktop._document.toPlainText() != "Native Wisp window"
+            window._desktop._document.toPlainText() != "Native OpenWand window"
             and time.monotonic() < deadline
         ):
             app.processEvents()
             time.sleep(0.01)
-        assert window._desktop._document.toPlainText() == "Native Wisp window"
+        assert window._desktop._document.toPlainText() == "Native OpenWand window"
         app.processEvents()
         assert window._desktop.pointer.isVisible()
         assert window._desktop.pointer.mode == "text"
@@ -427,8 +492,8 @@ def test_workspace_renders_in_a_native_wisp_window(workspace: WorkspaceControlle
         window.set_task_running(True)
         window.finish_agent_task({
             "final": "Agent stopped after reaching configured turn limit.",
-            "run_dir": r"C:\Temp\wisp-run",
-            "run_log_path": r"C:\Temp\wisp-run\run.log",
+            "run_dir": r"C:\Temp\openwand-run",
+            "run_log_path": r"C:\Temp\openwand-run\run.log",
             "file_tool_successes": 4,
             "file_tool_failures": 0,
             "file_tool_results": [
@@ -449,7 +514,7 @@ def test_workspace_renders_in_a_native_wisp_window(workspace: WorkspaceControlle
         assert "turn limit" in failure_item.summary.lower()
         assert "Successful file operations: 4" in failure_item.detail
         assert "create_file: preview.md" in failure_item.detail
-        assert r"Full run log: C:\Temp\wisp-run\run.log" in failure_item.detail
+        assert r"Full run log: C:\Temp\openwand-run\run.log" in failure_item.detail
 
         window.set_task_running(True)
         window.finish_agent_task({
@@ -728,7 +793,7 @@ def test_native_workspace_is_editable_and_marks_agent_file_changes(
         assert (scope / "existing.txt").read_text(encoding="utf-8") == "user and agent cowork\n"
 
         window._desktop._document.setPlainText("my unsaved follow-up\n")
-        (scope / "existing.txt").write_text("newer Wisp version\n", encoding="utf-8")
+        (scope / "existing.txt").write_text("newer OpenWand version\n", encoding="utf-8")
         window._request_file("existing.txt")
         deadline = time.monotonic() + 4.0
         while window._pending_file is not None and time.monotonic() < deadline:
@@ -810,7 +875,7 @@ def test_native_window_renders_rich_files_and_reports_background_checks(
     assert image.save(str(scope / "image.png"))
     writer = QPdfWriter(str(scope / "report.pdf"))
     painter = QPainter(writer)
-    painter.drawText(100, 100, "Wisp PDF")
+    painter.drawText(100, 100, "OpenWand PDF")
     painter.end()
 
     app = QApplication.instance() or QApplication([])
@@ -863,15 +928,15 @@ def test_native_window_renders_rich_files_and_reports_background_checks(
 def test_scoped_agent_file_changes_drive_collaborative_caret_and_typing(workspace: WorkspaceController) -> None:
     workspace.apply_viewer_control("task_started")
     scope = Path(workspace.task_scope()["scope_folder"])
-    (scope / "agent-note.txt").write_text("Wisp typed this in its isolated editor.", encoding="utf-8")
+    (scope / "agent-note.txt").write_text("OpenWand typed this in its isolated editor.", encoding="utf-8")
 
     state = workspace.snapshot()
 
     assert state["cursor"]["path"] == "agent-note.txt"
-    assert state["cursor"]["label"] == "Wisp agent"
+    assert state["cursor"]["label"] == "OpenWand agent"
     assert state["cursor"]["kind"] == "text"
-    assert state["operations"][-1]["message"] == "Wisp created file agent-note.txt"
-    assert workspace.read_text("agent-note.txt")["text"].startswith("Wisp typed")
+    assert state["operations"][-1]["message"] == "OpenWand created file agent-note.txt"
+    assert workspace.read_text("agent-note.txt")["text"].startswith("OpenWand typed")
 
 
 def test_addon_tools_have_a_narrow_surface() -> None:

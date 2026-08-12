@@ -43,7 +43,7 @@ class PrivacyModelUnavailable(RuntimeError):
 
 
 def model_dir() -> Path:
-    override = os.environ.get("WISP_PRIVACY_MODEL_DIR", "").strip()
+    override = os.environ.get("OPENWAND_PRIVACY_MODEL_DIR", "").strip()
     if override:
         return Path(override).expanduser()
     from core.system.paths import USER_DATA_DIR
@@ -85,10 +85,10 @@ def model_status(path: Path | None = None) -> dict[str, Any]:
 
 
 def remove_model(path: Path | None = None) -> bool:
-    """Remove only Wisp's dedicated privacy-model directory."""
+    """Remove only OpenWand's dedicated privacy-model directory."""
     global _MODEL_RUNTIME, _PREWARM_READY
     root = (path or model_dir()).resolve()
-    if root.name != "openai-privacy-filter" and not os.environ.get("WISP_PRIVACY_MODEL_DIR"):
+    if root.name != "openai-privacy-filter" and not os.environ.get("OPENWAND_PRIVACY_MODEL_DIR"):
         raise ValueError("refusing to remove an unexpected privacy model directory")
     with _PREWARM_LOCK:
         with _MODEL_LOCK:
@@ -207,7 +207,7 @@ def prewarm() -> dict[str, Any]:
     with _PREWARM_LOCK:
         if _PREWARM_READY:
             return {"ready": True, "cached": True, "elapsed_seconds": 0.0}
-        _runtime().detect("Wisp advanced privacy warmup.", source="warmup")
+        _runtime().detect("OpenWand advanced privacy warmup.", source="warmup")
         _PREWARM_READY = True
     return {
         "ready": True,

@@ -21,7 +21,7 @@ class MacOSSafetyTests(unittest.TestCase):
 
     def test_safe_mode_can_be_disabled_for_validation(self):
         with patch.object(macos_safety.sys, "platform", "darwin"), \
-             patch.dict(macos_safety.os.environ, {"WISP_MACOS_SAFE_MODE": "0"}, clear=True):
+             patch.dict(macos_safety.os.environ, {"OPENWAND_MACOS_SAFE_MODE": "0"}, clear=True):
             self.assertFalse(macos_safety.safe_mode_enabled())
             self.assertTrue(macos_safety.audio_enabled())
             self.assertTrue(macos_safety.fs_watcher_enabled())
@@ -31,11 +31,11 @@ class MacOSSafetyTests(unittest.TestCase):
 
     def test_safe_mode_has_targeted_opt_ins(self):
         env = {
-            "WISP_MACOS_ENABLE_AUDIO": "1",
-            "WISP_MACOS_ENABLE_FS_WATCHER": "1",
-            "WISP_MACOS_ENABLE_MEMORY_BACKGROUND_LLM": "1",
-            "WISP_MACOS_ENABLE_OPENAI_TOOLS": "1",
-            "WISP_MACOS_OPENAI_COMPAT_STREAMING": "1",
+            "OPENWAND_MACOS_ENABLE_AUDIO": "1",
+            "OPENWAND_MACOS_ENABLE_FS_WATCHER": "1",
+            "OPENWAND_MACOS_ENABLE_MEMORY_BACKGROUND_LLM": "1",
+            "OPENWAND_MACOS_ENABLE_OPENAI_TOOLS": "1",
+            "OPENWAND_MACOS_OPENAI_COMPAT_STREAMING": "1",
         }
         with patch.object(macos_safety.sys, "platform", "darwin"), \
              patch.dict(macos_safety.os.environ, env, clear=True):

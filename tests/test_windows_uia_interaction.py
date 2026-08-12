@@ -122,7 +122,7 @@ UIAC = SimpleNamespace(
 
 
 def _backend(*children: FakeElement):
-    root = FakeElement(runtime_id=1, name="Wisp test form", automation_id="window", control_type=50032)
+    root = FakeElement(runtime_id=1, name="OpenWand test form", automation_id="window", control_type=50032)
     root.descendants = list(children)
     uia = FakeUia(root, {child: root for child in children})
     return WindowsUIAutomationBackend(uia=uia, uiac=UIAC, mutation_process_ids={42}), root, uia
@@ -243,7 +243,7 @@ def test_native_mutation_is_disabled_until_the_exact_process_is_allowlisted() ->
         control_type=50004,
         patterns={10002: value},
     )
-    root = FakeElement(runtime_id=1, name="Wisp test form", automation_id="window", control_type=50032)
+    root = FakeElement(runtime_id=1, name="OpenWand test form", automation_id="window", control_type=50032)
     root.descendants = [field]
     backend = WindowsUIAutomationBackend(
         uia=FakeUia(root, {field: root}),

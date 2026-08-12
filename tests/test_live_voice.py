@@ -250,6 +250,19 @@ def test_barge_in_clears_playback_and_returns_to_listening():
     stop_and_join(session)
 
 
+def test_speaker_callback_emits_normalized_audio_amplitude():
+    pcm = b"\x00\x20\x00\xe0" * 32  # alternating +8192/-8192 PCM16 samples
+    session, events, _fake, streams = run_session([make_msg(data=pcm)])
+    events.wait_for(lambda e: e == ("state", {"state": "speaking"}))
+
+    out = bytearray(len(pcm))
+    streams.speaker_callback(out, len(pcm) // 2, None, None)
+
+    amplitude = events.wait_for_named("amplitude")["amplitude"]
+    assert 0.95 <= amplitude <= 1.0
+    stop_and_join(session)
+
+
 def test_go_away_emits_expiring_advisory():
     script = [make_msg(go_away=SimpleNamespace(time_left="10s"))]
     session, events, _fake, _streams = run_session(script)

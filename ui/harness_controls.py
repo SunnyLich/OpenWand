@@ -88,7 +88,7 @@ class _NoRepeatComboBox(QComboBox):
 
 
 class HarnessControlsDialog(QDialog):
-    """Provider-specific controls that apply to the next Wisp turn."""
+    """Provider-specific controls that apply to the next OpenWand turn."""
 
     applied = Signal(object)
 
@@ -108,7 +108,7 @@ class HarnessControlsDialog(QDialog):
 
         note = QLabel(
             t(
-                "Wisp shows every thought, plan, tool action, approval, and reply event "
+                "OpenWand shows every thought, plan, tool action, approval, and reply event "
                 "the provider exposes. Private hidden chain-of-thought is not available."
             )
         )
@@ -128,7 +128,7 @@ class HarnessControlsDialog(QDialog):
             self.model.addItem(label, model)
         model_value = getattr(
             config,
-            "WISP_CLAUDE_MODEL" if self.provider == "claude" else "WISP_CODEX_MODEL",
+            "OPENWAND_CLAUDE_MODEL" if self.provider == "claude" else "OPENWAND_CODEX_MODEL",
             "",
         )
         _select_data(self.model, str(model_value or ""))
@@ -144,7 +144,7 @@ class HarnessControlsDialog(QDialog):
         self.workspace.setToolTip(t("Folder the agent is allowed to manipulate"))
         workspace_value = getattr(
             config,
-            "WISP_CLAUDE_WORKSPACE" if self.provider == "claude" else "WISP_CODEX_WORKSPACE",
+            "OPENWAND_CLAUDE_WORKSPACE" if self.provider == "claude" else "OPENWAND_CODEX_WORKSPACE",
             "",
         )
         self.workspace.setText(str(workspace_value or ""))
@@ -162,7 +162,7 @@ class HarnessControlsDialog(QDialog):
             bool(
                 getattr(
                     config,
-                    "WISP_CLAUDE_FAST_MODE" if self.provider == "claude" else "WISP_CODEX_FAST_MODE",
+                    "OPENWAND_CLAUDE_FAST_MODE" if self.provider == "claude" else "OPENWAND_CODEX_FAST_MODE",
                     False,
                 )
             )
@@ -178,9 +178,9 @@ class HarnessControlsDialog(QDialog):
             self.effort.addItem(t(value.title()), value)
         effort_value = getattr(
             config,
-            "WISP_CLAUDE_REASONING_EFFORT"
+            "OPENWAND_CLAUDE_REASONING_EFFORT"
             if self.provider == "claude"
-            else "WISP_CODEX_REASONING_EFFORT",
+            else "OPENWAND_CODEX_REASONING_EFFORT",
             "high",
         )
         _select_data(self.effort, str(effort_value or ""))
@@ -195,9 +195,9 @@ class HarnessControlsDialog(QDialog):
         self.reasoning.addItem(t("Off"), "none")
         summary_value = getattr(
             config,
-            "WISP_CLAUDE_REASONING_SUMMARY"
+            "OPENWAND_CLAUDE_REASONING_SUMMARY"
             if self.provider == "claude"
-            else "WISP_CODEX_REASONING_SUMMARY",
+            else "OPENWAND_CODEX_REASONING_SUMMARY",
             "summarized" if self.provider == "claude" else "detailed",
         )
         _select_data(self.reasoning, str(summary_value or ""))
@@ -210,9 +210,9 @@ class HarnessControlsDialog(QDialog):
         self.approval.addItem(t("Plan only (read-only)"), "read_only")
         approval_value = getattr(
             config,
-            "WISP_CLAUDE_APPROVAL_MODE"
+            "OPENWAND_CLAUDE_APPROVAL_MODE"
             if self.provider == "claude"
-            else "WISP_CODEX_APPROVAL_MODE",
+            else "OPENWAND_CODEX_APPROVAL_MODE",
             "ask",
         )
         _select_data(self.approval, str(approval_value or "ask"))
@@ -276,7 +276,7 @@ class HarnessControlsDialog(QDialog):
             self.workspace.setText(selected)
 
     def _save(self) -> None:
-        prefix = "WISP_CLAUDE" if self.provider == "claude" else "WISP_CODEX"
+        prefix = "OPENWAND_CLAUDE" if self.provider == "claude" else "OPENWAND_CODEX"
         values = {
             f"{prefix}_MODEL": self._model_value(),
             f"{prefix}_WORKSPACE": self.workspace.text().strip(),
@@ -287,7 +287,7 @@ class HarnessControlsDialog(QDialog):
         }
         write_env_file(REPO_ROOT / ".env", values)
         config.reload()
-        # Close before notifying the rest of Wisp.  The applied signal is
+        # Close before notifying the rest of OpenWand.  The applied signal is
         # synchronous and its receivers reload the UI and worker settings; if
         # that work runs while this dialog is still visible, the controls can
         # appear to snap back even though the new values were saved correctly.

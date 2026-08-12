@@ -21,6 +21,7 @@ from core.harness_clients.base import (
     emit,
     normalized_cwd,
 )
+from runtime import VERSION
 
 
 class CodexAppServerError(RuntimeError):
@@ -35,18 +36,18 @@ _ISOLATED_CONFIG = 'history.persistence = "none"\n'
 
 
 def _codex_executable() -> str:
-    configured = os.getenv("WISP_CODEX_CLI", "").strip()
+    configured = os.getenv("OPENWAND_CODEX_CLI", "").strip()
     executable = configured or shutil.which("codex") or ""
     if not executable:
         raise CodexAppServerError(
-            "ChatGPT is unavailable. Install the Codex CLI or set WISP_CODEX_CLI to its executable."
+            "ChatGPT is unavailable. Install the Codex CLI or set OPENWAND_CODEX_CLI to its executable."
         )
     return executable
 
 
 def _isolated_codex_home() -> Path:
-    """Return Wisp's private Codex state root, creating it when needed."""
-    configured = os.getenv("WISP_CODEX_HOME", "").strip()
+    """Return OpenWand's private Codex state root, creating it when needed."""
+    configured = os.getenv("OPENWAND_CODEX_HOME", "").strip()
     if configured:
         home = Path(configured).expanduser()
     else:
@@ -62,7 +63,7 @@ def _isolated_codex_home() -> Path:
 
 
 def _codex_environment_overrides() -> dict[str, str]:
-    """Return state-location overrides shared by every Wisp Codex command."""
+    """Return state-location overrides shared by every OpenWand Codex command."""
     home = str(_isolated_codex_home())
     return {
         "CODEX_HOME": home,
@@ -71,7 +72,7 @@ def _codex_environment_overrides() -> dict[str, str]:
 
 
 def _codex_environment() -> dict[str, str]:
-    """Build a child environment without changing Wisp or the user's shell."""
+    """Build a child environment without changing OpenWand or the user's shell."""
     environment = os.environ.copy()
     environment.update(_codex_environment_overrides())
     return environment
@@ -206,6 +207,9 @@ class _Client:
             elif item_type == "commandExecution":
                 emit(self.on_event, "progress", f"Running: {item.get('command') or 'command'}")
             elif item_type == "fileChange":
+                recorder = getattr(self, "_workspace_change_recorder", None)
+                if recorder is not None:
+                    recorder.capture_changes(item.get("changes"))
                 emit(self.on_event, "progress", "Preparing file changes…")
             elif item_type not in {"agentMessage", "reasoning", "plan", "userMessage"}:
                 detail = (
@@ -335,7 +339,7 @@ def _initialize_client(
     client = _Client(workdir, on_event, approval_callback)
     try:
         client.request("initialize", {
-            "clientInfo": {"name": "wisp", "title": "Wisp", "version": "0.10.2"},
+            "clientInfo": {"name": "openwand", "title": "OpenWand", "version": VERSION},
             "capabilities": {"experimentalApi": True},
         })
         client.send({"method": "initialized", "params": {}})
@@ -350,7 +354,7 @@ def _persistent_client(
     on_event: EventCallback | None,
     approval_callback: ApprovalCallback | None,
 ) -> tuple[_Client, bool]:
-    """Return the Wisp-lifetime app-server, creating it when necessary.
+    """Return the OpenWand-lifetime app-server, creating it when necessary.
 
     The caller must hold ``_PERSISTENT_CLIENT_LOCK`` for the complete turn;
     ``_Client`` owns one JSONL stream and cannot safely interleave reads from
@@ -422,11 +426,11 @@ def _image_input_items(images: Sequence[str]) -> list[dict[str, Any]]:
 
 
 def _configured_reasoning_effort() -> str:
-    """Read Wisp's live reasoning setting without coupling config import order."""
+    """Read OpenWand's live reasoning setting without coupling config import order."""
     try:
         import config
 
-        value = getattr(config, "WISP_CODEX_REASONING_EFFORT", "high")
+        value = getattr(config, "OPENWAND_CODEX_REASONING_EFFORT", "high")
     except (ImportError, AttributeError):
         value = os.getenv("CHAT_REASONING_EFFORT", "high")
     return str(value or "").strip().lower()
@@ -519,20 +523,20 @@ def run_codex(
     try:
         import config
 
-        model = str(getattr(config, "WISP_CODEX_MODEL", "") or "")
-        fast_mode = bool(getattr(config, "WISP_CODEX_FAST_MODE", False))
-        approval_mode = str(getattr(config, "WISP_CODEX_APPROVAL_MODE", "ask") or "ask")
+        model = str(getattr(config, "OPENWAND_CODEX_MODEL", "") or "")
+        fast_mode = bool(getattr(config, "OPENWAND_CODEX_FAST_MODE", False))
+        approval_mode = str(getattr(config, "OPENWAND_CODEX_APPROVAL_MODE", "ask") or "ask")
         reasoning_summary = str(
-            getattr(config, "WISP_CODEX_REASONING_SUMMARY", _REASONING_SUMMARY)
+            getattr(config, "OPENWAND_CODEX_REASONING_SUMMARY", _REASONING_SUMMARY)
             or _REASONING_SUMMARY
         )
-        system_prompt = str(getattr(config, "WISP_CODEX_SYSTEM_PROMPT", "") or "")
+        system_prompt = str(getattr(config, "OPENWAND_CODEX_SYSTEM_PROMPT", "") or "")
     except (ImportError, AttributeError):
-        model = os.getenv("WISP_CODEX_MODEL", "")
-        fast_mode = os.getenv("WISP_CODEX_FAST_MODE", "").lower() in {"1", "true", "yes", "on"}
-        approval_mode = os.getenv("WISP_CODEX_APPROVAL_MODE", "ask")
-        reasoning_summary = os.getenv("WISP_CODEX_REASONING_SUMMARY", _REASONING_SUMMARY)
-        system_prompt = os.getenv("WISP_CODEX_SYSTEM_PROMPT", "")
+        model = os.getenv("OPENWAND_CODEX_MODEL", "")
+        fast_mode = os.getenv("OPENWAND_CODEX_FAST_MODE", "").lower() in {"1", "true", "yes", "on"}
+        approval_mode = os.getenv("OPENWAND_CODEX_APPROVAL_MODE", "ask")
+        reasoning_summary = os.getenv("OPENWAND_CODEX_REASONING_SUMMARY", _REASONING_SUMMARY)
+        system_prompt = os.getenv("OPENWAND_CODEX_SYSTEM_PROMPT", "")
     with _PERSISTENT_CLIENT_LOCK:
         client: _Client | None = None
         try:
@@ -542,6 +546,9 @@ def run_codex(
             if not hasattr(client, "_attachments"):
                 client._attachments = []
             client._attachments.clear()
+            from core.workspace_changes import WorkspaceChangeRecorder
+
+            client._workspace_change_recorder = WorkspaceChangeRecorder(workdir)
             client._model_thinking_announced = False
             emit(on_event, "status", "Opening conversation in ChatGPT...")
             thread_id = str(session_id or "").strip()
@@ -589,6 +596,7 @@ def run_codex(
                 status = client.handle(client.read())
                 if status in {"completed", "interrupted"}:
                     break
+            workspace_changes = client._workspace_change_recorder.finish()
             return HarnessResult(
                 provider="codex",
                 text="".join(client._reply_parts),
@@ -596,6 +604,7 @@ def run_codex(
                 cwd=str(workdir),
                 backend=client.backend,
                 attachments=tuple(dict(item) for item in client._attachments),
+                workspace_changes=workspace_changes or None,
             )
         except Exception:
             # A protocol or turn failure can leave unread JSONL messages behind.

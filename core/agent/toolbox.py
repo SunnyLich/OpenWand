@@ -206,8 +206,8 @@ class AgentToolbox:
         env = None
         if self._is_git_commit_command(clean_args):
             env = os.environ.copy()
-            env.setdefault("GIT_AUTHOR_NAME", "Wisp Agent")
-            env.setdefault("GIT_AUTHOR_EMAIL", "wisp-agent@example.invalid")
+            env.setdefault("GIT_AUTHOR_NAME", "OpenWand Agent")
+            env.setdefault("GIT_AUTHOR_EMAIL", "openwand-agent@example.invalid")
             env.setdefault("GIT_COMMITTER_NAME", env["GIT_AUTHOR_NAME"])
             env.setdefault("GIT_COMMITTER_EMAIL", env["GIT_AUTHOR_EMAIL"])
 

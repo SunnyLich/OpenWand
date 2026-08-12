@@ -56,7 +56,7 @@ def send_keys(combo: str) -> None:
     Windows: delegates to the *keyboard* library (pywin32-based injection).
     macOS:   first delegates simple combos to /usr/bin/osascript so Python does
              not post CGEvents inside the Qt process. The legacy PyObjC CGEvent
-             fallback is opt-in via WISP_MACOS_ALLOW_PYOBJC_KEYS=1.
+             fallback is opt-in via OPENWAND_MACOS_ALLOW_PYOBJC_KEYS=1.
     Linux:   uses pynput.keyboard.Controller via Xlib — no root required.
     """
     if IS_WIN:
@@ -69,7 +69,7 @@ def send_keys(combo: str) -> None:
 
         if macos_native.send_key_combo(combo):
             return
-        if os.environ.get("WISP_MACOS_ALLOW_PYOBJC_KEYS") == "1":
+        if os.environ.get("OPENWAND_MACOS_ALLOW_PYOBJC_KEYS") == "1":
             _send_keys_macos_pyobjc(combo)
     else:
         _send_keys_pynput(combo)

@@ -132,7 +132,7 @@ def capture_presentation_snapshot(
         raise ActionUnavailableError("The presentation API did not return a slide list.")
     if len(raw_slides) > MAX_SLIDES:
         raise ActionUnavailableError(
-            f"This presentation has {len(raw_slides)} slides; Wisp's first bounded action supports {MAX_SLIDES}."
+            f"This presentation has {len(raw_slides)} slides; OpenWand's first bounded action supports {MAX_SLIDES}."
         )
     slides = tuple(
         SlideSnapshot.from_api_payload(value, index)
@@ -145,7 +145,7 @@ def capture_presentation_snapshot(
         len(slide.title) + len(slide.body) + len(slide.speaker_notes) for slide in slides
     )
     if total_chars > MAX_TOTAL_TEXT_CHARS:
-        raise ActionUnavailableError("The presentation text exceeds Wisp's bounded snapshot limit.")
+        raise ActionUnavailableError("The presentation text exceeds OpenWand's bounded snapshot limit.")
     selected = str(selected_slide_id or payload.get("selected_slide_id") or "").strip()
     if selected and not any(slide.slide_id == selected for slide in slides):
         raise ActionUnavailableError("The selected slide is no longer present in the presentation.")
@@ -172,7 +172,7 @@ def capture_presentation_snapshot(
 def _bounded_text(value: Any, limit: int, label: str) -> str:
     text = str(value or "")
     if len(text) > limit:
-        raise ActionUnavailableError(f"The {label} exceeds Wisp's {limit:,}-character limit.")
+        raise ActionUnavailableError(f"The {label} exceeds OpenWand's {limit:,}-character limit.")
     return text
 
 

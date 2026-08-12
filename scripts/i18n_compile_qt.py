@@ -1,4 +1,4 @@
-"""Compile Wisp Qt Linguist catalogs."""
+"""Compile OpenWand Qt Linguist catalogs."""
 from __future__ import annotations
 
 import argparse
@@ -27,7 +27,7 @@ def compile_qm(language: str) -> None:
     lrelease = _lrelease_path()
     if not lrelease:
         raise RuntimeError("Could not find pyside6-lrelease or lrelease")
-    ts_path = QT_LOCALES_DIR / f"wisp_{language}.ts"
+    ts_path = QT_LOCALES_DIR / f"openwand_{language}.ts"
     if not ts_path.exists():
         raise FileNotFoundError(ts_path)
     subprocess.run([lrelease, str(ts_path)], check=True)

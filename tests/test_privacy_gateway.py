@@ -43,6 +43,21 @@ def test_builtin_detector_rejects_invalid_card_and_iban_candidates():
     assert "iban" not in _categories("Reference GB82 WEST 1234 5698 7654 33")
 
 
+def test_builtin_category_switches_control_general_redaction_groups(monkeypatch):
+    import config
+
+    text = "Email alex@example.com with password=super-secret and https://example.com/private"
+    monkeypatch.setattr(config, "PRIVACY_HIDE_CONTACT_DETAILS", False, raising=False)
+    monkeypatch.setattr(config, "PRIVACY_HIDE_SECRETS", True, raising=False)
+    monkeypatch.setattr(config, "PRIVACY_HIDE_URLS", False, raising=False)
+
+    categories = _categories(text)
+
+    assert "email" not in categories
+    assert "url" not in categories
+    assert "credential" in categories
+
+
 def test_custom_patterns_use_their_stable_sanitized_label(monkeypatch):
     import config
 

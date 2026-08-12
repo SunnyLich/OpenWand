@@ -1,4 +1,4 @@
-# Runs the Wisp testlab (real-integration release gate) on macOS and Linux
+# Runs the OpenWand testlab (real-integration release gate) on macOS and Linux
 # runners: real worker-stack boot, real app process boot, offscreen GUI, the
 # macOS native crash harnesses, and - on the deep tier - fresh STT/TTS installs
 # through the real installer into a scratch dir with real inference after.

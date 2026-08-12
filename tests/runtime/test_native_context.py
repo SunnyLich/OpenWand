@@ -54,7 +54,7 @@ def test_windows_scrolled_exact_range_hides_without_random_fallback(monkeypatch)
     monkeypatch.setattr(
         native_host,
         "_win_caret_screen_rect",
-        lambda _hwnd=0: pytest.fail("scroll refresh must not use Wisp's current caret"),
+        lambda _hwnd=0: pytest.fail("scroll refresh must not use OpenWand's current caret"),
     )
     monkeypatch.setattr(
         native_host,
@@ -74,6 +74,38 @@ def test_windows_scrolled_exact_range_hides_without_random_fallback(monkeypatch)
         "source": "uia",
         "selection_rect": {},
     }
+
+
+def test_two_annotations_keep_their_own_screen_positions(monkeypatch):
+    range_a = object()
+    range_b = object()
+    rect_a = {"left": 100, "top": 200, "width": 80, "height": 18}
+    rect_b = {"left": 500, "top": 600, "width": 90, "height": 18}
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(
+        native_host,
+        "_focus_cache",
+        {"token": 202, "kind": "win-uia", "range": range_b},
+    )
+    monkeypatch.setattr(
+        native_host,
+        "_focus_anchors",
+        {
+            101: {"token": 101, "kind": "win-uia", "range": range_a},
+            202: {"token": 202, "kind": "win-uia", "range": range_b},
+        },
+    )
+    monkeypatch.setattr(
+        native_host,
+        "_win_uia_selection_screen_rect",
+        lambda text_range: rect_a if text_range is range_a else rect_b,
+    )
+
+    annotation_a = native_host.selection_anchor_resolve(focus_token=101, allow_mouse=False)
+    annotation_b = native_host.selection_anchor_resolve(focus_token=202, allow_mouse=False)
+
+    assert annotation_a["selection_rect"] == rect_a
+    assert annotation_b["selection_rect"] == rect_b
 
 
 def test_windows_classic_richedit_uses_cached_uia_range_for_geometry(monkeypatch):
@@ -163,6 +195,18 @@ def test_windows_uia_selection_uses_last_visible_screen_rectangle(monkeypatch):
         "width": 90.0,
         "height": 20.0,
     }
+
+
+def test_windows_uia_selection_rejects_clipped_viewport_sliver(monkeypatch):
+    """An offscreen Monaco range can appear as a 2 px strip at the editor edge."""
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+
+    class FakeRange:
+        @staticmethod
+        def GetBoundingRectangles():
+            return [216.0, 172.0, 200.0, 2.0]
+
+    assert native_host._win_uia_selection_screen_rect(FakeRange()) == {}
 
 
 def test_capture_worker_failure_matrix_is_in_band(tmp_path, monkeypatch):
@@ -1202,13 +1246,34 @@ def test_selection_capture_failure_matrix_returns_no_stale_text(monkeypatch):
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows native context behavior is tested on Windows")
-def test_win_context_window_skips_wisp_foreground(monkeypatch):
+def test_win_context_window_skips_openwand_foreground(monkeypatch):
     monkeypatch.setattr(native_host, "IS_WIN", True)
     monkeypatch.setattr(native_host, "_win_is_external_context_window", lambda hwnd: hwnd == 777)
     monkeypatch.setattr(native_host, "_win_find_external_context_window", lambda _hwnd: 777)
-    monkeypatch.setattr(native_host, "_win_window_title", lambda hwnd: "Wisp" if hwnd == 111 else "Chrome")
+    monkeypatch.setattr(native_host, "_win_window_title", lambda hwnd: "OpenWand" if hwnd == 111 else "Chrome")
 
     assert native_host._win_context_window_id(111) == 777
+
+
+def test_win_openwand_window_detection_uses_supervisor_process_tree(monkeypatch):
+    """OpenWand-owned helper windows must not become foreground context targets."""
+    monkeypatch.setenv("OPENWAND_SUPERVISOR_PID", "100")
+    monkeypatch.setattr(native_host, "_win_window_pid", lambda _hwnd: 300)
+    monkeypatch.setattr(native_host, "_win_window_title", lambda _hwnd: "AI Assistant Icon - OpenWand")
+    monkeypatch.setattr(native_host, "_win_process_name", lambda _pid: "python.exe")
+
+    class Process:
+        def __init__(self, pid):
+            assert pid == 300
+
+        @staticmethod
+        def parents():
+            return [type("Parent", (), {"pid": 200})(), type("Parent", (), {"pid": 100})()]
+
+    monkeypatch.setattr("psutil.Process", Process)
+
+    assert native_host._win_is_own_window_pid(300) is True
+    assert native_host._win_is_openwand_ui_window(999) is True
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows native context behavior is tested on Windows")
@@ -1404,14 +1469,14 @@ def test_linux_active_app_includes_real_process_name(monkeypatch):
     assert native_host._last_context_window_debug["raw_process"] == "kwrite"
 
 
-def test_linux_active_app_skips_wisp_own_window(monkeypatch):
-    """Verify the Linux active-app lookup corrects past Wisp's own overlay window."""
+def test_linux_active_app_skips_openwand_own_window(monkeypatch):
+    """Verify the Linux active-app lookup corrects past OpenWand's own overlay window."""
     monkeypatch.setattr(native_host, "IS_WIN", False)
     monkeypatch.setattr(native_host, "IS_MAC", False)
 
     import core.platform_utils as platform_utils
 
-    titles = {111: "AI Assistant Icon \u2014 Wisp", 222: "Example \u2014 Mozilla Firefox"}
+    titles = {111: "AI Assistant Icon \u2014 OpenWand", 222: "Example \u2014 Mozilla Firefox"}
     pids = {111: 999, 222: 1234}
     monkeypatch.setattr(platform_utils, "get_foreground_window", lambda: 111)
     monkeypatch.setattr(platform_utils, "get_window_title", lambda wid: titles.get(wid, ""))

@@ -22,7 +22,7 @@ from ui.snip_overlay import SnipOverlay
 
 @pytest.fixture
 def qapp():
-    return QApplication.instance() or QApplication(["wisp-snip-tests"])
+    return QApplication.instance() or QApplication(["openwand-snip-tests"])
 
 
 class _FakeMouse:

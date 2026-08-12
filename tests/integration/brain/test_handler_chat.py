@@ -6,13 +6,13 @@ import threading
 import types
 
 import pytest
-from wisp_brain import handlers
+from openwand_brain import handlers
 
 
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch):
     """Verify offline behavior."""
-    monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
+    monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
 
 
 def _chunks(events):
@@ -199,7 +199,7 @@ def test_chat_harness_streams_thought_and_reply_and_returns_session(record_ctx, 
     from core.harness_clients.base import HarnessEvent, HarnessResult
 
     # IPC selection must win over a stale value in the long-lived brain worker.
-    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "wisp", raising=False)
+    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "openwand", raising=False)
     monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", False)
 
     def fake_run(provider, prompt, **kwargs):
@@ -304,7 +304,7 @@ def test_chat_harness_returns_image_when_the_turn_has_no_text(record_ctx, monkey
     from core import harness_clients
     from core.harness_clients.base import HarnessEvent, HarnessResult
 
-    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "wisp", raising=False)
+    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "openwand", raising=False)
     monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", False)
     attachment = {
         "kind": "image",
@@ -351,8 +351,8 @@ def test_chat_harness_returns_image_when_the_turn_has_no_text(record_ctx, monkey
     assert done["attachments"] == [attachment]
 
 
-def test_wisp_owned_harness_turn_sends_full_history_without_resuming(record_ctx, monkeypatch):
-    """Wisp ownership keeps Wisp canonical and clears an older provider link."""
+def test_openwand_owned_harness_turn_sends_full_history_without_resuming(record_ctx, monkeypatch):
+    """OpenWand ownership keeps OpenWand canonical and clears an older provider link."""
     import config
     from core import harness_clients
     from core.harness_clients.base import HarnessResult
@@ -377,7 +377,7 @@ def test_wisp_owned_harness_turn_sends_full_history_without_resuming(record_ctx,
         ],
         memory_enabled=False,
         harness_provider="codex",
-        conversation_owner="wisp",
+        conversation_owner="openwand",
         harness_session={"provider": "codex", "session_id": "thread-old", "cwd": "/repo"},
     )
 
@@ -385,13 +385,13 @@ def test_wisp_owned_harness_turn_sends_full_history_without_resuming(record_ctx,
         "provider": "codex",
         "session_id": "",
         "cwd": "/repo",
-        "conversation_owner": "wisp",
+        "conversation_owner": "openwand",
         "clear_session": True,
     }
 
 
-@pytest.mark.parametrize("provider", ["wisp", "codex", "claude"])
-@pytest.mark.parametrize("owner", ["wisp", "agent"])
+@pytest.mark.parametrize("provider", ["openwand", "codex", "claude"])
+@pytest.mark.parametrize("owner", ["openwand", "agent"])
 def test_chat_execution_provider_by_conversation_owner_matrix(
     record_ctx, monkeypatch, provider, owner
 ):
@@ -411,7 +411,7 @@ def test_chat_execution_provider_by_conversation_owner_matrix(
     monkeypatch.setattr(
         handlers,
         "_stream_chat_reply",
-        lambda *_args, **_kwargs: iter(["wisp answer"]),
+        lambda *_args, **_kwargs: iter(["openwand answer"]),
     )
     events, ctx = record_ctx()
     result = handlers.HANDLERS["brain.chat"](
@@ -427,21 +427,21 @@ def test_chat_execution_provider_by_conversation_owner_matrix(
         harness_session={"provider": provider, "session_id": "old-session", "cwd": "/repo"},
     )
 
-    if provider == "wisp":
+    if provider == "openwand":
         assert harness_calls == []
-        assert result["text"] == "wisp answer"
+        assert result["text"] == "openwand answer"
         assert "harness" not in result
     else:
         assert len(harness_calls) == 1
         selected_provider, prompt, kwargs = harness_calls[0]
         assert selected_provider == provider
         assert kwargs["session_id"] == ("old-session" if owner == "agent" else "")
-        assert ("Earlier question" in prompt) is (owner == "wisp")
+        assert ("Earlier question" in prompt) is (owner == "openwand")
         assert "Continue now" in prompt
         assert result["text"] == f"{provider} answer"
         assert result["harness"]["conversation_owner"] == owner
         assert result["harness"]["session_id"] == ("new-session" if owner == "agent" else "")
-        assert result["harness"]["clear_session"] is (owner == "wisp")
+        assert result["harness"]["clear_session"] is (owner == "openwand")
     assert [data["text"] for event, data in events if event == "reply.done"] == [result["text"]]
 
 
@@ -456,11 +456,21 @@ def test_changing_harness_workspace_starts_a_clean_provider_session(
     from core.harness_clients.base import HarnessResult
 
     monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", False)
+    workspace_changes = {
+        "source": "harness_file_events",
+        "files": [{"path": "module.py", "added": 1, "deleted": 1}],
+    }
 
     def fake_run(_provider, _prompt, **kwargs):
         assert kwargs["session_id"] == ""
         assert kwargs["cwd"] == str(tmp_path)
-        return HarnessResult("codex", "Done", "thread-new", str(tmp_path))
+        return HarnessResult(
+            "codex",
+            "Done",
+            "thread-new",
+            str(tmp_path),
+            workspace_changes=workspace_changes,
+        )
 
     monkeypatch.setattr(harness_clients, "run_harness", fake_run)
     _events, ctx = record_ctx()
@@ -476,6 +486,7 @@ def test_changing_harness_workspace_starts_a_clean_provider_session(
 
     assert result["harness"]["session_id"] == "thread-new"
     assert result["harness"]["cwd"] == str(tmp_path)
+    assert result["harness"]["workspace_changes"] == workspace_changes
 
 
 def test_chat_uses_addon_modified_final_response(record_ctx, monkeypatch):

@@ -35,7 +35,7 @@ def build_create_slide_plan(
 def build_restyle_slide_plan(snapshot: PresentationSnapshot, *, preset: str) -> ActionPlan:
     """Build a content-preserving preset change for the selected slide."""
     if not snapshot.selected_slide_id:
-        raise ValueError("Select one slide before asking Wisp to restyle it.")
+        raise ValueError("Select one slide before asking OpenWand to restyle it.")
     return _one_operation_plan(
         snapshot,
         RESTYLE_SLIDE,

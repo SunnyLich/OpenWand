@@ -6,7 +6,7 @@
   "workflows": [
     {
       "function_id": "F001",
-      "function": "Launch the packaged Wisp app.",
+      "function": "Launch the packaged OpenWand app.",
       "failure_refs": [
         1,
         2,
@@ -22,7 +22,7 @@
     },
     {
       "function_id": "F002",
-      "function": "Launch Wisp from the source checkout and development launchers.",
+      "function": "Launch OpenWand from the source checkout and development launchers.",
       "failure_refs": [
         10,
         11,
@@ -38,7 +38,7 @@
     },
     {
       "function_id": "F003",
-      "function": "Prevent a second Wisp instance from running at the same time.",
+      "function": "Prevent a second OpenWand instance from running at the same time.",
       "failure_refs": [
         19,
         20,
@@ -228,12 +228,12 @@
         111
       ],
       "related_test_node_ids": [
-        "tests/runtime/test_supervisor_ipc.py::test_wisp_supervisor_starts_real_app_worker_process_set"
+        "tests/runtime/test_supervisor_ipc.py::test_openwand_supervisor_starts_real_app_worker_process_set"
       ]
     },
     {
       "function_id": "F017",
-      "function": "Display a floating always-on-top Wisp icon.",
+      "function": "Display a floating always-on-top OpenWand icon.",
       "failure_refs": [
         112,
         113,
@@ -274,7 +274,7 @@
     },
     {
       "function_id": "F020",
-      "function": "Auto-hide the icon when Wisp is inactive.",
+      "function": "Auto-hide the icon when OpenWand is inactive.",
       "failure_refs": [
         132,
         133,
@@ -381,7 +381,7 @@
     },
     {
       "function_id": "F028",
-      "function": "Quit Wisp from the tray menu.",
+      "function": "Quit OpenWand from the tray menu.",
       "failure_refs": [
         183,
         184,
@@ -393,7 +393,7 @@
     },
     {
       "function_id": "F029",
-      "function": "Start Wisp automatically when the user signs in.",
+      "function": "Start OpenWand automatically when the user signs in.",
       "failure_refs": [
         188,
         189,
@@ -409,7 +409,7 @@
     },
     {
       "function_id": "F030",
-      "function": "Shut workers down cleanly when Wisp exits.",
+      "function": "Shut workers down cleanly when OpenWand exits.",
       "failure_refs": [
         197,
         198,
@@ -422,7 +422,7 @@
         205
       ],
       "related_test_node_ids": [
-        "tests/runtime/test_supervisor_ipc.py::test_wisp_supervisor_starts_real_app_worker_process_set",
+        "tests/runtime/test_supervisor_ipc.py::test_openwand_supervisor_starts_real_app_worker_process_set",
         "tests/runtime/test_supervisor_ipc.py::test_supervisor_shutdown_continues_after_one_worker_raises"
       ]
     },
@@ -639,7 +639,7 @@
     },
     {
       "function_id": "F047",
-      "function": "Keep an answer in Wisp without pasting it back.",
+      "function": "Keep an answer in OpenWand without pasting it back.",
       "failure_refs": [
         305,
         306,
@@ -1163,7 +1163,7 @@
     },
     {
       "function_id": "F087",
-      "function": "Drop files or images onto Wisp as context.",
+      "function": "Drop files or images onto OpenWand as context.",
       "failure_refs": [
         543,
         544,
@@ -2484,7 +2484,7 @@
     },
     {
       "function_id": "F186",
-      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into Wisp.",
+      "function": "Pull local ChatGPT/Codex and Claude Code transcripts into OpenWand.",
       "failure_refs": [
         1171,
         1172,
@@ -2516,7 +2516,7 @@
     },
     {
       "function_id": "F188",
-      "function": "Keep Wisp, ChatGPT, and Claude conversation namespaces distinct.",
+      "function": "Keep OpenWand, ChatGPT, and Claude conversation namespaces distinct.",
       "failure_refs": [
         1189,
         1190,
@@ -2532,7 +2532,7 @@
     },
     {
       "function_id": "F189",
-      "function": "Continue a conversation using Wisp's own model engine.",
+      "function": "Continue a conversation using OpenWand's own model engine.",
       "failure_refs": [
         1198,
         1199,
@@ -2564,7 +2564,7 @@
     },
     {
       "function_id": "F191",
-      "function": "Choose whether continued messages belong to Wisp or the selected agent.",
+      "function": "Choose whether continued messages belong to OpenWand or the selected agent.",
       "failure_refs": [
         1216,
         1217,
@@ -2580,7 +2580,7 @@
     },
     {
       "function_id": "F192",
-      "function": "Push new Wisp turns back into their source transcript after confirmation.",
+      "function": "Push new OpenWand turns back into their source transcript after confirmation.",
       "failure_refs": [
         1225,
         1226,
@@ -2612,7 +2612,7 @@
     },
     {
       "function_id": "F194",
-      "function": "Export a Wisp conversation as a new ChatGPT conversation.",
+      "function": "Export a OpenWand conversation as a new ChatGPT conversation.",
       "failure_refs": [
         1243,
         1244,
@@ -2628,7 +2628,7 @@
     },
     {
       "function_id": "F195",
-      "function": "Export a Wisp conversation as a new Claude conversation.",
+      "function": "Export a OpenWand conversation as a new Claude conversation.",
       "failure_refs": [
         1252,
         1253,
@@ -2892,7 +2892,7 @@
     },
     {
       "function_id": "F213",
-      "function": "Connect and clear GitHub Copilot credentials.",
+      "function": "Store and clear GitHub Copilot provider credentials.",
       "failure_refs": [
         1390,
         1391,
@@ -2903,7 +2903,7 @@
     },
     {
       "function_id": "F214",
-      "function": "Test the GitHub Copilot connection.",
+      "function": "Check GitHub Copilot credential readiness through the app API.",
       "failure_refs": [
         1394,
         1395,
@@ -3018,7 +3018,7 @@
     },
     {
       "function_id": "F223",
-      "function": "Pick a saved custom endpoint from the Endpoints menu.",
+      "function": "Choose a preset or custom provider endpoint.",
       "failure_refs": [
         1446,
         1447,
@@ -3655,7 +3655,7 @@
     },
     {
       "function_id": "F269",
-      "function": "Use Wisp, ChatGPT, or Claude Agent as the conversation execution engine.",
+      "function": "Use OpenWand, ChatGPT, or Claude Agent as the conversation execution engine.",
       "failure_refs": [
         1761,
         1762,
@@ -3669,7 +3669,7 @@
     },
     {
       "function_id": "F270",
-      "function": "Choose Wisp or the selected agent as conversation owner.",
+      "function": "Choose OpenWand or the selected agent as conversation owner.",
       "failure_refs": [
         1768,
         1769,
@@ -3683,7 +3683,7 @@
     },
     {
       "function_id": "F271",
-      "function": "Edit separate system prompts for Wisp, ChatGPT, and Claude conversations.",
+      "function": "Edit separate system prompts for OpenWand, ChatGPT, and Claude conversations.",
       "failure_refs": [
         1775,
         1776,
@@ -4197,7 +4197,7 @@
     },
     {
       "function_id": "F303",
-      "function": "Interrupt Wisp by speaking over it when full duplex is enabled.",
+      "function": "Interrupt OpenWand by speaking over it when full duplex is enabled.",
       "failure_refs": [
         2065,
         2066,
@@ -4214,7 +4214,7 @@
     },
     {
       "function_id": "F304",
-      "function": "Pause the microphone while Wisp speaks in speaker/half-duplex mode.",
+      "function": "Pause the microphone while OpenWand speaks in speaker/half-duplex mode.",
       "failure_refs": [
         2075,
         2076,
@@ -5264,7 +5264,7 @@
     },
     {
       "function_id": "F378",
-      "function": "Expose Wisp context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
+      "function": "Expose OpenWand context MCP operations for selected text, clipboard, active window, browser page, and screen snip.",
       "failure_refs": [
         2607,
         2608,
@@ -6174,7 +6174,7 @@
     },
     {
       "function_id": "F439",
-      "function": "Edit separate Wisp, ChatGPT, and Claude system prompts.",
+      "function": "Edit separate OpenWand, ChatGPT, and Claude system prompts.",
       "failure_refs": [
         3079,
         3080,
@@ -6249,7 +6249,7 @@
     },
     {
       "function_id": "F445",
-      "function": "Restart Wisp immediately when an installed component requires restart.",
+      "function": "Restart OpenWand immediately when an installed component requires restart.",
       "failure_refs": [
         3112,
         3113,
@@ -6273,7 +6273,7 @@
     },
     {
       "function_id": "F447",
-      "function": "Show the installed Wisp version.",
+      "function": "Show the installed OpenWand version.",
       "failure_refs": [
         3122,
         3123,
@@ -6467,7 +6467,7 @@
     },
     {
       "function_id": "F460",
-      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and Wisp-owned local AI assets.",
+      "function": "Uninstall the app, its data, settings, chats, memory, add-ons, tools, logs, updates, optional packages, and OpenWand-owned local AI assets.",
       "failure_refs": [
         3219,
         3220,
@@ -6495,7 +6495,7 @@
     },
     {
       "function_id": "F462",
-      "function": "Run the uninstaller as a detached self-removing process after Wisp closes.",
+      "function": "Run the uninstaller as a detached self-removing process after OpenWand closes.",
       "failure_refs": [
         3233,
         3234,

@@ -1,4 +1,4 @@
-# Wisp Testlab — living plan
+# OpenWand Testlab — living plan
 
 Goal: replace the manual per-release checklist ("install STT/TTS on 3 platforms,
 try each feature, watch for macOS crashes") with one command per platform:
@@ -19,9 +19,9 @@ same worker IPC the real supervisor uses. Reports land in `testlab/reports/`.
 - Checks use the app's own seams, never mocks of the feature under test:
   real worker processes (`runtime.supervisor.ipc.WorkerClient`), real installer
   code (`core.optional_deps`), real models, real API keys (OS keychain / .env).
-- Isolation: side-effecting checks run children with `WISP_REPO_ROOT` pointed
+- Isolation: side-effecting checks run children with `OPENWAND_REPO_ROOT` pointed
   at a scratch dir (memory/chats stay clean; the user's `.env` is copied in so
-  provider settings still apply) and `WISP_OPTIONAL_PACKAGES_DIR` for installs.
+  provider settings still apply) and `OPENWAND_OPTIONAL_PACKAGES_DIR` for installs.
 
 ## Tiers
 
@@ -40,7 +40,7 @@ same worker IPC the real supervisor uses. Reports land in `testlab/reports/`.
 | llm_query     | real streaming LLM reply via real brain worker + os-stored key   | smoke   | DONE (verified: gemini-2.5-flash, marker echo) |
 | tts_function  | real Kokoro/cloud synth produces audio bytes (worker IPC path)   | smoke   | DONE (verified: 2.6s non-silent WAV + device playback) |
 | stt_roundtrip | known speech -> real faster-whisper path -> transcript matches   | smoke   | DONE (verified: 100% match, large-v3 CUDA) |
-| hotkeys       | native worker registers the real global hotkeys                  | smoke   | DONE (partial-with-running-Wisp -> SKIP) |
+| hotkeys       | native worker registers the real global hotkeys                  | smoke   | DONE (partial-with-running-OpenWand -> SKIP) |
 | gui_smoke     | real windows render offscreen (wraps run_personal_os_tests)      | smoke   | DONE (7 windows + screenshots) |
 | flow_e2e      | simulated user: hotkey->intent->reply->spoken TTS + chat request | release | DONE (verified: real LLM + Kokoro speech) |
 | macos_native  | ssl-race + macos_smoke crash harnesses (darwin only)             | release | DONE (wired; needs a run on the Mac) |

@@ -22,17 +22,17 @@ concurrency:
 jobs:
   windows:
     if: inputs.target == 'windows'
-    runs-on: [self-hosted, wisp-isolated, windows]
+    runs-on: [self-hosted, openwand-isolated, windows]
     environment: isolated-tests
     timeout-minutes: 120
     env:
-      WISP_ISOLATED_TEST_HOST: "1"
-      WISP_RUN_REAL_HOST_TESTS: "1"
-      WISP_RUN_REAL_GPT55_TESTS: "1"
-      WISP_RUN_REAL_HARNESS_TESTS: "1"
+      OPENWAND_ISOLATED_TEST_HOST: "1"
+      OPENWAND_RUN_REAL_HOST_TESTS: "1"
+      OPENWAND_RUN_REAL_GPT55_TESTS: "1"
+      OPENWAND_RUN_REAL_HARNESS_TESTS: "1"
       PYTHONFAULTHANDLER: "1"
-      OPENAI_API_KEY: ${{ secrets.WISP_CI_OPENAI_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.WISP_CI_ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENWAND_CI_OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.OPENWAND_CI_ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -49,17 +49,17 @@ jobs:
 
   linux:
     if: inputs.target == 'linux'
-    runs-on: [self-hosted, wisp-isolated, linux]
+    runs-on: [self-hosted, openwand-isolated, linux]
     environment: isolated-tests
     timeout-minutes: 120
     env:
-      WISP_ISOLATED_TEST_HOST: "1"
-      WISP_RUN_REAL_HOST_TESTS: "1"
-      WISP_RUN_REAL_GPT55_TESTS: "1"
-      WISP_RUN_REAL_HARNESS_TESTS: "1"
+      OPENWAND_ISOLATED_TEST_HOST: "1"
+      OPENWAND_RUN_REAL_HOST_TESTS: "1"
+      OPENWAND_RUN_REAL_GPT55_TESTS: "1"
+      OPENWAND_RUN_REAL_HARNESS_TESTS: "1"
       PYTHONFAULTHANDLER: "1"
-      OPENAI_API_KEY: ${{ secrets.WISP_CI_OPENAI_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.WISP_CI_ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENWAND_CI_OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.OPENWAND_CI_ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -76,17 +76,17 @@ jobs:
 
   macos:
     if: inputs.target == 'macos'
-    runs-on: [self-hosted, wisp-isolated, macos]
+    runs-on: [self-hosted, openwand-isolated, macos]
     environment: isolated-tests
     timeout-minutes: 120
     env:
-      WISP_ISOLATED_TEST_HOST: "1"
-      WISP_RUN_REAL_HOST_TESTS: "1"
-      WISP_RUN_REAL_GPT55_TESTS: "1"
-      WISP_RUN_REAL_HARNESS_TESTS: "1"
+      OPENWAND_ISOLATED_TEST_HOST: "1"
+      OPENWAND_RUN_REAL_HOST_TESTS: "1"
+      OPENWAND_RUN_REAL_GPT55_TESTS: "1"
+      OPENWAND_RUN_REAL_HARNESS_TESTS: "1"
       PYTHONFAULTHANDLER: "1"
-      OPENAI_API_KEY: ${{ secrets.WISP_CI_OPENAI_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.WISP_CI_ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENWAND_CI_OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.OPENWAND_CI_ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6

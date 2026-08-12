@@ -88,9 +88,9 @@ def build_email_plan(
         if snapshot.object_kind != "mailbox":
             raise ValueError("Rule creation requires an exact mailbox snapshot.")
         if snapshot.provider != "outlook" or not snapshot.supports_disabled_rules:
-            raise ValueError("Gmail filters cannot be created disabled; Wisp refused this action.")
+            raise ValueError("Gmail filters cannot be created disabled; OpenWand refused this action.")
         if arguments.get("enabled") is not False:
-            raise ValueError("Wisp only creates email rules in the disabled state.")
+            raise ValueError("OpenWand only creates email rules in the disabled state.")
         if set(arguments) != {"name", "enabled", "conditions", "actions"}:
             raise ValueError("The disabled rule contains unsupported fields.")
         name = " ".join(str(arguments.get("name") or "").split())[:120]

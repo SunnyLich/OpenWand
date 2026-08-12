@@ -4,13 +4,13 @@ This addon speaks the [Model Context Protocol](https://modelcontextprotocol.io)
 in **both directions**:
 
 - **Client** (`__init__.py`): connects to MCP servers listed in `servers.json`
-  and exposes their tools to Wisp's model. One addon imports an entire
+  and exposes their tools to OpenWand's model. One addon imports an entire
   external toolkit.
-- **Server** (`context_server.py`): the *Wisp Context Server* — lets external
+- **Server** (`context_server.py`): the *OpenWand Context Server* — lets external
   MCP clients (Claude Desktop, Cursor, ...) read your desktop context through
-  Wisp's capture machinery.
+  OpenWand's capture machinery.
 
-## Client: using external MCP servers inside Wisp
+## Client: using external MCP servers inside OpenWand
 
 Add entries to `servers.json`:
 
@@ -22,13 +22,13 @@ Add entries to `servers.json`:
 }
 ```
 
-Each server's tools appear in Wisp as `mcp_<server>_<tool>`. `example_server.py`
+Each server's tools appear in OpenWand as `mcp_<server>_<tool>`. `example_server.py`
 is a bundled dependency-free server for smoke-testing the bridge.
 
-## Server: giving other AI apps Wisp's desktop eyes
+## Server: giving other AI apps OpenWand's desktop eyes
 
-`context_server.py` is a standalone MCP stdio server. Wisp does not run it —
-your MCP client launches it (Wisp doesn't even need to be open).
+`context_server.py` is a standalone MCP stdio server. OpenWand does not run it —
+your MCP client launches it (OpenWand doesn't even need to be open).
 
 ## Tools
 
@@ -46,11 +46,11 @@ The addon writes a ready-to-paste snippet to `claude_config_snippet.json` in
 this folder (also printed in the addon's log at startup). Paste its
 `mcpServers` entry into your client's config — for Claude Desktop that is
 `claude_desktop_config.json` (Settings → Developer → Edit Config). The snippet
-uses **Wisp's own Python interpreter**; don't replace it with system Python,
-the capture stack needs Wisp's installed dependencies.
+uses **OpenWand's own Python interpreter**; don't replace it with system Python,
+the capture stack needs OpenWand's installed dependencies.
 
 The server logs a self-check to stderr on startup (visible in Claude Desktop's
-MCP logs): interpreter, Wisp root, and any missing capture dependency, each
+MCP logs): interpreter, OpenWand root, and any missing capture dependency, each
 naming the tools it affects.
 
 To turn the server off, disable "Enable context server" in this addon's
@@ -63,7 +63,7 @@ settings — the server then refuses to start.
 - **macOS**: full support. Grant the *client* app (e.g. Claude Desktop) the
   permissions it prompts for — Automation/Accessibility for selection reading,
   Screen Recording for snips. macOS attributes permissions to the app that
-  launched the server, not to Wisp.
+  launched the server, not to OpenWand.
 - **Linux**: full support on X11 (selection reading is best-in-class there —
   the PRIMARY selection needs no focus and no clipboard). On Wayland, screen
   snips and some window queries degrade with a clear error message. Clipboard

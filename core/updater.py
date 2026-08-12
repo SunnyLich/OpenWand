@@ -1,4 +1,4 @@
-"""Release manifest checks and update downloads for Wisp."""
+"""Release manifest checks and update downloads for OpenWand."""
 from __future__ import annotations
 
 import hashlib
@@ -21,7 +21,7 @@ from core.system.paths import SINGLE_INSTANCE_LOCK, UPDATE_DOWNLOAD_DIR
 
 DEFAULT_MANIFEST_URL = (
     "https://github.com/SunnyLich/Python-AI-assistant-overlay/"
-    "releases/latest/download/wisp-release-manifest.json"
+    "releases/latest/download/openwand-release-manifest.json"
 )
 
 
@@ -64,7 +64,7 @@ class RepoUpdateResult:
 
 def manifest_url() -> str:
     """Return the update manifest URL, allowing release-host overrides."""
-    return os.environ.get("WISP_UPDATE_MANIFEST_URL", DEFAULT_MANIFEST_URL).strip()
+    return os.environ.get("OPENWAND_UPDATE_MANIFEST_URL", DEFAULT_MANIFEST_URL).strip()
 
 
 def current_version() -> str:
@@ -72,7 +72,7 @@ def current_version() -> str:
     try:
         from importlib.metadata import version
 
-        return version("wisp")
+        return version("openwand")
     except Exception:
         pass
 
@@ -218,7 +218,7 @@ def download_update(asset: UpdateAsset, target_dir: Path | None = None, timeout:
     destination_dir.mkdir(parents=True, exist_ok=True)
     destination = destination_dir / asset.name
     with urllib.request.urlopen(asset.url, timeout=timeout) as response:
-        with NamedTemporaryFile("wb", delete=False, dir=destination_dir, prefix=".wisp-update-", suffix=".tmp") as tmp:
+        with NamedTemporaryFile("wb", delete=False, dir=destination_dir, prefix=".openwand-update-", suffix=".tmp") as tmp:
             shutil.copyfileobj(response, tmp)
             tmp_path = Path(tmp.name)
     try:
@@ -247,7 +247,7 @@ def source_checkout_root() -> Path:
 
 
 def is_repo_checkout(root: Path | None = None) -> bool:
-    """Return True when Wisp is running from an editable git checkout."""
+    """Return True when OpenWand is running from an editable git checkout."""
     if getattr(sys, "frozen", False):
         return False
     candidate = Path(root) if root is not None else source_checkout_root()
@@ -370,7 +370,7 @@ def _preserve_user_state_for_repo_update(
         if not path or not _allowed_repo_update_dirty_path(path):
             raise UpdateError(
                 "Repo update stopped because this checkout has local changes in app code. "
-                "Wisp can preserve settings and addon data automatically, but code changes must be committed or stashed."
+                "OpenWand can preserve settings and addon data automatically, but code changes must be committed or stashed."
             )
         source = repo / path
         if source.exists():
@@ -412,7 +412,7 @@ def apply_repo_update(
         )
 
     entries = _git_status_entries(repo, timeout)
-    with TemporaryDirectory(prefix="wisp-repo-update-") as tmp:
+    with TemporaryDirectory(prefix="openwand-repo-update-") as tmp:
         backup_root = Path(tmp)
         preserved = _preserve_user_state_for_repo_update(repo, entries, backup_root, timeout) if entries else []
         try:
@@ -431,7 +431,7 @@ def apply_repo_update(
 def install_root() -> Path:
     """Return the packaged app root that should be replaced by an update."""
     if not getattr(sys, "frozen", False):
-        raise UpdateError("Automatic update apply is only available in packaged Wisp builds.")
+        raise UpdateError("Automatic update apply is only available in packaged OpenWand builds.")
 
     executable = Path(sys.executable).resolve()
     if sys.platform == "darwin":
@@ -444,7 +444,7 @@ def install_root() -> Path:
 def _archive_root_name(path: Path) -> str:
     lower = path.name.lower()
     if lower.endswith(".tar.gz") or lower.endswith(".tgz"):
-        return "Wisp"
+        return "OpenWand"
     if lower.endswith(".zip"):
         try:
             with zipfile.ZipFile(path) as archive:
@@ -457,11 +457,11 @@ def _archive_root_name(path: Path) -> str:
             raise UpdateError(f"Update archive is not a valid zip file: {exc}") from exc
         if len(roots) == 1:
             return next(iter(roots))
-    return "Wisp.app" if sys.platform == "darwin" else "Wisp"
+    return "OpenWand.app" if sys.platform == "darwin" else "OpenWand"
 
 
 def _write_windows_apply_script(update_path: Path, root: Path, restart_target: Path, pid: int) -> Path:
-    script_path = UPDATE_DOWNLOAD_DIR / f"apply-wisp-update-{pid}.ps1"
+    script_path = UPDATE_DOWNLOAD_DIR / f"apply-openwand-update-{pid}.ps1"
     archive_root = _archive_root_name(update_path)
     script = f"""$ErrorActionPreference = "Stop"
 $pidToWait = {pid}
@@ -473,7 +473,7 @@ $archiveRootName = {_quoted_ps(archive_root)}
 $archiveParent = [System.IO.Path]::GetDirectoryName($archive)
 $restartParent = [System.IO.Path]::GetDirectoryName($restartTarget)
 $installRootLeaf = [System.IO.Path]::GetFileName($installRoot)
-$workRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("WispUpdate-" + [guid]::NewGuid().ToString("N"))
+$workRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("OpenWandUpdate-" + [guid]::NewGuid().ToString("N"))
 $extractRoot = Join-Path $workRoot "extract"
 $backupRoot = "$installRoot.previous-update"
 $backupRootLeaf = [System.IO.Path]::GetFileName($backupRoot)
@@ -489,7 +489,7 @@ function Initialize-InstallerUi {{
         Add-Type -AssemblyName System.Windows.Forms
         Add-Type -AssemblyName System.Drawing
         $script:form = New-Object System.Windows.Forms.Form
-        $script:form.Text = "Wisp Update"
+        $script:form.Text = "OpenWand Update"
         $script:form.Width = 440
         $script:form.Height = 190
         $script:form.StartPosition = "CenterScreen"
@@ -502,7 +502,7 @@ function Initialize-InstallerUi {{
         }} catch {{ }}
 
         $title = New-Object System.Windows.Forms.Label
-        $title.Text = "Updating Wisp"
+        $title.Text = "Updating OpenWand"
         $title.Font = New-Object System.Drawing.Font($title.Font.FontFamily, 12, [System.Drawing.FontStyle]::Bold)
         $title.Left = 20
         $title.Top = 18
@@ -586,7 +586,7 @@ function Finish-InstallerUi {{
     }} catch {{ }}
 }}
 
-function Test-WispLockReleased {{
+function Test-OpenWandLockReleased {{
     $stream = $null
     try {{
         $parent = [System.IO.Path]::GetDirectoryName($singleInstanceLock)
@@ -606,18 +606,18 @@ function Test-WispLockReleased {{
     }}
 }}
 
-function Wait-For-WispExit {{
-    Update-InstallerStatus "Waiting for Wisp to close..."
+function Wait-For-OpenWandExit {{
+    Update-InstallerStatus "Waiting for OpenWand to close..."
     try {{ Wait-Process -Id $pidToWait -Timeout 90 -ErrorAction SilentlyContinue }} catch {{ }}
     $deadline = (Get-Date).AddMinutes(5)
     while ((Get-Date) -lt $deadline) {{
-        if (Test-WispLockReleased) {{
+        if (Test-OpenWandLockReleased) {{
             Start-Sleep -Seconds 1
             return
         }}
         Start-Sleep -Seconds 1
     }}
-    throw "Timed out waiting for Wisp to exit before applying the update."
+    throw "Timed out waiting for OpenWand to exit before applying the update."
 }}
 
 function Find-NewVersionHelper {{
@@ -641,7 +641,7 @@ function Invoke-NewVersionHelper {{
         [string]$Helper,
         [string]$Candidate
     )
-    $delegatedHelper = Join-Path $archiveParent ("apply-new-wisp-update-" + [guid]::NewGuid().ToString() + ".ps1")
+    $delegatedHelper = Join-Path $archiveParent ("apply-new-openwand-update-" + [guid]::NewGuid().ToString() + ".ps1")
     Copy-Item -LiteralPath $Helper -Destination $delegatedHelper -Force
     Update-InstallerStatus "Starting the newer installer..."
     & powershell -NoProfile -ExecutionPolicy Bypass -File $delegatedHelper `
@@ -655,7 +655,7 @@ function Invoke-NewVersionHelper {{
     $exitCode = $LASTEXITCODE
     Remove-Item -LiteralPath $delegatedHelper -Force -ErrorAction SilentlyContinue
     if ($exitCode -ne 0) {{
-        throw "The newer Wisp installer failed with exit code $exitCode."
+        throw "The newer OpenWand installer failed with exit code $exitCode."
     }}
 }}
 
@@ -664,7 +664,7 @@ Initialize-InstallerUi
 try {{
     Update-InstallerStatus "Preparing update files..."
     New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
-    Wait-For-WispExit
+    Wait-For-OpenWandExit
     Update-InstallerStatus "Extracting the downloaded update..."
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [System.IO.Compression.ZipFile]::ExtractToDirectory($archive, $extractRoot)
@@ -674,32 +674,32 @@ try {{
         if ($dirs.Count -eq 1) {{
             $candidate = $dirs[0].FullName
         }} else {{
-            throw "Could not find the extracted Wisp app folder."
+            throw "Could not find the extracted OpenWand app folder."
         }}
     }}
     $newVersionHelper = Find-NewVersionHelper $candidate
     if ($newVersionHelper) {{
         Invoke-NewVersionHelper -Helper $newVersionHelper -Candidate $candidate
-        Finish-InstallerUi "Wisp has been updated and reopened." $false
+        Finish-InstallerUi "OpenWand has been updated and reopened." $false
         exit 0
     }}
-    Update-InstallerStatus "Replacing the old Wisp files..."
+    Update-InstallerStatus "Replacing the old OpenWand files..."
     if (Test-Path -LiteralPath $backupRoot) {{
         Remove-Item -LiteralPath $backupRoot -Recurse -Force
     }}
     Rename-Item -LiteralPath $installRoot -NewName $backupRootLeaf
     Move-Item -LiteralPath $candidate -Destination $installRoot
-    Update-InstallerStatus "Reopening Wisp..."
+    Update-InstallerStatus "Reopening OpenWand..."
     Start-Process -FilePath $restartTarget -WorkingDirectory $restartParent
     Start-Sleep -Seconds 5
     Remove-Item -LiteralPath $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $workRoot -Recurse -Force -ErrorAction SilentlyContinue
-    Finish-InstallerUi "Wisp has been updated and reopened." $false
+    Finish-InstallerUi "OpenWand has been updated and reopened." $false
 }} catch {{
     Restore-Backup
     $log = Join-Path $archiveParent "apply-update-error.log"
     $_ | Out-String | Set-Content -LiteralPath $log
-    Finish-InstallerUi "Wisp update failed. Details were saved to $log" $true
+    Finish-InstallerUi "OpenWand update failed. Details were saved to $log" $true
     exit 1
 }}
 """
@@ -708,7 +708,7 @@ try {{
 
 
 def _write_posix_apply_script(update_path: Path, root: Path, restart_target: Path, pid: int) -> Path:
-    script_path = UPDATE_DOWNLOAD_DIR / f"apply-wisp-update-{pid}.sh"
+    script_path = UPDATE_DOWNLOAD_DIR / f"apply-openwand-update-{pid}.sh"
     archive_root = _archive_root_name(update_path)
     opener = f"open {_quoted_sh(str(root))}" if sys.platform == "darwin" else f"{_quoted_sh(str(restart_target))} >/dev/null 2>&1 &"
     if update_path.name.lower().endswith((".tar.gz", ".tgz")):
@@ -749,17 +749,17 @@ start_installer_ui() {{
         ui_pipe="$work_root/update-ui.pipe"
         rm -f "$ui_pipe"
         if mkfifo "$ui_pipe"; then
-            zenity --progress --pulsate --no-cancel --auto-close --title="Wisp Update" --text="Preparing update..." < "$ui_pipe" >/dev/null 2>&1 &
+            zenity --progress --pulsate --no-cancel --auto-close --title="OpenWand Update" --text="Preparing update..." < "$ui_pipe" >/dev/null 2>&1 &
             ui_pid=$!
             if exec 3<>"$ui_pipe"; then
                 ui_fd_open=1
             fi
         fi
     elif command -v kdialog >/dev/null 2>&1; then
-        kdialog --title "Wisp Update" --passivepopup "Updating Wisp. Wisp will reopen when the update finishes." 30 >/dev/null 2>&1 &
+        kdialog --title "OpenWand Update" --passivepopup "Updating OpenWand. OpenWand will reopen when the update finishes." 30 >/dev/null 2>&1 &
         ui_pid=$!
     elif command -v xmessage >/dev/null 2>&1; then
-        xmessage -center -buttons "" "Updating Wisp. Wisp will reopen when the update finishes." >/dev/null 2>&1 &
+        xmessage -center -buttons "" "Updating OpenWand. OpenWand will reopen when the update finishes." >/dev/null 2>&1 &
         ui_pid=$!
     fi
 }}
@@ -791,17 +791,17 @@ finish_installer_ui() {{
     fi
     if [ "$failed" = "1" ]; then
         if command -v zenity >/dev/null 2>&1; then
-            zenity --error --title="Wisp Update" --text="$message" >/dev/null 2>&1 || true
+            zenity --error --title="OpenWand Update" --text="$message" >/dev/null 2>&1 || true
         elif command -v kdialog >/dev/null 2>&1; then
-            kdialog --title "Wisp Update" --error "$message" >/dev/null 2>&1 || true
+            kdialog --title "OpenWand Update" --error "$message" >/dev/null 2>&1 || true
         elif command -v xmessage >/dev/null 2>&1; then
             xmessage -center "$message" >/dev/null 2>&1 || true
         fi
     fi
 }}
 
-wait_for_wisp_exit() {{
-    update_installer_status "Waiting for Wisp to close..."
+wait_for_openwand_exit() {{
+    update_installer_status "Waiting for OpenWand to close..."
     while kill -0 "$pid_to_wait" 2>/dev/null; do
         sleep 1
     done
@@ -817,15 +817,15 @@ wait_for_wisp_exit() {{
             fi
             sleep 1
         done
-        echo "Timed out waiting for Wisp to exit before applying the update." > "$error_log"
+        echo "Timed out waiting for OpenWand to exit before applying the update." > "$error_log"
         exit 1
     fi
 }}
 
-trap 'rc=$?; if [ "$rc" -ne 0 ]; then restore_backup; if [ ! -s "$error_log" ]; then echo "Wisp update apply failed." > "$error_log"; fi; finish_installer_ui "Wisp update failed. Details were saved to $error_log" 1; fi; exit "$rc"' EXIT
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then restore_backup; if [ ! -s "$error_log" ]; then echo "OpenWand update apply failed." > "$error_log"; fi; finish_installer_ui "OpenWand update failed. Details were saved to $error_log" 1; fi; exit "$rc"' EXIT
 start_installer_ui
 mkdir -p "$extract_root"
-wait_for_wisp_exit
+wait_for_openwand_exit
 update_installer_status "Extracting the downloaded update..."
 {extract_command}
 candidate="$extract_root/$archive_root_name"
@@ -833,18 +833,18 @@ if [ ! -e "$candidate" ]; then
     candidate="$(find "$extract_root" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
 fi
 if [ -z "$candidate" ] || [ ! -e "$candidate" ]; then
-    echo "Could not find the extracted Wisp app folder." > "$error_log"
+    echo "Could not find the extracted OpenWand app folder." > "$error_log"
     exit 1
 fi
-update_installer_status "Replacing the old Wisp files..."
+update_installer_status "Replacing the old OpenWand files..."
 rm -rf "$backup_root"
 mv "$install_root" "$backup_root"
 mv "$candidate" "$install_root"
-update_installer_status "Reopening Wisp..."
+update_installer_status "Reopening OpenWand..."
 {opener}
 sleep 5
 rm -rf "$backup_root" "$work_root"
-finish_installer_ui "Wisp has been updated and reopened." 0
+finish_installer_ui "OpenWand has been updated and reopened." 0
 """
     script_path.write_text(script, encoding="utf-8")
     script_path.chmod(0o700)
@@ -855,19 +855,19 @@ def _update_wait_pid(pid: int | None = None) -> int:
     """Return the process the helper should wait for before replacing files."""
     if pid is not None:
         return pid
-    supervisor_pid = str(os.environ.get("WISP_SUPERVISOR_PID") or "").strip()
+    supervisor_pid = str(os.environ.get("OPENWAND_SUPERVISOR_PID") or "").strip()
     if supervisor_pid.isdigit() and int(supervisor_pid) > 0:
         return int(supervisor_pid)
     return os.getpid()
 
 
-def wisp_wait_pid(pid: int | None = None) -> int:
-    """Return the Wisp process ID restart/apply helpers should wait for."""
+def openwand_wait_pid(pid: int | None = None) -> int:
+    """Return the OpenWand process ID restart/apply helpers should wait for."""
     return _update_wait_pid(pid)
 
 
 def app_restart_command() -> tuple[list[str], Path]:
-    """Return the command/cwd pair that reopens this Wisp instance."""
+    """Return the command/cwd pair that reopens this OpenWand instance."""
     if getattr(sys, "frozen", False):
         executable = Path(sys.executable).resolve()
         return [str(executable)], executable.parent
@@ -951,7 +951,7 @@ def _single_instance_lock_released(path: Path = SINGLE_INSTANCE_LOCK) -> bool:
     return True
 
 
-def wait_for_wisp_exit(
+def wait_for_openwand_exit(
     pid: int | None = None,
     *,
     timeout: float = 300.0,
@@ -965,11 +965,11 @@ def wait_for_wisp_exit(
             time.sleep(1.0)
             return
         time.sleep(0.5)
-    raise UpdateError("Timed out waiting for Wisp to exit.")
+    raise UpdateError("Timed out waiting for OpenWand to exit.")
 
 
 def apply_update(update_path: Path, pid: int | None = None) -> Path:
-    """Start a detached helper that applies an update after Wisp exits."""
+    """Start a detached helper that applies an update after OpenWand exits."""
     update_path = Path(update_path).resolve()
     if not update_path.exists():
         raise UpdateError("Downloaded update file is no longer available.")

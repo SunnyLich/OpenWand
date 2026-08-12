@@ -30,6 +30,7 @@ class HarnessResult:
     cwd: str
     backend: str = ""
     attachments: tuple[dict[str, Any], ...] = ()
+    workspace_changes: dict[str, Any] | None = None
 
 
 def normalized_cwd(value: str | Path | None) -> Path:
@@ -52,7 +53,7 @@ def emit(callback: EventCallback | None, kind: HarnessEventKind, text: object) -
 
 
 def approval_allowed(result: bool | dict[str, Any]) -> bool:
-    """Normalize Wisp approval callback results."""
+    """Normalize OpenWand approval callback results."""
     if isinstance(result, dict):
         return bool(result.get("approved"))
     return bool(result)

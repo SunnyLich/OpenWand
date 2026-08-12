@@ -1,4 +1,4 @@
-"""Shared pytest setup for the wisp_brain worker tests.
+"""Shared pytest setup for the openwand_brain worker tests.
 
 Puts the brain package dir (``runtime/brain``), the repo root (so ``core`` and
 ``config`` import), and this ``tests`` dir (so the integration test can import
@@ -33,8 +33,8 @@ def _isolate_offline_brain_runtime(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(config, "load_dotenv", lambda *_args, **_kwargs: None)
     values = {
-        "CHAT_EXECUTION_MODE": "wisp",
-        "CHAT_CONVERSATION_OWNER": "wisp",
+        "CHAT_EXECUTION_MODE": "openwand",
+        "CHAT_CONVERSATION_OWNER": "openwand",
         "PRIVACY_MODE": "builtin",
         "TRUST_PRIVACY_MODE": "True",
         "PRIVACY_AI_ENABLED": "False",
@@ -56,7 +56,7 @@ def record_ctx():
         handlers.HANDLERS["brain.echo"](ctx, text="a b")
         assert ("reply.done", {"text": "a b"}) in events
     """
-    from wisp_brain.handlers import StreamContext
+    from openwand_brain.handlers import StreamContext
 
     def _make(req_id: Any = 1):
         """Verify make behavior."""

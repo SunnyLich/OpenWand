@@ -27,5 +27,5 @@ def test_chat_model_delegates_real_detached_work_and_result_returns(tmp_path: Pa
     assert result["delivered"] is True
     assert result["tool_offered"] is True
     assert result["provider_rounds"] >= 2
-    assert "wisp-background-task-e2e" in result["chat_result"]
+    assert "openwand-background-task-e2e" in result["chat_result"]
     assert Path(result["output_path"]).is_file()

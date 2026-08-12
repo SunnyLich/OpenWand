@@ -76,7 +76,7 @@ def test_held_rewrite_button_appears_above_icon_and_sends_all(monkeypatch):
 
 @pytest.mark.parametrize(("mode", "text"), [("codex", "CHATGPT ⚙"), ("claude", "CLAUDE ⚙")])
 def test_external_harness_badge_sits_under_icon(monkeypatch, mode: str, text: str):
-    """The selected live harness is always visible directly below Wisp's icon."""
+    """The selected live harness is always visible directly below OpenWand's icon."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
@@ -131,7 +131,7 @@ def test_harness_controls_report_only_their_changed_keys(monkeypatch):
     overlay = IconOverlay(signals)
 
     try:
-        keys = ["WISP_CODEX_MODEL", "WISP_CODEX_FAST_MODE"]
+        keys = ["OPENWAND_CODEX_MODEL", "OPENWAND_CODEX_FAST_MODE"]
         overlay._on_harness_controls_applied(keys)
         app.processEvents()
 
@@ -167,6 +167,72 @@ def test_bubble_chunk_restores_hidden_icon(monkeypatch):
         overlay._icon_label.close()
         overlay.close()
         app.processEvents()
+
+
+def test_openwand_icon_animates_without_smoke_and_tracks_speech_amplitude(monkeypatch):
+    """The new mark uses app state and the real normalized playback meter."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ui.overlay import IconOverlay, OverlaySignals
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    monkeypatch.setattr(IconOverlay, "_pin_overlay_windows", lambda self: None)
+    signals = OverlaySignals()
+    overlay = IconOverlay(signals)
+
+    try:
+        assert overlay._icon_label.uses_vector_source
+        assert overlay._icon_label.uses_vfx_assets
+        assert not hasattr(overlay._icon_label, "_smoke_frames")
+        assert not hasattr(overlay._icon_label, "_wave_frames")
+        assert overlay._icon_label._ripple_frames
+        signals.set_state.emit("thinking")
+        app.processEvents()
+        assert overlay._icon_label.animation_state == "thinking"
+        assert overlay._icon_label._animation_timer.isActive()
+
+        signals.set_state.emit("speaking")
+        signals.set_mouth_amp.emit(0.72)
+        app.processEvents()
+        assert overlay._icon_label.animation_state == "speaking"
+        assert overlay._icon_label.audio_amplitude == pytest.approx(0.72)
+
+        signals.set_state.emit("idle")
+        app.processEvents()
+        assert not overlay._icon_label._animation_timer.isActive()
+    finally:
+        overlay._bubble.clear()
+        overlay._icon_label.close()
+        overlay.close()
+        app.processEvents()
+
+
+def test_openwand_svg_keeps_the_outer_corners_transparent():
+    """The black logo fill must stay inside its rounded-square boundary."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QImage, QPainter
+    from PySide6.QtSvg import QSvgRenderer
+    from PySide6.QtWidgets import QApplication
+
+    from core.system.paths import DOLL_ASSETS_DIR
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    image = QImage(128, 128, QImage.Format.Format_ARGB32)
+    image.fill(0)
+    painter = QPainter(image)
+    QSvgRenderer(str(DOLL_ASSETS_DIR / "openwand.svg")).render(
+        painter, QRectF(0, 0, 128, 128)
+    )
+    painter.end()
+
+    assert [
+        image.pixelColor(x, y).alpha()
+        for x, y in ((0, 0), (127, 0), (0, 127), (127, 127))
+    ] == [0, 0, 0, 0]
+    assert image.pixelColor(64, 64).alpha() == 255
+    app.processEvents()
 
 
 def test_default_icon_position_reserves_context_panel_space(monkeypatch):
@@ -292,7 +358,7 @@ def test_tray_surface_failure_matrix_rebuilds_and_dispatches_without_blocking(mo
     from ui.overlay import IconOverlay, OverlaySignals
 
     app = QApplication.instance() or QApplication(sys.argv)
-    monkeypatch.setenv("WISP_MACOS_PY_UI_HOST", "1")
+    monkeypatch.setenv("OPENWAND_MACOS_PY_UI_HOST", "1")
     monkeypatch.setattr(IconOverlay, "_pin_overlay_windows", lambda self: None)
     monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", staticmethod(lambda: False))
     monkeypatch.setattr(QSystemTrayIcon, "show", lambda _self: None)

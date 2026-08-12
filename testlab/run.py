@@ -260,7 +260,7 @@ def main(argv: list[str]) -> int:
     report_dir.mkdir(parents=True, exist_ok=True)
     (TESTLAB_DIR / "reports" / "latest.txt").write_text(str(report_dir), encoding="utf-8")
 
-    print("Wisp testlab")
+    print("OpenWand testlab")
     print(f"  platform: {sys.platform}  tier: {args.tier}")
     print(f"  reports:  {report_dir}")
 

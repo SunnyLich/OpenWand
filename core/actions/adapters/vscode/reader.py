@@ -96,7 +96,7 @@ def code_editor_name(active_app: dict[str, Any] | None) -> str:
 
 
 def is_code_editor_app(active_app: dict[str, Any] | None) -> bool:
-    """Return whether Wisp can attempt an exact saved-file editor action."""
+    """Return whether OpenWand can attempt an exact saved-file editor action."""
     app = active_app if isinstance(active_app, dict) else {}
     if is_vscode_app(app):
         return True
@@ -114,18 +114,18 @@ class VSCodeSelectionReader:
         if not is_code_editor_app(active_app):
             raise ValueError("The recorded window is not a supported code editor.")
         if _title_looks_modified(str(active_app.get("name") or "")):
-            raise ValueError("Save the active code editor file before asking Wisp to change it.")
+            raise ValueError("Save the active code editor file before asking OpenWand to change it.")
         if not str(selected_text or "").strip():
-            raise ValueError("Select the code you want Wisp to change, then try again.")
+            raise ValueError("Select the code you want OpenWand to change, then try again.")
         if len(selected_text) > _MAX_SELECTION_CHARS:
             raise ValueError("The first code editor action supports selections up to 8,000 characters.")
 
         path = self._resolve_path(active_app)
         if not path:
-            raise ValueError("Wisp could not resolve the active editor tab to a saved file.")
+            raise ValueError("OpenWand could not resolve the active editor tab to a saved file.")
         file_path = Path(path)
         if file_path.is_symlink():
-            raise ValueError("Wisp does not edit symlinked files in the first code editor action.")
+            raise ValueError("OpenWand does not edit symlinked files in the first code editor action.")
         raw = file_path.read_bytes()
         if len(raw) > _MAX_FILE_BYTES:
             raise ValueError("The first code editor action supports saved files up to 200 KB.")
@@ -165,15 +165,15 @@ class VSCodeSelectionReader:
         if not is_code_editor_app(active_app):
             raise ValueError("The recorded window is not a supported code editor.")
         if _title_looks_modified(str(active_app.get("name") or "")):
-            raise ValueError("Save the active VS Code file before asking Wisp to change it.")
+            raise ValueError("Save the active VS Code file before asking OpenWand to change it.")
         path = self._resolve_path(active_app)
         if not path:
             raise ValueError(
-                "This VS Code tab is unsaved. Save it once so Wisp can edit it without taking focus."
+                "This VS Code tab is unsaved. Save it once so OpenWand can edit it without taking focus."
             )
         file_path = Path(path)
         if file_path.is_symlink():
-            raise ValueError("Wisp does not edit symlinked files in the first VS Code action.")
+            raise ValueError("OpenWand does not edit symlinked files in the first VS Code action.")
         raw = file_path.read_bytes()
         if len(raw) > _MAX_FILE_BYTES or b"\x00" in raw:
             raise ValueError("The active VS Code tab is not a supported UTF-8 text file.")
@@ -183,7 +183,7 @@ class VSCodeSelectionReader:
         except UnicodeDecodeError as exc:
             raise ValueError("The first VS Code action supports UTF-8 files only.") from exc
         if text:
-            raise ValueError("Select a unique code block before asking Wisp to change a non-empty file.")
+            raise ValueError("Select a unique code block before asking OpenWand to change a non-empty file.")
         empty_hash = _text_fingerprint("")
         return VSCodeSnapshot(
             file_path=str(file_path.resolve()),

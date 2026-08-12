@@ -184,7 +184,7 @@ def test_action_planning_rejects_missing_forced_call(monkeypatch):
 
 
 def test_brain_action_plan_returns_arguments_and_visible_summary_without_execution(monkeypatch):
-    from runtime.brain.wisp_brain import handlers
+    from runtime.brain.openwand_brain import handlers
 
     events: list[tuple[str, object]] = []
     ctx = handlers.StreamContext(lambda event, data, _req_id: events.append((event, data)), "req-1")
@@ -221,7 +221,7 @@ def test_brain_action_plan_returns_arguments_and_visible_summary_without_executi
 
 
 def test_brain_action_plan_rejects_missing_internal_forced_result(monkeypatch):
-    from runtime.brain.wisp_brain import handlers
+    from runtime.brain.openwand_brain import handlers
 
     ctx = handlers.StreamContext(lambda *_args: None, "req-2")
     monkeypatch.setattr("config.TRUST_PRIVACY_MODE", False)

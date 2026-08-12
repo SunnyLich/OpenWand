@@ -15,7 +15,7 @@ def _completed(command: list[str], returncode: int, stdout: str = "", stderr: st
 
 def test_codex_login_status_uses_cli_status(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(auth, "harness_executable", lambda provider: "codex-bin")
-    isolated_environment = {"CODEX_HOME": "wisp-codex"}
+    isolated_environment = {"CODEX_HOME": "openwand-codex"}
     monkeypatch.setattr(auth, "_codex_environment", lambda: isolated_environment)
     calls = []
 
@@ -35,7 +35,7 @@ def test_codex_login_status_uses_cli_status(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_codex_login_status_recognizes_logged_out(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(auth, "harness_executable", lambda provider: "codex-bin")
-    monkeypatch.setattr(auth, "_codex_environment", lambda: {"CODEX_HOME": "wisp-codex"})
+    monkeypatch.setattr(auth, "_codex_environment", lambda: {"CODEX_HOME": "openwand-codex"})
     monkeypatch.setattr(
         auth,
         "_run",
@@ -85,8 +85,8 @@ def test_harness_login_commands_match_each_cli(monkeypatch: pytest.MonkeyPatch) 
     assert auth.harness_logout_command("claude") == ["claude-bin", "auth", "logout"]
 
 
-def test_codex_login_environment_uses_wisp_state_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
-    expected = {"CODEX_HOME": "wisp-codex", "CODEX_SQLITE_HOME": "wisp-codex"}
+def test_codex_login_environment_uses_openwand_state_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    expected = {"CODEX_HOME": "openwand-codex", "CODEX_SQLITE_HOME": "openwand-codex"}
     monkeypatch.setattr(auth, "_codex_environment_overrides", lambda: expected)
 
     assert auth.harness_login_environment("codex") == expected

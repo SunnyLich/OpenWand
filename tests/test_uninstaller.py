@@ -1,4 +1,4 @@
-"""Safety and platform coverage for Wisp's self-uninstaller."""
+"""Safety and platform coverage for OpenWand's self-uninstaller."""
 from __future__ import annotations
 
 import os
@@ -14,17 +14,17 @@ from core import uninstaller
 def _source_checkout(root: Path) -> Path:
     (root / "runtime" / "supervisor").mkdir(parents=True)
     (root / "core" / "system").mkdir(parents=True)
-    (root / "pyproject.toml").write_text("[project]\nname='wisp'\n", encoding="utf-8")
+    (root / "pyproject.toml").write_text("[project]\nname='openwand'\n", encoding="utf-8")
     (root / "runtime" / "supervisor" / "app.py").write_text("", encoding="utf-8")
     (root / "core" / "system" / "paths.py").write_text("", encoding="utf-8")
     return root
 
 
-def test_linux_source_plan_removes_only_exact_wisp_owned_paths(tmp_path):
+def test_linux_source_plan_removes_only_exact_openwand_owned_paths(tmp_path):
     """Source uninstall includes its checkout/data/models/integrations, not shared caches."""
     home = tmp_path / "home"
-    source = _source_checkout(tmp_path / "src" / "Wisp")
-    data_root = home / ".config" / "wisp"
+    source = _source_checkout(tmp_path / "src" / "OpenWand")
+    data_root = home / ".config" / "openwand"
     optional_root = data_root / "python_packages"
     optional_root.mkdir(parents=True)
     hub = home / ".cache" / "huggingface" / "hub"
@@ -48,10 +48,12 @@ def test_linux_source_plan_removes_only_exact_wisp_owned_paths(tmp_path):
     assert plan.source_checkout is True
     assert source in targets
     assert data_root in targets
+    assert home / ".config" / "wisp" in targets
     assert owned_model in targets
     assert owned_lock in targets
+    assert home / ".config" / "autostart" / "openwand.desktop" in targets
     assert home / ".config" / "autostart" / "wisp.desktop" in targets
-    assert home / ".local" / "share" / "applications" / "wisp.desktop" in targets
+    assert home / ".local" / "share" / "applications" / "openwand.desktop" in targets
     assert unrelated_model not in targets
     assert home / ".cache" / "huggingface" / "hub" not in targets
     assert home / ".cache" / "uv" not in targets
@@ -60,11 +62,11 @@ def test_linux_source_plan_removes_only_exact_wisp_owned_paths(tmp_path):
 def test_packaged_macos_plan_targets_app_bundle_and_launch_agent(tmp_path):
     """macOS release uninstall removes the current app bundle, not /Applications."""
     home = tmp_path / "Users" / "person"
-    app_root = tmp_path / "Applications" / "Wisp.app"
-    executable = app_root / "Contents" / "MacOS" / "Wisp"
+    app_root = tmp_path / "Applications" / "OpenWand.app"
+    executable = app_root / "Contents" / "MacOS" / "OpenWand"
     executable.parent.mkdir(parents=True)
     executable.write_text("", encoding="utf-8")
-    data_root = home / "Library" / "Application Support" / "Wisp"
+    data_root = home / "Library" / "Application Support" / "OpenWand"
     optional_root = data_root / "python_packages"
 
     plan = uninstaller.build_uninstall_plan(
@@ -81,8 +83,10 @@ def test_packaged_macos_plan_targets_app_bundle_and_launch_agent(tmp_path):
     assert plan.source_checkout is False
     assert plan.app_root == app_root
     assert app_root in targets
-    assert app_root.with_name("Wisp.app.previous-update") in targets
+    assert app_root.with_name("OpenWand.app.previous-update") in targets
     assert data_root in targets
+    assert home / "Library" / "Application Support" / "Wisp" in targets
+    assert home / "Library" / "LaunchAgents" / "com.openwand.launcher.plist" in targets
     assert home / "Library" / "LaunchAgents" / "com.wisp.launcher.plist" in targets
     assert tmp_path / "Applications" not in targets
 
@@ -91,11 +95,11 @@ def test_packaged_macos_plan_targets_app_bundle_and_launch_agent(tmp_path):
 def test_packaged_onedir_plan_targets_only_current_release_root(tmp_path, platform):
     """Windows and Linux portable releases remove their current onedir folder."""
     home = tmp_path / "home"
-    app_root = tmp_path / "portable" / "Wisp"
-    executable = app_root / ("Wisp.exe" if platform == "win32" else "Wisp")
+    app_root = tmp_path / "portable" / "OpenWand"
+    executable = app_root / ("OpenWand.exe" if platform == "win32" else "OpenWand")
     executable.parent.mkdir(parents=True)
     executable.write_text("", encoding="utf-8")
-    data_root = (home / "AppData" / "Roaming" / "Wisp") if platform == "win32" else (home / ".config" / "wisp")
+    data_root = (home / "AppData" / "Roaming" / "OpenWand") if platform == "win32" else (home / ".config" / "openwand")
 
     plan = uninstaller.build_uninstall_plan(
         platform=platform,
@@ -109,16 +113,16 @@ def test_packaged_onedir_plan_targets_only_current_release_root(tmp_path, platfo
 
     assert plan.app_root == app_root
     assert app_root in plan.targets
-    assert app_root.with_name("Wisp.previous-update") in plan.targets
+    assert app_root.with_name("OpenWand.previous-update") in plan.targets
     assert app_root.parent not in plan.targets
     if platform == "linux":
-        assert home / ".local" / "share" / "applications" / "wisp.desktop" in plan.targets
+        assert home / ".local" / "share" / "applications" / "openwand.desktop" in plan.targets
 
 
 def test_windows_script_uses_only_literal_manifest_targets(tmp_path):
     """Windows helper has no discovery wildcard and removes only the validated list."""
-    app_root = tmp_path / "Wisp's release"
-    data_root = tmp_path / "Wisp"
+    app_root = tmp_path / "OpenWand's release"
+    data_root = tmp_path / "OpenWand"
     plan = uninstaller.UninstallPlan(
         platform="win32",
         source_checkout=False,
@@ -134,7 +138,7 @@ def test_windows_script_uses_only_literal_manifest_targets(tmp_path):
     )
 
     assert "$waitPid = 4242" in script
-    assert "Wisp''s release" in script
+    assert "OpenWand''s release" in script
     assert "Remove-Item -LiteralPath $target" in script
     assert "Remove-ItemProperty -LiteralPath" in script
     assert "Get-ChildItem" not in script
@@ -142,13 +146,13 @@ def test_windows_script_uses_only_literal_manifest_targets(tmp_path):
 
 
 def test_posix_script_uses_literal_targets_and_self_cleans(tmp_path):
-    """POSIX helper quotes paths, waits for Wisp, and removes its temp directory."""
-    target = tmp_path / "Wisp release"
+    """POSIX helper quotes paths, waits for OpenWand, and removes its temp directory."""
+    target = tmp_path / "OpenWand release"
     plan = uninstaller.UninstallPlan(
         platform="linux",
         source_checkout=False,
         app_root=target,
-        user_data_root=tmp_path / "wisp",
+        user_data_root=tmp_path / "openwand",
         targets=(target,),
     )
 
@@ -166,15 +170,15 @@ def test_posix_script_uses_literal_targets_and_self_cleans(tmp_path):
 
 
 def test_source_plan_refuses_unrecognized_or_overbroad_roots(tmp_path):
-    """A source directory must carry Wisp identity markers and cannot be the home directory."""
+    """A source directory must carry OpenWand identity markers and cannot be the home directory."""
     home = tmp_path / "home"
-    data_root = home / ".config" / "wisp"
+    data_root = home / ".config" / "openwand"
 
     with pytest.raises(uninstaller.UninstallError, match="unrecognized source"):
         uninstaller.build_uninstall_plan(
             platform="linux",
             frozen=False,
-            source_root=tmp_path / "not-wisp",
+            source_root=tmp_path / "not-openwand",
             user_data_root=data_root,
             optional_packages_root=data_root / "python_packages",
             home=home,
@@ -195,7 +199,7 @@ def test_source_plan_refuses_unrecognized_or_overbroad_roots(tmp_path):
 
 
 def test_keychain_cleanup_removes_consolidated_oauth_and_legacy_accounts(monkeypatch):
-    """Complete uninstall attempts every keychain account created by Wisp."""
+    """Complete uninstall attempts every keychain account created by OpenWand."""
     from core import secret_store
 
     deleted: list[tuple[str, str]] = []
@@ -210,20 +214,26 @@ def test_keychain_cleanup_removes_consolidated_oauth_and_legacy_accounts(monkeyp
     )
     monkeypatch.setitem(sys.modules, "keyring", fake_keyring)
 
-    assert uninstaller.remove_wisp_keychain_entries() == []
+    assert uninstaller.remove_openwand_keychain_entries() == []
 
     accounts = {account for _service, account in deleted}
-    assert {"__wisp_secrets__", "chatgpt-oauth", "github-oauth", "github-copilot-token"} <= accounts
+    assert {
+        "__openwand_secrets__",
+        "__wisp_secrets__",
+        "chatgpt-oauth",
+        "github-oauth",
+        "github-copilot-token",
+    } <= accounts
     assert {"chatgpt-oauth-chunk-0", "chatgpt-oauth-chunk-31"} <= accounts
     assert {name.lower() for name in secret_store.API_KEY_NAMES} <= accounts
 
 
-def test_standalone_worker_refuses_while_another_wisp_process_is_running(monkeypatch):
-    """The batch launcher cannot race a still-running Wisp process during removal."""
+def test_standalone_worker_refuses_while_another_openwand_process_is_running(monkeypatch):
+    """The batch launcher cannot race a still-running OpenWand process during removal."""
     from PySide6.QtWidgets import QMessageBox
 
     from core.system import single_instance
-    from runtime.workers import uninstall_wisp
+    from runtime.workers import uninstall_openwand
     from ui import uninstall_dialog
 
     warnings: list[tuple] = []
@@ -232,23 +242,23 @@ def test_standalone_worker_refuses_while_another_wisp_process_is_running(monkeyp
     monkeypatch.setattr(QMessageBox, "warning", lambda *args: warnings.append(args))
     monkeypatch.setattr(uninstall_dialog, "run_uninstall_dialog", dialog_calls.append)
 
-    assert uninstall_wisp._run_uninstaller_dialog() == 1
+    assert uninstall_openwand._run_uninstaller_dialog() == 1
     assert len(warnings) == 1
-    assert "Close Wisp" in warnings[0][2]
+    assert "Close OpenWand" in warnings[0][2]
     assert dialog_calls == []
 
 
 def test_standalone_worker_uses_shared_confirmed_uninstall_flow(monkeypatch):
     """The batch entrypoint delegates to the exact UI flow used by Settings."""
     from core.system import single_instance
-    from runtime.workers import uninstall_wisp
+    from runtime.workers import uninstall_openwand
     from ui import uninstall_dialog
 
     dialog_calls: list[object] = []
     monkeypatch.setattr(single_instance, "acquire", lambda: True)
     monkeypatch.setattr(uninstall_dialog, "run_uninstall_dialog", dialog_calls.append)
 
-    assert uninstall_wisp._run_uninstaller_dialog() == 0
+    assert uninstall_openwand._run_uninstaller_dialog() == 0
     assert dialog_calls == [None]
 
 
@@ -264,9 +274,9 @@ def test_uninstall_confirmation_is_yes_no_without_typed_phrase(monkeypatch, tmp_
     plan = uninstaller.UninstallPlan(
         platform="win32",
         source_checkout=False,
-        app_root=tmp_path / "Wisp",
-        user_data_root=tmp_path / "data" / "Wisp",
-        targets=(tmp_path / "Wisp", tmp_path / "data" / "Wisp"),
+        app_root=tmp_path / "OpenWand",
+        user_data_root=tmp_path / "data" / "OpenWand",
+        targets=(tmp_path / "OpenWand", tmp_path / "data" / "OpenWand"),
     )
     answers = iter([QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes])
     launches: list[uninstaller.UninstallPlan] = []
@@ -284,7 +294,7 @@ def test_uninstall_confirmation_is_yes_no_without_typed_phrase(monkeypatch, tmp_
 
 
 def test_uninstall_runtime_failure_matrix_is_controlled_and_leak_free(monkeypatch, tmp_path):
-    """Every pre-launch uninstall failure keeps Wisp alive and removes its helper."""
+    """Every pre-launch uninstall failure keeps OpenWand alive and removes its helper."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication, QMessageBox
@@ -299,16 +309,16 @@ def test_uninstall_runtime_failure_matrix_is_controlled_and_leak_free(monkeypatc
         uninstaller.UninstallPlan(
             platform="win32",
             source_checkout=False,
-            app_root=tmp_path / "missing-release" / "Wisp",
-            user_data_root=tmp_path / "missing-release-data" / "Wisp",
-            targets=(tmp_path / "missing-release" / "Wisp",),
+            app_root=tmp_path / "missing-release" / "OpenWand",
+            user_data_root=tmp_path / "missing-release-data" / "OpenWand",
+            targets=(tmp_path / "missing-release" / "OpenWand",),
         ),
         uninstaller.UninstallPlan(
             platform="linux",
             source_checkout=True,
-            app_root=tmp_path / "missing-source" / "Wisp",
-            user_data_root=tmp_path / "missing-source-data" / "wisp",
-            targets=(tmp_path / "missing-source" / "Wisp",),
+            app_root=tmp_path / "missing-source" / "OpenWand",
+            user_data_root=tmp_path / "missing-source-data" / "openwand",
+            targets=(tmp_path / "missing-source" / "OpenWand",),
         ),
     )
     failures = (
@@ -320,8 +330,8 @@ def test_uninstall_runtime_failure_matrix_is_controlled_and_leak_free(monkeypatc
     )
     warnings: list[str] = []
     monkeypatch.setattr(uninstaller.tempfile, "gettempdir", lambda: str(helper_parent))
-    monkeypatch.setattr(uninstaller, "remove_wisp_keychain_entries", lambda: [])
-    monkeypatch.setattr(updater, "wisp_wait_pid", lambda _pid=None: 123)
+    monkeypatch.setattr(uninstaller, "remove_openwand_keychain_entries", lambda: [])
+    monkeypatch.setattr(updater, "openwand_wait_pid", lambda _pid=None: 123)
     monkeypatch.setattr(QMessageBox, "exec", lambda _self: QMessageBox.StandardButton.Yes)
     monkeypatch.setattr(QMessageBox, "warning", lambda _p, _t, message: warnings.append(message))
     monkeypatch.setattr(QMessageBox, "information", lambda *_args: None)
@@ -356,7 +366,7 @@ def test_uninstall_renderers_retry_missing_locked_and_partial_targets(tmp_path):
             platform=platform,
             source_checkout=platform != "win32",
             app_root=targets[0],
-            user_data_root=tmp_path / "data" / "wisp",
+            user_data_root=tmp_path / "data" / "openwand",
             targets=targets,
         )
         log = tmp_path / f"{platform}-failures.log"

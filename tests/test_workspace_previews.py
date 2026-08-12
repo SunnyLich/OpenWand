@@ -92,7 +92,7 @@ def test_pdf_uses_qt_pdf_when_available(qapp) -> None:
     assert buffer.open(QIODevice.OpenModeFlag.WriteOnly)
     writer = QPdfWriter(buffer)
     painter = QPainter(writer)
-    painter.drawText(100, 100, "Wisp PDF preview")
+    painter.drawText(100, 100, "OpenWand PDF preview")
     painter.end()
     buffer.close()
 

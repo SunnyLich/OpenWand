@@ -91,19 +91,19 @@ def _run_real_worker_shell_case(
     privacy_model_dir = user_data_dir / "models" / "openai-privacy-filter"
     env_path = case_root / ".env"
     isolated_paths = {
-        "WISP_DATA_ROOT": case_root,
-        "WISP_REPO_ROOT": case_root,
-        "WISP_RUN_LOG_DIR": run_log_dir,
-        "WISP_USER_DATA_DIR": user_data_dir,
-        "WISP_ADDONS_DIR": addons_dir,
-        "WISP_OPTIONAL_PACKAGES_DIR": optional_packages_dir,
-        "WISP_PRIVACY_MODEL_DIR": privacy_model_dir,
-        "WISP_SETTINGS_ENV_PATH": env_path,
+        "OPENWAND_DATA_ROOT": case_root,
+        "OPENWAND_REPO_ROOT": case_root,
+        "OPENWAND_RUN_LOG_DIR": run_log_dir,
+        "OPENWAND_USER_DATA_DIR": user_data_dir,
+        "OPENWAND_ADDONS_DIR": addons_dir,
+        "OPENWAND_OPTIONAL_PACKAGES_DIR": optional_packages_dir,
+        "OPENWAND_PRIVACY_MODEL_DIR": privacy_model_dir,
+        "OPENWAND_SETTINGS_ENV_PATH": env_path,
     }
     assert all(path == case_root or case_root in path.parents for path in isolated_paths.values())
 
     env_path.write_text(
-        f"WISP_ONBOARDING_COMPLETE=True\nCHAT_EXECUTION_MODE={execution_mode}\nTTS_PROVIDER=none\n",
+        f"OPENWAND_ONBOARDING_COMPLETE=True\nCHAT_EXECUTION_MODE={execution_mode}\nTTS_PROVIDER=none\n",
         encoding="utf-8",
     )
     assert {path.name for path in case_root.iterdir()} == {".env"}
@@ -121,7 +121,7 @@ def _run_real_worker_shell_case(
             optional_packages_dir,
             privacy_model_dir,
         )
-    ), f"Prior Wisp history survived the test-root reset: {case_root}"
+    ), f"Prior OpenWand history survived the test-root reset: {case_root}"
 
     isolated_env = {
         name: str(path)
@@ -132,7 +132,7 @@ def _run_real_worker_shell_case(
         "CHAT_EXECUTION_MODE": execution_mode,
         "PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring",
         "TTS_PROVIDER": "none",
-        "WISP_ONBOARDING_COMPLETE": "True",
+        "OPENWAND_ONBOARDING_COMPLETE": "True",
     }
     for name, value in parent_env.items():
         monkeypatch.setenv(name, value)
@@ -146,7 +146,7 @@ def _run_real_worker_shell_case(
         "REPO_ROOT": case_root,
         "USER_DATA_DIR": user_data_dir,
         "UPDATE_DOWNLOAD_DIR": user_data_dir / "updates",
-        "SINGLE_INSTANCE_LOCK": user_data_dir / "wisp.lock",
+        "SINGLE_INSTANCE_LOCK": user_data_dir / "openwand.lock",
         "MEMORY_DIR": memory_dir,
         "AGENT_RUNS_DIR": memory_dir / "agent_runs",
         "CHATS_DIR": chats_dir,
@@ -175,11 +175,11 @@ def _run_real_worker_shell_case(
     monkeypatch.setattr(memory_store, "_FALLBACK_PATH", str(memory_dir / "facts_fallback.json"))
 
     from runtime.supervisor.flows import FlowController
-    from runtime.supervisor.ipc import WispSupervisor, default_specs
+    from runtime.supervisor.ipc import OpenWandSupervisor, default_specs
 
     # Confirm the parent process sees only this case's paths before any UI or
     # worker is started. Runtime Status uses these parent-side locations.
-    assert Path(os.environ["WISP_RUN_LOG_DIR"]).resolve() == run_log_dir.resolve()
+    assert Path(os.environ["OPENWAND_RUN_LOG_DIR"]).resolve() == run_log_dir.resolve()
     assert optional_deps.OPTIONAL_PACKAGES_DIR.resolve() == optional_packages_dir.resolve()
     assert conversation_store.CONVERSATIONS_FILE.resolve() == (
         chats_dir / "conversations.json"
@@ -213,14 +213,14 @@ def _run_real_worker_shell_case(
         **parent_env,
         "PYTHONPATH": os.pathsep.join([str(repo_root), str(repo_root / "runtime" / "brain")]),
         "QT_QPA_PLATFORM": "offscreen",
-        "WISP_BRAIN_FAKE_LLM": "1",
-        "WISP_UI_DEBUG_METHODS": "1",
+        "OPENWAND_BRAIN_FAKE_LLM": "1",
+        "OPENWAND_UI_DEBUG_METHODS": "1",
     }
     assert all(shared_env[name] == str(path) for name, path in isolated_paths.items())
     specs = default_specs()
     for spec in specs.values():
         spec.env = {**spec.env, **shared_env}
-    supervisor = WispSupervisor(specs)
+    supervisor = OpenWandSupervisor(specs)
     flow = FlowController(
         native=supervisor.workers["native"],
         ui=supervisor.workers["ui"],
@@ -278,17 +278,12 @@ def _run_real_worker_shell_case(
             for name, worker in supervisor.workers.items()
         )
         progress(f"worker states before shutdown: {worker_states}")
-        # Windows psutil process-tree discovery can block inside native process
-        # enumeration on a busy hosted runner. This isolated fixture cannot have
-        # addon hosts, and Windows uses in-process hotkeys, so stop each real
-        # worker without the unrelated OS-wide survivor audit. Keep the existing
-        # audit on macOS (where the hotkey helper is a child process) and Linux.
-        audit_managed_processes = os.name != "nt"
-        progress(f"managed process audit enabled: {audit_managed_processes}")
-        supervisor.shutdown(
-            audit_managed_processes=audit_managed_processes,
+        progress("managed process audit enabled")
+        survivors = supervisor.shutdown(
+            audit_managed_processes=True,
             progress=lambda phase: progress(f"worker shutdown: {phase}"),
         )
+        assert survivors == []
         progress("worker shutdown complete")
 
 

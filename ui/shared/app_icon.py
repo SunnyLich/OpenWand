@@ -9,11 +9,11 @@ from typing import Any
 
 from core.system.paths import ASSETS_DIR, REPO_ROOT
 
-APP_ID = "app.wisp.desktop"
-LINUX_DESKTOP_FILE_NAME = "wisp"
-APP_NAME = "Wisp"
+APP_ID = "app.openwand.desktop"
+LINUX_DESKTOP_FILE_NAME = "openwand"
+APP_NAME = "OpenWand"
 
-log = logging.getLogger("wisp.app_icon")
+log = logging.getLogger("openwand.app_icon")
 
 
 def _asset_path(name: str) -> Path | None:
@@ -63,11 +63,11 @@ def _desktop_exec_quote(value: str) -> str:
 
 
 def _linux_desktop_entry_content() -> str:
-    """Build the wisp.desktop payload for the current install location."""
+    """Build the openwand.desktop payload for the current install location."""
     if getattr(sys, "frozen", False):
         exec_line = _desktop_exec_quote(sys.executable)
     else:
-        launcher = REPO_ROOT / "Start Wisp.sh"
+        launcher = REPO_ROOT / "Start OpenWand.sh"
         if launcher.exists():
             exec_line = f"bash {_desktop_exec_quote(str(launcher))}"
         else:
@@ -92,11 +92,11 @@ def _linux_desktop_entry_content() -> str:
 
 
 def ensure_linux_desktop_entry(platform: str | None = None) -> Path | None:
-    """Install or refresh the user-level wisp.desktop launcher entry.
+    """Install or refresh the user-level openwand.desktop launcher entry.
 
     Qt announces LINUX_DESKTOP_FILE_NAME as the app id on Linux; without a
     matching .desktop file the desktop portal logs "App info not found for
-    'wisp'" and the taskbar cannot resolve Wisp's name or icon.
+    'openwand'" and the taskbar cannot resolve OpenWand's name or icon.
     """
     if not (platform or sys.platform).startswith("linux"):
         return None
@@ -118,7 +118,7 @@ def ensure_linux_desktop_entry(platform: str | None = None) -> Path | None:
 
 
 def install_app_icon(app: Any, platform: str | None = None) -> Path | None:
-    """Apply Wisp's app metadata and icon to a Qt application object."""
+    """Apply OpenWand's app metadata and icon to a Qt application object."""
     platform = platform or sys.platform
     app.setApplicationName(APP_NAME)
     app.setApplicationDisplayName(APP_NAME)
@@ -136,5 +136,5 @@ def install_app_icon(app: Any, platform: str | None = None) -> Path | None:
         if not icon.isNull():
             app.setWindowIcon(icon)
     except Exception:
-        log.exception("Failed to apply Wisp application icon")
+        log.exception("Failed to apply OpenWand application icon")
     return icon_path

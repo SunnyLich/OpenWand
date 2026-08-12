@@ -16,7 +16,7 @@ os.environ.setdefault("PYTHONFAULTHANDLER", "1")
 os.environ.setdefault("QT_SCALE_FACTOR", "1")
 os.environ.setdefault("QT_FONT_DPI", "96")
 
-_REAL_HOST_TESTS = os.environ.get("WISP_RUN_REAL_HOST_TESTS") == "1"
+_REAL_HOST_TESTS = os.environ.get("OPENWAND_RUN_REAL_HOST_TESTS") == "1"
 if not _REAL_HOST_TESTS:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -111,9 +111,9 @@ _suppress_windows_crash_dialogs()
 def _set_test_app_language(language: str = "en") -> None:
     """Keep UI text expectations independent from a developer's saved language."""
     try:
-        import config as wisp_config
+        import config as openwand_config
 
-        wisp_config.APP_LANGUAGE = language
+        openwand_config.APP_LANGUAGE = language
     except Exception:
         return
     try:
@@ -220,7 +220,7 @@ def qapp():
     from PySide6.QtWidgets import QApplication
 
     global _QT_APP
-    _QT_APP = QApplication.instance() or QApplication(["wisp-workflow-tests"])
+    _QT_APP = QApplication.instance() or QApplication(["openwand-workflow-tests"])
     yield _QT_APP
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
@@ -236,5 +236,5 @@ def pytest_sessionstart(session) -> None:
         return
 
     global _QT_APP
-    _QT_APP = QApplication.instance() or QApplication(["wisp-tests"])
+    _QT_APP = QApplication.instance() or QApplication(["openwand-tests"])
     _set_test_app_language()

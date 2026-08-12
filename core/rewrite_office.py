@@ -132,7 +132,7 @@ class WordRewriteClient:
                 return True
 
         _undo_office_mutation(application)
-        raise RuntimeError("Word did not verify the exact replacement and Wisp attempted rollback.")
+        raise RuntimeError("Word did not verify the exact replacement and OpenWand attempted rollback.")
 
 
 class PowerPointRewriteClient:
@@ -226,7 +226,7 @@ class PowerPointRewriteClient:
 
         _undo_office_mutation(application)
         raise RuntimeError(
-            "PowerPoint did not verify the exact replacement and Wisp attempted rollback."
+            "PowerPoint did not verify the exact replacement and OpenWand attempted rollback."
         )
 
 

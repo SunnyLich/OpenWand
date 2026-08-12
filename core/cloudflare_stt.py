@@ -103,7 +103,7 @@ def transcribe(
         "task": "transcribe",
         "vad_filter": True,
         "beam_size": max(1, min(int(beam_size), 10)),
-        # Each Wisp background window already overlaps its neighbor. Avoid
+        # Each OpenWand background window already overlaps its neighbor. Avoid
         # conditioning separate API requests on text they cannot share.
         "condition_on_previous_text": False,
     }

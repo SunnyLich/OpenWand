@@ -21,16 +21,16 @@ from runtime.bootstrap import (
     suppress_console_ctrl_c,
 )
 from runtime.supervisor.flows import FlowController
-from runtime.supervisor.ipc import WispSupervisor
+from runtime.supervisor.ipc import OpenWandSupervisor
 from runtime.supervisor.runtime_log import RuntimeEventLog, RuntimeLogHandler
 
 RUNTIME_LOG_RETENTION_DAYS = 7
-_RUNTIME_LOG_DIR_PREFIXES = ("wisp_runtime_", "wisp_crash_")
+_RUNTIME_LOG_DIR_PREFIXES = ("openwand_runtime_", "openwand_crash_")
 
 
-def _run_real_settings_smoke(supervisor: WispSupervisor) -> dict[str, object] | None:
+def _run_real_settings_smoke(supervisor: OpenWandSupervisor) -> dict[str, object] | None:
     """Exercise the production Settings dialog when launcher acceptance opts in."""
-    if os.environ.get("WISP_LAUNCH_SMOKE_SETTINGS_PROFILE") != "1":
+    if os.environ.get("OPENWAND_LAUNCH_SMOKE_SETTINGS_PROFILE") != "1":
         return None
 
     def call(action: str, **params: str) -> dict[str, object]:
@@ -108,7 +108,7 @@ def _run_real_settings_smoke(supervisor: WispSupervisor) -> dict[str, object] | 
 
     from core.system.env_utils import read_env_file
 
-    env_path = Path(str(os.environ["WISP_SETTINGS_ENV_PATH"])).resolve()
+    env_path = Path(str(os.environ["OPENWAND_SETTINGS_ENV_PATH"])).resolve()
     staged_root_values = read_env_file(env_path)
     staged_before_save = {
         "disk_active_profile": staged_root_values.get("ACTIVE_PROFILE"),
@@ -132,7 +132,7 @@ def _run_real_settings_smoke(supervisor: WispSupervisor) -> dict[str, object] | 
     call("select_provider", provider="ollama")
     expected_models = {
         item.strip()
-        for item in str(os.environ.get("WISP_LAUNCH_SMOKE_OLLAMA_MODELS") or "").split(",")
+        for item in str(os.environ.get("OPENWAND_LAUNCH_SMOKE_OLLAMA_MODELS") or "").split(",")
         if item.strip()
     }
     deadline = time.monotonic() + 30.0
@@ -272,12 +272,12 @@ def _run_real_settings_smoke(supervisor: WispSupervisor) -> dict[str, object] | 
 
 
 def _write_launch_smoke_ready(
-    supervisor: WispSupervisor,
+    supervisor: OpenWandSupervisor,
     startup_results: dict[str, object],
     hotkey_result: dict[str, object],
 ) -> bool:
     """Publish opt-in process-level startup evidence for launcher smoke tests."""
-    configured = str(os.environ.get("WISP_LAUNCH_SMOKE_READY_FILE") or "").strip()
+    configured = str(os.environ.get("OPENWAND_LAUNCH_SMOKE_READY_FILE") or "").strip()
     if not configured:
         return False
     path = Path(configured).expanduser().resolve()
@@ -304,7 +304,7 @@ def _write_launch_smoke_ready(
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     temporary.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
     temporary.replace(path)
-    logging.info("Wisp launch smoke reached real UI/worker readiness: %s", path)
+    logging.info("OpenWand launch smoke reached real UI/worker readiness: %s", path)
     return True
 
 
@@ -319,12 +319,12 @@ def _dispatch_module_mode() -> None:
 
 def _runtime_log_mode() -> str:
     """Return the supervisor log mode: debug keeps logs, crash writes on failure."""
-    mode = str(os.environ.get("WISP_RUNTIME_LOG_MODE") or "").strip().lower()
+    mode = str(os.environ.get("OPENWAND_RUNTIME_LOG_MODE") or "").strip().lower()
     if mode in {"debug", "always", "logs", "log"}:
         return "debug"
     if mode in {"crash", "off", "none", "0", "false"}:
         return "crash"
-    if os.environ.get("WISP_RUN_LOG_DIR"):
+    if os.environ.get("OPENWAND_RUN_LOG_DIR"):
         return "debug"
     if getattr(sys, "frozen", False):
         return "debug"
@@ -332,7 +332,7 @@ def _runtime_log_mode() -> str:
 
 
 def _prune_runtime_logs(log_root: Path | None = None, *, now: float | None = None) -> int:
-    """Remove Wisp runtime log artifacts older than the retention window."""
+    """Remove OpenWand runtime log artifacts older than the retention window."""
     root = log_root if log_root is not None else repo_root() / "build_logs"
     if not root.is_dir():
         return 0
@@ -385,17 +385,17 @@ def _prune_runtime_logs(log_root: Path | None = None, *, now: float | None = Non
 
 def _prepare_run_log_dir(*, reason: str = "runtime", expose_to_workers: bool = True) -> Path:
     """Create a runtime log directory when debug logs or crash logs are needed."""
-    configured = os.environ.get("WISP_RUN_LOG_DIR")
+    configured = os.environ.get("OPENWAND_RUN_LOG_DIR")
     if configured:
         path = Path(configured)
     else:
         root = repo_root()
         _prune_runtime_logs(root / "build_logs")
-        prefix = "wisp_runtime" if reason == "runtime" else "wisp_crash"
+        prefix = "openwand_runtime" if reason == "runtime" else "openwand_crash"
         path = root / "build_logs" / f"{prefix}_{time.strftime('%Y%m%d-%H%M%S')}"
         if expose_to_workers:
-            os.environ["WISP_RUN_LOG_DIR"] = str(path)
-        latest = root / "build_logs" / "latest_wisp_runtime.txt"
+            os.environ["OPENWAND_RUN_LOG_DIR"] = str(path)
+        latest = root / "build_logs" / "latest_openwand_runtime.txt"
         latest.parent.mkdir(parents=True, exist_ok=True)
         latest.write_text(str(path), encoding="utf-8")
     path.mkdir(parents=True, exist_ok=True)
@@ -415,13 +415,13 @@ def _configure_logging(log_dir: Path | None) -> None:
     )
 
 
-def _write_abrupt_log(reason: str, supervisor: WispSupervisor | None, exc_info=None) -> Path | None:
+def _write_abrupt_log(reason: str, supervisor: OpenWandSupervisor | None, exc_info=None) -> Path | None:
     """Best-effort crash-only log writer for normal launcher runs."""
     try:
         log_dir = _prepare_run_log_dir(reason="crash", expose_to_workers=False)
         report = log_dir / "supervisor-crash.log"
         lines = [
-            f"Wisp ended abruptly: {reason}",
+            f"OpenWand ended abruptly: {reason}",
             f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}",
             "",
         ]
@@ -472,10 +472,18 @@ def main() -> int:
     """Handle main for runtime supervisor app."""
     suppress_console_ctrl_c()
     install_crash_diagnostics()
+    # Claim process ownership before log pruning, autostart synchronization, or
+    # worker construction. A duplicate launcher exits without changing shared
+    # state or briefly creating a second OpenWand worker tree.
+    if not single_instance.acquire():
+        logging.warning(
+            "Another OpenWand instance is already running, or exclusivity could not be established; exiting."
+        )
+        return 2
     from core.system.paths import USER_DATA_DIR
 
     os.environ.setdefault(
-        "WISP_ACTION_TRACE_PATH",
+        "OPENWAND_ACTION_TRACE_PATH",
         str(USER_DATA_DIR / "logs" / "action-timings.jsonl"),
     )
     log_mode = _runtime_log_mode()
@@ -489,22 +497,19 @@ def main() -> int:
     runtime_log = RuntimeEventLog()
     logging.getLogger().addHandler(RuntimeLogHandler(runtime_log))
     if log_dir is not None:
-        logging.info("Wisp runtime logs: %s", log_dir)
+        logging.info("OpenWand runtime logs: %s", log_dir)
     else:
-        logging.info("Wisp runtime logs are off; crash logs will be written only if startup ends abruptly.")
+        logging.info("OpenWand runtime logs are off; crash logs will be written only if startup ends abruptly.")
     try:
         import config
         from core.system.autostart import sync_start_on_login
 
-        if os.environ.get("WISP_LAUNCH_SMOKE_DISABLE_AUTOSTART_SYNC") != "1":
+        if os.environ.get("OPENWAND_LAUNCH_SMOKE_DISABLE_AUTOSTART_SYNC") != "1":
             sync_start_on_login(bool(getattr(config, "START_ON_LOGIN", False)))
     except Exception:
         logging.warning("Could not sync launch-at-login setting", exc_info=True)
-    if not single_instance.acquire():
-        logging.warning("Another Wisp instance is already running; exiting.")
-        return 2
     _resume_staged_optional_installs()
-    supervisor = WispSupervisor()
+    supervisor = OpenWandSupervisor()
     for worker_name, worker in supervisor.workers.items():
         if hasattr(worker, "on_stderr_line"):
             worker.on_stderr_line(runtime_log.stderr_sink(worker_name))
@@ -529,11 +534,11 @@ def main() -> int:
         nonlocal abrupt_reason
         logging.info("UI worker exited with code %s", returncode)
         if returncode in (0, None) or ui_quit_requested.is_set():
-            logging.info("UI worker exited cleanly; shutting down Wisp")
+            logging.info("UI worker exited cleanly; shutting down OpenWand")
             _close_worker_spawn_gate()
             stop.set()
             return
-        logging.warning("UI worker exited unexpectedly; shutting down Wisp")
+        logging.warning("UI worker exited unexpectedly; shutting down OpenWand")
         abrupt_reason = f"UI worker exited with code {returncode}"
         _close_worker_spawn_gate()
         stop.set()
@@ -548,7 +553,7 @@ def main() -> int:
         ui_worker.on_exit(_stop_when_ui_exits)
     if ui_worker is not None and hasattr(ui_worker, "on_event"):
         def _on_ui_quit_requested(_data=None, _req_id=None) -> None:
-            logging.info("UI worker requested Wisp shutdown")
+            logging.info("UI worker requested OpenWand shutdown")
             ui_quit_requested.set()
             _close_worker_spawn_gate()
             stop.set()
@@ -592,7 +597,7 @@ def main() -> int:
                 logging.exception("native hotkeys did not start")
         if (
             _write_launch_smoke_ready(supervisor, startup_results, hotkey_result)
-            and os.environ.get("WISP_LAUNCH_SMOKE_EXIT_AFTER_READY") == "1"
+            and os.environ.get("OPENWAND_LAUNCH_SMOKE_EXIT_AFTER_READY") == "1"
         ):
             _close_worker_spawn_gate()
             stop.set()
@@ -602,7 +607,7 @@ def main() -> int:
         if log_mode != "debug":
             crash_dir = _write_abrupt_log("supervisor exception", supervisor, sys.exc_info())
             if crash_dir is not None:
-                logging.error("Wrote Wisp crash log: %s", crash_dir)
+                logging.error("Wrote OpenWand crash log: %s", crash_dir)
         raise
     finally:
         _close_worker_spawn_gate()
@@ -615,7 +620,7 @@ def main() -> int:
     if abrupt_reason and log_mode != "debug":
         crash_dir = _write_abrupt_log(abrupt_reason, supervisor)
         if crash_dir is not None:
-            logging.error("Wrote Wisp crash log: %s", crash_dir)
+            logging.error("Wrote OpenWand crash log: %s", crash_dir)
     return 0
 
 

@@ -7,10 +7,11 @@ import html
 import os
 import re
 import sys
+import time
 import uuid
 
 from PySide6.QtCore import QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QRegion
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -25,10 +26,15 @@ from PySide6.QtWidgets import (
 )
 
 from ui.i18n import t
+from ui.shared.theme import theme_colors
 
 _POPUP_WIDTH = 390
 _BALLOON_SIZE = 44
 _SOURCE_POLL_MS = 250
+_ANCHOR_POLL_MS = 200
+_FOCUS_CLAIM_INTERVAL_MS = 40
+_FOCUS_CLAIM_TIMEOUT_MS = 1_200
+_FOCUS_STABLE_SAMPLES = 3
 
 
 def _word_tokens(value: str) -> list[str]:
@@ -172,12 +178,14 @@ class RewriteAnnotationPopup(QWidget):
         self._selection_anchor_side: str | None = None
 
         self.setWindowTitle(t("Comment"))
+        self.setObjectName("rewriteAnnotationPopup")
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setStyleSheet("QWidget#rewriteAnnotationPopup { background: transparent; }")
         self.setFixedWidth(_POPUP_WIDTH)
 
         self._stack = QStackedLayout(self)
@@ -193,25 +201,41 @@ class RewriteAnnotationPopup(QWidget):
         self._source_timer.timeout.connect(self._sync_to_source_window)
         self._source_timer.start()
         self._anchor_timer = QTimer(self)
-        self._anchor_timer.setInterval(400)
+        self._anchor_timer.setInterval(_ANCHOR_POLL_MS)
         self._anchor_timer.timeout.connect(self._request_anchor_refresh)
         self._anchor_timer.start()
+        # A top-level Qt.Tool can be shown before Windows completes the native
+        # foreground transition. One activateWindow()/setFocus() pair then
+        # leaves the editor selection active, so the user's first keystrokes
+        # replace source text instead of entering the comment. Keep a bounded
+        # verifier alive until the popup has owned keyboard focus for several
+        # consecutive event-loop samples.
+        self._focus_claim_started = 0.0
+        self._focus_claim_attempts = 0
+        self._focus_stable_samples = 0
+        self._focus_claim_timer = QTimer(self)
+        self._focus_claim_timer.setInterval(_FOCUS_CLAIM_INTERVAL_MS)
+        self._focus_claim_timer.timeout.connect(self._focus_claim_tick)
 
     def _build_panel(self) -> QWidget:
+        c = theme_colors()
+        accent_fill = c["accent_fill"]
         panel = QFrame()
         panel.setObjectName("rewriteAnnotationPanel")
         panel.setStyleSheet(
-            "QFrame#rewriteAnnotationPanel { background:#20222b; border:1px solid #45495a; "
+            f"QFrame#rewriteAnnotationPanel {{ background:{c['surface']}; border:1px solid {c['border']}; "
             "border-radius:12px; }"
-            "QLabel { color:#f1f3f5; }"
-            "QPlainTextEdit { background:#15171e; color:#f8f9fa; border:1px solid #45495a; "
+            f"QLabel {{ color:{c['text']}; }}"
+            f"QPlainTextEdit {{ background:{c['well']}; color:{c['text']}; border:1px solid {c['border']}; "
             "border-radius:8px; padding:7px; }"
-            "QCheckBox { color:#ced4da; }"
-            "QPushButton { background:#343847; color:#f8f9fa; border:none; border-radius:7px; "
-            "padding:6px 11px; }"
-            "QPushButton:hover { background:#454b60; }"
-            "QPushButton#primary { background:#3b82f6; }"
-            "QPushButton#dangerClose { background:#343847; border:1px solid #747b91; "
+            f"QPlainTextEdit:focus {{ border-color:{c['accent']}; }}"
+            f"QCheckBox {{ color:{c['label']}; }}"
+            f"QPushButton {{ background:{c['well']}; color:{c['accent']}; border:1px solid {c['well']}; border-radius:7px; "
+            "padding:6px 11px; font-weight:600; }"
+            f"QPushButton:hover {{ background:{c['button_hover']}; border-color:{c['button_hover']}; }}"
+            f"QPushButton#primary {{ background:{accent_fill}; color:{c['on_accent']}; border-color:{accent_fill}; }}"
+            f"QPushButton#primary:hover {{ background:{c['accent_fill_hover']}; }}"
+            f"QPushButton#dangerClose {{ background:{c['well']}; color:{c['label']}; border:1px solid {c['border']}; "
             "border-radius:12px; padding:0px; font-weight:700; }"
         )
         root = QVBoxLayout(panel)
@@ -233,7 +257,7 @@ class RewriteAnnotationPopup(QWidget):
 
         self._status = QLabel("")
         self._status.setWordWrap(True)
-        self._status.setStyleSheet("color:#adb5bd;")
+        self._status.setStyleSheet(f"color:{c['text_dim']};")
         self._status.hide()
         root.addWidget(self._status)
 
@@ -249,7 +273,7 @@ class RewriteAnnotationPopup(QWidget):
 
         compose_footer = QHBoxLayout()
         self._hint = QLabel(t("Enter: Send   ·   Ctrl+Enter: Include document   ·   Shift+Enter: New line"))
-        self._hint.setStyleSheet("color:#868e96; font-size:9px;")
+        self._hint.setStyleSheet(f"color:{c['text_dim']}; font-size:9px;")
         self._hint.setWordWrap(True)
         compose_footer.addWidget(self._hint, 1)
         compose_actions = QVBoxLayout()
@@ -272,7 +296,7 @@ class RewriteAnnotationPopup(QWidget):
         self._diff.setWordWrap(True)
         self._diff.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self._diff.setStyleSheet(
-            "background:#15171e; color:#f1f3f5; border:1px solid #45495a; "
+            f"background:{c['well']}; color:{c['text']}; border:1px solid {c['border']}; "
             "border-radius:8px; padding:9px;"
         )
         self._diff.hide()
@@ -312,22 +336,37 @@ class RewriteAnnotationPopup(QWidget):
         return panel
 
     def _build_balloon(self) -> QWidget:
+        c = theme_colors()
+        accent_fill = c["accent_fill"]
         shell = QWidget()
+        shell.setObjectName("processingBalloonShell")
+        shell.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        shell.setStyleSheet("QWidget#processingBalloonShell { background: transparent; }")
         shell.setFixedSize(_BALLOON_SIZE, _BALLOON_SIZE)
         layout = QVBoxLayout(shell)
         layout.setContentsMargins(0, 0, 0, 0)
-        button = QPushButton(str(self.display_number))
+        button = QPushButton("")
         button.setObjectName("processingBalloon")
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         button.setFixedSize(_BALLOON_SIZE, _BALLOON_SIZE)
         button.setToolTip(t("Rewrite is processing"))
         button.setStyleSheet(
-            "QPushButton { background:#3b82f6; color:white; border:2px solid #93c5fd; "
-            "border-radius:22px; font-size:20px; font-weight:700; padding:0; }"
-            "QPushButton:hover { background:#2563eb; }"
+            f"QPushButton {{ background:{accent_fill}; border:2px solid {c['accent']}; "
+            "border-radius:22px; padding:0; outline:none; }"
+            f"QPushButton:hover {{ background:{c['accent_fill_hover']}; }}"
+        )
+        number = QLabel(str(self.display_number), button)
+        number.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        number.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        number.setGeometry(0, 0, _BALLOON_SIZE, _BALLOON_SIZE)
+        number.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        number.setStyleSheet(
+            f"QLabel {{ background:transparent; color:{c['on_accent']}; border:none; }}"
         )
         button.clicked.connect(self._open_processing)
         layout.addWidget(button)
         self._balloon_button = button
+        self._balloon_number = number
         return shell
 
     def show_composer(self) -> None:
@@ -342,25 +381,34 @@ class RewriteAnnotationPopup(QWidget):
         self._resize_panel_to_content()
         self._desired_visible = True
         self._sync_to_source_window()
-        self.raise_()
-        self.activateWindow()
-        self._comment.setFocus(Qt.FocusReason.PopupFocusReason)
+        self._start_composer_focus_claim()
 
-    def show_processing(self) -> None:
+    def show_processing(self, *, display_number: int | None = None) -> None:
+        self._stop_composer_focus_claim()
+        if display_number is not None:
+            self.display_number = max(1, int(display_number or 1))
+            self._balloon_number.setText(str(self.display_number))
         self.state = "processing"
         self._stack.setCurrentWidget(self._balloon)
         self.setFixedSize(_BALLOON_SIZE, _BALLOON_SIZE)
+        # The application-wide QWidget background otherwise paints the
+        # transparent top-level corners. Clip the native tool window itself so
+        # the processing badge is a real circle, never a black square holding
+        # a circular icon.
+        self.setMask(QRegion(self.rect(), QRegion.RegionType.Ellipse))
         self._desired_visible = True
         self._sync_to_source_window()
         self.raise_()
 
     def show_held(self) -> None:
         """Hide a saved comment until the shared Send all control dispatches it."""
+        self._stop_composer_focus_claim()
         self.state = "held"
         self._desired_visible = False
         self.hide()
 
     def show_proposal(self, replacement_text: str, *, copy_only: bool = False) -> None:
+        self._stop_composer_focus_claim()
         self.state = "proposal"
         self.replacement_text = str(replacement_text or "")
         self._copy_only = bool(copy_only)
@@ -390,7 +438,110 @@ class RewriteAnnotationPopup(QWidget):
         self._resize_panel_to_content()
         self._desired_visible = True
         self._sync_to_source_window()
+        self._start_composer_focus_claim()
+
+    def _start_composer_focus_claim(self) -> None:
+        """Claim and verify keyboard focus while the native popup is settling."""
+        self._focus_claim_started = time.monotonic()
+        self._focus_claim_attempts = 0
+        self._focus_stable_samples = 0
+        if not self._focus_claim_timer.isActive():
+            self._focus_claim_timer.start()
+        self._focus_claim_tick()
+
+    def _stop_composer_focus_claim(self) -> None:
+        self._focus_claim_timer.stop()
+        self._focus_stable_samples = 0
+
+    def _composer_has_keyboard_focus(self) -> bool:
+        return bool(self.isActiveWindow() and self._comment.hasFocus())
+
+    def _focus_claim_tick(self) -> None:
+        if self.state not in {"composing", "failed"} or not self._desired_visible:
+            self._stop_composer_focus_claim()
+            return
+        source_visible, _source_rect = self._source_window_state()
+        if source_visible is False:
+            # The user moved to another application while the initial popup was
+            # settling. Do not turn the bounded repair into ongoing focus theft.
+            self._stop_composer_focus_claim()
+            return
+        elapsed_ms = (time.monotonic() - self._focus_claim_started) * 1_000
+        if elapsed_ms >= _FOCUS_CLAIM_TIMEOUT_MS:
+            self._stop_composer_focus_claim()
+            return
+        if self._composer_has_keyboard_focus():
+            self._focus_stable_samples += 1
+            if self._focus_stable_samples >= _FOCUS_STABLE_SAMPLES:
+                self._stop_composer_focus_claim()
+            return
+        self._focus_stable_samples = 0
+        self._focus_claim_attempts += 1
+        self._activate_composer()
+
+    def _activate_composer(self) -> None:
+        """Request both Qt and native foreground activation for the comment field."""
+        if not self.isVisible():
+            self._sync_to_source_window()
         self.raise_()
+        self._request_native_foreground()
+        self.activateWindow()
+        handle = self.windowHandle()
+        if handle is not None:
+            handle.requestActivate()
+        self._comment.setFocus(Qt.FocusReason.PopupFocusReason)
+
+    def _request_native_foreground(self) -> bool:
+        """Ask Windows to finish the user-initiated popup activation."""
+        if sys.platform != "win32":
+            return False
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+            user32.GetForegroundWindow.argtypes = []
+            user32.GetForegroundWindow.restype = wintypes.HWND
+            user32.GetWindowThreadProcessId.argtypes = [
+                wintypes.HWND,
+                ctypes.POINTER(wintypes.DWORD),
+            ]
+            user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+            user32.AttachThreadInput.argtypes = [
+                wintypes.DWORD,
+                wintypes.DWORD,
+                wintypes.BOOL,
+            ]
+            user32.AttachThreadInput.restype = wintypes.BOOL
+            user32.BringWindowToTop.argtypes = [wintypes.HWND]
+            user32.BringWindowToTop.restype = wintypes.BOOL
+            user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+            user32.SetForegroundWindow.restype = wintypes.BOOL
+            kernel32.GetCurrentThreadId.argtypes = []
+            kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+            hwnd = int(self.winId())
+            foreground = int(user32.GetForegroundWindow() or 0)
+            if foreground == hwnd:
+                return True
+            current_thread = int(kernel32.GetCurrentThreadId() or 0)
+            foreground_thread = int(
+                user32.GetWindowThreadProcessId(wintypes.HWND(foreground), None) or 0
+            )
+            attached = False
+            try:
+                if foreground_thread and foreground_thread != current_thread:
+                    attached = bool(
+                        user32.AttachThreadInput(current_thread, foreground_thread, True)
+                    )
+                user32.BringWindowToTop(wintypes.HWND(hwnd))
+                user32.SetForegroundWindow(wintypes.HWND(hwnd))
+            finally:
+                if attached:
+                    user32.AttachThreadInput(current_thread, foreground_thread, False)
+            return int(user32.GetForegroundWindow() or 0) == hwnd
+        except Exception:
+            return False
 
     def _set_compose_controls_visible(self, visible: bool) -> None:
         for widget in (self._comment, self._include_document, self._hint, self._hold, self._send):
@@ -400,6 +551,7 @@ class RewriteAnnotationPopup(QWidget):
         """Restore panel sizing after balloon mode and follow growing editors."""
         if not hasattr(self, "_panel") or self._stack.currentWidget() is not self._panel:
             return
+        self.clearMask()
         screen = QApplication.screenAt(self.frameGeometry().center()) or QApplication.primaryScreen()
         available_height = screen.availableGeometry().height() if screen else 900
         maximum_height = max(280, int(available_height * 0.75))
@@ -483,8 +635,8 @@ class RewriteAnnotationPopup(QWidget):
         self._proposal_actions.hide()
         self._revision.hide()
         self._revision_footer.hide()
-        self._status.setText(t("Wisp is preparing the proposed rewrite."))
-        self._status.setStyleSheet("color:#adb5bd;")
+        self._status.setText(t("OpenWand is preparing the proposed rewrite."))
+        self._status.setStyleSheet(f"color:{theme_colors()['text_dim']};")
         self._status.show()
         self._stack.setCurrentWidget(self._panel)
         self._resize_panel_to_content()
@@ -493,6 +645,7 @@ class RewriteAnnotationPopup(QWidget):
 
     def remove(self) -> None:
         self._desired_visible = False
+        self._stop_composer_focus_claim()
         self._source_timer.stop()
         self._anchor_timer.stop()
         self.close()
@@ -602,6 +755,21 @@ class RewriteAnnotationPopup(QWidget):
             from ctypes import wintypes
 
             user32 = ctypes.windll.user32
+            user32.IsWindow.argtypes = [wintypes.HWND]
+            user32.IsWindow.restype = wintypes.BOOL
+            user32.IsWindowVisible.argtypes = [wintypes.HWND]
+            user32.IsWindowVisible.restype = wintypes.BOOL
+            user32.IsIconic.argtypes = [wintypes.HWND]
+            user32.IsIconic.restype = wintypes.BOOL
+            user32.GetForegroundWindow.argtypes = []
+            user32.GetForegroundWindow.restype = wintypes.HWND
+            user32.GetWindowThreadProcessId.argtypes = [
+                wintypes.HWND,
+                ctypes.POINTER(wintypes.DWORD),
+            ]
+            user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+            user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+            user32.GetWindowRect.restype = wintypes.BOOL
             hwnd = int(self.source_window_id)
             if not user32.IsWindow(hwnd):
                 return False, None

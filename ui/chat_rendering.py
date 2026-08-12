@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import html
 import re
+from urllib.parse import quote, urlsplit
 
 import config
 from core.assistant_text import split_tagged_text
+from ui.latex_rendering import (
+    contains_latex_math,
+    iter_math_spans,
+    latex_expression_to_html,
+)
 from ui.text_annotations import (
     TextAnnotation,
     annotation_tooltip_anchor,
@@ -23,16 +29,26 @@ _TABLE_DIVIDER_CELL_RE = re.compile(r"^:?-{3,}:?$")
 # the original dark values and refreshed from the app theme by
 # ui.chat_window._refresh_chat_palette() so light mode renders readable code.
 _RENDER_PALETTE: dict[str, str] = {
-    "code_bg": "#26263a",
-    "code_inline_bg": "#303044",
-    "thought": "#8f8f9e",
-    "table_header_bg": "#34345a",
-    "table_row_bg": "#26263a",
-    "table_alt_bg": "#2b2b43",
-    "table_border": "#494967",
-    "table_text": "#f2f0ff",
-    "table_accent": "#a99bff",
+    "code_bg": "#0e1013",
+    "code_inline_bg": "#22262b",
+    "thought": "#8b8a86",
+    "table_header_bg": "#403724",
+    "table_row_bg": "#1c1f23",
+    "table_alt_bg": "#22262b",
+    "table_border": "#30353b",
+    "table_text": "#e9e6e0",
+    "table_accent": "#d8a145",
 }
+
+
+def _latex_math_html(expression: str, *, display: bool) -> str:
+    """Render math in the active transcript colour and an appropriate size."""
+    return latex_expression_to_html(
+        expression,
+        display=display,
+        color=_RENDER_PALETTE["table_text"],
+        size=20 if display else 16,
+    )
 
 
 def set_render_palette(
@@ -68,7 +84,99 @@ def set_render_palette(
         _RENDER_PALETTE["table_accent"] = table_accent
 _NUMBER_RE = re.compile(r"^\s*\d+[.)]\s+(.*)$")
 _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*$")
+_LIST_ITEM_RE = re.compile(
+    r"^(?P<indent>[ \t]*)(?:(?P<bullet>[-*+])|(?P<number>\d+)[.)])\s+(?P<body>.*)$"
+)
+_HORIZONTAL_RULE_RE = re.compile(
+    r"^\s{0,3}(?:(?:-\s*){3,}|(?:_\s*){3,}|(?:\*\s*){3,})$"
+)
+_BLOCKQUOTE_RE = re.compile(r"^\s{0,3}>\s?(?P<body>.*)$")
 _WS_RE = re.compile(r"(\s+)")
+_MARKDOWN_LINK_RE = re.compile(
+    r"(?P<media>!?)\[(?P<label>[^\]\n]+)\]\((?P<target>[^)\n]+)\)"
+)
+_BARE_URL_RE = re.compile(r"https?://[^\s<>\x00]+")
+_INLINE_TOKEN_RE = re.compile(
+    r"(?P<code>`(?P<code_text>[^`\n]+)`)|"
+    r"(?P<markdown>(?P<media>!?)\[(?P<label>[^\]\n]+)\]\((?P<target>[^)\n]+)\))|"
+    r"(?P<url>https?://[^\s<>\x00]+)"
+)
+
+
+def _link_target(raw_target: str) -> tuple[str, str]:
+    """Return a safe clickable href and the human-readable original target."""
+    target = str(raw_target or "").strip()
+    if target.startswith("<") and target.endswith(">"):
+        target = target[1:-1].strip()
+    else:
+        # Markdown permits an optional quoted title after a whitespace-free URL.
+        title_match = re.match(r"^(\S+?)\s+[\"'].*[\"']\s*$", target)
+        if title_match:
+            target = title_match.group(1)
+    if not target:
+        return "", ""
+
+    parsed = urlsplit(target)
+    scheme = parsed.scheme.lower()
+    if scheme in {"http", "https"} and parsed.netloc:
+        return target, target
+    if scheme == "mailto" and parsed.path:
+        return target, target
+    if scheme == "file" and parsed.path:
+        return target, target
+    if re.match(r"^[A-Za-z]:[\\/]", target):
+        normalized = target.replace("\\", "/")
+        return "file:///" + quote(normalized, safe="/:"), target
+    if target.startswith("/"):
+        return "file://" + quote(target, safe="/"), target
+    return "", target
+
+
+def _trim_bare_url(raw_url: str) -> tuple[str, str]:
+    """Separate common sentence punctuation from a detected bare URL."""
+    target = raw_url
+    suffix = ""
+    while target and target[-1] in ".,;:":
+        suffix = target[-1] + suffix
+        target = target[:-1]
+    while target.endswith(")") and target.count(")") > target.count("("):
+        suffix = ")" + suffix
+        target = target[:-1]
+    return target, suffix
+
+
+def _compact_link_label(target: str, *, fallback: str = "") -> str:
+    """Keep link text useful without letting a long address dominate a reply."""
+    label = str(fallback or "").strip()
+    if label and not re.match(r"^(?:https?://|file://|[A-Za-z]:[\\/])", label):
+        return label
+    parsed = urlsplit(target)
+    if parsed.scheme.lower() in {"http", "https"}:
+        label = f"{parsed.netloc}{parsed.path}".rstrip("/") or parsed.netloc
+    elif parsed.scheme.lower() == "file":
+        label = parsed.path.rsplit("/", 1)[-1] or "File"
+    elif not label:
+        label = target.rsplit("/", 1)[-1] or target
+    if len(label) > 64:
+        label = label[:29].rstrip() + "..." + label[-29:].lstrip()
+    return label or target
+
+
+def _link_html(target: str, label: str, *, media: bool = False) -> str:
+    """Render one validated Markdown/bare link for QTextBrowser."""
+    href, original = _link_target(target)
+    if not href:
+        return ""
+    display = _compact_link_label(original, fallback=label)
+    if media and not display:
+        display = original.rsplit("/", 1)[-1] or original
+    accent = _RENDER_PALETTE["table_accent"]
+    return (
+        f'<a href="{html.escape(href, quote=True)}" '
+        f'title="{html.escape(original, quote=True)}" '
+        f'style="color:{accent}; text-decoration:underline;">'
+        f"{html.escape(display)}</a>"
+    )
 
 
 def _split_table_row(line: str) -> list[tuple[str, int]]:
@@ -190,6 +298,41 @@ def _contains_markdown_table(text: str) -> bool:
     return False
 
 
+def _display_math_block_at(lines: list[str], start: int) -> tuple[str, int] | None:
+    r"""Parse a standalone ``$$`` or ``\[`` display-math block.
+
+    The returned end index is exclusive. Single-line display expressions are
+    left to the inline renderer unless the delimiters occupy the whole line.
+    """
+    stripped = lines[start].strip()
+    if stripped.startswith("$$"):
+        opener, closer = "$$", "$$"
+    elif stripped.startswith(r"\["):
+        opener, closer = r"\[", r"\]"
+    else:
+        return None
+    remainder = stripped[len(opener):]
+    if closer in remainder:
+        expression, tail = remainder.split(closer, 1)
+        if not tail.strip():
+            return expression, start + 1
+        return None
+    body = [remainder] if remainder else []
+    index = start + 1
+    while index < len(lines):
+        candidate = lines[index]
+        if closer in candidate:
+            before, tail = candidate.split(closer, 1)
+            if tail.strip():
+                return None
+            if before:
+                body.append(before)
+            return "\n".join(body), index + 1
+        body.append(candidate)
+        index += 1
+    return None
+
+
 def _annotation_attrs(annotation: TextAnnotation, extra_style: str = "") -> str:
     """Return sanitized HTML attributes for one annotation span."""
     attrs: list[str] = []
@@ -232,10 +375,34 @@ def _annotated_text_html(text: str, annotations: list[TextAnnotation], extra_sty
 
 def _segment_text_to_html(text: str, annotations: list[TextAnnotation] | None = None, base_offset: int = 0) -> str:
     """Render plain text for QTextBrowser HTML."""
-    if not annotations:
-        return html.escape(text).replace("\n", "<br>")
-    clipped = annotations_for_subrange(annotations, base_offset, base_offset + len(text))
-    return _annotated_text_html(text, clipped).replace("\n", "<br>")
+    math_spans = iter_math_spans(text)
+    if not math_spans:
+        if not annotations:
+            return html.escape(text).replace("\n", "<br>")
+        clipped = annotations_for_subrange(annotations, base_offset, base_offset + len(text))
+        return _annotated_text_html(text, clipped).replace("\n", "<br>")
+    parts: list[str] = []
+    cursor = 0
+    for span in math_spans:
+        plain = text[cursor:span.start]
+        if annotations:
+            clipped = annotations_for_subrange(
+                annotations,
+                base_offset + cursor,
+                base_offset + span.start,
+            )
+            parts.append(_annotated_text_html(plain, clipped).replace("\n", "<br>"))
+        else:
+            parts.append(html.escape(plain).replace("\n", "<br>"))
+        parts.append(_latex_math_html(span.expression, display=span.display))
+        cursor = span.end
+    tail = text[cursor:]
+    if annotations:
+        clipped = annotations_for_subrange(annotations, base_offset + cursor, base_offset + len(text))
+        parts.append(_annotated_text_html(tail, clipped).replace("\n", "<br>"))
+    else:
+        parts.append(html.escape(tail).replace("\n", "<br>"))
+    return "".join(parts)
 
 
 def _inline_markdown_html(
@@ -254,6 +421,39 @@ def _inline_markdown_html(
         return f"\x00{len(placeholders) - 1}\x00"
 
     escaped = re.sub(r"`([^`\n]+)`", stash_code, text)
+
+    def stash_markdown_link(match: re.Match[str]) -> str:
+        rendered = _link_html(
+            match.group("target"),
+            match.group("label"),
+            media=bool(match.group("media")),
+        )
+        if not rendered:
+            return match.group(0)
+        placeholders.append(rendered)
+        return f"\x00{len(placeholders) - 1}\x00"
+
+    escaped = _MARKDOWN_LINK_RE.sub(stash_markdown_link, escaped)
+
+    def stash_bare_url(match: re.Match[str]) -> str:
+        target, suffix = _trim_bare_url(match.group(0))
+        rendered = _link_html(target, target)
+        if not rendered:
+            return match.group(0)
+        placeholders.append(rendered)
+        return f"\x00{len(placeholders) - 1}\x00{suffix}"
+
+    escaped = _BARE_URL_RE.sub(stash_bare_url, escaped)
+    math_parts: list[str] = []
+    math_cursor = 0
+    for span in iter_math_spans(escaped):
+        math_parts.append(escaped[math_cursor:span.start])
+        placeholders.append(_latex_math_html(span.expression, display=span.display))
+        math_parts.append(f"\x00{len(placeholders) - 1}\x00")
+        math_cursor = span.end
+    if math_parts:
+        math_parts.append(escaped[math_cursor:])
+        escaped = "".join(math_parts)
     escaped = html.escape(escaped)
     escaped = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
     escaped = re.sub(r"__(.+?)__", r"<strong>\1</strong>", escaped)
@@ -271,12 +471,44 @@ def _inline_markdown_html_annotated(
 ) -> str:
     """Render inline markdown while decorating only escaped text nodes."""
     parts: list[str] = []
-    code_pattern = re.compile(r"`([^`\n]+)`")
     cursor = 0
-    for match in code_pattern.finditer(text):
+    for match in _INLINE_TOKEN_RE.finditer(text):
         if match.start() > cursor:
             parts.append(_inline_plain_markdown_annotated(text[cursor:match.start()], annotations, base_offset + cursor))
-        parts.append(f"<code>{html.escape(match.group(1))}</code>")
+        if match.group("code") is not None:
+            parts.append(f"<code>{html.escape(match.group('code_text'))}</code>")
+        elif match.group("markdown") is not None:
+            rendered = _link_html(
+                match.group("target"),
+                match.group("label"),
+                media=bool(match.group("media")),
+            )
+            if rendered:
+                parts.append(rendered)
+            else:
+                parts.append(
+                    _inline_plain_markdown_annotated(
+                        match.group(0), annotations, base_offset + match.start()
+                    )
+                )
+        else:
+            target, suffix = _trim_bare_url(match.group("url"))
+            rendered = _link_html(target, target)
+            if rendered:
+                parts.append(rendered)
+                if suffix:
+                    suffix_start = match.end() - len(suffix)
+                    parts.append(
+                        _inline_plain_markdown_annotated(
+                            suffix, annotations, base_offset + suffix_start
+                        )
+                    )
+            else:
+                parts.append(
+                    _inline_plain_markdown_annotated(
+                        match.group(0), annotations, base_offset + match.start()
+                    )
+                )
         cursor = match.end()
     if cursor < len(text):
         parts.append(_inline_plain_markdown_annotated(text[cursor:], annotations, base_offset + cursor))
@@ -287,8 +519,35 @@ def _inline_plain_markdown_annotated(
     text: str,
     annotations: list[TextAnnotation],
     base_offset: int,
+    *,
+    parse_math: bool = True,
 ) -> str:
     """Render bold/emphasis markers and annotation spans for non-code inline text."""
+    if parse_math:
+        math_spans = iter_math_spans(text)
+        if math_spans:
+            rendered: list[str] = []
+            cursor = 0
+            for span in math_spans:
+                rendered.append(
+                    _inline_plain_markdown_annotated(
+                        text[cursor:span.start],
+                        annotations,
+                        base_offset + cursor,
+                        parse_math=False,
+                    )
+                )
+                rendered.append(_latex_math_html(span.expression, display=span.display))
+                cursor = span.end
+            rendered.append(
+                _inline_plain_markdown_annotated(
+                    text[cursor:],
+                    annotations,
+                    base_offset + cursor,
+                    parse_math=False,
+                )
+            )
+            return "".join(rendered)
     parts: list[str] = []
     strong = False
     emphasis = False
@@ -338,6 +597,8 @@ def _chat_markdown_html(
     text: str,
     annotations: list[TextAnnotation] | None = None,
     base_offset: int = 0,
+    *,
+    editorial_lead: bool = False,
 ) -> str:
     """Render model replies with readable paragraphs, lists, and code blocks."""
     lines = str(text or "").splitlines()
@@ -345,7 +606,7 @@ def _chat_markdown_html(
         return ""
     parts: list[str] = []
     paragraph: list[tuple[str, int]] = []
-    list_kind: str | None = None
+    list_stack: list[dict[str, object]] = []
     code_lines: list[str] | None = None
     offset = base_offset
 
@@ -353,14 +614,44 @@ def _chat_markdown_html(
         nonlocal paragraph
         if paragraph:
             body = "<br>".join(_inline_markdown_html(line, annotations, line_offset) for line, line_offset in paragraph)
-            parts.append(f"<p>{body}</p>")
+            raw_lead = paragraph[0][0].strip() if len(paragraph) == 1 else ""
+            is_editorial_lead = (
+                editorial_lead
+                and not parts
+                and raw_lead.endswith(":")
+                and len(raw_lead) <= 96
+            )
+            if is_editorial_lead:
+                rule = _RENDER_PALETTE["table_border"]
+                parts.append(
+                    f'<p style="margin:0 0 10px 0;">{body}</p>'
+                    f'<hr style="border:0; border-top:1px solid {rule}; '
+                    'margin:0 0 15px 0;" />'
+                )
+            else:
+                parts.append(f"<p>{body}</p>")
             paragraph = []
 
-    def close_list() -> None:
-        nonlocal list_kind
-        if list_kind:
-            parts.append(f"</{list_kind}>")
-            list_kind = None
+    def close_lists() -> None:
+        while list_stack:
+            current = list_stack.pop()
+            if current["li_open"]:
+                parts.append("</li>")
+            parts.append(f'</{current["kind"]}>')
+
+    def close_deeper_lists(indent: int) -> None:
+        while list_stack and int(list_stack[-1]["indent"]) > indent:
+            current = list_stack.pop()
+            if current["li_open"]:
+                parts.append("</li>")
+            parts.append(f'</{current["kind"]}>')
+
+    def open_list(kind: str, indent: int, number: int | None = None) -> None:
+        if kind == "ol" and number not in (None, 1):
+            parts.append(f'<ol start="{number}">')
+        else:
+            parts.append(f"<{kind}>")
+        list_stack.append({"kind": kind, "indent": indent, "li_open": False})
 
     line_offsets: list[int] = []
     running_offset = base_offset
@@ -384,21 +675,30 @@ def _chat_markdown_html(
             continue
         if _FENCE_RE.match(line):
             flush_paragraph()
-            close_list()
+            close_lists()
             code_lines = []
             offset += len(raw_line) + 1
             line_index += 1
             continue
         if not line.strip():
             flush_paragraph()
-            close_list()
+            close_lists()
             offset += len(raw_line) + 1
             line_index += 1
+            continue
+        display_math = _display_math_block_at(lines, line_index)
+        if display_math is not None:
+            flush_paragraph()
+            close_lists()
+            expression, end = display_math
+            parts.append(_latex_math_html(expression, display=True))
+            offset = line_offsets[end] if end < len(lines) else running_offset
+            line_index = end
             continue
         table = _table_block_at(lines, line_index)
         if table is not None:
             flush_paragraph()
-            close_list()
+            close_lists()
             header, alignments, rows, end = table
             table_border = _RENDER_PALETTE["table_border"]
             table_text = _RENDER_PALETTE["table_text"]
@@ -438,7 +738,7 @@ def _chat_markdown_html(
         heading = _HEADING_RE.match(line)
         if heading:
             flush_paragraph()
-            close_list()
+            close_lists()
             level = min(6, len(heading.group(1)))
             heading_text = heading.group(2)
             heading_offset = offset + heading.start(2)
@@ -446,32 +746,74 @@ def _chat_markdown_html(
             offset += len(raw_line) + 1
             line_index += 1
             continue
-        bullet = _BULLET_RE.match(line)
-        number = _NUMBER_RE.match(line)
-        if bullet or number:
+        if _HORIZONTAL_RULE_RE.match(line):
             flush_paragraph()
-            desired = "ul" if bullet else "ol"
-            if list_kind != desired:
-                close_list()
-                parts.append(f"<{desired}>")
-                list_kind = desired
-            item = (bullet or number).group(1)
-            item_offset = offset + (bullet or number).start(1)
+            close_lists()
+            rule = _RENDER_PALETTE["table_border"]
+            parts.append(
+                f'<hr style="border:0; border-top:1px solid {rule}; '
+                'margin:14px 0 16px 0;" />'
+            )
+            offset += len(raw_line) + 1
+            line_index += 1
+            continue
+        quote = _BLOCKQUOTE_RE.match(line)
+        if quote:
+            flush_paragraph()
+            close_lists()
+            quote_text = quote.group("body")
+            quote_offset = offset + quote.start("body")
+            parts.append(
+                f'<blockquote style="margin:12px 0; padding:4px 0 4px 14px; '
+                f'border-left:3px solid {_RENDER_PALETTE["table_accent"]}; '
+                f'color:{_RENDER_PALETTE["thought"]};">'
+                f'{_inline_markdown_html(quote_text, annotations, quote_offset)}</blockquote>'
+            )
+            offset += len(raw_line) + 1
+            line_index += 1
+            continue
+        list_item = _LIST_ITEM_RE.match(line)
+        if list_item:
+            flush_paragraph()
+            indent = len(list_item.group("indent").replace("\t", "    "))
+            desired = "ul" if list_item.group("bullet") else "ol"
+            explicit_number = int(list_item.group("number")) if list_item.group("number") else None
+            close_deeper_lists(indent)
+            if list_stack and int(list_stack[-1]["indent"]) == indent:
+                current = list_stack[-1]
+                if current["kind"] != desired:
+                    if current["li_open"]:
+                        parts.append("</li>")
+                    parts.append(f'</{current["kind"]}>')
+                    list_stack.pop()
+                    open_list(desired, indent, explicit_number)
+                elif current["li_open"]:
+                    parts.append("</li>")
+                    current["li_open"] = False
+            elif not list_stack or indent > int(list_stack[-1]["indent"]):
+                open_list(desired, indent, explicit_number)
+            else:
+                close_lists()
+                open_list(desired, indent, explicit_number)
+
+            item = list_item.group("body")
+            item_offset = offset + list_item.start("body")
             task_item = re.match(r"^\[([ xX])\]\s+(.*)$", item)
             if task_item:
                 marker = "☑" if task_item.group(1).lower() == "x" else "☐"
                 task_text = task_item.group(2)
                 task_offset = item_offset + task_item.start(2)
                 parts.append(
-                    f"<li>{marker} "
-                    f"{_inline_markdown_html(task_text, annotations, task_offset)}</li>"
+                    '<li style="list-style-type:none; margin-left:-1em;">'
+                    f"{marker} {_inline_markdown_html(task_text, annotations, task_offset)}"
                 )
             else:
-                parts.append(f"<li>{_inline_markdown_html(item, annotations, item_offset)}</li>")
+                parts.append(f"<li>{_inline_markdown_html(item, annotations, item_offset)}")
+            list_stack[-1]["li_open"] = True
             offset += len(raw_line) + 1
             line_index += 1
             continue
-        close_list()
+        close_lists()
         paragraph.append((line, offset))
         offset += len(raw_line) + 1
         line_index += 1
@@ -480,13 +822,13 @@ def _chat_markdown_html(
         code = html.escape("\n".join(code_lines))
         parts.append(f"<pre><code>{code}</code></pre>")
     flush_paragraph()
-    close_list()
+    close_lists()
     return "".join(parts)
 
 
 def _accent_color() -> str:
     """The same colour the speech bubble uses to highlight TTS-read words."""
-    return getattr(config, "BUBBLE_READ_WORD_COLOR", "#4da3ff") or "#4da3ff"
+    return getattr(config, "BUBBLE_READ_WORD_COLOR", "#d8a145") or "#d8a145"
 
 
 def _reply_html(
@@ -607,7 +949,7 @@ def _assistant_segments_to_html(
     # structure. Prefer a stable table over momentarily exposing raw pipes while
     # the read position is mirrored into the full chat window.
     if read_count != 0 and any(
-        not is_thought and _contains_markdown_table(text)
+        not is_thought and (_contains_markdown_table(text) or contains_latex_math(text))
         for text, is_thought in segments
     ):
         read_count = 0
@@ -617,10 +959,11 @@ def _assistant_segments_to_html(
         thought_color = _RENDER_PALETTE["thought"]
         parts: list[str] = [
             "<style>"
-            "p { margin: 0 0 8px 0; }"
+            "body { text-align: left; line-height: 1.5; }"
+            "p { margin: 0 0 13px 0; }"
             "p:last-child { margin-bottom: 0; }"
-            "ul, ol { margin: 0 0 8px 22px; padding: 0; }"
-            "li { margin: 2px 0; }"
+            "ul, ol { margin: 0 0 15px 22px; padding: 0; }"
+            "li { margin: 4px 0; }"
             f"pre {{ margin: 0 0 8px 0; padding: 8px; border-radius: 6px;"
             f" background: {code_bg}; white-space: pre-wrap; }}"
             f"code {{ font-family: Consolas, 'Cascadia Mono', monospace;"
@@ -641,7 +984,13 @@ def _assistant_segments_to_html(
             else:
                 if prev_is_thought:
                     parts.append("<div style='height: 6px;'></div>")
-                parts.append(_chat_markdown_html(text, segment_annotations))
+                parts.append(
+                    _chat_markdown_html(
+                        text,
+                        segment_annotations,
+                        editorial_lead=True,
+                    )
+                )
             prev_is_thought = is_thought
             offset += len(text)
         return "".join(parts)
@@ -673,11 +1022,12 @@ def _assistant_text_to_html(text: str, read_count: int | None = 0, annotations: 
 
 
 def render_markdown_html(text: str) -> str:
-    """Render plain Markdown with the same safe visual treatment as Wisp chat."""
+    """Render plain Markdown with the same safe visual treatment as OpenWand chat."""
     return _assistant_text_to_html(str(text or ""), read_count=0)
 
 
 def _user_text_to_html(text: str, annotations: object = None) -> str:
-    """Render user text with optional safe annotations."""
+    """Render user text with safe links, line breaks, and optional annotations."""
     safe_annotations = normalize_range_annotations(annotations, text) if annotations else []
-    return _segment_text_to_html(text, safe_annotations)
+    body = _inline_markdown_html(text, safe_annotations).replace("\n", "<br>")
+    return "<style>body { text-align: left; }</style>" + body

@@ -5,7 +5,12 @@ import os
 import sys
 from pathlib import Path
 
-_APP_NAME = "Wisp"
+from core.system.brand_migration import migrate_directory, migrate_process_environment
+
+migrate_process_environment()
+
+_APP_NAME = "OpenWand"
+_LEGACY_APP_NAME = "Wisp"
 
 
 def _user_data_dir() -> Path:
@@ -13,23 +18,29 @@ def _user_data_dir() -> Path:
     Return a platform-appropriate, user-writable directory for settings and
     data that must survive rebuilds and updates.
 
-    Linux:   $XDG_CONFIG_HOME/wisp  (~/.config/wisp)
-    Windows: %APPDATA%\\Wisp
-    macOS:   ~/Library/Application Support/Wisp
+    Linux:   $XDG_CONFIG_HOME/openwand  (~/.config/openwand)
+    Windows: %APPDATA%\\OpenWand
+    macOS:   ~/Library/Application Support/OpenWand
     """
-    override = os.environ.get("WISP_USER_DATA_DIR")
+    override = os.environ.get("OPENWAND_USER_DATA_DIR")
     if override:
         path = Path(override).expanduser()
         path.mkdir(parents=True, exist_ok=True)
         return path
     if sys.platform == "win32":
         base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
-        return base / _APP_NAME
+        path = base / _APP_NAME
+        legacy = base / _LEGACY_APP_NAME
     elif sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / _APP_NAME
+        base = Path.home() / "Library" / "Application Support"
+        path = base / _APP_NAME
+        legacy = base / _LEGACY_APP_NAME
     else:
         xdg = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
-        return xdg / _APP_NAME.lower()
+        path = xdg / _APP_NAME.lower()
+        legacy = xdg / _LEGACY_APP_NAME.lower()
+    migrate_directory(legacy, path)
+    return path
 
 
 def _bundle_root() -> Path:
@@ -55,7 +66,7 @@ def _writable_dir(path: Path) -> bool:
     """Return whether *path* can be created and written to."""
     try:
         path.mkdir(parents=True, exist_ok=True)
-        probe = path / ".wisp-write-test"
+        probe = path / ".openwand-write-test"
         probe.write_text("", encoding="utf-8")
         probe.unlink(missing_ok=True)
         return True
@@ -65,7 +76,7 @@ def _writable_dir(path: Path) -> bool:
 
 def _repo_root() -> Path:
     """Return the repo root in dev mode; user data dir when frozen."""
-    override = os.environ.get("WISP_DATA_ROOT") or os.environ.get("WISP_REPO_ROOT")
+    override = os.environ.get("OPENWAND_DATA_ROOT") or os.environ.get("OPENWAND_REPO_ROOT")
     if override:
         d = Path(override).expanduser()
         d.mkdir(parents=True, exist_ok=True)
@@ -82,10 +93,10 @@ def _addons_dir() -> Path:
     Return the user-installable addon folder.
 
     Packaged zip/onedir builds are portable by default when their executable
-    folder is writable, so addons live next to Wisp.exe. Installed/read-only
+    folder is writable, so addons live next to OpenWand.exe. Installed/read-only
     locations fall back to the normal user data root.
     """
-    override = os.environ.get("WISP_ADDONS_DIR")
+    override = os.environ.get("OPENWAND_ADDONS_DIR")
     if override:
         d = Path(override).expanduser()
         d.mkdir(parents=True, exist_ok=True)
@@ -114,8 +125,8 @@ UPDATE_DOWNLOAD_DIR = _user_data_dir() / "updates"
 
 # Single-instance lock. Lives in the user-data dir (not the repo / bundle) so a
 # dev run (`python -m runtime.supervisor.app`) and an installed build contend for the *same* lock —
-# only one Wisp can be active at a time, regardless of how it was launched.
-SINGLE_INSTANCE_LOCK = _user_data_dir() / "wisp.lock"
+# only one OpenWand can be active at a time, regardless of how it was launched.
+SINGLE_INSTANCE_LOCK = _user_data_dir() / "openwand.lock"
 
 MEMORY_DIR        = REPO_ROOT / "memory"
 AGENT_RUNS_DIR    = MEMORY_DIR / "agent_runs"

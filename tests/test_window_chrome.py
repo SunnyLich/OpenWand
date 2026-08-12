@@ -26,7 +26,7 @@ def test_text_popup_uses_standard_window_controls():
         popup.show()
         app.processEvents()
 
-        titlebar = popup.findChild(QWidget, "wispTitleBar")
+        titlebar = popup.findChild(QWidget, "openwandTitleBar")
         buttons = popup.findChildren(QPushButton)
 
         assert titlebar is not None
@@ -45,7 +45,7 @@ def test_window_chrome_survives_change_events_after_gc():
     window = QWidget()
     try:
         install_window_chrome(window)
-        assert getattr(window, "_wisp_window_chrome", None) is not None
+        assert getattr(window, "_openwand_window_chrome", None) is not None
 
         gc.collect()
         window.show()

@@ -1,5 +1,5 @@
 """
-Phase-1 verification for the wisp_brain worker (the Python worker seam).
+Phase-1 verification for the openwand_brain worker (the Python worker seam).
 
 Exercises the transport with the dependency-free ``ping`` and streaming
 ``brain.echo`` handlers, so it runs on any OS with no LLM stack, models, or API
@@ -24,7 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _BRAIN_DIR = _REPO_ROOT / "runtime" / "brain"
 sys.path.insert(0, str(_BRAIN_DIR))
 
-from wisp_brain import protocol  # noqa: E402
+from openwand_brain import protocol  # noqa: E402
 
 
 class BrainSidecar:
@@ -35,7 +35,7 @@ class BrainSidecar:
         """Initialize the brain sidecar instance."""
         self._ids = itertools.count(1)
         self._proc = subprocess.Popen(
-            [sys.executable, "-m", "wisp_brain.host"],
+            [sys.executable, "-m", "openwand_brain.host"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -201,7 +201,7 @@ def test_unknown_method_errors():
 
 def test_expected_provider_error_logs_without_traceback(capsys):
     """Provider/user-state failures should not fill worker stderr with traces."""
-    from wisp_brain import host
+    from openwand_brain import host
 
     exc = RuntimeError(
         "All query model routes failed. Tried chatgpt/gpt-5.5: "
@@ -217,7 +217,7 @@ def test_expected_provider_error_logs_without_traceback(capsys):
 
 def test_unexpected_handler_error_still_logs_traceback(capsys):
     """Unexpected code failures should keep a traceback for debugging."""
-    from wisp_brain import host
+    from openwand_brain import host
 
     try:
         raise ValueError("boom")

@@ -23,10 +23,10 @@ class VSCodeExtensionAPIAdapter:
 
     @staticmethod
     def _from_environment() -> VSCodeExtensionEndpoint:
-        port = int(os.environ.get("WISP_VSCODE_BRIDGE_PORT", "0") or 0)
-        token = os.environ.get("WISP_VSCODE_BRIDGE_TOKEN", "")
+        port = int(os.environ.get("OPENWAND_VSCODE_BRIDGE_PORT", "0") or 0)
+        token = os.environ.get("OPENWAND_VSCODE_BRIDGE_TOKEN", "")
         if not (0 < port < 65536 and len(token) >= 16):
-            raise RuntimeError("The Wisp VS Code API bridge is not connected.")
+            raise RuntimeError("The OpenWand VS Code API bridge is not connected.")
         return VSCodeExtensionEndpoint(port=port, token=token)
 
     def _request(self, path: str, *, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:

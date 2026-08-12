@@ -38,7 +38,7 @@ def _prepare_calc_prewarm_test(monkeypatch, tmp_path, *, processes, probe_return
     monkeypatch.setattr(native_host, "IS_WIN", True)
     monkeypatch.setenv("LIBREOFFICE_EXECUTABLE", str(executable))
     monkeypatch.setenv("LIBREOFFICE_PYTHON", str(python))
-    monkeypatch.setenv("WISP_LIBREOFFICE_USER_PROFILE", str(tmp_path / "profile"))
+    monkeypatch.setenv("OPENWAND_LIBREOFFICE_USER_PROFILE", str(tmp_path / "profile"))
     monkeypatch.setattr("psutil.process_iter", lambda _attrs: list(processes))
     monkeypatch.setattr(
         native_host.subprocess,
@@ -54,13 +54,13 @@ def test_calc_prewarm_adopts_normally_started_office_from_persistent_config(
     from core.actions.adapters.calc.bridge import configure_calc_connection
 
     _prepare_calc_prewarm_test(monkeypatch, tmp_path, processes=[_FakeOfficeProcess()])
-    configure_calc_connection("wisp_calc_0123456789abcdef", tmp_path / "profile")
+    configure_calc_connection("openwand_calc_0123456789abcdef", tmp_path / "profile")
 
     status = native_host.calc_automation_prewarm()
 
     assert status["available"] is True
     assert status["reason"] == "ready"
-    assert status["pipe_name"] == "wisp_calc_0123456789abcdef"
+    assert status["pipe_name"] == "openwand_calc_0123456789abcdef"
     assert status["transport"] == "uno_named_pipe_persisted"
     assert native_host.action_calc_status()["available"] is True
 
@@ -80,7 +80,7 @@ def test_calc_prewarm_reports_only_one_time_restart_when_current_process_missed_
 
     assert status["available"] is False
     assert status["reason"] == "bridge_pending_restart"
-    assert str(status["pipe_name"]).startswith("wisp_calc_")
+    assert str(status["pipe_name"]).startswith("openwand_calc_")
 
 
 def test_calc_prewarm_does_not_launch_libreoffice_before_user(monkeypatch, tmp_path) -> None:
@@ -96,7 +96,7 @@ def test_calc_status_waits_for_normally_started_pipe_to_become_ready(monkeypatch
     from core.actions.adapters.calc.bridge import configure_calc_connection
 
     _prepare_calc_prewarm_test(monkeypatch, tmp_path, processes=[_FakeOfficeProcess()])
-    configure_calc_connection("wisp_calc_0123456789abcdef", tmp_path / "profile")
+    configure_calc_connection("openwand_calc_0123456789abcdef", tmp_path / "profile")
     return_codes = iter((1, 0))
     monkeypatch.setattr(
         native_host.subprocess,
@@ -359,8 +359,8 @@ def test_calc_chart_requires_confirmation_and_revalidates_before_execution() -> 
 
 def test_calc_executor_refuses_obsolete_socket_environment(monkeypatch) -> None:
     plan = build_chart_plan(CalcSnapshot.from_selection(_selection()))
-    monkeypatch.delenv("WISP_CALC_UNO_PIPE", raising=False)
-    monkeypatch.setenv("WISP_CALC_UNO_PORT", "64028")
+    monkeypatch.delenv("OPENWAND_CALC_UNO_PIPE", raising=False)
+    monkeypatch.setenv("OPENWAND_CALC_UNO_PORT", "64028")
 
     with pytest.raises(RuntimeError, match="refused to use the obsolete socket"):
         CalcActionAdapter._default_chart_executor(plan)
@@ -393,7 +393,7 @@ def test_native_calc_snapshot_uses_uno_values_and_fingerprint(monkeypatch) -> No
         lambda **_kwargs: {
             "available": True,
             "transport": "uno_named_pipe_persisted",
-            "pipe_name": "wisp_calc_0123456789abcdef",
+            "pipe_name": "openwand_calc_0123456789abcdef",
         },
     )
     monkeypatch.setattr(
@@ -433,6 +433,6 @@ def test_calc_mutations_have_verified_undo_rollback_paths() -> None:
     helper = Path(__file__).resolve().parents[1] / "runtime" / "helpers" / "calc_uno_action.py"
     source = helper.read_text(encoding="utf-8")
 
-    assert 'enterUndoContext("Wisp: clean up table")' in source
-    assert 'enterUndoContext("Wisp: sort selected rows")' in source
+    assert 'enterUndoContext("OpenWand: clean up table")' in source
+    assert 'enterUndoContext("OpenWand: sort selected rows")' in source
     assert "_rollback_latest(manager, source, before)" in source

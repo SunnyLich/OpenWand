@@ -1,19 +1,19 @@
-# Wisp Interaction Driver Handoff
+# OpenWand Interaction Driver Handoff
 
 Status: design handoff; implementation has not started.
 
-Owner: the next engineer or agent implementing Wisp's semantic cursor/keyboard
+Owner: the next engineer or agent implementing OpenWand's semantic cursor/keyboard
 fallback. The canonical product and safety rules remain in
 `docs/ACTION_PLATFORM_PLAN.md`; this document is the build brief for one feature.
 
 ## Mission
 
-Give a confirmed Wisp `ActionPlan` a way to operate apps that do not expose a
+Give a confirmed OpenWand `ActionPlan` a way to operate apps that do not expose a
 usable file or native API, while the user can keep working. The interaction
 driver is a fallback executor, not a replacement for Calc UNO, Excel's object
 model, saved-file edits, Graph, or other supported app APIs.
 
-Wisp must show what it is doing through exact public progress stages and a
+OpenWand must show what it is doing through exact public progress stages and a
 purple ghost cursor. It must not pretend to show private model reasoning. It
 must never silently fight the user's real mouse or keyboard.
 
@@ -30,12 +30,12 @@ must never silently fight the user's real mouse or keyboard.
 - Semantic actions should not move the physical cursor or take focus. Animate a
   separate purple ghost cursor over the resolved target instead.
 - Real input requires a short-lived interaction lease. Any physical user input
-  pauses Wisp immediately and releases the lease; Wisp resumes only after the
+  pauses OpenWand immediately and releases the lease; OpenWand resumes only after the
   target is revalidated and the user explicitly allows it.
 - Escape/Cancel stops queued operations. Every operation declares whether it is
   reversible; never promise rollback where it cannot be verified.
 - Start truthful progress immediately. If no preview or useful action is ready
-  by four seconds, keep the exact current stage visible and plainly say Wisp is
+  by four seconds, keep the exact current stage visible and plainly say OpenWand is
   still working.
 
 ## Architecture to implement
@@ -49,7 +49,7 @@ Create a platform-neutral package under `core/actions/interaction/`:
 - `driver.py`: chooses the best available transport for each registered
   operation and refuses unsupported or unsafe fallbacks.
 - `arbiter.py`: owns the interaction lease and distinguishes physical input from
-  Wisp-tagged injected input.
+  OpenWand-tagged injected input.
 
 Add native backends behind one interface:
 
@@ -92,11 +92,11 @@ stages are:
 9. terminal `complete`, `cancelled`, or `failed`.
 
 The ghost cursor is a click-through, always-on-top transparent overlay owned by
-Wisp. It follows resolved element bounds, shows an invoke/click pulse, and can
+OpenWand. It follows resolved element bounds, shows an invoke/click pulse, and can
 display a compact operation label. It never moves the OS cursor. Hide it when
 the target is stale, the user interrupts, the action pauses, or the action ends.
 
-For actual input fallback, the progress line must say that Wisp needs brief
+For actual input fallback, the progress line must say that OpenWand needs brief
 control before acquiring the lease. Show a visible countdown or explicit
 Continue control; never seize active input without that boundary.
 
@@ -105,12 +105,12 @@ Continue control; never seize active input without that boundary.
 `idle -> requested -> owned -> released`
 
 From `owned`, physical user input causes `paused_by_user` immediately. From
-`paused_by_user`, Wisp may go only to `cancelled` or back through `requested`
+`paused_by_user`, OpenWand may go only to `cancelled` or back through `requested`
 after target revalidation and explicit user approval. Window changes, stale
 elements, timeouts, or verification failures go to `failed` and release all
 input hooks.
 
-Injected events must carry a Wisp-specific tag so the arbiter does not treat its
+Injected events must carry a OpenWand-specific tag so the arbiter does not treat its
 own events as user interruption. Hooks must be process-lifetime safe: install
 only while a lease is requested/owned and always remove them in `finally` and
 on worker shutdown.
@@ -119,7 +119,7 @@ on worker shutdown.
 
 1. Contracts and a deterministic fake accessibility backend. Prove locator
    ambiguity refusal, stale-target refusal, cancellation, and idempotency.
-2. Read-only platform inspector. Capture a bounded tree from a Wisp-owned test
+2. Read-only platform inspector. Capture a bounded tree from a OpenWand-owned test
    window without focus changes and redact editable values from diagnostics.
 3. Semantic `invoke`, `set_value`, `toggle`, and `select` in the test window.
    Execute only after the normal HTML/CSS preview.
@@ -143,7 +143,7 @@ on worker shutdown.
   postcondition, and records a content-free timing trace.
 - The physical cursor does not move on the semantic path.
 - Foreground focus is unchanged on the semantic path.
-- Physical user input pauses an actual-input lease before Wisp sends the next
+- Physical user input pauses an actual-input lease before OpenWand sends the next
   event.
 - No target-app extension is installed.
 - Windows, macOS, and Linux capability reporting is honest; unimplemented

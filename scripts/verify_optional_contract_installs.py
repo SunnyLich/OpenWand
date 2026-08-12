@@ -81,7 +81,7 @@ def main() -> int:
     uv = shutil.which("uv")
     if not uv:
         raise SystemExit("uv is required to verify optional dependency contracts.")
-    with tempfile.TemporaryDirectory(prefix="wisp-optional-contracts-") as raw_root:
+    with tempfile.TemporaryDirectory(prefix="openwand-optional-contracts-") as raw_root:
         root = Path(raw_root)
         for feature in features:
             _verify_feature(uv, feature, root)

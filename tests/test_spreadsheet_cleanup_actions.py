@@ -352,7 +352,7 @@ class _CalcRange:
 def _load_calc_helper(monkeypatch):
     monkeypatch.setitem(sys.modules, "uno", SimpleNamespace())
     helper = Path(__file__).resolve().parents[1] / "runtime" / "helpers" / "calc_uno_action.py"
-    spec = importlib.util.spec_from_file_location("_wisp_test_calc_cleanup_helper", helper)
+    spec = importlib.util.spec_from_file_location("_openwand_test_calc_cleanup_helper", helper)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -386,7 +386,7 @@ def test_calc_uno_cleanup_is_one_undo_item_and_rolls_back_verification_failure(m
         fingerprint=fingerprint, changes=[change],
     )
     assert result["ok"] is True
-    assert manager.contexts == ["Wisp: apply reviewed cell cleanup"]
+    assert manager.contexts == ["OpenWand: apply reviewed cell cleanup"]
     assert source.values[1][0] == "Alice"
     assert source.formulas[1][2] == "=B2*2"
 

@@ -25,7 +25,7 @@ class ElementNotFoundError(InteractionError):
 
 
 class AmbiguousElementError(InteractionError):
-    """More than one element matched a locator, so Wisp refused to guess."""
+    """More than one element matched a locator, so OpenWand refused to guess."""
 
 
 class StaleElementError(InteractionError):
@@ -45,7 +45,7 @@ class UnsupportedOperationError(InteractionError):
 
 
 class TransportKind(StrEnum):
-    """Transport order mirrors Wisp's product safety hierarchy."""
+    """Transport order mirrors OpenWand's product safety hierarchy."""
 
     APPLICATION_API = "application_api"
     ACCESSIBILITY = "accessibility"
@@ -111,7 +111,7 @@ class InteractionDriver:
                 )
             if operation.type is OperationType.SET_VALUE and state.get("sensitive", False):
                 raise UnsupportedOperationError(
-                    "Wisp does not enter credentials, payment data, or security codes."
+                    "OpenWand does not enter credentials, payment data, or security codes."
                 )
             if operation.type is not OperationType.INSPECT and not state.get(StateField.ENABLED.value, False):
                 raise UnsupportedOperationError(f"{operation.target.accessible_name!r} is disabled.")
@@ -128,7 +128,7 @@ class InteractionDriver:
             )
         if operation.type is OperationType.SET_VALUE and before.get("sensitive", False):
             raise UnsupportedOperationError(
-                "Wisp does not enter credentials, payment data, or security codes."
+                "OpenWand does not enter credentials, payment data, or security codes."
             )
         self._check_conditions(operation.preconditions, before, precondition=True)
 
@@ -228,7 +228,7 @@ class InteractionDriver:
             sensitive_tokens = ("password", "passcode", "security code", "payment", "credit card", "cvv")
             label = operation.target.accessible_name.casefold()
             if any(token in label for token in sensitive_tokens):
-                raise UnsupportedOperationError("Wisp does not enter credentials, payment data, or security codes.")
+                raise UnsupportedOperationError("OpenWand does not enter credentials, payment data, or security codes.")
         elif operation.type is OperationType.TOGGLE and not isinstance(args.get("state"), bool):
             raise InteractionError("toggle requires an exact boolean state.")
         elif operation.type is OperationType.SCROLL:

@@ -1,4 +1,4 @@
-"""Screenshot regression coverage for Wisp's critical Qt surfaces."""
+"""Screenshot regression coverage for OpenWand's critical Qt surfaces."""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ pytest.importorskip("PySide6", reason="PySide6 not installed")
 pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Windows reference renders")
 
 _BASELINES = Path(__file__).with_name("visual_baselines") / "windows"
-_UPDATE = os.environ.get("WISP_UPDATE_VISUAL_BASELINES") == "1"
+_UPDATE = os.environ.get("OPENWAND_UPDATE_VISUAL_BASELINES") == "1"
 _SURFACES = ("onboarding", "settings", "chat", "agent-task", "speech-bubble")
-_CAPTURE_FLAG = "--wisp-visual-capture"
+_CAPTURE_FLAG = "--openwand-visual-capture"
 
 
 def _process_events_bounded(app, milliseconds: int = 25) -> None:
@@ -146,7 +146,7 @@ def _make_surface(name: str):
         widget = AgentTaskDialog()
         widget.title_edit.setText("Audit release readiness")
         widget.objective_edit.setPlainText("Review the desktop app and report actionable launch risks.")
-        widget.scope_edit.setText(r"C:\demo\wisp-project")
+        widget.scope_edit.setText(r"C:\demo\openwand-project")
         widget.setFixedSize(1280, 760)
         return widget
 
@@ -174,7 +174,7 @@ def _render_surface_to_path(surface: str, output_path: Path) -> None:
     from PySide6.QtGui import QFont
     from PySide6.QtWidgets import QApplication
 
-    app = QApplication.instance() or QApplication(["wisp-visual-capture"])
+    app = QApplication.instance() or QApplication(["openwand-visual-capture"])
     app.setStyle("Fusion")
     app.setFont(QFont("Segoe UI", 10))
     app.setPalette(app.style().standardPalette())
@@ -227,7 +227,7 @@ def test_critical_surface_matches_baseline(surface, tmp_path):
         return
 
     assert baseline_path.exists(), (
-        f"Missing visual baseline {baseline_path}. Set WISP_UPDATE_VISUAL_BASELINES=1 on Windows to create it."
+        f"Missing visual baseline {baseline_path}. Set OPENWAND_UPDATE_VISUAL_BASELINES=1 on Windows to create it."
     )
     expected = QImage(str(baseline_path)).convertToFormat(QImage.Format.Format_RGBA8888)
     assert not expected.isNull(), f"Could not read {baseline_path}"
@@ -248,7 +248,7 @@ def test_visual_event_drain_is_bounded_with_busy_timer():
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
 
-    app = QApplication.instance() or QApplication(["wisp-visual-event-budget"])
+    app = QApplication.instance() or QApplication(["openwand-visual-event-budget"])
     ticks: list[bool] = []
     timer = QTimer()
     timer.setInterval(0)

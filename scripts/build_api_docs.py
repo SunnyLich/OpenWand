@@ -1,12 +1,12 @@
-"""Generate the browsable API reference from Wisp's own docstrings.
+"""Generate the browsable API reference from OpenWand's own docstrings.
 
 The output is derived from the source, so it is gitignored and safe to delete;
 re-run this script to rebuild it.
 
 Every module is passed to pdoc explicitly rather than letting pdoc walk the
-packages. Package recursion honours ``__all__``, and four of Wisp's packages
+packages. Package recursion honours ``__all__``, and four of OpenWand's packages
 declare one (``core/harness_clients``, ``core/context_router``,
-``core/conversation_store``, ``runtime/brain/wisp_brain``). Relying on
+``core/conversation_store``, ``runtime/brain/openwand_brain``). Relying on
 recursion silently drops their submodules -- ``codex.py`` and the brain
 ``handlers.py`` among them -- which produces a reference that looks complete
 and is not.
@@ -32,7 +32,7 @@ ROOT_MODULES = ("config",)
 
 # Directories imported as top-level packages after their parent joins sys.path,
 # mirroring how the app and tests/integration/brain/conftest.py import them.
-SYS_PATH_PACKAGES = ((Path("runtime") / "brain", "wisp_brain"),)
+SYS_PATH_PACKAGES = ((Path("runtime") / "brain", "openwand_brain"),)
 
 SKIP_DIR_NAMES = {"__pycache__", "tests", "test"}
 

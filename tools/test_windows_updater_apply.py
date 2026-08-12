@@ -1,7 +1,7 @@
 """Exercise the Windows updater helper against a fake install directory.
 
 This script is intentionally separate from the app. It builds a temporary
-"CurrentWisp" folder, creates a fake update archive, asks ``core.updater`` to
+"CurrentOpenWand" folder, creates a fake update archive, asks ``core.updater`` to
 generate and launch its normal Windows apply helper, then waits for marker files
 that prove the fake install was replaced and "restarted".
 
@@ -9,7 +9,7 @@ Run from the repository root on Windows:
 
     python tools/test_windows_updater_apply.py
 
-Nothing under a real Wisp install is touched.
+Nothing under a real OpenWand install is touched.
 """
 from __future__ import annotations
 
@@ -103,24 +103,24 @@ def main() -> int:
             ROOT
             / "build_logs"
             / "updater_rehearsals"
-            / f"wisp-updater-test-{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
+            / f"openwand-updater-test-{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
         )
     else:
         temp_root = args.root.resolve()
     if temp_root.exists():
         raise SystemExit(f"Refusing to reuse existing rehearsal directory: {temp_root}")
     temp_root.mkdir(parents=True)
-    fake_install = temp_root / "CurrentWisp"
+    fake_install = temp_root / "CurrentOpenWand"
     fake_install.mkdir()
-    restart_target = fake_install / "Wisp.cmd"
+    restart_target = fake_install / "OpenWand.cmd"
     _write_fake_launcher(restart_target, "restart-before-update.txt")
     (fake_install / "version.txt").write_text("old\n", encoding="utf-8")
 
-    update_zip = temp_root / "Wisp-test-windows-x64.zip"
+    update_zip = temp_root / "OpenWand-test-windows-x64.zip"
     with zipfile.ZipFile(update_zip, "w") as archive:
-        archive.writestr("Wisp/version.txt", "new\n")
+        archive.writestr("OpenWand/version.txt", "new\n")
         archive.writestr(
-            "Wisp/Wisp.cmd",
+            "OpenWand/OpenWand.cmd",
             "\n".join(
                 [
                     "@echo off",
@@ -133,7 +133,7 @@ def main() -> int:
         )
 
     updates_dir = temp_root / "updates"
-    lock_path = temp_root / "wisp.lock"
+    lock_path = temp_root / "openwand.lock"
     old_frozen = getattr(sys, "frozen", None)
     old_executable = sys.executable
     old_update_dir = updater.UPDATE_DOWNLOAD_DIR
@@ -149,7 +149,7 @@ def main() -> int:
         script_path = updater.apply_update(update_zip, pid=999999)
         print(f"Temporary test root: {temp_root}")
         print(f"Generated helper: {script_path}")
-        print("A small 'Wisp Update' window should appear briefly if UI startup works.")
+        print("A small 'OpenWand Update' window should appear briefly if UI startup works.")
 
         marker = fake_install / "restart-after-update.txt"
         if not _wait_for(marker, args.timeout):
@@ -169,7 +169,7 @@ def main() -> int:
             print(f"Fake install was not replaced correctly; version.txt is {version!r}.", file=sys.stderr)
             return 1
 
-        print("Updater rehearsal passed: fake install was replaced and fake Wisp restarted.")
+        print("Updater rehearsal passed: fake install was replaced and fake OpenWand restarted.")
         return 0
     finally:
         sys.executable = old_executable

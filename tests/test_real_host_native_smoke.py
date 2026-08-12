@@ -18,8 +18,8 @@ pytestmark = [
     pytest.mark.workflow,
     pytest.mark.real_host,
     pytest.mark.skipif(
-        os.environ.get("WISP_RUN_REAL_HOST_TESTS") != "1",
-        reason="set WISP_RUN_REAL_HOST_TESTS=1 or use --real-host",
+        os.environ.get("OPENWAND_RUN_REAL_HOST_TESTS") != "1",
+        reason="set OPENWAND_RUN_REAL_HOST_TESTS=1 or use --real-host",
     ),
 ]
 
@@ -28,7 +28,7 @@ def _qapp_real_display():
     pytest.importorskip("PySide6", reason="PySide6 not installed")
     from PySide6.QtWidgets import QApplication
 
-    app = QApplication.instance() or QApplication(["wisp-real-host-tests"])
+    app = QApplication.instance() or QApplication(["openwand-real-host-tests"])
     platform_name = app.platformName().lower()
     if platform_name == "offscreen":
         pytest.fail("real-host tests require a real Qt platform, not QT_QPA_PLATFORM=offscreen")
@@ -81,7 +81,7 @@ def test_real_host_macos_permission_snapshot_is_ready_for_native_checks():
     screen = snapshot.get("screen_recording")
     if screen is False:
         missing.append("Screen Recording")
-    if os.environ.get("WISP_RUN_REAL_HOST_INTERACTIVE_TESTS") == "1":
+    if os.environ.get("OPENWAND_RUN_REAL_HOST_INTERACTIVE_TESTS") == "1":
         accessibility = snapshot.get("accessibility")
         if accessibility is False:
             missing.append("Accessibility")
@@ -95,7 +95,7 @@ def test_real_host_macos_permission_snapshot_is_ready_for_native_checks():
             f"({sys.executable}). Missing: {', '.join(missing)}. "
             "Open System Settings > Privacy & Security and grant the permission "
             "to the launcher you used for this test, such as Terminal, Codex, or Python. "
-            "A packaged Wisp.app has its own separate macOS permission entries."
+            "A packaged OpenWand.app has its own separate macOS permission entries."
         )
 
 
@@ -104,7 +104,7 @@ def test_real_host_clipboard_and_context_snapshot_roundtrip():
     from runtime.workers import native_host
 
     original = native_host.clipboard_get().get("text", "")
-    marker = f"wisp-real-host-clipboard-{uuid.uuid4()}"
+    marker = f"openwand-real-host-clipboard-{uuid.uuid4()}"
     try:
         assert native_host.clipboard_set(marker)["ok"] is True
         deadline = time.monotonic() + 2.0
@@ -146,7 +146,7 @@ def test_real_host_screenshot_capture_returns_pixels():
         if sys.platform == "darwin":
             hint = (
                 "On macOS, grant Screen Recording to the launcher running pytest "
-                "(Terminal, Codex, or Python). A packaged Wisp.app has separate "
+                "(Terminal, Codex, or Python). A packaged OpenWand.app has separate "
                 "permission entries."
             )
         elif sys.platform == "win32":
@@ -166,17 +166,17 @@ def test_real_host_screenshot_capture_returns_pixels():
 def test_real_host_desktop_capture_flows_through_real_workers(tmp_path):
     """Actual desktop pixels cross FlowController policy and real worker IPC."""
     from runtime.supervisor.flows import FlowController, PendingInvocation
-    from runtime.supervisor.ipc import WispSupervisor, default_specs
+    from runtime.supervisor.ipc import OpenWandSupervisor, default_specs
 
     specs = default_specs()
     for spec in specs.values():
         spec.env = {
             **spec.env,
-            "WISP_ADDONS_DIR": str(tmp_path / "addons"),
-            "WISP_BRAIN_FAKE_LLM": "1",
-            "WISP_RUN_LOG_DIR": str(tmp_path / "logs"),
+            "OPENWAND_ADDONS_DIR": str(tmp_path / "addons"),
+            "OPENWAND_BRAIN_FAKE_LLM": "1",
+            "OPENWAND_RUN_LOG_DIR": str(tmp_path / "logs"),
         }
-    supervisor = WispSupervisor(specs)
+    supervisor = OpenWandSupervisor(specs)
     flow = FlowController(
         native=supervisor.workers["native"],
         ui=supervisor.workers["ui"],
@@ -239,14 +239,14 @@ def test_real_host_desktop_capture_flows_through_real_workers(tmp_path):
 
 
 @pytest.mark.skipif(
-    os.environ.get("WISP_RUN_REAL_HOST_AUDIO_TESTS") != "1",
-    reason="set WISP_RUN_REAL_HOST_AUDIO_TESTS=1 to use the real microphone",
+    os.environ.get("OPENWAND_RUN_REAL_HOST_AUDIO_TESTS") != "1",
+    reason="set OPENWAND_RUN_REAL_HOST_AUDIO_TESTS=1 to use the real microphone",
 )
 def test_real_host_voice_start_captures_desktop_after_microphone_starts(tmp_path, monkeypatch):
     """Real push-to-talk start captures desktop pixels while the microphone is live."""
     import config
     from runtime.supervisor.flows import FlowController, PendingInvocation
-    from runtime.supervisor.ipc import WispSupervisor, default_specs
+    from runtime.supervisor.ipc import OpenWandSupervisor, default_specs
 
     test_env = tmp_path / ".env"
     test_env.write_text(
@@ -272,15 +272,15 @@ def test_real_host_voice_start_captures_desktop_after_microphone_starts(tmp_path
     for spec in specs.values():
         spec.env = {
             **spec.env,
-            "WISP_ADDONS_DIR": str(tmp_path / "addons"),
-            "WISP_ADDON_STORE": str(tmp_path / "addons.json"),
-            "WISP_BRAIN_FAKE_LLM": "1",
-            "WISP_RUN_LOG_DIR": str(tmp_path / "logs"),
+            "OPENWAND_ADDONS_DIR": str(tmp_path / "addons"),
+            "OPENWAND_ADDON_STORE": str(tmp_path / "addons.json"),
+            "OPENWAND_BRAIN_FAKE_LLM": "1",
+            "OPENWAND_RUN_LOG_DIR": str(tmp_path / "logs"),
             "TEMP": str(tmp_path),
             "TMP": str(tmp_path),
             "TMPDIR": str(tmp_path),
         }
-    supervisor = WispSupervisor(specs)
+    supervisor = OpenWandSupervisor(specs)
     supervisor.call("ui", "ui.ping", timeout=20)
     supervisor.call("ui", "ui.overlay.state", {"state": "idle"}, timeout=20)
     flow = FlowController(
@@ -342,12 +342,12 @@ def test_real_host_qt_screen_and_tray_capability():
         assert capture.width() > 0 and capture.height() > 0
 
     tray_available = QSystemTrayIcon.isSystemTrayAvailable()
-    if not tray_available and os.environ.get("WISP_REAL_HOST_ALLOW_NO_TRAY") != "1":
-        pytest.fail("system tray is not available; set WISP_REAL_HOST_ALLOW_NO_TRAY=1 to accept this host limitation")
+    if not tray_available and os.environ.get("OPENWAND_REAL_HOST_ALLOW_NO_TRAY") != "1":
+        pytest.fail("system tray is not available; set OPENWAND_REAL_HOST_ALLOW_NO_TRAY=1 to accept this host limitation")
 
 
 @pytest.mark.skipif(
-    os.environ.get("WISP_RUN_REAL_HOST_INTERACTIVE_TESTS") != "1",
+    os.environ.get("OPENWAND_RUN_REAL_HOST_INTERACTIVE_TESTS") != "1",
     reason="use --real-host-interactive to synthesize paste into a focused test window",
 )
 def test_real_host_interactive_paste_shortcut_targets_focused_qt_field():
@@ -360,7 +360,7 @@ def test_real_host_interactive_paste_shortcut_targets_focused_qt_field():
 
     app = _qapp_real_display()
     original = native_host.clipboard_get().get("text", "")
-    marker = f"wisp-real-host-paste-{uuid.uuid4()}"
+    marker = f"openwand-real-host-paste-{uuid.uuid4()}"
     edit = QTextEdit()
     edit.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
     edit.resize(420, 180)
@@ -387,7 +387,7 @@ def test_real_host_interactive_paste_shortcut_targets_focused_qt_field():
 
 
 @pytest.mark.skipif(
-    os.environ.get("WISP_RUN_REAL_HOST_INTERACTIVE_TESTS") != "1",
+    os.environ.get("OPENWAND_RUN_REAL_HOST_INTERACTIVE_TESTS") != "1",
     reason="use --real-host-interactive to register and unregister real global hotkeys",
 )
 def test_real_host_interactive_hotkey_backend_starts_and_stops():
@@ -405,7 +405,7 @@ def test_real_host_interactive_hotkey_backend_starts_and_stops():
 
 
 @pytest.mark.skipif(
-    os.environ.get("WISP_RUN_REAL_HOST_INTERACTIVE_TESTS") != "1",
+    os.environ.get("OPENWAND_RUN_REAL_HOST_INTERACTIVE_TESTS") != "1",
     reason="use --real-host-interactive to inject a registered global hotkey",
 )
 def test_real_host_interactive_hotkey_reaches_native_worker_event():
@@ -445,7 +445,7 @@ def test_real_host_interactive_hotkey_reaches_native_worker_event():
         send_keys(combo)
         assert event_received.wait(5), (
             f"registered hotkey {combo!r} did not reach the native worker; "
-            "verify the launcher has input/accessibility permission and no other Wisp instance is running"
+            "verify the launcher has input/accessibility permission and no other OpenWand instance is running"
         )
         assert received == [
             {"kind": "addon", "addon_id": "real-host-test", "hotkey_id": "roundtrip"}

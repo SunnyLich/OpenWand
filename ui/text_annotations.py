@@ -81,7 +81,7 @@ def annotation_tooltip_anchor(annotation: TextAnnotation) -> str:
         return ""
     payload = "\x00".join((annotation.source, annotation.id, annotation.tooltip))
     token = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
-    return f"wisp-annotation:{token}"
+    return f"openwand-annotation:{token}"
 
 
 def normalize_range_annotations(

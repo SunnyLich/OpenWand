@@ -47,7 +47,7 @@ class PowerPointDesktopRuntimeProvider:
     def snapshot(self, context: dict[str, Any]) -> Any:
         presentation_id = _presentation_identity(_active_app(context))
         if not presentation_id:
-            raise RuntimeError("Wisp could not identify the active PowerPoint presentation.")
+            raise RuntimeError("OpenWand could not identify the active PowerPoint presentation.")
         if self._adapter is None or self._presentation_id != presentation_id:
             self._presentation_id = presentation_id
             self._adapter = PresentationActionAdapter(

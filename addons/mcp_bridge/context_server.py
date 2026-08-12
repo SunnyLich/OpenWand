@@ -1,17 +1,17 @@
-"""Wisp Context Server — an MCP stdio server exposing live desktop context.
+"""OpenWand Context Server — an MCP stdio server exposing live desktop context.
 
 This is the *server* side of MCP (the addon's __init__.py is the client side):
 an MCP client such as Claude Desktop or Cursor launches this script as a
 subprocess and gets tools for reading the user's selection, clipboard, active
-window, browser page, and screen through Wisp's capture machinery. The running
-Wisp app is not involved — this process imports core.* directly.
+window, browser page, and screen through OpenWand's capture machinery. The running
+OpenWand app is not involved — this process imports core.* directly.
 
 Speaks JSON-RPC 2.0, one message per line: stdout carries protocol messages
 and nothing else, all logging goes to stderr (MCP clients surface server
 stderr in their logs, so the startup self-check below is the first place to
 look when a tool misbehaves).
 
-Launch with Wisp's own interpreter — the capture stack needs Wisp's installed
+Launch with OpenWand's own interpreter — the capture stack needs OpenWand's installed
 dependencies. The addon writes a ready-to-paste client config snippet
 (claude_config_snippet.json, also logged at addon startup) so the paths never
 have to be typed by hand.
@@ -29,12 +29,12 @@ _IS_MAC = sys.platform == "darwin"
 
 # --- sys.path bootstrap ------------------------------------------------------
 # MCP clients launch this script from their own working directory, so `import
-# core...` only works if the Wisp root (the folder containing core/) is put on
+# core...` only works if the OpenWand root (the folder containing core/) is put on
 # sys.path explicitly. The addon lives at <root>/addons/mcp_bridge, but walk
 # upward instead of hardcoding the depth so a relocated addon folder still
 # finds a root when one exists above it.
 
-def _find_wisp_root() -> Path | None:
+def _find_openwand_root() -> Path | None:
     """Walk up from this file to the first folder containing core/__init__.py."""
     for candidate in Path(__file__).resolve().parents:
         if (candidate / "core" / "__init__.py").exists():
@@ -42,14 +42,14 @@ def _find_wisp_root() -> Path | None:
     return None
 
 
-_WISP_ROOT = _find_wisp_root()
-if _WISP_ROOT is not None and str(_WISP_ROOT) not in sys.path:
-    sys.path.insert(0, str(_WISP_ROOT))
+_OPENWAND_ROOT = _find_openwand_root()
+if _OPENWAND_ROOT is not None and str(_OPENWAND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_OPENWAND_ROOT))
 
 
 def _log(message: str) -> None:
     """Log one line to stderr (never stdout — that's the protocol channel)."""
-    print(f"[wisp-context-server] {message}", file=sys.stderr, flush=True)
+    print(f"[openwand-context-server] {message}", file=sys.stderr, flush=True)
 
 
 # --- startup self-check ------------------------------------------------------
@@ -81,12 +81,12 @@ def _dependency_probes() -> list[tuple[str, str]]:
 def _self_check() -> None:
     """Report environment facts so a wrong-interpreter launch names itself."""
     _log(f"python {platform.python_version()} at {sys.executable}")
-    if _WISP_ROOT is None:
-        _log("ERROR: no Wisp root found above this script (folder containing "
+    if _OPENWAND_ROOT is None:
+        _log("ERROR: no OpenWand root found above this script (folder containing "
              "core/); every tool call will fail. Keep context_server.py inside "
-             "the Wisp installation.")
+             "the OpenWand installation.")
         return
-    _log(f"wisp root: {_WISP_ROOT}")
+    _log(f"openwand root: {_OPENWAND_ROOT}")
     import importlib.util
     missing = [
         f"{module} (needed by {needed_by})"
@@ -94,7 +94,7 @@ def _self_check() -> None:
         if importlib.util.find_spec(module) is None
     ]
     if missing:
-        _log("WARNING: missing packages — launch this server with Wisp's own "
+        _log("WARNING: missing packages — launch this server with OpenWand's own "
              "Python interpreter: " + "; ".join(missing))
     else:
         _log("all capture dependencies present")
@@ -103,10 +103,10 @@ def _self_check() -> None:
 def _server_enabled() -> bool:
     """Read the addon's server_enabled setting; fail open when unreadable.
 
-    WISP_CONTEXT_SERVER_ENABLED overrides the setting when present (used by
+    OPENWAND_CONTEXT_SERVER_ENABLED overrides the setting when present (used by
     tests to stay independent of this machine's addon settings).
     """
-    override = os.environ.get("WISP_CONTEXT_SERVER_ENABLED", "").strip().lower()
+    override = os.environ.get("OPENWAND_CONTEXT_SERVER_ENABLED", "").strip().lower()
     if override:
         return override in {"1", "true", "yes", "on"}
     try:
@@ -171,10 +171,10 @@ _MAX_TEXT_RESULT_CHARS = 40_000
 _TEXT_TRUNCATION_MARKER = "\n[context truncated at safety limit]"
 
 _SERVER_INSTRUCTIONS = (
-    "Wisp provides live context from the user's desktop. Proactively use these "
+    "OpenWand provides live context from the user's desktop. Proactively use these "
     "tools whenever a request could depend on what the user is currently viewing, "
     "editing, selecting, copying, or doing, even when they do not explicitly "
-    "mention their screen or ask you to use Wisp. Treat vague references and "
+    "mention their screen or ask you to use OpenWand. Treat vague references and "
     "requests such as 'this', 'that', 'here', 'what am I missing?', 'help me "
     "reply', 'summarize this', 'fix this', and 'why is this not working?' as "
     "signals to inspect desktop context before answering. Start with "
@@ -389,7 +389,7 @@ def main() -> int:
     _self_check()
     if not _server_enabled():
         _log("server_enabled is off in the mcp-bridge addon settings; refusing "
-             "to serve. Flip it on in Wisp's Addon Manager to use this server.")
+             "to serve. Flip it on in OpenWand's Addon Manager to use this server.")
         return 2
     for line in sys.stdin:
         line = line.strip()
@@ -405,7 +405,7 @@ def main() -> int:
             _ok(mid, {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "wisp-context-server", "version": "0.9.4"},
+                "serverInfo": {"name": "openwand-context-server", "version": "0.9.4"},
                 "instructions": _SERVER_INSTRUCTIONS,
             })
         elif method == "ping":

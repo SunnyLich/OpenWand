@@ -2,7 +2,7 @@
 #
 # Pure-Python macOS test runner.
 #
-# This is the macOS gate now that Wisp uses one Python app across Windows and
+# This is the macOS gate now that OpenWand uses one Python app across Windows and
 # macOS. It provisions the repo .venv from requirements/requirements-macos.lock and runs the
 # normal Python test suite plus the runtime worker tests.
 set -euo pipefail
@@ -44,7 +44,7 @@ fi
 WANT_MM="$(printf '%s' "$WANT" | cut -d. -f1,2)"
 REQ_FILE="$REPO_ROOT/requirements/requirements-macos.lock"
 VPY="$REPO_ROOT/.venv/bin/python"
-STAMP_FILE="$REPO_ROOT/.venv/.wisp-macos-python-deps.stamp"
+STAMP_FILE="$REPO_ROOT/.venv/.openwand-macos-python-deps.stamp"
 
 if [ ! -s "$REQ_FILE" ]; then
   echo "ERROR: requirements/requirements-macos.lock is required for macOS setup." >&2
@@ -226,7 +226,7 @@ setup_venv() {
 setup_venv
 ensure_pip "$VPY"
 
-export WISP_REPO_ROOT="$REPO_ROOT"
+export OPENWAND_REPO_ROOT="$REPO_ROOT"
 export PYTHONUNBUFFERED=1
 
 echo "Repo: $REPO_ROOT"

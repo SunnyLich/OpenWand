@@ -13,7 +13,7 @@ import types
 import wave
 
 import pytest
-from wisp_brain import handlers
+from openwand_brain import handlers
 
 np = pytest.importorskip("numpy")
 
@@ -22,7 +22,7 @@ np = pytest.importorskip("numpy")
 def _run_log_dir(tmp_path, monkeypatch):
     # Keep artifacts inside the test's tmp dir.
     """Verify run log dir behavior."""
-    monkeypatch.setenv("WISP_RUN_LOG_DIR", str(tmp_path))
+    monkeypatch.setenv("OPENWAND_RUN_LOG_DIR", str(tmp_path))
 
 
 def _inject_fake_tts(monkeypatch, *, provider, chunks):
@@ -74,7 +74,7 @@ def test_tts_requires_text():
 
 def test_tts_offline_seam_writes_silent_wav(monkeypatch):
     """Verify tts offline seam writes silent wav behavior."""
-    monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
+    monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
     result = handlers.HANDLERS["brain.tts.synthesize"](text="hello there")
     assert result["provider"] == "fake"
     assert result["bytes"] > 0
@@ -85,7 +85,7 @@ def test_tts_offline_seam_writes_silent_wav(monkeypatch):
 
 def test_tts_test_offline_seam(monkeypatch):
     """Verify tts test offline seam behavior."""
-    monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
+    monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
     result = handlers.HANDLERS["brain.tts.test"](provider="cartesia")
     assert result == {"ok": True, "message": "TTS route OK: cartesia", "provider": "cartesia"}
 

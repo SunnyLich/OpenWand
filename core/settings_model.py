@@ -132,6 +132,11 @@ class PrivacySettings:
     trust_privacy_mode: bool
     review_before_send: bool
     ai_enabled: bool
+    hide_secrets: bool
+    hide_contact_details: bool
+    hide_financial_details: bool
+    hide_government_ids: bool
+    hide_urls: bool
 
 
 @dataclass(frozen=True)
@@ -239,6 +244,11 @@ class AppSettings:
                 trust_privacy_mode=_copy_bool(values.get("TRUST_PRIVACY_MODE"), True),
                 review_before_send=_copy_bool(values.get("PRIVACY_REVIEW_BEFORE_SEND"), True),
                 ai_enabled=_copy_bool(values.get("PRIVACY_AI_ENABLED"), False),
+                hide_secrets=_copy_bool(values.get("PRIVACY_HIDE_SECRETS"), True),
+                hide_contact_details=_copy_bool(values.get("PRIVACY_HIDE_CONTACT_DETAILS"), True),
+                hide_financial_details=_copy_bool(values.get("PRIVACY_HIDE_FINANCIAL_DETAILS"), True),
+                hide_government_ids=_copy_bool(values.get("PRIVACY_HIDE_GOVERNMENT_IDS"), True),
+                hide_urls=_copy_bool(values.get("PRIVACY_HIDE_URLS"), True),
             ),
             callers=CallerSettings(
                 callers=_copy_rows(values.get("CALLER_ROWS")),

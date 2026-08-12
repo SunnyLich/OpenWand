@@ -980,24 +980,24 @@
       }
     },
     {
-      "id": "copilot_connection_test_boundary",
-      "rationale": "The Copilot Test Connection action enters the same provider route fault classifier and pre-output fallback contract already used by live provider calls.",
+      "id": "copilot_readiness_boundary",
+      "rationale": "The internal Copilot readiness API checks only local credential and SDK state; actual authorization and connectivity are covered by the normal model-route probe.",
       "function_ids": ["F214"],
       "evidence_by_cause": {
-        "Credentials.": [
-          "tests/test_llm_fallbacks.py::LlmFallbackTests::test_provider_route_failure_matrix_uses_fallback_without_partial_output"
+        "The stored credential is missing or malformed.": [
+          "tests/test_copilot_client.py::CopilotClientBridgeTests::test_readiness_check_reports_local_states_without_claiming_connectivity"
         ],
-        "Network access.": [
-          "tests/test_llm_fallbacks.py::LlmFallbackTests::test_provider_route_failure_matrix_uses_fallback_without_partial_output"
+        "The Copilot SDK is unavailable.": [
+          "tests/test_copilot_client.py::CopilotClientBridgeTests::test_readiness_check_reports_local_states_without_claiming_connectivity"
         ],
-        "Provider availability.": [
-          "tests/test_llm_fallbacks.py::LlmFallbackTests::test_provider_route_failure_matrix_uses_fallback_without_partial_output"
+        "The credential store cannot be read.": [
+          "tests/integration/brain/test_handler_config.py::test_auth_copilot_readiness_contains_credential_store_failure"
         ],
-        "The account lacks a required permission.": [
-          "tests/test_llm_fallbacks.py::LlmFallbackTests::test_provider_route_failure_matrix_uses_fallback_without_partial_output"
+        "Route authorization can only be determined by an actual model request.": [
+          "tests/test_connection_management_acceptance.py::test_every_provider_reaches_its_real_chat_route_probe"
         ],
-        "The provider API is incompatible.": [
-          "tests/test_llm_fallbacks.py::LlmFallbackTests::test_provider_route_failure_matrix_uses_fallback_without_partial_output"
+        "A readiness result is not proof of provider connectivity.": [
+          "tests/test_copilot_client.py::CopilotClientBridgeTests::test_readiness_check_reports_local_states_without_claiming_connectivity"
         ]
       }
     },
@@ -1315,7 +1315,7 @@
     },
     {
       "id": "worker_startup_transaction_boundary",
-      "rationale": "All four app workers start through WispSupervisor.start_all; every executable/dependency/timeout/stale-process/lock/permission/crash fault now rolls back the entire partial process set.",
+      "rationale": "All four app workers start through OpenWandSupervisor.start_all; every executable/dependency/timeout/stale-process/lock/permission/crash fault now rolls back the entire partial process set.",
       "function_ids": ["F016"],
       "evidence_by_cause": {
         "A required worker executable is missing.": ["tests/runtime/test_supervisor_ipc.py::test_supervisor_startup_failure_matrix_cleans_every_partial_worker"],
@@ -1478,7 +1478,7 @@
     },
     {
       "id": "shared_qt_surface_runtime_boundary",
-      "rationale": "These icon, picker, bubble, drag-row, delay, and standard-window functions all execute on Wisp's Qt surface/event-loop contract. Production tests prove hidden-surface restoration, destroyed-widget replacement, input/compositor routing, stale/off-screen geometry correction, freeze detection, and contained window-manager refusal; each function's normal workflow separately drives its own action.",
+      "rationale": "These icon, picker, bubble, drag-row, delay, and standard-window functions all execute on OpenWand's Qt surface/event-loop contract. Production tests prove hidden-surface restoration, destroyed-widget replacement, input/compositor routing, stale/off-screen geometry correction, freeze detection, and contained window-manager refusal; each function's normal workflow separately drives its own action.",
       "function_ids": ["F017", "F019", "F020", "F021", "F042", "F134", "F136", "F137", "F263", "F436", "F471"],
       "evidence_by_cause": {
         "The widget is hidden.": ["tests/test_overlay_bubble_visibility.py::test_bubble_chunk_restores_hidden_icon"],
@@ -1663,8 +1663,8 @@
       "rationale": "Packaged, source, duplicate-instance, runtime-status, autostart, and shutdown entry paths depend on the same repository/install metadata and Python runtime before supervisor lifecycle behavior can succeed. The reusable preflight matrix executes missing/corrupt installation and runtime states; supervisor tests separately cover lock, startup, and cleanup behavior.",
       "function_ids": ["F001", "F002", "F003", "F027", "F029", "F030"],
       "evidence_by_cause": {
-        "The Wisp installation is missing.": ["tests/test_dev_environment_check.py::DevEnvironmentCheckTests::test_install_runtime_integrity_failure_matrix_is_classified"],
-        "The Wisp installation is corrupt.": ["tests/test_dev_environment_check.py::DevEnvironmentCheckTests::test_install_runtime_integrity_failure_matrix_is_classified"],
+        "The OpenWand installation is missing.": ["tests/test_dev_environment_check.py::DevEnvironmentCheckTests::test_install_runtime_integrity_failure_matrix_is_classified"],
+        "The OpenWand installation is corrupt.": ["tests/test_dev_environment_check.py::DevEnvironmentCheckTests::test_install_runtime_integrity_failure_matrix_is_classified"],
         "The required runtime is missing.": ["tests/test_dev_environment_check.py::DevEnvironmentCheckTests::test_install_runtime_integrity_failure_matrix_is_classified"],
         "The required runtime is corrupt.": ["tests/test_dev_environment_check.py::DevEnvironmentCheckTests::test_install_runtime_integrity_failure_matrix_is_classified"]
       }
@@ -1674,8 +1674,8 @@
       "rationale": "First-start setup begins with the same install metadata validation as the reusable development/launch preflight, then runs its component checks. The matrix proves both absent and structurally corrupt installations are rejected before setup reports readiness.",
       "function_ids": ["F004"],
       "evidence_by_cause": {
-        "The Wisp installation is missing.": ["tests/test_dev_environment_check.py::DevEnvironmentCheckTests::test_install_runtime_integrity_failure_matrix_is_classified"],
-        "The Wisp installation is corrupt.": ["tests/test_dev_environment_check.py::DevEnvironmentCheckTests::test_install_runtime_integrity_failure_matrix_is_classified"]
+        "The OpenWand installation is missing.": ["tests/test_dev_environment_check.py::DevEnvironmentCheckTests::test_install_runtime_integrity_failure_matrix_is_classified"],
+        "The OpenWand installation is corrupt.": ["tests/test_dev_environment_check.py::DevEnvironmentCheckTests::test_install_runtime_integrity_failure_matrix_is_classified"]
       }
     },
     {
@@ -1852,7 +1852,7 @@
     },
     {
       "id": "worker_recovery_diagnostic_boundary",
-      "rationale": "Recovery formatting now has an explicit unresponsive-worker rule plus a diagnostic fallback for sparse or unknown failures. The matrix preserves supplied technical context and always points users to Runtime Status, recent logs, and crash-report capture when no specific rule matches.",
+      "rationale": "Recovery formatting keeps the explicit unresponsive-worker guidance and supplied technical context. Sparse or unknown failures remain concise instead of appending generic retry and crash-report advice.",
       "function_ids": ["F458"],
       "evidence_by_cause": {
         "The worker is unresponsive.": ["tests/test_error_recommendations.py::test_worker_recovery_failure_matrix_always_preserves_diagnostic_action", "tests/runtime/test_supervisor_ipc.py::test_brain_worker_death_mid_stream_fails_request_and_recovers"],

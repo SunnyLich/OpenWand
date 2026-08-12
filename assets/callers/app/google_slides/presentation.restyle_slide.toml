@@ -5,4 +5,4 @@ capability = "presentation.restyle_slide@1"
 planner = "presentation_plan_restyle_slide"
 access = ["internet"]
 available = false
-unavailable_reason = "This app's authenticated Wisp API bridge is not connected yet"
+unavailable_reason = "This app's authenticated OpenWand API bridge is not connected yet"

@@ -24,7 +24,7 @@ def snapshot(*, first_name: str = "") -> BrowserFormSnapshot:
         BrowserField("field_3", "#country", "Country", "select", "ca", options=("ca", "us", "tw")),
     )
     return BrowserFormSnapshot(
-        title="Wisp test form",
+        title="OpenWand test form",
         url="https://example.test/form",
         target_id="target-1",
         fields=fields,

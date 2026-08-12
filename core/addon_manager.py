@@ -1,4 +1,4 @@
-﻿"""Addon lifecycle management for Wisp.
+﻿"""Addon lifecycle management for OpenWand.
 
 Addons are folders with an ``addon.toml`` manifest. Each enabled addon runs in
 its own subprocess host so hook crashes and long-running code do not execute in
@@ -28,7 +28,7 @@ from core.action_files.contracts import LoadIssue
 from core.action_files.edit import update_toml_values
 from core.system.paths import ADDONS_DIR, BUNDLED_ADDONS_DIR, REPO_ROOT
 
-log = logging.getLogger("wisp.addons")
+log = logging.getLogger("openwand.addons")
 
 _HOST_TIMEOUT_SECONDS = 2.0
 _DEFAULT_BUNDLED_ADDONS = (
@@ -245,7 +245,7 @@ class AddonManager:
         self._dir = addons_dir or ADDONS_DIR
         self._bundled_addons_dir = bundled_addons_dir or BUNDLED_ADDONS_DIR
         self._seed_bundled_defaults = bundled_addons_dir is not None or (
-            not str(os.environ.get("WISP_ADDONS_DIR") or "").strip()
+            not str(os.environ.get("OPENWAND_ADDONS_DIR") or "").strip()
             and _same_path(self._dir, ADDONS_DIR)
         )
         self._mods: list[LoadedAddon] = []  # compatibility name used by callers/tests
@@ -1168,6 +1168,8 @@ def _safe_message_action(addon_id: str, item: Any) -> dict[str, Any] | None:
         "role": role,
         "presentation": bool(item.get("presentation")),
         "auto": bool(item.get("auto")),
+        "provider": str(item.get("provider") or "").replace("\x00", "").strip()[:80],
+        "model": str(item.get("model") or "").replace("\x00", "").strip()[:200],
     }
 
 
@@ -1209,6 +1211,9 @@ def _safe_message_action_resume_payload(payload: dict[str, Any]) -> dict[str, An
         "state": safe_state,
         "input_tokens_estimate": max(0, _safe_int(payload.get("input_tokens_estimate"), 0)),
         "output_tokens_estimate": max(0, _safe_int(payload.get("output_tokens_estimate"), 0)),
+        "route": str(payload.get("route") or "").replace("\x00", "").strip()[:40],
+        "provider": str(payload.get("provider") or "").replace("\x00", "").strip()[:80],
+        "model": str(payload.get("model") or "").replace("\x00", "").strip()[:200],
     }
 
 
@@ -1223,6 +1228,12 @@ def _safe_message_action_result(value: Any) -> dict[str, Any]:
     error_detail = str(value.get("error_detail") or "").replace("\x00", "").strip()[:1000]
     if error_detail:
         out["error_detail"] = error_detail
+    provider = str(value.get("provider") or "").replace("\x00", "").strip()[:80]
+    model = str(value.get("model") or "").replace("\x00", "").strip()[:200]
+    if provider:
+        out["provider"] = provider
+    if model:
+        out["model"] = model
     operation = value.get("llm")
     if isinstance(operation, dict):
         prompt = str(operation.get("prompt") or "").replace("\x00", "").strip()[:180_000]
@@ -1236,8 +1247,9 @@ def _safe_message_action_result(value: Any) -> dict[str, Any]:
                 "temperature": operation.get("temperature"),
                 "route": route,
             }
-            if route == "ollama-local":
-                out["llm"]["model"] = str(operation.get("model") or "").replace("\x00", "").strip()[:200]
+            operation_model = str(operation.get("model") or "").replace("\x00", "").strip()[:200]
+            if operation_model:
+                out["llm"]["model"] = operation_model
             state = value.get("state") if isinstance(value.get("state"), dict) else {}
             out["state"] = _safe_message_action_resume_payload({"state": state})["state"]
             return out

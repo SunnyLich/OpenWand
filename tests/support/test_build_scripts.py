@@ -9,10 +9,10 @@ ROOT = Path(__file__).resolve().parents[2]
 class BuildScriptTests(unittest.TestCase):
     def test_posix_entrypoints_are_executable_in_git(self) -> None:
         scripts = [
-            "Start Wisp.sh",
-            "Start Wisp Debug.sh",
-            "Start Wisp.command",
-            "Start Wisp Debug.command",
+            "Start OpenWand.sh",
+            "Start OpenWand Debug.sh",
+            "Start OpenWand.command",
+            "Start OpenWand Debug.command",
             "scripts/compile_dependency_locks.sh",
             "scripts/compile_macos_lock.sh",
             "scripts/run_macos_tests.command",
@@ -90,7 +90,7 @@ class BuildScriptTests(unittest.TestCase):
     def test_macos_build_script_uses_macos_spec_and_lockfile(self) -> None:
         script = (ROOT / "tools" / "build_macos_app.sh").read_text(encoding="utf-8")
 
-        self.assertIn('SPEC_NAME="WispMac.spec"', script)
+        self.assertIn('SPEC_NAME="OpenWandMac.spec"', script)
         self.assertIn('MACOS_LOCK_FILE="$ROOT/requirements/requirements-macos.lock"', script)
         self.assertIn('if [[ "$(uname -s)" != "Darwin" ]]', script)
         self.assertIn('require_file "$ICON_ICNS_PATH" "assets/app.icns"', script)
@@ -106,7 +106,7 @@ class BuildScriptTests(unittest.TestCase):
                 self.assertIn("install_uv_with_python()", script)
                 self.assertIn("stage_portable_uv()", script)
                 self.assertIn('portable_uv="$ROOT/tools/uv"', script)
-                self.assertIn("Runtime package installs in packaged Wisp require bundled uv.", script)
+                self.assertIn("Runtime package installs in packaged OpenWand require bundled uv.", script)
                 self.assertIn('stage_portable_uv "$PYTHON"', script)
                 self.assertLess(script.index('stage_portable_uv "$PYTHON"'), script.index('"$PYTHON" -m PyInstaller --noconfirm "$SPEC"'))
 
@@ -147,7 +147,7 @@ class BuildScriptTests(unittest.TestCase):
         required_windows_inputs = [
             'Path = $Spec; Name = "packaging\\$SpecName"',
             'Path = (Join-Path $Root "runtime\\supervisor\\app.py"); Name = "runtime\\supervisor\\app.py"',
-            'Path = (Join-Path $Root "Uninstall Wisp.bat"); Name = "Uninstall Wisp.bat"',
+            'Path = (Join-Path $Root "Uninstall OpenWand.bat"); Name = "Uninstall OpenWand.bat"',
             'Path = (Join-Path $Root ".env.example"); Name = ".env.example"',
             'Path = (Join-Path $Root "assets"); Name = "assets"',
             'Path = (Join-Path $Root "ui\\locales"); Name = "ui\\locales"',
@@ -281,7 +281,7 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn("`uv.exe` into `tools\\uv.exe` before PyInstaller runs", docs)
 
     def test_specs_bundle_version_metadata_for_updater(self) -> None:
-        for spec_name in ("Wisp.spec", "WispLinux.spec", "WispMac.spec"):
+        for spec_name in ("OpenWand.spec", "OpenWandLinux.spec", "OpenWandMac.spec"):
             with self.subTest(spec=spec_name):
                 spec = (ROOT / "packaging" / spec_name).read_text(encoding="utf-8")
                 self.assertIn('pyproject.toml', spec)
@@ -291,7 +291,7 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn("MIT License", license_text)
         self.assertIn("Copyright (c) 2026 Sideguide Technologies Inc.", license_text)
 
-        for spec_name in ("Wisp.spec", "WispLinux.spec", "WispMac.spec"):
+        for spec_name in ("OpenWand.spec", "OpenWandLinux.spec", "OpenWandMac.spec"):
             with self.subTest(spec=spec_name):
                 spec = (ROOT / "packaging" / spec_name).read_text(encoding="utf-8")
                 self.assertIn('collect_all("anydoc")', spec)
@@ -299,16 +299,16 @@ class BuildScriptTests(unittest.TestCase):
                 self.assertIn("ANYDOC_HIDDENIMPORTS", spec)
 
     def test_source_launchers_require_anydoc_runtime(self) -> None:
-        windows = (ROOT / "Start Wisp.bat").read_text(encoding="utf-8")
-        shared_unix = (ROOT / "Start Wisp.command").read_text(encoding="utf-8")
+        windows = (ROOT / "Start OpenWand.bat").read_text(encoding="utf-8")
+        shared_unix = (ROOT / "Start OpenWand.command").read_text(encoding="utf-8")
 
         self.assertIn("import anydoc", windows)
         self.assertIn("import anydoc", shared_unix)
 
     def test_specs_configure_platform_app_icons(self) -> None:
-        windows = (ROOT / "packaging" / "Wisp.spec").read_text(encoding="utf-8")
-        linux = (ROOT / "packaging" / "WispLinux.spec").read_text(encoding="utf-8")
-        macos = (ROOT / "packaging" / "WispMac.spec").read_text(encoding="utf-8")
+        windows = (ROOT / "packaging" / "OpenWand.spec").read_text(encoding="utf-8")
+        linux = (ROOT / "packaging" / "OpenWandLinux.spec").read_text(encoding="utf-8")
+        macos = (ROOT / "packaging" / "OpenWandMac.spec").read_text(encoding="utf-8")
 
         self.assertIn('APP_ICON_ICO = ROOT / "assets" / "app.ico"', windows)
         self.assertIn("icon=str(APP_ICON_ICO) if APP_ICON_ICO.exists() else None", windows)
@@ -318,27 +318,27 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn("icon=str(APP_ICON_ICNS) if APP_ICON_ICNS.exists() else None", macos)
 
     def test_windows_release_places_thin_uninstall_launcher_beside_executable(self) -> None:
-        launcher_path = ROOT / "Uninstall Wisp.bat"
+        launcher_path = ROOT / "Uninstall OpenWand.bat"
         launcher = launcher_path.read_text(encoding="utf-8")
-        spec = (ROOT / "packaging" / "Wisp.spec").read_text(encoding="utf-8")
+        spec = (ROOT / "packaging" / "OpenWand.spec").read_text(encoding="utf-8")
         docs = (ROOT / "docs" / "BUILDING_EXE.md").read_text(encoding="utf-8")
 
         self.assertTrue(launcher_path.is_file())
-        self.assertIn('"%~dp0Wisp.exe" -m runtime.workers.uninstall_wisp', launcher)
+        self.assertIn('"%~dp0OpenWand.exe" -m runtime.workers.uninstall_openwand', launcher)
         self.assertIn('"%~dp0.venv\\Scripts\\pythonw.exe"', launcher)
         self.assertNotIn("rmdir", launcher.casefold())
         self.assertNotIn("remove-item", launcher.casefold())
         self.assertNotIn("del ", launcher.casefold())
         self.assertIn("WINDOWS_LAUNCHER_FILES", spec)
         self.assertIn(
-            '("Uninstall Wisp.bat", str(ROOT / "Uninstall Wisp.bat"), "EXECUTABLE")',
+            '("Uninstall OpenWand.bat", str(ROOT / "Uninstall OpenWand.bat"), "EXECUTABLE")',
             spec,
         )
         self.assertIn("    WINDOWS_LAUNCHER_FILES,", spec)
-        self.assertIn("place `Uninstall Wisp.bat` beside `Wisp.exe`", docs)
+        self.assertIn("place `Uninstall OpenWand.bat` beside `OpenWand.exe`", docs)
 
     def test_specs_bundle_default_addons(self) -> None:
-        for spec_name in ("Wisp.spec", "WispLinux.spec", "WispMac.spec"):
+        for spec_name in ("OpenWand.spec", "OpenWandLinux.spec", "OpenWandMac.spec"):
             with self.subTest(spec=spec_name):
                 spec = (ROOT / "packaging" / spec_name).read_text(encoding="utf-8")
                 self.assertIn("BUNDLED_ADDON_DATAS", spec)
@@ -354,7 +354,7 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn("servers.json", docs)
 
     def test_specs_skip_missing_default_addon_inputs(self) -> None:
-        for spec_name in ("Wisp.spec", "WispLinux.spec", "WispMac.spec"):
+        for spec_name in ("OpenWand.spec", "OpenWandLinux.spec", "OpenWandMac.spec"):
             with self.subTest(spec=spec_name):
                 spec = (ROOT / "packaging" / spec_name).read_text(encoding="utf-8")
                 start = spec.index("BUNDLED_ADDON_DATAS = [")
@@ -376,7 +376,7 @@ class BuildScriptTests(unittest.TestCase):
                     )
 
     def test_specs_bundle_runtime_worker_modules_for_frozen_module_dispatch(self) -> None:
-        for spec_name in ("Wisp.spec", "WispLinux.spec", "WispMac.spec"):
+        for spec_name in ("OpenWand.spec", "OpenWandLinux.spec", "OpenWandMac.spec"):
             with self.subTest(spec=spec_name):
                 spec = (ROOT / "packaging" / spec_name).read_text(encoding="utf-8")
                 self.assertIn("collect_submodules", spec)
@@ -385,12 +385,12 @@ class BuildScriptTests(unittest.TestCase):
                 self.assertIn('"scripts.optional_tts_installer"', spec)
                 self.assertIn('collect_submodules("runtime.workers")', spec)
                 self.assertIn("RUNTIME_WORKER_HIDDENIMPORTS", spec)
-                self.assertIn('collect_submodules("wisp_brain")', spec)
+                self.assertIn('collect_submodules("openwand_brain")', spec)
                 self.assertIn("BRAIN_HIDDENIMPORTS", spec)
 
     def test_specs_exclude_pip_from_release_bundles(self) -> None:
         """Packaged installs use bundled uv; pip belongs only to build/source environments."""
-        for spec_name in ("Wisp.spec", "WispLinux.spec", "WispMac.spec"):
+        for spec_name in ("OpenWand.spec", "OpenWandLinux.spec", "OpenWandMac.spec"):
             with self.subTest(spec=spec_name):
                 spec = (ROOT / "packaging" / spec_name).read_text(encoding="utf-8")
                 self.assertNotIn('collect_submodules("pip")', spec)
@@ -400,7 +400,7 @@ class BuildScriptTests(unittest.TestCase):
 
     def test_specs_keep_speech_sdks_installer_owned_in_release_bundles(self) -> None:
         """Lazy speech imports must not inflate the ZIP with a second SDK stack."""
-        for spec_name in ("Wisp.spec", "WispLinux.spec", "WispMac.spec"):
+        for spec_name in ("OpenWand.spec", "OpenWandLinux.spec", "OpenWandMac.spec"):
             with self.subTest(spec=spec_name):
                 spec = (ROOT / "packaging" / spec_name).read_text(encoding="utf-8")
                 self.assertNotIn('collect_all("faster_whisper")', spec)
@@ -423,14 +423,14 @@ class BuildScriptTests(unittest.TestCase):
             with self.subTest(script=script_name):
                 script = (ROOT / script_name).read_text(encoding="utf-8")
                 self.assertIn(package_pattern, script)
-                self.assertIn("wisp-runtime-build-requirements.txt", script)
+                self.assertIn("openwand-runtime-build-requirements.txt", script)
                 self.assertIn('pip install -r "$BUILD_RUNTIME_REQUIREMENTS"', script)
 
         docs = (ROOT / "docs" / "BUILDING_EXE.md").read_text(encoding="utf-8")
         self.assertIn("avoiding downloads that PyInstaller would discard", docs)
 
     def test_specs_bundle_language_tags_data_for_local_tts(self) -> None:
-        for spec_name in ("Wisp.spec", "WispLinux.spec", "WispMac.spec"):
+        for spec_name in ("OpenWand.spec", "OpenWandLinux.spec", "OpenWandMac.spec"):
             with self.subTest(spec=spec_name):
                 spec = (ROOT / "packaging" / spec_name).read_text(encoding="utf-8")
                 self.assertIn('collect_all("language_tags")', spec)
@@ -438,8 +438,18 @@ class BuildScriptTests(unittest.TestCase):
                 self.assertIn("LANGUAGE_TAGS_BINARIES", spec)
                 self.assertIn("LANGUAGE_TAGS_HIDDENIMPORTS", spec)
 
+    def test_specs_bundle_latex2mathml_symbol_data(self) -> None:
+        """The frozen UI imports latex2mathml, which reads a loose symbol table."""
+        for spec_name in ("OpenWand.spec", "OpenWandLinux.spec", "OpenWandMac.spec"):
+            with self.subTest(spec=spec_name):
+                spec = (ROOT / "packaging" / spec_name).read_text(encoding="utf-8")
+                self.assertIn('collect_all("latex2mathml")', spec)
+                self.assertIn("LATEX2MATHML_DATAS", spec)
+                self.assertIn("LATEX2MATHML_BINARIES", spec)
+                self.assertIn("LATEX2MATHML_HIDDENIMPORTS", spec)
+
     def test_specs_bundle_stdlib_needed_by_runtime_installed_audio_packages(self) -> None:
-        for spec_name in ("Wisp.spec", "WispLinux.spec", "WispMac.spec"):
+        for spec_name in ("OpenWand.spec", "OpenWandLinux.spec", "OpenWandMac.spec"):
             with self.subTest(spec=spec_name):
                 spec = (ROOT / "packaging" / spec_name).read_text(encoding="utf-8")
                 self.assertIn("OPTIONAL_RUNTIME_HIDDENIMPORTS", spec)

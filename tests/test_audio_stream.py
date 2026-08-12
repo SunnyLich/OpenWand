@@ -54,7 +54,7 @@ class AudioStreamTests(unittest.TestCase):
             mock.patch.object(config, "TTS_PROVIDER", "cartesia"),
             mock.patch.object(config, "TTS_PLAYBACK_RATE", 1.0),
             mock.patch.object(config, "TTS_VOLUME", 1.0, create=True),
-            mock.patch.dict(audio.macos_safety.os.environ, {"WISP_MACOS_ENABLE_AUDIO": "1"}),
+            mock.patch.dict(audio.macos_safety.os.environ, {"OPENWAND_MACOS_ENABLE_AUDIO": "1"}),
         ]
         for p in self._patches:
             p.start()

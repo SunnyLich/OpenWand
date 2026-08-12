@@ -233,7 +233,7 @@ class ExcelActionAdapter:
                         _restore_excel_snapshot(application, worksheet, current)
                     except Exception as restore_error:
                         raise RuntimeError(
-                            "Excel cleanup verification failed and Wisp could not restore the captured range."
+                            "Excel cleanup verification failed and OpenWand could not restore the captured range."
                         ) from restore_error
                     raise
                 created.append({"kind": "cleaned_range", "name": current.selection_address})
@@ -340,7 +340,7 @@ def _active_excel_application() -> Any:
         pythoncom.CoInitialize()
         return win32com.client.GetActiveObject("Excel.Application")
     except Exception as exc:
-        raise ActionUnavailableError("Open Excel and select the range you want Wisp to use.") from exc
+        raise ActionUnavailableError("Open Excel and select the range you want OpenWand to use.") from exc
 
 
 def _table_range(collection: Any, name: str) -> Any | None:

@@ -31,7 +31,7 @@ _IDENTIFIER = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]{0,127}$")
 
 
 def vscode_extension_capabilities() -> tuple[ActionCapability, ...]:
-    """Return only operations intended for Wisp's authenticated extension bridge."""
+    """Return only operations intended for OpenWand's authenticated extension bridge."""
 
     def capability(
         action_type: str,

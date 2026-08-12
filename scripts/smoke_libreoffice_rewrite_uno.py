@@ -78,7 +78,7 @@ def _capture(title: str, output: Path) -> None:
 def _writer_smoke(desktop, pipe_name: str, port: int, output: Path) -> dict:
     document = desktop.loadComponentFromURL("private:factory/swriter", "_blank", 0, ())
     try:
-        capture_title = _set_title(document, "Wisp Rewrite Writer Smoke")
+        capture_title = _set_title(document, "OpenWand Rewrite Writer Smoke")
         document.Text.String = "A rough sentence."
         cursor = document.Text.createTextCursor()
         cursor.gotoStart(False)
@@ -114,7 +114,7 @@ def _impress_smoke(desktop, pipe_name: str, port: int, output: Path) -> dict:
         (_property("Hidden", False),),
     )
     try:
-        capture_title = _set_title(document, "Wisp Rewrite Impress Smoke")
+        capture_title = _set_title(document, "OpenWand Rewrite Impress Smoke")
         page = document.DrawPages.getByIndex(0)
         shape = document.createInstance("com.sun.star.drawing.TextShape")
         position = uno.createUnoStruct("com.sun.star.awt.Point")
@@ -149,7 +149,7 @@ def _impress_smoke(desktop, pipe_name: str, port: int, output: Path) -> dict:
 def _calc_smoke(desktop, pipe_name: str, port: int, output: Path) -> dict:
     document = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, ())
     try:
-        capture_title = _set_title(document, "Wisp Rewrite Calc Smoke")
+        capture_title = _set_title(document, "OpenWand Rewrite Calc Smoke")
         sheet = document.Sheets.getByIndex(0)
         cell = sheet.getCellRangeByName("A1")
         cell.setString("rough")

@@ -42,7 +42,7 @@ def main() -> int:
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     chrome = Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
-    session_token = "wisp-rewrite-smoke-20260806-20894"
+    session_token = "openwand-rewrite-smoke-20260806-20894"
     port = 20894
     page = (PROJECT_ROOT / "testlab" / "rewrite_browser_smoke.html").resolve().as_uri()
     subprocess.Popen(
@@ -50,7 +50,7 @@ def main() -> int:
             str(chrome),
             f"--remote-debugging-port={port}",
             f"--remote-allow-origins=http://127.0.0.1:{port}",
-            f"--wisp-managed-session={session_token}",
+            f"--openwand-managed-session={session_token}",
             f"--user-data-dir={PROJECT_ROOT / '.tmp' / 'chrome-rewrite-profile-4'}",
             "--no-first-run",
             "--disable-extensions",
@@ -83,7 +83,7 @@ def main() -> int:
         client.close()
     try:
         _capture_page(target, args.output / "browser_before.png")
-        snapshot = adapter.inspect_selection({"browser_url": page, "name": "Wisp Browser Rewrite Smoke"})
+        snapshot = adapter.inspect_selection({"browser_url": page, "name": "OpenWand Browser Rewrite Smoke"})
         applied = adapter.apply(build_browser_rewrite_plan(snapshot, "clear"))
         time.sleep(0.5)
         _capture_page(target, args.output / "browser_after.png")

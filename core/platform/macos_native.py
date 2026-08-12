@@ -73,7 +73,7 @@ _APPLESCRIPT_MODS = {
 def send_key_combo(combo: str) -> bool:
     """Send a simple key combo through System Events in a separate process.
 
-    This intentionally covers the combos Wisp uses for selected-text capture and
+    This intentionally covers the combos OpenWand uses for selected-text capture and
     paste-back (cmd+c/cmd+v, with optional modifiers). Unsupported combos return
     False so the caller can degrade or explicitly choose a legacy fallback.
     """
@@ -148,7 +148,7 @@ def get_selected_text(copy_combo: str = "cmd+c", *, settle_seconds: float = 0.08
         return None
     from core.system import clipboard_lock
 
-    # Serialize the save->copy->restore dance with any other Wisp-derived
+    # Serialize the save->copy->restore dance with any other OpenWand-derived
     # process (e.g. the MCP context server) doing the same thing.
     with clipboard_lock.held():
         previous = get_clipboard_text()

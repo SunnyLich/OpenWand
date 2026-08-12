@@ -6,7 +6,7 @@ import os
 import sys
 import types
 
-from wisp_brain import handlers
+from openwand_brain import handlers
 
 
 def test_config_reload_handler_registered():
@@ -111,12 +111,12 @@ def test_privacy_prewarm_loads_installed_advanced_model(monkeypatch):
 def test_harness_prewarm_skips_when_codex_is_not_selected(monkeypatch):
     import config
 
-    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "wisp", raising=False)
+    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "openwand", raising=False)
 
     assert handlers.HANDLERS["brain.harness.prewarm"]() == {
         "ready": False,
         "skipped": True,
-        "provider": "wisp",
+        "provider": "openwand",
     }
 
 
@@ -141,7 +141,7 @@ def test_harness_prewarm_starts_reusable_codex_server(monkeypatch):
 
 def test_llm_test_offline_seam(monkeypatch):
     """Verify llm test offline seam behavior."""
-    monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
+    monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
 
     result = handlers.HANDLERS["brain.llm.test"](
         provider="openai",
@@ -168,7 +168,7 @@ def test_llm_test_offline_seam(monkeypatch):
 
 def test_llm_test_offline_reports_fallback_chain(monkeypatch):
     """Verify llm test offline reports fallback chain behavior."""
-    monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
+    monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
 
     result = handlers.HANDLERS["brain.llm.test"](
         provider="openai",
@@ -211,7 +211,7 @@ def test_llm_test_offline_reports_fallback_chain(monkeypatch):
 
 def test_llm_test_offline_vision_message(monkeypatch):
     """Verify llm test offline vision message behavior."""
-    monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
+    monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
 
     result = handlers.HANDLERS["brain.llm.test"](
         provider="anthropic",
@@ -715,6 +715,22 @@ def test_auth_copilot_set_and_test_call_shared_modules(monkeypatch):
         "message": "Copilot token OK",
     }
     assert calls == [("save", "github_pat_test")]
+
+
+def test_auth_copilot_readiness_contains_credential_store_failure(monkeypatch):
+    """A failed credential read returns a controlled diagnostic instead of crashing."""
+    from core.auth import copilot_client
+
+    monkeypatch.setattr(
+        copilot_client,
+        "test_copilot_token",
+        lambda: (_ for _ in ()).throw(OSError("credential store cannot be read")),
+    )
+
+    result = handlers.HANDLERS["brain.auth.copilot.test"]()
+
+    assert result["ok"] is False
+    assert "credential store cannot be read" in result["message"]
 
 
 def test_auth_chatgpt_start_browser_login_uses_shared_module(monkeypatch):

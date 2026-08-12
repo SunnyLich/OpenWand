@@ -1,4 +1,4 @@
-"""Preview-first actions for Wisp-managed Chromium browsers."""
+"""Preview-first actions for OpenWand-managed Chromium browsers."""
 
 from core.actions.adapters.browser.adapter import BrowserActionAdapter, BrowserDevToolsTarget, is_browser_app
 from core.actions.adapters.browser.capabilities import FILL_FORM, browser_capabilities

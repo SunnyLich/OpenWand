@@ -251,8 +251,8 @@ def test_invalid_settings_values_use_safe_widget_and_runtime_fallbacks(qapp, mon
         assert _normalize_language("not-a-language") == "en"
         assert _get(dialog._fields["APP_LANGUAGE"]) == language_before
         assert _get(dialog._fields["THEME_MODE"]) == appearance_before
-        monkeypatch.setenv("WISP_TEST_INVALID_NUMBER", "not-a-number")
-        assert env_int("WISP_TEST_INVALID_NUMBER", 340) == 340
+        monkeypatch.setenv("OPENWAND_TEST_INVALID_NUMBER", "not-a-number")
+        assert env_int("OPENWAND_TEST_INVALID_NUMBER", 340) == 340
         assert dialog._set_value_for_env_key("NOT_A_SETTING", "bad") is False
     finally:
         dialog.close()

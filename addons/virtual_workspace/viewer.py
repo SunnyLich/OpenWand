@@ -1,4 +1,4 @@
-"""Authenticated loopback IPC bridge for Wisp's native workspace window."""
+"""Authenticated loopback IPC bridge for OpenWand's native workspace window."""
 from __future__ import annotations
 
 import json
@@ -17,7 +17,7 @@ class _LoopbackServer(ThreadingHTTPServer):
 
 
 class ViewerServer:
-    """Expose workspace state to Wisp's native UI process on loopback only."""
+    """Expose workspace state to OpenWand's native UI process on loopback only."""
 
     def __init__(
         self,
@@ -46,7 +46,7 @@ class ViewerServer:
 
     @property
     def url(self) -> str:
-        """Return the authenticated endpoint consumed by Wisp's native window."""
+        """Return the authenticated endpoint consumed by OpenWand's native window."""
         if self._server is None:
             raise RuntimeError("workspace bridge is not running")
         port = int(self._server.server_address[1])
@@ -59,7 +59,7 @@ class ViewerServer:
         server = _LoopbackServer(("127.0.0.1", 0), self._handler_type())
         thread = threading.Thread(
             target=server.serve_forever,
-            name="wisp-workspace-bridge",
+            name="openwand-workspace-bridge",
             daemon=True,
         )
         self._server = server
@@ -81,7 +81,7 @@ class ViewerServer:
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
-            server_version = "WispWorkspaceBridge/1"
+            server_version = "OpenWandWorkspaceBridge/1"
             sys_version = ""
 
             def do_GET(self) -> None:  # noqa: N802

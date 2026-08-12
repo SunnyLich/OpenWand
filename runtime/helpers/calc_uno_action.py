@@ -101,7 +101,7 @@ def snapshot_range(*, port: int, pipe_name: str, title: str, address: str) -> di
     )
     foreground_after = int(user32.GetForegroundWindow())
     if foreground_after != foreground_before:
-        raise RuntimeError("Calc took focus while Wisp was reading the reviewed range.")
+        raise RuntimeError("Calc took focus while OpenWand was reading the reviewed range.")
     return {
         "ok": True,
         "document_title": str(getattr(document, "Title", "") or ""),
@@ -139,10 +139,10 @@ def apply_chart(
 
     charts = sheet.Charts
     index = 1
-    name = "WispChart"
+    name = "OpenWandChart"
     while charts.hasByName(name):
         index += 1
-        name = f"WispChart{index}"
+        name = f"OpenWandChart{index}"
     rectangle = uno.createUnoStruct("com.sun.star.awt.Rectangle")
     rectangle.X = 9500
     rectangle.Y = 1000
@@ -155,11 +155,11 @@ def apply_chart(
 
     if tuple(tuple(row) for row in source.getDataArray()) != current:
         charts.removeByName(name)
-        raise RuntimeError("Calc changed source cells; Wisp rolled the chart back.")
+        raise RuntimeError("Calc changed source cells; OpenWand rolled the chart back.")
     foreground_after = int(user32.GetForegroundWindow())
     if foreground_after != foreground_before:
         charts.removeByName(name)
-        raise RuntimeError("Calc tried to take focus; Wisp rolled the chart back.")
+        raise RuntimeError("Calc tried to take focus; OpenWand rolled the chart back.")
     if not charts.hasByName(name):
         raise RuntimeError("Calc did not retain the new chart.")
     return {
@@ -232,7 +232,7 @@ def apply_format_table(
     context_open = False
     mutated = False
     try:
-        manager.enterUndoContext("Wisp: clean up table")
+        manager.enterUndoContext("OpenWand: clean up table")
         context_open = True
         if has_header:
             header = source.getCellRangeByPosition(0, 0, len(before[0]) - 1, 0)
@@ -344,7 +344,7 @@ def apply_sort_range(
     context_open = False
     mutated = False
     try:
-        manager.enterUndoContext("Wisp: sort selected rows")
+        manager.enterUndoContext("OpenWand: sort selected rows")
         context_open = True
         mutated = True
         source.sort(tuple(descriptor))
@@ -481,7 +481,7 @@ def apply_clean_range(
     context_open = False
     mutated = False
     try:
-        manager.enterUndoContext("Wisp: apply reviewed cell cleanup")
+        manager.enterUndoContext("OpenWand: apply reviewed cell cleanup")
         context_open = True
         for change in changes:
             cell = source.getCellByPosition(change["column_offset"], change["row_offset"])

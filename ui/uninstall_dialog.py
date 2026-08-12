@@ -1,4 +1,4 @@
-"""Reusable confirmation flow for a complete Wisp uninstall."""
+"""Reusable confirmation flow for a complete OpenWand uninstall."""
 from __future__ import annotations
 
 from PySide6.QtCore import QTimer
@@ -9,7 +9,7 @@ from ui.i18n import t
 
 
 def run_uninstall_dialog(parent: QWidget | None = None) -> bool:
-    """Confirm and launch the detached, self-removing Wisp uninstaller."""
+    """Confirm and launch the detached, self-removing OpenWand uninstaller."""
     try:
         plan = uninstaller.build_uninstall_plan()
     except Exception as exc:  # noqa: BLE001 - safety validation must be visible
@@ -23,11 +23,11 @@ def run_uninstall_dialog(parent: QWidget | None = None) -> bool:
     kind = t("source checkout") if plan.source_checkout else t("release installation")
     details = t(
         "This will permanently remove:\n"
-        "• Wisp's current {kind}: {app_root}\n"
-        "• All Wisp settings, chats, memory, add-ons, tools, logs, updates, and optional packages: {data_root}\n"
-        "• Wisp API keys and sign-in tokens from the OS keychain\n"
-        "• Wisp's STT/TTS model repositories from the Hugging Face cache\n"
-        "• Wisp login and desktop entries\n\n"
+        "• OpenWand's current {kind}: {app_root}\n"
+        "• All OpenWand settings, chats, memory, add-ons, tools, logs, updates, and optional packages: {data_root}\n"
+        "• OpenWand API keys and sign-in tokens from the OS keychain\n"
+        "• OpenWand's STT/TTS model repositories from the Hugging Face cache\n"
+        "• OpenWand login and desktop entries\n\n"
         "Shared uv/pip caches and unrelated Hugging Face models will not be removed."
     ).format(kind=kind, app_root=plan.app_root, data_root=plan.user_data_root)
     exact_targets = "\n".join(f"• {path}" for path in plan.targets)
@@ -40,7 +40,7 @@ def run_uninstall_dialog(parent: QWidget | None = None) -> bool:
 
     confirm = QMessageBox(parent)
     confirm.setIcon(QMessageBox.Icon.Critical)
-    confirm.setWindowTitle(t("Uninstall Wisp?"))
+    confirm.setWindowTitle(t("Uninstall OpenWand?"))
     confirm.setText(t("This action cannot be undone."))
     confirm.setInformativeText(details)
     confirm.setStandardButtons(
@@ -52,7 +52,7 @@ def run_uninstall_dialog(parent: QWidget | None = None) -> bool:
 
     try:
         uninstaller.launch_uninstaller(plan)
-    except Exception as exc:  # noqa: BLE001 - keep Wisp open after a failed launch
+    except Exception as exc:  # noqa: BLE001 - keep OpenWand open after a failed launch
         QMessageBox.warning(
             parent,
             t("Could not start uninstaller"),
@@ -64,8 +64,8 @@ def run_uninstall_dialog(parent: QWidget | None = None) -> bool:
         parent,
         t("Uninstaller started"),
         t(
-            "Wisp will now close. The uninstaller will remove only the listed Wisp-owned files "
-            "after all Wisp processes exit."
+            "OpenWand will now close. The uninstaller will remove only the listed OpenWand-owned files "
+            "after all OpenWand processes exit."
         ),
     )
     app = QApplication.instance()

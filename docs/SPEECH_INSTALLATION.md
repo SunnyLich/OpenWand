@@ -1,6 +1,6 @@
 # Speech installation contract
 
-Wisp treats speech configuration, package files, runtime imports, model assets,
+OpenWand treats speech configuration, package files, runtime imports, model assets,
 and live readiness as separate facts. A provider is ready only when every
 required layer is valid.
 
@@ -11,7 +11,7 @@ required layer is valid.
 | Source checkout | Platform lock in `.venv` provides STT and ElevenLabs | Current Python and `pip` stage a managed repair | Valid managed repair first, otherwise the locked source environment |
 | Packaged release | STT, Kokoro, and ElevenLabs SDKs are excluded from the ZIP | Bundled `uv` stages packages under the user-data directory | Managed package layer only |
 
-Remote TTS providers that use Wisp's normal HTTP clients do not need an
+Remote TTS providers that use OpenWand's normal HTTP clients do not need an
 optional package installation. Kokoro is always optional because its Torch and
 model payload is too large for the release bundle.
 
@@ -19,23 +19,23 @@ model payload is too large for the release bundle.
 
 1. Build an exact provider plan. Its contract includes package pins, platform,
    CPU architecture, Python implementation/ABI, selected device mode, and the
-   Wisp version.
+   OpenWand version.
 2. Download into a new staging directory. The running package directory is not
    modified.
 3. Persist the plan, log, and status under the stable user-data `installers`
    directory. A per-run diagnostics directory never owns control state.
 4. Report `restart_required`. Download completion is not installation success.
-5. After Wisp exits, copy the active optional layer, replace distributions
+5. After OpenWand exits, copy the active optional layer, replace distributions
    supplied by the stage, atomically swap the replacement into place, and roll
    back if activation fails.
 6. Verify exact distribution metadata and the real import entry point. STT also
    verifies device/model construction; Kokoro verifies Torch and pinned
    model/voice assets.
 7. Only after verification succeeds, save the selected speech settings, mark
-   the install successful, and reopen Wisp when the user requested an immediate
+   the install successful, and reopen OpenWand when the user requested an immediate
    restart.
 
-Interrupted staged installs remain resumable. A Wisp/package/Python contract
+Interrupted staged installs remain resumable. A OpenWand/package/Python contract
 change invalidates and discards the old stage instead of applying incompatible
 wheels later.
 
@@ -54,7 +54,7 @@ audio worker. It reports the package source and these phases:
 - `warming`, `ready`, `failed`: live audio-worker state.
 
 The current package/runtime checks remain authoritative over an old successful
-installer message. Persisted installer state is accepted only when its Wisp and
+installer message. Persisted installer state is accepted only when its OpenWand and
 installation-contract fingerprints still match.
 
 ## Recovery rule

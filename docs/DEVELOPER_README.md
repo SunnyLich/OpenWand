@@ -1,6 +1,6 @@
-# Wisp Developer README
+# OpenWand Developer README
 
-This document is the practical entry point for working on Wisp. The GitHub
+This document is the practical entry point for working on OpenWand. The GitHub
 README at `.github/README.md` explains the product; this file explains how the
 codebase is put together, how to run it locally, and where to look when changing
 behavior.
@@ -9,7 +9,7 @@ For the current architecture map, start with `docs/OVERVIEW.md`.
 
 ## Quick Setup
 
-Wisp targets Python `3.12`.
+OpenWand targets Python `3.12`.
 
 On Windows:
 
@@ -30,16 +30,16 @@ bash scripts/setup_dev.sh
 The platform launchers also provision dependencies before starting the app:
 
 ```powershell
-.\Start Wisp.bat
+.\Start OpenWand.bat
 ```
 
 ```bash
-bash "Start Wisp.command"
-bash "Start Wisp.sh"
+bash "Start OpenWand.command"
+bash "Start OpenWand.sh"
 ```
 
-Normal launchers keep runtime logs off unless Wisp exits abruptly. Use
-`Start Wisp Debug.bat`, `Start Wisp Debug.command`, or `Start Wisp Debug.sh`
+Normal launchers keep runtime logs off unless OpenWand exits abruptly. Use
+`Start OpenWand Debug.bat`, `Start OpenWand Debug.command`, or `Start OpenWand Debug.sh`
 to keep full runtime logs during local debugging.
 
 ## Runtime Entrypoints
@@ -74,11 +74,11 @@ to keep full runtime logs during local debugging.
 
 The supervisor starts four primary workers:
 
-- `wisp-ui` owns all PySide widgets and emits user events.
-- `wisp-native` owns OS integration such as hotkeys, focused-window context,
+- `openwand-ui` owns all PySide widgets and emits user events.
+- `openwand-native` owns OS integration such as hotkeys, focused-window context,
   screenshot capture, clipboard access, and pasteback.
-- `wisp-audio` owns audio playback, TTS, recording, and STT imports.
-- `wisp-brain` owns model calls, memory, addons, tools, chat, and agent runs.
+- `openwand-audio` owns audio playback, TTS, recording, and STT imports.
+- `openwand-brain` owns model calls, memory, addons, tools, chat, and agent runs.
 
 Workers communicate with newline-delimited JSON over stdin/stdout. The
 supervisor assigns request ids, matches responses, forwards scoped stream
@@ -104,7 +104,7 @@ See `docs/OVERVIEW.md` for the compact ownership map.
   with `source=settings`; the supervisor returns the lightweight
   `core.setup_check.run_setup_check()` rows without live provider/audio probes.
 - Agent tasks: UI task/history/approval events flow through the supervisor to
-  `wisp-brain`, where `core.agent.runner` owns execution and scoped workspace
+  `openwand-brain`, where `core.agent.runner` owns execution and scoped workspace
   access.
 
 ## Configuration And Data
@@ -160,10 +160,10 @@ bash scripts/run_macos_tests.command
 
 ## Debugging Notes
 
-- Debug supervisor logs are written under `build_logs/wisp_runtime_*`.
-- Normal launcher runs only write `build_logs/wisp_crash_*` after an abrupt
+- Debug supervisor logs are written under `build_logs/openwand_runtime_*`.
+- Normal launcher runs only write `build_logs/openwand_crash_*` after an abrupt
   supervisor or UI-worker exit.
-- `build_logs/latest_wisp_runtime.txt` points at the newest supervisor log
+- `build_logs/latest_openwand_runtime.txt` points at the newest supervisor log
   directory when the supervisor entrypoint created it.
 - UI freeze reports are emitted by the UI worker watchdog when the Qt event loop
   or IPC pump stalls.

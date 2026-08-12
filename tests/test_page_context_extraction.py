@@ -28,8 +28,8 @@ def test_extract_useful_page_context_orders_structured_html():
     html = """
     <html>
       <head>
-        <title>Wisp Browser Context</title>
-        <meta name="description" content="How Wisp reads useful browser context.">
+        <title>OpenWand Browser Context</title>
+        <meta name="description" content="How OpenWand reads useful browser context.">
       </head>
       <body>
         <nav>Home Pricing Login</nav>
@@ -37,7 +37,7 @@ def test_extract_useful_page_context_orders_structured_html():
         <main>
           <h1>Browser context design</h1>
           <h2>Capture model</h2>
-          <p>Wisp captures the active browser page and turns it into ordered context.</p>
+          <p>OpenWand captures the active browser page and turns it into ordered context.</p>
           <p>The model should see headline content before secondary page details.</p>
           <a href="/docs/context">Context docs</a>
         </main>
@@ -52,11 +52,11 @@ def test_extract_useful_page_context_orders_structured_html():
         max_chars=2000,
     )
 
-    assert "Title:\nWisp Browser Context" in text
-    assert "Page description:\nHow Wisp reads useful browser context." in text
+    assert "Title:\nOpenWand Browser Context" in text
+    assert "Page description:\nHow OpenWand reads useful browser context." in text
     assert "Headings:\n- Browser context design\n- Capture model" in text
     assert "Main content:\nBrowser context design" in text
-    assert "Wisp captures the active browser page" in text
+    assert "OpenWand captures the active browser page" in text
     assert "Links:\n- Context docs: https://example.test/docs/context" in text
     assert "Accept all cookies" not in text
     assert "Legal links" not in text
@@ -70,7 +70,7 @@ def test_extract_useful_page_context_formats_rendered_text_without_relevance_lab
     Example Docs
 
     Overview
-    Wisp can read rendered browser text when the browser exposes it.
+    OpenWand can read rendered browser text when the browser exposes it.
 
     Setup
     Enable the browser context mode for the caller.

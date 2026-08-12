@@ -42,7 +42,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from core.system.native_locks import keychain_lock
 
-log = logging.getLogger("wisp.chatgpt_auth")
+log = logging.getLogger("openwand.chatgpt_auth")
 
 # ---------------------------------------------------------------------------
 # Constants (sourced from opencode's built-in Codex plugin, MIT)
@@ -59,7 +59,7 @@ _KEYRING_ACCOUNT = "chatgpt-oauth"
 _KEYRING_CHUNK_SIZE = 900
 _KEYRING_MAX_CHUNKS = 32
 _USE_CHUNKED_KEYRING = sys.platform == "win32"
-_CHUNK_MANIFEST_KEY = "_wisp_oauth_chunks"
+_CHUNK_MANIFEST_KEY = "_openwand_oauth_chunks"
 
 # Keep reads, rewrites, and deletes consecutive inside this process. Windows
 # Credential Manager exposes individual credential operations, not a batch API.
@@ -101,8 +101,8 @@ def _codex_auth_path() -> Path:
 
 
 def _codex_login_sharing_enabled() -> bool:
-    """Whether Wisp should reuse a valid native Codex ChatGPT login."""
-    value = str(os.environ.get("WISP_SHARE_CODEX_LOGIN", "true") or "").strip().lower()
+    """Whether OpenWand should reuse a valid native Codex ChatGPT login."""
+    value = str(os.environ.get("OPENWAND_SHARE_CODEX_LOGIN", "true") or "").strip().lower()
     return value not in {"0", "false", "no", "off"}
 
 
@@ -152,7 +152,7 @@ class OAuthTokenStorageError(RuntimeError):
 
 
 def _app_icon_data_uri() -> str:
-    """Return the bundled Wisp app icon as an embeddable data URI."""
+    """Return the bundled OpenWand app icon as an embeddable data URI."""
     try:
         return "data:image/x-icon;base64," + base64.b64encode(_APP_ICON_FILE.read_bytes()).decode("ascii")
     except Exception:
@@ -311,7 +311,7 @@ def _get_tokens_unlocked() -> dict | None:
 
 
 def get_tokens() -> dict | None:
-    """Return native Codex login details first, then Wisp's OAuth fallback."""
+    """Return native Codex login details first, then OpenWand's OAuth fallback."""
     with _token_storage_lock:
         codex_tokens = _read_codex_tokens_unlocked()
         if codex_tokens:
@@ -320,11 +320,11 @@ def get_tokens() -> dict | None:
 
 
 def credential_source(tokens: dict | None = None) -> str:
-    """Return ``codex``, ``wisp``, or an empty string for the active login."""
+    """Return ``codex``, ``openwand``, or an empty string for the active login."""
     current = tokens if tokens is not None else get_tokens()
     if not current:
         return ""
-    return "codex" if current.get("_source") == "codex" else "wisp"
+    return "codex" if current.get("_source") == "codex" else "openwand"
 
 
 def _save_tokens_unlocked(tokens: dict) -> None:
@@ -493,6 +493,51 @@ def get_account_id() -> str | None:
     """Return the stored ChatGPT account ID, or None."""
     tokens = get_tokens()
     return tokens.get("account_id") if tokens else None
+
+
+def validate_login(*, timeout_seconds: float = 5.0) -> tuple[bool, str]:
+    """Verify the saved OAuth credential against the authenticated model catalog.
+
+    Merely finding a keychain entry is not proof that the server still accepts
+    it.  This request does not run a model or consume generated tokens.
+    """
+    tokens = get_tokens()
+    if not tokens:
+        return False, ""
+    access_token = get_valid_access_token()
+    if not access_token:
+        raise RuntimeError(
+            "Saved ChatGPT sign-in is expired or could not be refreshed. Sign in again."
+        )
+    account_id = str(get_account_id() or "").strip()
+
+    import urllib.error
+    import urllib.request
+
+    from runtime import VERSION
+
+    request = urllib.request.Request(
+        f"https://chatgpt.com/backend-api/codex/models?client_version={VERSION}",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "ChatGPT-Account-Id": account_id,
+            "Originator": "opencode",
+            "User-Agent": f"OpenWand/{VERSION}",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=max(0.5, float(timeout_seconds))) as response:
+            response.read(1)
+    except urllib.error.HTTPError as exc:
+        if exc.code in {401, 403}:
+            raise RuntimeError(
+                "Saved ChatGPT sign-in was rejected. Sign in again."
+            ) from None
+        raise RuntimeError(f"ChatGPT sign-in check failed (HTTP {exc.code}).") from None
+    except (OSError, ValueError, urllib.error.URLError) as exc:
+        raise RuntimeError(f"Could not reach ChatGPT to verify sign-in: {exc}") from None
+    return True, account_id
 
 
 # ---------------------------------------------------------------------------
@@ -737,12 +782,12 @@ _HTML_SHELL = """\
 <style>
 :root {{
   color-scheme: light;
-  --wisp-blue: #2563eb;
-  --wisp-blue-soft: #dbeafe;
-  --wisp-ink: #0f172a;
-  --wisp-muted: #475569;
-  --wisp-page: #f8fbff;
-  --wisp-white: #ffffff;
+  --openwand-blue: #2563eb;
+  --openwand-blue-soft: #dbeafe;
+  --openwand-ink: #0f172a;
+  --openwand-muted: #475569;
+  --openwand-page: #f8fbff;
+  --openwand-white: #ffffff;
 }}
 * {{ box-sizing: border-box; }}
 body {{
@@ -752,8 +797,8 @@ body {{
   place-items: center;
   background:
     radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.10), transparent 34rem),
-    var(--wisp-page);
-  color: var(--wisp-ink);
+    var(--openwand-page);
+  color: var(--openwand-ink);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }}
 main {{
@@ -775,15 +820,15 @@ main {{
   display: grid;
   place-items: center;
   border-radius: 1.25rem;
-  background: var(--wisp-blue);
-  color: var(--wisp-white);
+  background: var(--openwand-blue);
+  color: var(--openwand-white);
   font-size: 2rem;
   font-weight: 750;
   box-shadow: 0 1rem 1.5rem rgba(37, 99, 235, 0.18);
 }}
 h1 {{
   margin: 0;
-  color: var(--wisp-ink);
+  color: var(--openwand-ink);
   font-size: clamp(1.35rem, 5vw, 1.75rem);
   font-weight: 700;
   line-height: 1.2;
@@ -791,7 +836,7 @@ h1 {{
 }}
 p {{
   margin: 0.75rem 0 0;
-  color: var(--wisp-muted);
+  color: var(--openwand-muted);
   font-size: 1rem;
   line-height: 1.55;
 }}
@@ -802,7 +847,7 @@ p {{
   padding: 0.65rem 0.85rem;
   border: 1px solid #bfdbfe;
   border-radius: 0.5rem;
-  background: var(--wisp-white);
+  background: var(--openwand-white);
   color: #1d4ed8;
   overflow-wrap: anywhere;
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
@@ -823,18 +868,18 @@ p {{
 def _html_icon() -> str:
     icon_uri = _app_icon_data_uri()
     if icon_uri:
-        return f'<img class="icon" src="{icon_uri}" alt="Wisp">'
-    return '<div class="icon-fallback" aria-label="Wisp">W</div>'
+        return f'<img class="icon" src="{icon_uri}" alt="OpenWand">'
+    return '<div class="icon-fallback" aria-label="OpenWand">W</div>'
 
 
 def _html_success() -> str:
     """Return the branded OAuth success page."""
     return _HTML_SHELL.format(
-        title="Wisp - Authorization Complete",
+        title="OpenWand - Authorization Complete",
         icon=_html_icon(),
         content=(
             "<h1>Authorization completed successfully.</h1>\n"
-            "<p>You can close this window and return to Wisp.</p>"
+            "<p>You can close this window and return to OpenWand.</p>"
         ),
         script="<script>setTimeout(() => window.close(), 2000)</script>",
     )
@@ -843,11 +888,11 @@ def _html_success() -> str:
 def _html_error(error: str) -> str:
     """Return the branded OAuth error page."""
     return _HTML_SHELL.format(
-        title="Wisp - Authorization Failed",
+        title="OpenWand - Authorization Failed",
         icon=_html_icon(),
         content=(
             "<h1>Authorization failed.</h1>\n"
-            "<p>Return to Wisp and try signing in again.</p>\n"
+            "<p>Return to OpenWand and try signing in again.</p>\n"
             f'<div class="error">{html.escape(error)}</div>'
         ),
         script="",

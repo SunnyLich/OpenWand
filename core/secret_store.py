@@ -20,16 +20,18 @@ from pathlib import Path
 
 from core.system.native_locks import keychain_lock
 
-log = logging.getLogger("wisp.secrets")
+log = logging.getLogger("openwand.secrets")
 
 _KEYRING_SERVICE = "python-ai-overlay"
 # Single consolidated item holding {KEY_NAME: value} as JSON.
-_BLOB_ACCOUNT = "__wisp_secrets__"
+_BLOB_ACCOUNT = "__openwand_secrets__"
+_LEGACY_BLOB_ACCOUNT = "__wisp_secrets__"
 
 _META_FILE = Path(__file__).parent.parent / "private" / ".secret_status.json"
 # Meta flag recording that the one-time legacy migration has run, so we don't
 # re-probe the old per-key items on every startup.
 _MIGRATED_FLAG = "__consolidated_v1__"
+_BRAND_MIGRATED_FLAG = "__openwand_brand_v1__"
 
 # Cache the whole decrypted blob. The keychain is read at most once per process
 # (warmed by config.reload() at startup on the main thread), so worker-thread
@@ -83,6 +85,41 @@ def _write_blob_raw(blob: dict) -> None:
     with keychain_lock():
         import keyring  # type: ignore
         keyring.set_password(_KEYRING_SERVICE, _BLOB_ACCOUNT, json.dumps(blob))
+
+
+def _migrate_brand_blob(blob: dict[str, str]) -> dict[str, str]:
+    """Merge the Wisp consolidated keychain item into OpenWand once."""
+    if _read_meta().get(_BRAND_MIGRATED_FLAG):
+        return blob
+    legacy: dict[str, str] = {}
+    try:
+        with keychain_lock():
+            import keyring  # type: ignore
+
+            raw = keyring.get_password(_KEYRING_SERVICE, _LEGACY_BLOB_ACCOUNT)
+            if raw:
+                parsed = json.loads(raw) or {}
+                if isinstance(parsed, dict):
+                    legacy = {str(key): str(value) for key, value in parsed.items() if value}
+    except Exception:
+        legacy = {}
+
+    merged = {**legacy, **blob}
+    if merged != blob:
+        try:
+            _write_blob_raw(merged)
+        except Exception:
+            return blob
+    if legacy:
+        try:
+            with keychain_lock():
+                import keyring  # type: ignore
+
+                keyring.delete_password(_KEYRING_SERVICE, _LEGACY_BLOB_ACCOUNT)
+        except Exception:
+            pass
+    set_configured_marker(_BRAND_MIGRATED_FLAG, True)
+    return merged
 
 
 def _migrate_legacy_items() -> dict:
@@ -151,6 +188,8 @@ def _load_blob() -> dict:
                 blob = json.loads(raw) or {}
     except Exception:
         blob = {}
+
+    blob = _migrate_brand_blob(blob)
 
     # One-time migration from the old one-item-per-key layout.
     if not blob and not _read_meta().get(_MIGRATED_FLAG):

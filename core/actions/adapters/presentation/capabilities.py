@@ -39,7 +39,7 @@ def presentation_capabilities(backend: str = "") -> tuple[ActionCapability, ...]
             type=RESTYLE_SLIDE,
             app="presentation",
             title="Restyle selected slide",
-            description="Apply one Wisp-owned visual preset while preserving slide content.",
+            description="Apply one OpenWand-owned visual preset while preserving slide content.",
             input_schema={
                 "type": "object",
                 "properties": {

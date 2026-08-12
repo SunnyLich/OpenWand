@@ -10,7 +10,7 @@ import sys
 import types
 
 import pytest
-from wisp_brain import handlers
+from openwand_brain import handlers
 
 
 class FakeManager:

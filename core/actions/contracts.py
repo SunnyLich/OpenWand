@@ -8,7 +8,7 @@ from typing import Any
 
 
 class ActionRisk(StrEnum):
-    """Risk assigned by Wisp code, never by model prose."""
+    """Risk assigned by OpenWand code, never by model prose."""
 
     LOW = "low"
     MEDIUM = "medium"

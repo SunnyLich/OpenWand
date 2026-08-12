@@ -1,4 +1,4 @@
-"""Native graphical desktop for Wisp's isolated Virtual Workspace addon."""
+"""Native graphical desktop for OpenWand's isolated Virtual Workspace addon."""
 from __future__ import annotations
 
 import base64
@@ -50,8 +50,9 @@ from PySide6.QtWidgets import (
 )
 
 from ui.i18n import t
+from ui.shared.theme import theme_colors
 from ui.shared.window_utils import enable_standard_window_controls, fit_window_to_screen
-from ui.workspace_activity import WISP_ACTIVITY_STYLE, WorkspaceActivityItem, WorkspaceActivityList
+from ui.workspace_activity import WorkspaceActivityItem, WorkspaceActivityList, workspace_activity_style
 from ui.workspace_file_tree import WorkspaceFileTree
 from ui.workspace_previews import WorkspacePreview, preview_kind_for_path
 
@@ -66,8 +67,8 @@ def _translate_operation_message(message: str) -> str:
     exact = {
         "Workspace started": t("Workspace started"),
         "Workspace stopped": t("Workspace stopped"),
-        "Wisp paused": t("Wisp paused"),
-        "Wisp resumed": t("Wisp resumed"),
+        "OpenWand paused": t("OpenWand paused"),
+        "OpenWand resumed": t("OpenWand resumed"),
         "Agent task started in the virtual desktop": t(
             "Agent task started in the virtual desktop"
         ),
@@ -87,10 +88,10 @@ def _translate_operation_message(message: str) -> str:
             "You moved {path} to workspace trash",
             ("path",),
         ),
-        (r"^(Wisp|Workspace) created folder (.+)$", "{actor} created folder {path}", ("actor", "path")),
-        (r"^(Wisp|Workspace) created file (.+)$", "{actor} created file {path}", ("actor", "path")),
-        (r"^(Wisp|Workspace) updated file (.+)$", "{actor} updated file {path}", ("actor", "path")),
-        (r"^(Wisp|Workspace) removed (.+)$", "{actor} removed {path}", ("actor", "path")),
+        (r"^(OpenWand|Workspace) created folder (.+)$", "{actor} created folder {path}", ("actor", "path")),
+        (r"^(OpenWand|Workspace) created file (.+)$", "{actor} created file {path}", ("actor", "path")),
+        (r"^(OpenWand|Workspace) updated file (.+)$", "{actor} updated file {path}", ("actor", "path")),
+        (r"^(OpenWand|Workspace) removed (.+)$", "{actor} removed {path}", ("actor", "path")),
     )
     for pattern, source, fields in patterns:
         match = re.match(pattern, value)
@@ -147,10 +148,10 @@ class VirtualPointer(QWidget):
     def mode(self) -> str:
         return self._mode
 
-    def point_to(self, target: QPoint, label: str = "Wisp") -> None:
+    def point_to(self, target: QPoint, label: str = "OpenWand") -> None:
         """Show an ordinary pointer only when an agent mouse event occurred."""
         self._mode = "mouse"
-        self._label = str(label or "Wisp").strip()[:18]
+        self._label = str(label or "OpenWand").strip()[:18]
         self._target = QPoint(max(4, target.x()), max(4, target.y()))
         self._blink.stop()
         self.move(self._target)
@@ -158,10 +159,10 @@ class VirtualPointer(QWidget):
         self.raise_()
         self.update()
 
-    def show_caret(self, target: QPoint, label: str = "Wisp agent") -> None:
+    def show_caret(self, target: QPoint, label: str = "OpenWand agent") -> None:
         """Show a Google Docs-style blinking caret at agent text focus."""
         self._mode = "text"
-        self._label = str(label or "Wisp agent").strip()[:20]
+        self._label = str(label or "OpenWand agent").strip()[:20]
         self._target = QPoint(max(4, target.x()), max(4, target.y()))
         self._caret_visible = True
         self.move(self._target - QPoint(5, 25))
@@ -184,6 +185,7 @@ class VirtualPointer(QWidget):
         self.update()
 
     def paintEvent(self, _event) -> None:  # noqa: N802, ANN001
+        colors = theme_colors()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         if self._mode == "mouse":
@@ -196,23 +198,25 @@ class VirtualPointer(QWidget):
             arrow.lineTo(13, 16)
             arrow.lineTo(21, 16)
             arrow.closeSubpath()
-            painter.fillPath(arrow, QColor("#f7f7f8"))
-            painter.setPen(QPen(QColor("#202124"), 1.4))
+            painter.fillPath(arrow, QColor(colors["surface"]))
+            painter.setPen(QPen(QColor(colors["text"]), 1.4))
             painter.drawPath(arrow)
             label_rect = QRect(24, 5, 50, 22)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(46, 48, 55, 238))
+            label_bg = QColor(colors["raised"])
+            label_bg.setAlpha(238)
+            painter.setBrush(label_bg)
             painter.drawRoundedRect(label_rect, 5, 5)
-            painter.setPen(QColor("#f5f5f6"))
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, "Wisp")
+            painter.setPen(QColor(colors["text"]))
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, "OpenWand")
         elif self._mode == "text":
-            accent = QColor("#7651c9")
+            accent = QColor(colors["accent_fill"])
             label_rect = QRect(0, 0, 82, 22)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(accent)
             painter.drawRoundedRect(label_rect, 4, 4)
-            painter.setPen(QColor("#ffffff"))
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, self._label or t("Wisp agent"))
+            painter.setPen(QColor(colors["on_accent"]))
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, self._label or t("OpenWand agent"))
             if self._caret_visible:
                 painter.setPen(QPen(accent, 2.2))
                 painter.drawLine(5, 23, 5, 48)
@@ -343,7 +347,7 @@ class VirtualDesktop(QWidget):
         body_layout.addWidget(self._editor, 1)
 
         self._hint = QLabel(
-            t("Start a task below. The file Wisp creates will open here."),
+            t("Start a task below. The file OpenWand creates will open here."),
             self._document.viewport(),
         )
         self._hint.setObjectName("desktopHint")
@@ -363,7 +367,7 @@ class VirtualDesktop(QWidget):
         entries: list[dict[str, Any]],
         changes: dict[str, str] | None = None,
     ) -> None:
-        """Render the files available to both the user and Wisp."""
+        """Render the files available to both the user and OpenWand."""
         change_map = {
             str(path): str(change)
             for path, change in (changes or {}).items()
@@ -417,7 +421,7 @@ class VirtualDesktop(QWidget):
         }
         if self._active_path and change_map.get(self._active_path) == "deleted":
             self._editor_title.setText(
-                t("{path} · deleted by Wisp").format(path=self._active_path)
+                t("{path} · deleted by OpenWand").format(path=self._active_path)
             )
             self._highlight_agent_changes(
                 self._document.toPlainText(),
@@ -426,7 +430,7 @@ class VirtualDesktop(QWidget):
             )
             self._document.setReadOnly(True)
             self._save.setEnabled(False)
-            self.set_status(t("This file was deleted by Wisp"))
+            self.set_status(t("This file was deleted by OpenWand"))
         self._hint.setVisible(not self._items_by_path)
         QTimer.singleShot(0, self._position_hint)
 
@@ -459,12 +463,12 @@ class VirtualDesktop(QWidget):
                 return
             item = self._items_by_path.get(path)
             if item is None:
-                self._pointer.point_to(QPoint(34, 58), "Wisp")
+                self._pointer.point_to(QPoint(34, 58), "OpenWand")
                 return
             rect = self._icons.visualItemRect(item)
             target = self._icons.viewport().mapTo(self._body, rect.center())
             target += QPoint(10, -8)
-            self._pointer.point_to(target, "Wisp")
+            self._pointer.point_to(target, "OpenWand")
 
         QTimer.singleShot(0, move)
 
@@ -475,7 +479,7 @@ class VirtualDesktop(QWidget):
         if path == self._active_path and self._save.isEnabled() and text != self._document.toPlainText():
             self._incoming_text = text
             self.set_status(
-                t("Wisp changed this file while you are editing · your text is preserved")
+                t("OpenWand changed this file while you are editing · your text is preserved")
             )
             return False
         self._active_draft_agent = ""
@@ -528,7 +532,7 @@ class VirtualDesktop(QWidget):
 
     def show_live_draft(self, agent: str, path: str, content: str) -> bool:
         """Render one worker's actual streamed draft without flickering between workers."""
-        clean_agent = str(agent or "Wisp")[:80]
+        clean_agent = str(agent or "OpenWand")[:80]
         if self._active_draft_agent and self._active_draft_agent != clean_agent:
             return False
         if path == self._active_path and self._save.isEnabled():
@@ -641,7 +645,7 @@ class VirtualDesktop(QWidget):
         after_lines = after.splitlines() or [""]
         if change == "created" or not before:
             for index in range(len(after_lines)):
-                select_line(index, "#153a66")
+                select_line(index, "#403724")
         elif change == "edited":
             before_lines = before.splitlines()
             matcher = difflib.SequenceMatcher(a=before_lines, b=after_lines, autojunk=False)
@@ -673,7 +677,7 @@ class VirtualDesktop(QWidget):
             return
         caret = self._document.cursorRect()
         target = self._document.mapTo(self._body, caret.topLeft())
-        self._pointer.show_caret(target, t("Wisp agent"))
+        self._pointer.show_caret(target, t("OpenWand agent"))
 
     def resizeEvent(self, event) -> None:  # noqa: N802, ANN001
         super().resizeEvent(event)
@@ -732,7 +736,7 @@ class VirtualWorkspaceWindow(QDialog):
         self._select_after_refresh = ""
 
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        self.setWindowTitle(t("Wisp Shared Workspace"))
+        self.setWindowTitle(t("OpenWand Shared Workspace"))
         self.setModal(False)
         enable_standard_window_controls(self)
         self._build_ui()
@@ -754,51 +758,52 @@ class VirtualWorkspaceWindow(QDialog):
         return self._base_url
 
     def _build_ui(self) -> None:
+        c = theme_colors()
         self.setStyleSheet(
-            WISP_ACTIVITY_STYLE
+            workspace_activity_style()
             +
-            "QDialog { background: #090b10; color: #eef0f6; }"
-            "QFrame#composer { background: #11141c; "
-            "border: 1px solid #292e3a; border-radius: 11px; }"
-            "QFrame#activityPanel { background: #0d1017; border: 0; "
-            "border-left: 1px solid #292e3a; }"
-            "QLabel#eyebrow { color: #9ca4b8; font-size: 9px; font-weight: 700; }"
-            "QLabel#title { color: #f2f4fa; font-size: 19px; font-weight: 700; }"
-            "QLabel#connection { color: #bca4f4; font-weight: 700; padding: 4px 8px; }"
-            "QLabel#notice { color: #d7c8ff; }"
-            "QPushButton { background: #181c26; color: #e8eaf1; border: 1px solid #3a4050; "
+            f"QDialog {{ background: {c['bg']}; color: {c['text']}; }}"
+            f"QFrame#composer {{ background: {c['surface']}; "
+            f"border: 1px solid {c['border']}; border-radius: 11px; }}"
+            f"QFrame#activityPanel {{ background: {c['well']}; border: 0; "
+            f"border-left: 1px solid {c['rule']}; }}"
+            f"QLabel#eyebrow {{ color: {c['text_dim']}; font-size: 9px; font-weight: 700; }}"
+            f"QLabel#title {{ color: {c['text']}; font-size: 19px; font-weight: 700; }}"
+            f"QLabel#connection {{ color: {c['accent']}; font-weight: 700; padding: 4px 8px; }}"
+            f"QLabel#notice {{ color: {c['label']}; }}"
+            f"QPushButton {{ background: {c['well']}; color: {c['accent']}; border: 1px solid {c['border']}; "
             "border-radius: 7px; padding: 8px 12px; }"
-            "QPushButton:hover { border-color: #9b73ef; background: #202532; }"
-            "QPushButton#primary { background: #7548d8; border-color: #9c76ee; font-weight: 700; }"
-            "QPushButton#danger { color: #ffc5cb; }"
-            "QPushButton:disabled { color: #676d7c; border-color: #292d38; background: #141720; }"
-            "QTextEdit { background: #0c0f16; color: #f1f2f7; border: 1px solid #343948; "
-            "border-radius: 8px; padding: 9px; selection-background-color: #7046cc; }"
-            "QWidget#virtualScreen { border: 1px solid #3c3650; border-radius: 12px; "
-            "background: #111624; }"
-            "QFrame#desktopBar { min-height: 38px; max-height: 38px; background: #111522; "
-            "border-bottom: 1px solid #302b40; }"
-            "QLabel#desktopBrand { color: #d9ccff; font-weight: 800; font-size: 10px; }"
-            "QLabel#desktopPath { color: #8790a4; padding-left: 8px; }"
-            "QLabel#desktopStatus { color: #c7b4fb; padding-right: 10px; }"
-            "QLabel#desktopClock { color: white; font-weight: 700; }"
-            "QFrame#desktopBody { background: #0c1018; }"
-            "QFrame#sharedFilesPanel { background: #11151f; border-right: 1px solid #302b40; }"
-            "QTreeWidget#desktopIcons { background: transparent; border: 0; color: white; outline: 0; }"
+            f"QPushButton:hover {{ border-color: {c['accent']}; background: {c['button_hover']}; }}"
+            f"QPushButton#primary {{ background: {c['accent_fill']}; color: {c['on_accent']}; border-color: {c['accent_fill']}; font-weight: 700; }}"
+            f"QPushButton#danger {{ color: {c['over_budget']}; }}"
+            f"QPushButton:disabled {{ color: {c['disabled']}; border-color: {c['rule']}; background: {c['well']}; }}"
+            f"QTextEdit {{ background: {c['well']}; color: {c['text']}; border: 1px solid {c['border']}; "
+            f"border-radius: 8px; padding: 9px; selection-background-color: {c['accent_fill']}; selection-color: {c['on_accent']}; }}"
+            f"QWidget#virtualScreen {{ border: 1px solid {c['border']}; border-radius: 12px; "
+            f"background: {c['bg']}; }}"
+            f"QFrame#desktopBar {{ min-height: 38px; max-height: 38px; background: {c['well']}; "
+            f"border-bottom: 1px solid {c['rule']}; }}"
+            f"QLabel#desktopBrand {{ color: {c['accent']}; font-weight: 800; font-size: 10px; }}"
+            f"QLabel#desktopPath {{ color: {c['text_dim']}; padding-left: 8px; }}"
+            f"QLabel#desktopStatus {{ color: {c['accent']}; padding-right: 10px; }}"
+            f"QLabel#desktopClock {{ color: {c['text']}; font-weight: 700; }}"
+            f"QFrame#desktopBody {{ background: {c['bg']}; }}"
+            f"QFrame#sharedFilesPanel {{ background: {c['surface']}; border-right: 1px solid {c['rule']}; }}"
+            f"QTreeWidget#desktopIcons {{ background: transparent; border: 0; color: {c['text']}; outline: 0; }}"
             "QTreeWidget#desktopIcons::item { min-height: 25px; }"
-            "QTreeWidget#desktopIcons::item:selected { background: #453374; }"
-            "QLabel#desktopHint { color: #858995; font-size: 16px; }"
-            "QFrame#virtualWindow { background: #11151f; border: 0; }"
-            "QFrame#virtualTitleBar { background: #171b26; border: 0; border-bottom: 1px solid #302b40; }"
-            "QLabel#virtualTitle { color: #f2edff; font-weight: 700; }"
+            f"QTreeWidget#desktopIcons::item:selected {{ background: {c['button_pressed']}; color: {c['accent']}; }}"
+            f"QLabel#desktopHint {{ color: {c['text_dim']}; font-size: 16px; }}"
+            f"QFrame#virtualWindow {{ background: {c['surface']}; border: 0; }}"
+            f"QFrame#virtualTitleBar {{ background: {c['raised']}; border: 0; border-bottom: 1px solid {c['rule']}; }}"
+            f"QLabel#virtualTitle {{ color: {c['text']}; font-weight: 700; }}"
             "QPushButton#windowClose { padding: 0; border: 0; background: transparent; font-size: 17px; }"
-            "QPlainTextEdit#virtualEditor { background: #0c1018; color: #dfe5f2; border: 0; "
+            f"QPlainTextEdit#virtualEditor {{ background: {c['well']}; color: {c['text']}; border: 0; "
             "font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px; padding: 12px; }"
-            "QTextBrowser#workspaceRichPreview { background: #0c1018; color: #dfe5f2; border: 0; "
-            "padding: 14px; selection-background-color: #7046cc; }"
-            "QScrollArea#workspaceImagePreview, QPdfView#workspacePdfPreview { background: #0c1018; border: 0; }"
-            "QSplitter::handle { background: #292e3a; border-radius: 2px; }"
-            "QSplitter::handle:hover { background: #8059d8; }"
+            f"QTextBrowser#workspaceRichPreview {{ background: {c['well']}; color: {c['text']}; border: 0; "
+            f"padding: 14px; selection-background-color: {c['accent_fill']}; selection-color: {c['on_accent']}; }}"
+            f"QScrollArea#workspaceImagePreview, QPdfView#workspacePdfPreview {{ background: {c['well']}; border: 0; }}"
+            f"QSplitter::handle {{ background: {c['border']}; border-radius: 2px; }}"
+            f"QSplitter::handle:hover {{ background: {c['accent_fill']}; }}"
         )
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 14, 14, 14)
@@ -841,7 +846,7 @@ class VirtualWorkspaceWindow(QDialog):
         composer_layout.setContentsMargins(13, 10, 13, 11)
         composer_layout.setSpacing(7)
         prompt_row = QHBoxLayout()
-        prompt_label = QLabel(t("ASK WISP TO WORK IN THESE FILES"))
+        prompt_label = QLabel(t("ASK OPENWAND TO WORK IN THESE FILES"))
         prompt_label.setObjectName("eyebrow")
         prompt_row.addWidget(prompt_label)
         prompt_row.addStretch()
@@ -1070,7 +1075,7 @@ class VirtualWorkspaceWindow(QDialog):
             if payload.get("error"):
                 raise ValueError(str(payload["error"]))
             self._desktop.mark_user_save_complete(int(payload.get("modified_ns") or 0))
-            self._notice.setText(t("Your changes are saved and visible to Wisp"))
+            self._notice.setText(t("Your changes are saved and visible to OpenWand"))
             self.refresh()
         except Exception as exc:
             self._desktop.mark_user_save_failed(str(exc))
@@ -1238,7 +1243,7 @@ class VirtualWorkspaceWindow(QDialog):
     def _start_task(self) -> None:
         objective = self._task.toPlainText().strip()
         if not objective:
-            self._notice.setText(t("Describe what Wisp should do first."))
+            self._notice.setText(t("Describe what OpenWand should do first."))
             self._task.setFocus()
             return
         if len(objective) > _MAX_TASK_CHARS:
@@ -1264,7 +1269,7 @@ class VirtualWorkspaceWindow(QDialog):
         self._agent_connected = False
         self._wait_notices.clear()
         self._send_control("task_started")
-        self._desktop.set_status(t("Wisp is starting the task…"))
+        self._desktop.set_status(t("OpenWand is starting the task…"))
         self._notice.setText(t("Task started — changes will appear above"))
         self._add_activity_event("task", t("Task submitted to the workspace agent"))
         self._on_start_task(objective, scope)
@@ -1404,7 +1409,7 @@ class VirtualWorkspaceWindow(QDialog):
             content = str(progress.get("content") or "")
             if len(content) > 200_000:
                 return False
-            agent = str(progress.get("agent") or "Wisp").strip()[:80] or "Wisp"
+            agent = str(progress.get("agent") or "OpenWand").strip()[:80] or "OpenWand"
             response_id = re.sub(
                 r"[^a-zA-Z0-9_-]+",
                 "-",
@@ -1469,7 +1474,7 @@ class VirtualWorkspaceWindow(QDialog):
         if progress.get("kind") == "privacy_redaction":
             summary = progress.get("summary") if isinstance(progress.get("summary"), dict) else {}
             count = max(0, int(summary.get("count") or 0))
-            agent = str(progress.get("agent") or "Wisp").strip()[:80] or "Wisp"
+            agent = str(progress.get("agent") or "OpenWand").strip()[:80] or "OpenWand"
             headline = str(
                 summary.get("summary")
                 or t("Privacy filter hid {count} item(s)").format(count=count)
@@ -1500,7 +1505,7 @@ class VirtualWorkspaceWindow(QDialog):
             ]
             if fields:
                 details.append(t("Hidden from: {fields}").format(fields=", ".join(fields)))
-            phase_agent = re.sub(r"[^a-z0-9_-]+", "-", agent.casefold()).strip("-") or "wisp"
+            phase_agent = re.sub(r"[^a-z0-9_-]+", "-", agent.casefold()).strip("-") or "openwand"
             self._add_activity_item(
                 self._task_phase_id(f"privacy-{phase_agent}"),
                 f"{datetime.now().strftime('%H:%M:%S')}  {headline}",
@@ -1513,7 +1518,7 @@ class VirtualWorkspaceWindow(QDialog):
             return False
         path = str(progress.get("path") or "").strip()
         content = str(progress.get("content") or "")
-        agent = str(progress.get("agent") or "Wisp").strip()[:80] or "Wisp"
+        agent = str(progress.get("agent") or "OpenWand").strip()[:80] or "OpenWand"
         if not path or len(content) > _MAX_DRAFT_CHARS:
             return False
         self._agent_connected = True
@@ -1527,7 +1532,7 @@ class VirtualWorkspaceWindow(QDialog):
                     count=f"{len(content):,}",
                 )
             )
-        phase_agent = re.sub(r"[^a-z0-9_-]+", "-", agent.casefold()).strip("-") or "wisp"
+        phase_agent = re.sub(r"[^a-z0-9_-]+", "-", agent.casefold()).strip("-") or "openwand"
         self._add_activity_item(
             self._task_phase_id(f"draft-{phase_agent}"),
             f"{datetime.now().strftime('%H:%M:%S')}  "
@@ -1733,7 +1738,7 @@ class VirtualWorkspaceWindow(QDialog):
         )
         answer = QMessageBox.question(
             self,
-            t("Wisp task approval"),
+            t("OpenWand task approval"),
             description[:2_000],
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -1775,7 +1780,7 @@ class VirtualWorkspaceWindow(QDialog):
         self._agent_control("cancel")
         self._desktop.pointer.hide()
         self._desktop.set_status(t("Task stopped"))
-        self._notice.setText(t("Stopped — Wisp cannot make further changes to this screen"))
+        self._notice.setText(t("Stopped — OpenWand cannot make further changes to this screen"))
         self._add_activity_event(
             "control",
             t("Stop requested; workspace file actions locked"),

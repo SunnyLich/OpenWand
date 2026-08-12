@@ -1,4 +1,4 @@
-"""Capabilities exposed by Wisp's managed browser adapter."""
+"""Capabilities exposed by OpenWand's managed browser adapter."""
 
 from core.actions.contracts import ActionCapability, ActionRisk
 

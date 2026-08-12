@@ -16,7 +16,7 @@ def test_agent_mouse_pointer_is_compact_click_through_and_never_moves_os_cursor(
     cursor_before = QCursor.pos()
     overlay = GhostCursorOverlay()
 
-    overlay.show_mouse(target, "Wisp", pulse=True)
+    overlay.show_mouse(target, "OpenWand", pulse=True)
     qapp.processEvents()
 
     assert overlay.isVisible()
@@ -39,7 +39,7 @@ def test_agent_mouse_pointer_is_compact_click_through_and_never_moves_os_cursor(
     overlay.close()
 
 
-def test_agent_text_focus_uses_blinking_caret_with_wisp_agent_label(qapp) -> None:
+def test_agent_text_focus_uses_blinking_caret_with_openwand_agent_label(qapp) -> None:
     screen = qapp.primaryScreen()
     geometry = screen.geometry()
     target = Bounds(geometry.center().x(), geometry.center().y(), 240, 34)
@@ -52,7 +52,7 @@ def test_agent_text_focus_uses_blinking_caret_with_wisp_agent_label(qapp) -> Non
     assert overlay.isVisible()
     assert overlay.mode == "text"
     assert overlay.target == target
-    assert overlay._label == "Wisp agent"
+    assert overlay._label == "OpenWand agent"
     assert overlay._blink_timer.isActive()
     assert QCursor.pos() == cursor_before
 

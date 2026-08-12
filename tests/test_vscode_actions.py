@@ -178,16 +178,16 @@ def test_empty_saved_file_uses_a_confirmed_focusless_action(tmp_path: Path) -> N
     path = tmp_path / "new_file.py"
     path.write_text("", encoding="utf-8")
     snapshot = VSCodeSelectionReader().inspect_empty_file(_active_app(path))
-    plan = build_replace_file_plan(snapshot, 'print("Hello from Wisp")')
+    plan = build_replace_file_plan(snapshot, 'print("Hello from OpenWand")')
     adapter = VSCodeActionAdapter()
     preview = adapter.render_preview(plan, snapshot)
-    assert '+print("Hello from Wisp")' in preview.html
+    assert '+print("Hello from OpenWand")' in preview.html
 
     with pytest.raises(ActionValidationError):
         adapter.execute(plan, confirmed=False, idempotency_key="buffer")
     result = adapter.execute(plan, confirmed=True, idempotency_key="buffer")
 
-    assert path.read_text(encoding="utf-8") == 'print("Hello from Wisp")'
+    assert path.read_text(encoding="utf-8") == 'print("Hello from OpenWand")'
     assert result.message == "Updated new_file.py; VS Code will reload the saved file change."
     assert result.verification[-1] == "No editor focus or keyboard input was used."
 

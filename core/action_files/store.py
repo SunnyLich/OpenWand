@@ -48,7 +48,7 @@ def _tree_signature(root: Path) -> tuple[tuple[str, int, int], ...]:
 
 
 class ActionCatalogStore:
-    """Seed and reload one live callers tree without restarting Wisp."""
+    """Seed and reload one live callers tree without restarting OpenWand."""
 
     def __init__(self, live_root: Path, shipped_root: Path) -> None:
         self.live_root = Path(live_root)
@@ -170,7 +170,7 @@ def _active_store() -> ActionCatalogStore:
 
 
 def live_catalog(language: str | None = None) -> ActionCatalog:
-    """Return Wisp's default live catalogue."""
+    """Return OpenWand's default live catalogue."""
     return _active_store().catalog(language)
 
 

@@ -41,7 +41,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    source = args.output / "wisp_rewrite_smoke.py"
+    source = args.output / "openwand_rewrite_smoke.py"
     source.write_text(
         'def greeting():\n    message = "rough value"\n    return message\n',
         encoding="utf-8",

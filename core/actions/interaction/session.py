@@ -34,9 +34,9 @@ class CancellationToken:
 class TargetIndicator(Protocol):
     """Passive visual feedback; implementations must never control OS input."""
 
-    def show_mouse(self, bounds, label: str = "Wisp", *, pulse: bool = False) -> None: ...
+    def show_mouse(self, bounds, label: str = "OpenWand", *, pulse: bool = False) -> None: ...
 
-    def show_text_caret(self, bounds, label: str = "Wisp agent") -> None: ...
+    def show_text_caret(self, bounds, label: str = "OpenWand agent") -> None: ...
 
     def clear(self) -> None: ...
 
@@ -113,7 +113,7 @@ class InteractionSession:
             return result
         if claimed_plan is not None:
             raise InteractionError(
-                "A previous attempt with this idempotency key did not finish safely; Wisp refused to repeat it."
+                "A previous attempt with this idempotency key did not finish safely; OpenWand refused to repeat it."
             )
         if self._prepared_plan != plan:
             raise InteractionError("Apply must use the exact interaction plan shown in the preview.")
@@ -178,18 +178,18 @@ class InteractionSession:
             if operation.type is OperationType.SET_VALUE:
                 show_caret = getattr(self.indicator, "show_text_caret", None)
                 if show_caret is not None:
-                    show_caret(bounds, "Wisp agent")
+                    show_caret(bounds, "OpenWand agent")
                 else:
                     self._clear_indicator()
                 return
             if self.driver.transport_for(operation.type) is TransportKind.PHYSICAL_INPUT:
                 show_mouse = getattr(self.indicator, "show_mouse", None)
                 if show_mouse is not None:
-                    show_mouse(bounds, "Wisp", pulse=pulse)
+                    show_mouse(bounds, "OpenWand", pulse=pulse)
                 else:
                     legacy = getattr(self.indicator, "show_target", None)
                     if legacy is not None:
-                        legacy(bounds, "Wisp", pulse=pulse)
+                        legacy(bounds, "OpenWand", pulse=pulse)
                 return
             # Accessibility/API actions do not pretend that a mouse is present.
             self._clear_indicator()

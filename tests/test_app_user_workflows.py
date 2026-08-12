@@ -1,4 +1,4 @@
-"""Broad user-visible workflow tests for Wisp.
+"""Broad user-visible workflow tests for OpenWand.
 
 These tests intentionally exercise product functions through the same seams a
 user touches: project/chat state, context choices, prompt assembly, UI widgets,
@@ -29,8 +29,8 @@ def _use_builtin_privacy_in_offline_workflows(monkeypatch: pytest.MonkeyPatch):
     """Keep deterministic workflow tests independent from a user's installed AI model."""
     import config
 
-    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "wisp", raising=False)
-    monkeypatch.setattr(config, "CHAT_CONVERSATION_OWNER", "wisp", raising=False)
+    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "openwand", raising=False)
+    monkeypatch.setattr(config, "CHAT_CONVERSATION_OWNER", "openwand", raising=False)
     monkeypatch.setattr(config, "PRIVACY_MODE", "builtin", raising=False)
     monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", True, raising=False)
     monkeypatch.setattr(config, "PRIVACY_AI_ENABLED", False, raising=False)
@@ -56,7 +56,7 @@ def isolated_app_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Isola
     from core.conversation_store import store as conversation_store
     from core.memory_store import store as memory_store
 
-    root = tmp_path / "wisp-user-state"
+    root = tmp_path / "openwand-user-state"
     chats = root / "chats"
     attachments = chats / "attachments"
     memory = root / "memory"
@@ -87,7 +87,7 @@ def qapp():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
-    return QApplication.instance() or QApplication(["wisp-workflow-tests"])
+    return QApplication.instance() or QApplication(["openwand-workflow-tests"])
 
 
 def _pump_until(app: Any, predicate, *, timeout: float = 2.0) -> None:
@@ -110,7 +110,7 @@ def _ensure_brain_path() -> None:
 
 def _recording_stream_context(req_id: Any = "workflow"):
     _ensure_brain_path()
-    from wisp_brain.handlers import StreamContext
+    from openwand_brain.handlers import StreamContext
 
     events: list[tuple[str, Any]] = []
     ctx = StreamContext(lambda event, data, _rid: events.append((event, data)), req_id)
@@ -205,7 +205,7 @@ def test_brain_query_workflow_assembles_context_and_redacts_secrets(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """The normal query handler proves selected/doc/memory context reaches the model."""
-    monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
+    monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
     from core.memory_store import store as memory
 
     memory.set_active_project("project-1")
@@ -216,7 +216,7 @@ def test_brain_query_workflow_assembles_context_and_redacts_secrets(
     )
 
     events, ctx = _recording_stream_context("workflow-query")
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     result = handlers.HANDLERS["brain.query"](
         ctx,
@@ -248,9 +248,9 @@ def test_stream_cancel_stops_query_and_returns_partial_result(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """Cancelling a stream leaves a partial done payload instead of hanging stale UI."""
-    monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
+    monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
     _ensure_brain_path()
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     events: list[tuple[str, Any]] = []
     ctx: Any = None
@@ -1437,8 +1437,8 @@ def test_chat_auto_elaborate_prompt_reaches_real_send(qapp, monkeypatch, prompt)
         qapp.processEvents()
 
 
-def test_chat_external_transcript_pull_button_and_count_matrix(qapp, monkeypatch, tmp_path):
-    """The real Pull button imports/updates both namespaces and reports every count state."""
+def test_chat_external_import_buttons_keep_providers_separate(qapp, monkeypatch, tmp_path):
+    """ChatGPT and Claude scan, preview, and import independently."""
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QMessageBox
@@ -1475,10 +1475,27 @@ def test_chat_external_transcript_pull_button_and_count_matrix(qapp, monkeypatch
     monkeypatch.setattr(
         chat_window_mod,
         "discover_external_conversations",
-        lambda: external_sync.discover_external_conversations(
+        lambda provider="": external_sync.discover_external_conversations(
             codex_home=codex_home,
             claude_home=claude_home,
+            provider=provider,
         ),
+    )
+
+    class AcceptAllImportDialog:
+        def __init__(self, _provider, discovered, _parent):
+            self.discovered = discovered
+
+        def exec(self):
+            return chat_window_mod.QDialog.DialogCode.Accepted
+
+        def selected_conversations(self):
+            return self.discovered
+
+    monkeypatch.setattr(
+        chat_window_mod,
+        "ExternalConversationImportDialog",
+        AcceptAllImportDialog,
     )
     information = []
     warnings = []
@@ -1500,20 +1517,25 @@ def test_chat_external_transcript_pull_button_and_count_matrix(qapp, monkeypatch
         persist_fn=lambda: persisted.append(True),
     )
 
-    def pull_and_wait():
+    def import_and_wait(provider):
+        button = window._external_sync_btns[provider]
         previous = len(information)
-        QTest.mouseClick(window._external_sync_btn, Qt.MouseButton.LeftButton)
+        QTest.mouseClick(button, Qt.MouseButton.LeftButton)
         _pump_until(
             qapp,
-            lambda: window._external_sync_btn.isEnabled() and len(information) == previous + 1,
+            lambda: button.isEnabled() and len(information) == previous + 1,
         )
         return information[-1][1]
 
     try:
         window.show()
         qapp.processEvents()
-        first = pull_and_wait()
-        assert "Imported 2, updated 0, unchanged 0." in first
+        first = import_and_wait("codex")
+        assert "Imported 1, updated 0, unchanged 0." in first
+        assert {conv["external_source"]["provider"] for conv in conversations} == {"codex"}
+
+        first_claude = import_and_wait("claude")
+        assert "Imported 1, updated 0, unchanged 0." in first_claude
         assert {
             (conv["external_source"]["provider"], conv["external_source"]["session_id"])
             for conv in conversations
@@ -1533,8 +1555,8 @@ def test_chat_external_transcript_pull_button_and_count_matrix(qapp, monkeypatch
             }
         )
         write_jsonl(codex_path, codex_records)
-        second = pull_and_wait()
-        assert "Imported 0, updated 1, unchanged 1." in second
+        second = import_and_wait("codex")
+        assert "Imported 0, updated 1, unchanged 0." in second
         codex_conv = next(
             conv for conv in conversations if conv["external_source"]["provider"] == "codex"
         )
@@ -1552,8 +1574,8 @@ def test_chat_external_transcript_pull_button_and_count_matrix(qapp, monkeypatch
             }
         )
         write_jsonl(claude_path, claude_records)
-        third = pull_and_wait()
-        assert "Imported 0, updated 1, unchanged 1." in third
+        third = import_and_wait("claude")
+        assert "Imported 0, updated 1, unchanged 0." in third
         claude_conv = next(
             conv for conv in conversations if conv["external_source"]["provider"] == "claude"
         )
@@ -1561,10 +1583,185 @@ def test_chat_external_transcript_pull_button_and_count_matrix(qapp, monkeypatch
             "Claude question", "Claude answer"
         ]
 
-        fourth = pull_and_wait()
-        assert "Imported 0, updated 0, unchanged 2." in fourth
-        assert len(persisted) == 3
+        fourth = import_and_wait("codex")
+        assert "Imported 0, updated 0, unchanged 1." in fourth
+        assert len(persisted) == 4
         assert warnings == []
+    finally:
+        window.close()
+        window.deleteLater()
+        qapp.processEvents()
+
+
+def test_external_import_dialog_uses_full_width_chatgpt_style_browser(qapp):
+    """Projects and chats are named, searchable, full-width, and individually selectable."""
+    from PySide6.QtCore import Qt
+
+    from ui.chat_window import ExternalConversationImportDialog
+
+    def conversation(session_id, updated_at, cwd=""):
+        return {
+            "title": session_id,
+            "updated_at": updated_at,
+            "external_source": {
+                "provider": "codex",
+                "session_id": session_id,
+                "cwd": cwd,
+            },
+        }
+
+    discovered = [
+        conversation("general-old", "2026-01-01T00:00:00Z"),
+        conversation("general-new", "2026-01-05T00:00:00Z"),
+        conversation("alpha-old", "2026-01-02T00:00:00Z", "/work/alpha"),
+        conversation("alpha-new", "2026-01-04T00:00:00Z", "/work/alpha"),
+        conversation("beta", "2026-01-03T00:00:00Z", "/work/beta"),
+        {
+            **conversation("claude", "2026-01-06T00:00:00Z", "/work/alpha"),
+            "external_source": {
+                "provider": "claude",
+                "session_id": "claude",
+                "cwd": "/work/alpha",
+            },
+        },
+    ]
+    dialog = ExternalConversationImportDialog("codex", discovered)
+    try:
+        dialog.resize(1000, 650)
+        dialog.show()
+        qapp.processEvents()
+
+        assert dialog.browser.width() >= 950
+        assert dialog.browser.topLevelItemCount() == 4
+        assert set(dialog._scope_items) == {"", "/work/alpha", "/work/beta"}
+        visible_text = "\n".join(
+            item.text(0)
+            for _conversation, item in dialog._conversation_items
+        ) + "\n" + "\n".join(item.text(0) for item in dialog._scope_items.values())
+        assert "/work/" not in visible_text
+        assert "alpha" in visible_text
+        assert "beta" in visible_text
+        assert "claude" not in visible_text
+
+        # General and the first project start selected, preserving the previous
+        # conservative import default without hiding the other projects.
+        assert {
+            item["external_source"]["session_id"]
+            for item in dialog.selected_conversations()
+        } == {"general-old", "general-new", "alpha-old", "alpha-new"}
+        assert dialog.preview_label.text() == "Conversations to import: 4"
+
+        alpha = dialog._scope_items["/work/alpha"]
+        alpha.child(1).setCheckState(0, Qt.CheckState.Unchecked)
+        dialog._scope_items[""].setCheckState(0, Qt.CheckState.Unchecked)
+        assert {
+            item["external_source"]["session_id"]
+            for item in dialog.selected_conversations()
+        } == {"alpha-new"}
+
+        dialog.search.setText("beta")
+        qapp.processEvents()
+        assert dialog._scope_items["/work/alpha"].isHidden()
+        assert not dialog._scope_items["/work/beta"].isHidden()
+
+        dialog.clear_button.click()
+        assert dialog.selected_conversations() == []
+        assert not dialog.import_button.isEnabled()
+    finally:
+        dialog.close()
+        dialog.deleteLater()
+        qapp.processEvents()
+
+
+def test_chat_auto_sync_toggles_are_separate_persistent_and_dialog_free(qapp, monkeypatch):
+    """Each provider can opt into from-now-on background imports independently."""
+    from core.conversation_store.external_sync import SyncReport
+    from ui import chat_window as chat_window_mod
+    from ui.chat_window import ChatWindow
+
+    state = {
+        "codex": {"enabled": False, "since": ""},
+        "claude": {"enabled": False, "since": ""},
+    }
+    saved = []
+
+    monkeypatch.setattr(
+        chat_window_mod,
+        "load_external_sync_state",
+        lambda: {provider: dict(value) for provider, value in state.items()},
+    )
+
+    def save_toggle(provider, enabled):
+        state[provider] = {
+            "enabled": enabled,
+            "since": "2026-08-11T12:00:00+00:00" if enabled else state[provider]["since"],
+        }
+        saved.append((provider, enabled))
+        return {key: dict(value) for key, value in state.items()}
+
+    monkeypatch.setattr(chat_window_mod, "set_external_auto_sync", save_toggle)
+    information = []
+    monkeypatch.setattr(
+        chat_window_mod.QMessageBox,
+        "information",
+        lambda *_args: information.append(True),
+    )
+    conversations = []
+    persisted = []
+    window = ChatWindow(
+        conversations,
+        lambda _messages, **_kwargs: iter(()),
+        persist_fn=lambda: persisted.append(True),
+    )
+    window._external_sync_timer.stop()
+    qapp.processEvents()
+    started = []
+    window._start_external_sync = (
+        lambda provider, *, automatic: started.append((provider, automatic))
+    )
+    try:
+        codex_toggle = window._external_sync_checkboxes["codex"]
+        claude_toggle = window._external_sync_checkboxes["claude"]
+        assert codex_toggle.parentWidget().objectName() == "chatTitleBar"
+        assert claude_toggle.parentWidget().objectName() == "chatTitleBar"
+        assert codex_toggle.text() == "Automatically sync with ChatGPT"
+        assert claude_toggle.text() == "Automatically sync with Claude"
+        assert not codex_toggle.isChecked()
+        assert not claude_toggle.isChecked()
+
+        codex_toggle.setChecked(True)
+        qapp.processEvents()
+        assert saved == [("codex", True)]
+        assert started == [("codex", True)]
+        assert claude_toggle.isChecked() is False
+
+        imported = {
+            "id": "auto-codex",
+            "project_id": "general",
+            "title": "New automatic conversation",
+            "messages": [{"role": "user", "content": "new"}],
+            "created_at": "2026-08-11T12:00:01+00:00",
+            "updated_at": "2026-08-11T12:00:01+00:00",
+            "external_source": {
+                "provider": "codex",
+                "session_id": "auto-codex",
+                "signature": "1:1",
+                "message_count": 1,
+                "cwd": "",
+                "source_updated_at": "2026-08-11T12:00:01+00:00",
+            },
+        }
+        window._on_external_sync_finished(
+            {
+                "provider": "codex",
+                "automatic": True,
+                "discovered": [imported],
+                "report": SyncReport(),
+            }
+        )
+        assert [item["id"] for item in conversations] == ["auto-codex"]
+        assert persisted == [True]
+        assert information == []
     finally:
         window.close()
         window.deleteLater()
@@ -1582,7 +1779,7 @@ def test_chat_external_source_menu_omits_push_action(qapp, monkeypatch, provider
         "external_source": {"provider": provider},
         "messages": [
             {"role": "user", "content": "Original"},
-            {"role": "assistant", "content": "Wisp follow-up"},
+            {"role": "assistant", "content": "OpenWand follow-up"},
         ],
     }
     menus = []
@@ -1591,7 +1788,7 @@ def test_chat_external_source_menu_omits_push_action(qapp, monkeypatch, provider
     try:
         window._open_conversation_menu(0)
         labels = {action.text() for action in menus[-1].actions()}
-        assert not any(label.startswith("Push Wisp turns to") for label in labels)
+        assert not any(label.startswith("Push OpenWand turns to") for label in labels)
     finally:
         window.close()
         window.deleteLater()
@@ -1615,10 +1812,10 @@ def test_chat_real_external_export_provider_by_confirmation_matrix(
     codex_home = tmp_path / ".codex"
     claude_home = tmp_path / ".claude"
     conversation = {
-        "id": "wisp-native",
+        "id": "openwand-native",
         "messages": [
             {"role": "user", "content": "Original question"},
-            {"role": "assistant", "content": "Wisp answer"},
+            {"role": "assistant", "content": "OpenWand answer"},
         ],
         "context_policy": {},
     }
@@ -1918,9 +2115,9 @@ def test_settings_real_apply_click_persists_and_reopens(qapp, tmp_path: Path, mo
             dialog._fields[key].setText(f"ctrl+shift+alt+{index}")
 
         dialog._fields["BUBBLE_WIDTH"].setText("612")
-        dialog._fields["WISP_PLANNED_CHUNKING"].setChecked(True)
-        dialog._fields["WISP_PLANNED_CHUNKING_CHUNKS"].setText("4")
-        dialog._fields["WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS"].setText("120")
+        dialog._fields["OPENWAND_PLANNED_CHUNKING"].setChecked(True)
+        dialog._fields["OPENWAND_PLANNED_CHUNKING_CHUNKS"].setText("4")
+        dialog._fields["OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS"].setText("120")
         _set(dialog._fields["CHAT_REASONING_EFFORT"], "medium")
         dialog._fields["CHAT_AUTO_ELABORATE"].setChecked(True)
         dialog._fields["CHAT_ELABORATE_PROMPT"].setText("Persisted through the real Apply button")
@@ -1933,17 +2130,17 @@ def test_settings_real_apply_click_persists_and_reopens(qapp, tmp_path: Path, mo
 
         saved = settings_env.read_settings_env()
         assert saved["BUBBLE_WIDTH"] == "612"
-        assert saved["WISP_PLANNED_CHUNKING"] == "True"
-        assert saved["WISP_PLANNED_CHUNKING_CHUNKS"] == "4"
-        assert saved["WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS"] == "120"
+        assert saved["OPENWAND_PLANNED_CHUNKING"] == "True"
+        assert saved["OPENWAND_PLANNED_CHUNKING_CHUNKS"] == "4"
+        assert saved["OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS"] == "120"
         assert saved["CHAT_REASONING_EFFORT"] == "medium"
         assert saved["CHAT_AUTO_ELABORATE"] == "True"
         assert saved["CHAT_ELABORATE_PROMPT"] == "Persisted through the real Apply button"
         assert applied and {
             "BUBBLE_WIDTH",
-            "WISP_PLANNED_CHUNKING",
-            "WISP_PLANNED_CHUNKING_CHUNKS",
-            "WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS",
+            "OPENWAND_PLANNED_CHUNKING",
+            "OPENWAND_PLANNED_CHUNKING_CHUNKS",
+            "OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS",
             "CHAT_REASONING_EFFORT",
             "CHAT_AUTO_ELABORATE",
             "CHAT_ELABORATE_PROMPT",
@@ -1953,9 +2150,9 @@ def test_settings_real_apply_click_persists_and_reopens(qapp, tmp_path: Path, mo
 
         reopened = SettingsDialog()
         assert _get(reopened._fields["BUBBLE_WIDTH"]) == "612"
-        assert reopened._fields["WISP_PLANNED_CHUNKING"].isChecked()
-        assert _get(reopened._fields["WISP_PLANNED_CHUNKING_CHUNKS"]) == "4"
-        assert _get(reopened._fields["WISP_PLANNED_CHUNKING_MIN_PROMPT_CHARS"]) == "120"
+        assert reopened._fields["OPENWAND_PLANNED_CHUNKING"].isChecked()
+        assert _get(reopened._fields["OPENWAND_PLANNED_CHUNKING_CHUNKS"]) == "4"
+        assert _get(reopened._fields["OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS"]) == "120"
         assert _get(reopened._fields["CHAT_REASONING_EFFORT"]) == "medium"
         assert reopened._fields["CHAT_AUTO_ELABORATE"].isChecked()
         assert _get(reopened._fields["CHAT_ELABORATE_PROMPT"]) == "Persisted through the real Apply button"
@@ -2345,7 +2542,7 @@ def test_provider_fallback_cooldown_capability_and_auth_redaction_workflow(
     from core.llm_clients import client as llm_client
 
     _ensure_brain_path()
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     events: list[tuple[str, str, dict[str, Any]]] = []
     monkeypatch.setattr(
@@ -2429,9 +2626,9 @@ def test_selected_primary_and_all_configured_fallback_states_run_through_real_br
     from core.llm_clients import client as llm_client
 
     _ensure_brain_path()
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
-    monkeypatch.delenv("WISP_BRAIN_FAKE_LLM", raising=False)
+    monkeypatch.delenv("OPENWAND_BRAIN_FAKE_LLM", raising=False)
     monkeypatch.setattr(config, "LLM_PROVIDER", "openai")
     monkeypatch.setattr(config, "LLM_MODEL", "primary")
     monkeypatch.setattr(
@@ -2462,8 +2659,8 @@ def test_selected_primary_and_all_configured_fallback_states_run_through_real_br
             ctx,
             intent_prompt="route this request",
             memory_enabled=False,
-            harness_provider="wisp",
-            conversation_owner="wisp",
+            harness_provider="openwand",
+            conversation_owner="openwand",
         )
         return calls, events, result
 
@@ -2998,7 +3195,7 @@ def test_brain_memory_crud_and_project_scope_workflow(
 ):
     """The Memory UI backend can add, search, edit, delete, and scope facts."""
     _ensure_brain_path()
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     from core.memory_store import store as memory_store
 
@@ -3048,10 +3245,10 @@ def test_brain_rewrite_chat_tts_and_route_setting_workflow(
     tmp_path: Path,
 ):
     """Settings test buttons and text workflows work offline without spending tokens."""
-    monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
-    monkeypatch.setenv("WISP_RUNTIME_OUTPUT_DIR", str(tmp_path / "runtime-output"))
+    monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
+    monkeypatch.setenv("OPENWAND_RUNTIME_OUTPUT_DIR", str(tmp_path / "runtime-output"))
     _ensure_brain_path()
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     rewrite_events, rewrite_ctx = _recording_stream_context("rewrite")
     rewrite = handlers.brain_rewrite(
@@ -3215,7 +3412,7 @@ def test_settings_env_changes_reach_runtime_surfaces_workflow(
             monkeypatch.delenv(key, raising=False)
         monkeypatch.setattr(config, "_ENV_FILE", temp_env)
         monkeypatch.setattr(config, "_LOADED_DOTENV_KEYS", set())
-        monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
+        monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
         config.reload()
 
         settings = config.get_settings()
@@ -3247,7 +3444,7 @@ def test_settings_env_changes_reach_runtime_surfaces_workflow(
         assert voice["context_screenshot"] == "auto"
 
         _ensure_brain_path()
-        from wisp_brain import handlers
+        from openwand_brain import handlers
 
         route = handlers.brain_llm_test(
             provider=settings.memory.model.provider,
@@ -3286,7 +3483,7 @@ def test_brain_addon_install_settings_actions_and_toggle_workflow(
 ):
     """Add-on management covers install, list, setting save, actions, hotkeys, enable state."""
     _ensure_brain_path()
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     import core.addon_manager as addon_manager
     import core.system.paths as system_paths
@@ -3481,7 +3678,7 @@ def test_addon_update_remove_bad_archive_and_credentials_reset_workflow(
 ):
     """Add-on reload/update/remove failures and credential reset stay isolated."""
     _ensure_brain_path()
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     import config
     import core.addon_manager as addon_manager
@@ -3504,12 +3701,12 @@ def test_addon_update_remove_bad_archive_and_credentials_reset_workflow(
         encoding="utf-8",
     )
     (source / "__init__.py").write_text("", encoding="utf-8")
-    archive = tmp_path / "archive-demo.wisp"
+    archive = tmp_path / "archive-demo.openwand"
     with zipfile.ZipFile(archive, "w") as zf:
         zf.write(source / "addon.toml", "archive_demo/addon.toml")
         zf.write(source / "__init__.py", "archive_demo/__init__.py")
 
-    unsafe = tmp_path / "unsafe.wisp"
+    unsafe = tmp_path / "unsafe.openwand"
     with zipfile.ZipFile(unsafe, "w") as zf:
         zf.writestr("../escape.txt", "nope")
     with pytest.raises(ValueError, match="unsafe"):
@@ -3579,7 +3776,7 @@ def test_addon_update_remove_bad_archive_and_credentials_reset_workflow(
 def test_agent_history_last_spec_and_approval_response_workflow(tmp_path: Path):
     """The agent task UI can save/copy-last, read run history, continue, and resolve approvals."""
     _ensure_brain_path()
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     scope = tmp_path / "scope"
     scope.mkdir()
@@ -3636,9 +3833,9 @@ def test_auto_agent_run_streams_logs_and_persists_artifacts_workflow(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """A real brain.agent.run completes offline and produces UI-readable artifacts."""
-    monkeypatch.setenv("WISP_BRAIN_FAKE_LLM", "1")
+    monkeypatch.setenv("OPENWAND_BRAIN_FAKE_LLM", "1")
     _ensure_brain_path()
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     scope = tmp_path / "agent-scope"
     scope.mkdir()
@@ -3674,8 +3871,8 @@ def test_launch_duplicate_crash_log_and_worker_lifecycle_workflow(
     """Launch behavior covers duplicate handoff, UI-worker exit, crash logs, and shutdown."""
     from runtime.supervisor import app as supervisor_app
 
-    monkeypatch.delenv("WISP_RUN_LOG_DIR", raising=False)
-    monkeypatch.delenv("WISP_RUNTIME_LOG_MODE", raising=False)
+    monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
+    monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
     monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(supervisor_app, "suppress_console_ctrl_c", lambda: None)
     monkeypatch.setattr(supervisor_app, "install_crash_diagnostics", lambda: None)
@@ -3687,7 +3884,7 @@ def test_launch_duplicate_crash_log_and_worker_lifecycle_workflow(
         def __init__(self):
             raise AssertionError("duplicate launch must not start workers")
 
-    monkeypatch.setattr(supervisor_app, "WispSupervisor", ShouldNotStart)
+    monkeypatch.setattr(supervisor_app, "OpenWandSupervisor", ShouldNotStart)
     assert supervisor_app.main() == 2
     assert not (tmp_path / "build_logs").exists()
 
@@ -3727,12 +3924,12 @@ def test_launch_duplicate_crash_log_and_worker_lifecycle_workflow(
             pass
 
     monkeypatch.setattr(supervisor_app.single_instance, "acquire", lambda: True)
-    monkeypatch.setattr(supervisor_app, "WispSupervisor", FakeSupervisor)
+    monkeypatch.setattr(supervisor_app, "OpenWandSupervisor", FakeSupervisor)
     monkeypatch.setattr(supervisor_app, "FlowController", FakeFlows)
 
     assert supervisor_app.main() == 0
     assert instances and instances[-1].shutdown_called is True
-    crash_logs = list((tmp_path / "build_logs").glob("wisp_crash_*/supervisor-crash.log"))
+    crash_logs = list((tmp_path / "build_logs").glob("openwand_crash_*/supervisor-crash.log"))
     assert len(crash_logs) == 1
     report = crash_logs[0].read_text(encoding="utf-8")
     assert "UI worker exited with code 9" in report
@@ -3776,8 +3973,9 @@ def test_persistence_corruption_migration_and_reset_scope_workflow(
     assert "image_base64" not in loaded[0]["messages"][0]
     assert loaded[0]["messages"][0]["attachments"][0]["kind"] == "text"
 
+
     _ensure_brain_path()
-    from wisp_brain import handlers
+    from openwand_brain import handlers
 
     from core import secret_store
     from core.auth import chatgpt, copilot_auth, github
@@ -3814,6 +4012,80 @@ def test_persistence_corruption_migration_and_reset_scope_workflow(
         config.reload()
 
 
+def test_host_owned_workspace_change_card_opens_views_and_restores_files(
+    qapp, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QDesktopServices
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QDialog, QMessageBox, QPushButton, QTextEdit
+
+    from core.workspace_changes import WorkspaceChangeRecorder
+    from ui.chat_window import ChatWindow
+
+    target = tmp_path / "module.py"
+    target.write_text("before\n", encoding="utf-8")
+    recorder = WorkspaceChangeRecorder(tmp_path, tmp_path / "backups")
+    recorder.capture(
+        "module.py",
+        diff="--- a/module.py\n+++ b/module.py\n@@\n-before\n+after",
+    )
+    target.write_text("after\n", encoding="utf-8")
+    change_set = recorder.finish()
+    conversations = [{
+        "id": "changes",
+        "messages": [
+            {"role": "user", "content": "Update it."},
+            # The host card must not depend on the model writing any reply text.
+            {"role": "assistant", "content": "", "workspace_changes": change_set},
+        ],
+        "context_policy": {},
+    }]
+    opened: list[str] = []
+    viewed: list[QDialog] = []
+    persisted: list[bool] = []
+    monkeypatch.setattr(
+        QDesktopServices,
+        "openUrl",
+        lambda url: opened.append(url.toLocalFile()) or True,
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+    )
+    monkeypatch.setattr(QMessageBox, "information", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(QDialog, "exec", lambda dialog: viewed.append(dialog) or 0)
+    window = ChatWindow(
+        conversations,
+        lambda _messages: iter(()),
+        persist_fn=lambda: persisted.append(True),
+    )
+    try:
+        window.show()
+        qapp.processEvents()
+        file_button = window.findChild(QPushButton, "workspaceChangedFileButton")
+        view_button = window.findChild(QPushButton, "workspaceChangesViewButton")
+        restore_button = window.findChild(QPushButton, "workspaceChangesRestoreButton")
+        assert file_button is not None and view_button is not None and restore_button is not None
+
+        QTest.mouseClick(file_button, Qt.MouseButton.LeftButton)
+        assert [Path(value).resolve() for value in opened] == [target.resolve()]
+        QTest.mouseClick(view_button, Qt.MouseButton.LeftButton)
+        assert len(viewed) == 1
+        diff_viewer = viewed[0].findChild(QTextEdit, "workspaceChangesDiffViewer")
+        assert diff_viewer is not None and "-before" in diff_viewer.toPlainText()
+        QTest.mouseClick(restore_button, Qt.MouseButton.LeftButton)
+        qapp.processEvents()
+
+        assert target.read_text(encoding="utf-8") == "before\n"
+        assert change_set["restored"] is True
+        assert persisted
+    finally:
+        window.close()
+
+
 def test_ui_accessibility_layout_and_model_popup_workflow(qapp, monkeypatch: pytest.MonkeyPatch):
     """Settings and auto-agent expose usable labels, focusable controls, and opaque popups."""
     from PySide6.QtWidgets import QComboBox, QLineEdit, QPushButton
@@ -3843,11 +4115,13 @@ def test_ui_accessibility_layout_and_model_popup_workflow(qapp, monkeypatch: pyt
 
         provider_labels = {agent.provider_combo.itemText(i) for i in range(agent.provider_combo.count())}
         assert _PROVIDER_LABELS["chatgpt"] in provider_labels
-        assert _PROVIDER_LABELS["openai"] in provider_labels
+        assert "Same as OpenWand chat" in provider_labels
+        assert all(label.strip() for label in provider_labels)
 
         chatgpt_models = _PROVIDER_MODELS["chatgpt"]
         agent_models = {agent.model_edit.itemText(i) for i in range(agent.model_edit.count())}
-        assert set(chatgpt_models[: min(3, len(chatgpt_models))]) <= agent_models
+        assert config.LLM_MODEL in agent_models
+        assert config.LLM_MODEL in chatgpt_models
         assert agent.model_edit.lineEdit().placeholderText()
 
         focusable = [
