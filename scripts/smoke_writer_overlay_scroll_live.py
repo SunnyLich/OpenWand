@@ -39,7 +39,7 @@ def _wait_writer_window() -> int:
     while time.monotonic() < deadline:
         matches: list[int] = []
 
-        def visit(hwnd: int, _extra: object) -> None:
+        def visit(hwnd: int, _extra: object, matches: list[int] = matches) -> None:
             if not win32gui.IsWindowVisible(hwnd):
                 return
             title = win32gui.GetWindowText(hwnd).casefold()

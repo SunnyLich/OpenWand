@@ -26,10 +26,6 @@ OpenWand gives you hotkey-driven AI that can read your selection, clipboard, app
 
 ---
 
-## Known Issues
-
-[Known issues](https://sunnylich.github.io/OpenWand/#known-issues)
-
 ## What OpenWand Does
 
 OpenWand is for the moments when opening a chat app would break your flow.
@@ -282,19 +278,22 @@ OpenWand is designed as a local desktop assistant. **Storage stays on your machi
 - **External conversation tools stay local:** import and forward sync read local histories without contacting provider services. Export creates a new provider conversation without overwriting existing history.
 - **Per-hotkey context control:** ambient app context, clipboard, documents, browser pages, GitHub context, memory, and screenshots can each be disabled, attached up front, or exposed as model-fetchable context where supported.
 - **Separate tool permissions:** allowed tools are separate from context controls and cover the remaining model-callable capabilities, such as local file tools and add-on tools.
-- **Privacy mode:** privacy-first setup checks and warning behavior stay enabled, including redaction status before sensitive context is sent.
 - **Off until configured:** optional voice, document reading, browser content, screenshots, GitHub Copilot, and addons stay inactive until you set them up.
 - **No surprise connections:** cloud TTS, model providers, compatible servers, or GitHub Copilot are contacted only when you configure and use those features.
 - **Sandboxed addons:** addons run in isolated Python host processes and must declare the capabilities they need.
 - **Lean setup checks:** heavy provider, audio, and STT stacks are not imported unless the feature is enabled.
 
-### Advanced Privacy Mode
+### Privacy Mode
 
-Choose **Settings → App → Privacy mode** to use one of three mutually exclusive modes: **Off**, **Built-in** (the default), or **Advanced**. Built-in mode uses local pattern matching for credentials, tokens, payment details, and other structured secrets. Advanced mode keeps those rules and adds the optional [OpenAI Privacy Filter](https://openai.com/index/introducing-openai-privacy-filter/), running entirely on your computer for context-aware detection of names, addresses, email addresses, phone numbers, private URLs and dates, account numbers, and secrets.
+Privacy-first setup checks and warning behavior remain enabled, including redaction status before sensitive context is sent. Choose **Settings → App → Privacy mode** to use one of three mutually exclusive modes: **Off**, **Built-in** (the default), or **Advanced**. Built-in mode uses local pattern matching for credentials, tokens, payment details, and other structured secrets. Advanced mode keeps those rules and adds the optional [OpenAI Privacy Filter](https://openai.com/index/introducing-openai-privacy-filter/), running entirely on your computer for context-aware detection of names, addresses, email addresses, phone numbers, private URLs and dates, account numbers, and secrets.
 
 The advanced model is an optional download of about 2.8 GB plus its dedicated local runtime. OpenWand loads it into memory and warms it in the background when OpenWand starts or after you enable Advanced mode. Warm-up may take tens of seconds on a CPU. If you send a request before it finishes, that request waits; later scans reuse the loaded model and are faster. OpenWand replaces detected spans with stable placeholders such as `[PERSON_1]`, can show a review before sending, and checks the redacted text again. If the advanced model is unavailable, detection fails, or sensitive text remains, OpenWand blocks the cloud send.
 
 Privacy filtering reduces accidental disclosure; it is not a guarantee of anonymization or regulatory compliance.
+
+## Known Issues
+
+[Known issues](https://sunnylich.github.io/OpenWand/#known-issues)
 
 ## Platform Status
 

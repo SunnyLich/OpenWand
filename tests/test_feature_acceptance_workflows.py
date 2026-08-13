@@ -1943,6 +1943,7 @@ def test_stt_runtime_consumes_every_model_device_compute_language_and_beam(
         "windows_cuda_runtime_status",
         lambda: {"checked": True, "valid": True, "errors": {}},
     )
+    monkeypatch.setattr(stt_device, "_windows_cuda_environment_lines", lambda: [])
 
     old_model = handlers._model
     old_ready = handlers._model_ready

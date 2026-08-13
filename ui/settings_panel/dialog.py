@@ -547,6 +547,10 @@ class _FolderListEditor(QWidget):
 
     def _sync_list_height(self) -> None:
         """Show one compact row, then grow with entries up to a useful cap."""
+        import shiboken6
+
+        if not shiboken6.isValid(self) or not shiboken6.isValid(self._list):
+            return
         visible_rows = max(1, min(self._list.count(), self._MAX_VISIBLE_ROWS))
         row_height = self._list.fontMetrics().height() + 10
         if self._list.count():

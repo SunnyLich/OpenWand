@@ -1,8 +1,8 @@
 """Host-owned capture and restoration for files changed by agent harnesses."""
 from __future__ import annotations
 
-import hashlib
 import difflib
+import hashlib
 import os
 import shutil
 import uuid

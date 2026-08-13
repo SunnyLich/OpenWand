@@ -1753,8 +1753,10 @@ class ChatWindow(QWidget):
         self._install_zoom_shortcuts()
         from PySide6.QtWidgets import QApplication
         _app = QApplication.instance()
+        self._application_event_filter_installed = False
         if _app is not None:
             _app.installEventFilter(self)  # Ctrl+wheel zoom over the conversation
+            self._application_event_filter_installed = True
 
         if start_new:
             QTimer.singleShot(0, lambda: self.start_new_conversation(auto_message=auto_message))
@@ -2969,6 +2971,18 @@ class ChatWindow(QWidget):
         self._stop_middle_autoscroll()
         super().hideEvent(event)
 
+    def closeEvent(self, event):  # noqa: N802
+        """Detach the application-wide filter before Qt deletes this window."""
+        self._stop_middle_autoscroll()
+        if self._application_event_filter_installed:
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if app is not None:
+                app.removeEventFilter(self)
+            self._application_event_filter_installed = False
+        super().closeEvent(event)
+
     def _update_selected_conversation_notice(self, idx: int) -> None:
         """Show which conversation the composer will continue."""
         if hasattr(self, "_conversation_header_label"):
@@ -3274,6 +3288,7 @@ class ChatWindow(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.verticalScrollBar().setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         # Keep the conversation scrollbar easy to acquire with a mouse.  The
         # previous 9 px track also had 2 px margins, leaving only a roughly
         # 5 px draggable handle on Windows.

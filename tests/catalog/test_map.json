@@ -364,7 +364,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 231
+      "node_count": 232
     },
     {
       "path": "tests/runtime/test_flows_live_voice.py",
@@ -514,7 +514,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 58
+      "node_count": 59
     },
     {
       "path": "tests/runtime/test_ui_host_runtime_status.py",
@@ -559,7 +559,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 27
+      "node_count": 28
     },
     {
       "path": "tests/support/test_ci_pytest_chunk.py",
@@ -1039,7 +1039,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 98
+      "node_count": 101
     },
     {
       "path": "tests/test_assistant_text.py",
@@ -1144,7 +1144,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 48
+      "node_count": 49
     },
     {
       "path": "tests/test_builtin_model_tools.py",
@@ -1219,7 +1219,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 20
+      "node_count": 54
     },
     {
       "path": "tests/test_chat_window_render_limits.py",
@@ -1234,7 +1234,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 45
+      "node_count": 50
     },
     {
       "path": "tests/test_chatgpt_auth.py",
@@ -1249,7 +1249,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 14
+      "node_count": 16
     },
     {
       "path": "tests/test_config_env.py",
@@ -1558,7 +1558,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 13
+      "node_count": 15
     },
     {
       "path": "tests/test_feature_acceptance_workflows.py",
@@ -1603,7 +1603,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 23
+      "node_count": 31
     },
     {
       "path": "tests/test_ghost_cursor.py",
@@ -1633,7 +1633,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 9
+      "node_count": 11
     },
     {
       "path": "tests/test_harness_auth.py",
@@ -1663,7 +1663,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 27
+      "node_count": 28
     },
     {
       "path": "tests/test_harness_controls.py",
@@ -2084,7 +2084,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 102
+      "node_count": 104
     },
     {
       "path": "tests/test_optional_install_acceptance.py",
@@ -2232,7 +2232,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 12
+      "node_count": 13
     },
     {
       "path": "tests/test_privacy_model.py",
@@ -2562,7 +2562,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 172
+      "node_count": 176
     },
     {
       "path": "tests/test_settings_env.py",
@@ -2622,7 +2622,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 8
+      "node_count": 9
     },
     {
       "path": "tests/test_setup_check.py",
@@ -2697,7 +2697,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 9
+      "node_count": 11
     },
     {
       "path": "tests/test_spreadsheet_advanced_actions.py",
@@ -2948,7 +2948,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 23
+      "node_count": 25
     },
     {
       "path": "tests/test_virtual_workspace_background_runner.py",

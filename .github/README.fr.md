@@ -26,10 +26,6 @@ OpenWand vous offre une IA pilotée par raccourcis clavier qui peut lire votre s
 
 ---
 
-## Problèmes connus
-
-[Problèmes connus](https://sunnylich.github.io/OpenWand/#known-issues)
-
 ## Ce que fait OpenWand
 
 OpenWand est conçu pour les moments où ouvrir une application de chat briserait votre flux de travail.
@@ -260,19 +256,22 @@ OpenWand est conçu comme un assistant de bureau local. **Le stockage reste sur 
 - **Les aperçus restent locaux :** OpenWand peut inspecter le contexte disponible localement pour afficher des estimations de tokens, la disponibilité et les comptes de suppression de confidentialité avant que vous envoyiez. Prévisualiser une source ne l'envoie pas au fournisseur de modèle ni ne la sauvegarde en tant que chat/mémoire.
 - **Les outils de conversation externe restent locaux :** l’importation et la synchronisation ultérieure lisent les historiques locaux sans contacter les services des fournisseurs. L’exportation crée une nouvelle conversation fournisseur sans écraser l’historique existant.
 - **Contexte contrôlé par raccourci :** le contexte d'application ambiant, le presse-papiers, les documents, les pages de navigateur, le contexte GitHub, la mémoire, les outils et les captures d'écran peuvent chacun être activés, désactivés ou routés à la demande.
-- **Mode confidentialité :** les vérifications de configuration prioritaires à la confidentialité et le comportement d'avertissement restent activés, y compris l'état de suppression avant l'envoi de contexte sensible.
 - **Inactif tant que non configuré :** la voix optionnelle, la lecture de documents, le contenu du navigateur, les captures d'écran, GitHub Copilot et les extensions restent inactifs jusqu'à leur configuration.
 - **Pas de connexions surprises :** le TTS cloud, les fournisseurs de modèle, les serveurs compatibles, ou GitHub Copilot ne sont contactés que lorsque vous configurez et utilisez ces fonctionnalités.
 - **Extensions isolées :** les extensions s'exécutent dans des processus hôtes Python isolés et doivent déclarer les capacités dont elles ont besoin.
 - **Vérifications de configuration légères :** les piles de fournisseur, d'audio ou de STT lourdes ne sont importées que si la fonctionnalité est activée.
 
-### Mode de confidentialité avancé
+### Mode de confidentialité
 
-Dans **Paramètres → Application → Mode de confidentialité**, choisissez l'un des trois modes mutuellement exclusifs : **Désactivé**, **Intégré** (par défaut) ou **Avancé**. Le mode intégré utilise des règles locales pour détecter les identifiants, les jetons, les données de paiement et d'autres secrets structurés. Le mode avancé conserve ces règles et ajoute le modèle facultatif [OpenAI Privacy Filter](https://openai.com/index/introducing-openai-privacy-filter/), exécuté entièrement sur votre ordinateur pour détecter en fonction du contexte les noms, adresses, adresses e-mail, numéros de téléphone, URL et dates privées, numéros de compte et secrets.
+Les vérifications de configuration axées sur la confidentialité et les avertissements restent activés, y compris l’état de l’expurgation avant l’envoi de contexte sensible. Dans **Paramètres → Application → Mode de confidentialité**, choisissez l'un des trois modes mutuellement exclusifs : **Désactivé**, **Intégré** (par défaut) ou **Avancé**. Le mode intégré utilise des règles locales pour détecter les identifiants, les jetons, les données de paiement et d'autres secrets structurés. Le mode avancé conserve ces règles et ajoute le modèle facultatif [OpenAI Privacy Filter](https://openai.com/index/introducing-openai-privacy-filter/), exécuté entièrement sur votre ordinateur pour détecter en fonction du contexte les noms, adresses, adresses e-mail, numéros de téléphone, URL et dates privées, numéros de compte et secrets.
 
 Le modèle avancé représente un téléchargement facultatif d'environ 2,8 Go, auquel s'ajoute son environnement d'exécution local dédié. OpenWand le charge en mémoire et le préchauffe en arrière-plan au démarrage ou après l'activation du mode avancé. Le préchauffage peut prendre plusieurs dizaines de secondes sur un processeur. Si vous envoyez une requête avant la fin, elle attend ; les analyses suivantes réutilisent le modèle chargé et sont plus rapides. OpenWand remplace les passages détectés par des espaces réservés stables comme `[PERSON_1]`, peut afficher une vérification avant l'envoi, puis contrôle à nouveau le texte expurgé. Si le modèle avancé est indisponible, si la détection échoue ou s'il reste du texte sensible, OpenWand bloque l'envoi vers le cloud.
 
 Le filtrage de confidentialité réduit les divulgations accidentelles ; il ne garantit ni l'anonymisation ni la conformité réglementaire.
+
+## Problèmes connus
+
+[Problèmes connus](https://sunnylich.github.io/OpenWand/#known-issues)
 
 ## État des plateformes
 

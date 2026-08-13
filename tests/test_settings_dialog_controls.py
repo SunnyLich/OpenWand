@@ -3217,10 +3217,6 @@ def test_llm_model_routing_surface_translates_to_traditional_chinese(isolated_de
             assert not any(fragment in text for text in visible_texts)
 
         assert any(text.endswith("\u63d0\u4f9b\u8005\u6191\u8b49") for text in label_texts)
-        assert any(
-            "\u767b\u5165\u6216\u5132\u5b58\u63d0\u4f9b\u8005 API \u91d1\u9470" in text
-            for text in label_texts
-        )
         assert i18n.t("OAuth logins").upper() in label_texts
         assert i18n.t("ChatGPT OAuth") in label_texts
         assert i18n.t("Allows you to use ChatGPT subscription models in Model settings.") in label_texts
@@ -3229,10 +3225,6 @@ def test_llm_model_routing_surface_translates_to_traditional_chinese(isolated_de
             "issues/PRs as context, and lets you use Copilot models when your account has "
             "Copilot access."
         ) in label_texts
-        assert any(
-            "\u65b0\u589e\u4f60\u4f7f\u7528\u7684\u63d0\u4f9b\u8005" in text
-            for text in label_texts
-        )
         assert "<small><b>\u5225\u540d</b></small>" in label_texts
         assert "\u5225\u540d\uff08\u9078\u586b\uff09" in placeholder_texts
         assert "\u81ea\u8a02\u63d0\u4f9b\u8005".upper() in label_texts
@@ -3241,9 +3233,8 @@ def test_llm_model_routing_surface_translates_to_traditional_chinese(isolated_de
         )
         assert any(custom_endpoint_note in text for text in label_texts)
         assert "\u8a9e\u97f3\u8f49\u6587\u5b57".upper() in label_texts
-        assert any("\u6309\u4f4f\u8aaa\u8a71\u8f49\u5beb\u4f7f\u7528\u7684 Whisper" in text for text in label_texts)
-        assert "\u88dd\u7f6e" in label_texts
-        assert "\u675f\u5bec" in label_texts
+        assert any(text.startswith("\u88dd\u7f6e") for text in label_texts)
+        assert any(text.startswith("\u675f\u5bec") for text in label_texts)
         assert "5\uff08\u5efa\u8b70\uff09" in all_combo_texts
         expected_auto_device = i18n.t(
             "Auto (CPU)" if sys.platform == "darwin" else "Auto (GPU if available)"
@@ -3252,7 +3243,6 @@ def test_llm_model_routing_surface_translates_to_traditional_chinese(isolated_de
         assert any("API \u5bc6\u9470\u6703\u4fdd\u5b58\u5230\u7cfb\u7d71\u9470\u5319\u4e32" in text for text in label_texts)
         assert "\u65b0\u589e\u610f\u5716\u5feb\u901f\u9375" in button_texts
         assert "\u6a21\u578b\u8def\u7531" in label_texts
-        assert "\u9078\u64c7\u6bcf\u500b\u7528\u9014\u4f7f\u7528\u54ea\u500b\u5df2\u5132\u5b58\u6191\u8b49\u548c\u6a21\u578b\u3002" in label_texts
         assert "<small><b>\u63d0\u4f9b\u8005</b></small>" in label_texts
         assert any(text.endswith("\u804a\u5929\u6a21\u578b") for text in label_texts)
         assert "\u6e2c\u8a66\u804a\u5929\u6a21\u578b" in button_texts

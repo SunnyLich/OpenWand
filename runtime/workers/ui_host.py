@@ -2455,17 +2455,44 @@ class QtProtocolHost:
 
             overlay = self._intent
             if overlay is None or not overlay.isVisible():
-                return {"submitted": False, "reason": "no_visible_intent"}
+                popup = next(
+                    (
+                        item
+                        for item in reversed(tuple(self._rewrite_annotations.values()))
+                        if item.isVisible() and item.state == "composing"
+                    ),
+                    None,
+                )
+                if popup is None:
+                    return {"submitted": False, "reason": "no_visible_intent"}
+                overlay = popup
             if not overlay.isEnabled():
                 return {"submitted": False, "reason": "context_capture_pending"}
             text = str(params.get("text") or "").strip()
             if not text:
                 return {"submitted": False, "reason": "empty_text"}
-            overlay._enter_custom_mode(drop_trigger_key=False)
-            overlay._input_line.setFocus()
-            QTest.keyClicks(overlay._input_line, text)
-            QTest.keyClick(overlay._input_line, Qt.Key.Key_Return)
+            field = getattr(overlay, "_input_line", None)
+            if field is not None:
+                overlay._enter_custom_mode(drop_trigger_key=False)
+            else:
+                field = overlay._comment
+            field.setFocus()
+            QTest.keyClicks(field, text)
+            QTest.keyClick(field, Qt.Key.Key_Return)
             return {"submitted": True, "text": text}
+        if method == "ui.debug.rewrite.accept" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
+            popup = next(
+                (
+                    item
+                    for item in reversed(tuple(self._rewrite_annotations.values()))
+                    if item.isVisible() and item.state == "proposal"
+                ),
+                None,
+            )
+            if popup is None:
+                return {"clicked": False, "reason": "no_visible_proposal"}
+            popup._accept.click()
+            return {"clicked": True}
         if method == "ui.debug.shell.close_aux_windows" and os.environ.get(
             "OPENWAND_UI_DEBUG_METHODS"
         ):

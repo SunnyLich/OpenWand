@@ -11,7 +11,6 @@ import subprocess
 import sys
 import time
 import urllib.request
-from ctypes import wintypes
 from pathlib import Path
 
 import win32con
@@ -30,8 +29,8 @@ from scripts.smoke_rewrite_hotkey_live import (  # noqa: E402
     _capture_windows_region,
     _force_foreground,
     _ui_worker_pids,
-    _visible_windows_with_title,
     _visible_windows_for_pids,
+    _visible_windows_with_title,
     _window_class_name,
 )
 

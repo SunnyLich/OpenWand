@@ -3392,7 +3392,7 @@
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "Chat Pull ChatGPT + Claude button -> background local discovery/parsers -> conversation merge/sidebar rebuild",
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix",
+        "tests/test_app_user_workflows.py::test_chat_external_import_buttons_keep_providers_separate",
         "tests/test_external_conversation_sync.py::test_parse_codex_uses_user_and_final_messages_only",
         "tests/test_external_conversation_sync.py::test_parse_claude_follows_active_chain_and_ignores_tools"
       ],
@@ -3411,7 +3411,7 @@
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "external discovery/apply reports -> Chat information dialog",
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix"
+        "tests/test_app_user_workflows.py::test_chat_external_import_buttons_keep_providers_separate"
       ],
       "success_assertions": [
         "The visible report distinguishes 2 imported, each provider updated while the other is unchanged, and both unchanged on a no-op pull."
@@ -3428,7 +3428,7 @@
       "acceptance_status": "real_entry_accepted",
       "production_entry_point": "provider plus external session identity -> OpenWand conversation id/title/sidebar namespace",
       "test_node_ids": [
-        "tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix",
+        "tests/test_app_user_workflows.py::test_chat_external_import_buttons_keep_providers_separate",
         "tests/test_external_conversation_sync.py::test_sync_updates_in_place_and_preserves_openwand_tail"
       ],
       "success_assertions": [

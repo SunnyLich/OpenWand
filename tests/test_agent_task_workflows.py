@@ -86,9 +86,9 @@ def test_agent_tray_setup_copy_preview_and_submit_real_workflow(tmp_path, monkey
     monkeypatch.setattr(config, "GOOGLE_API_KEY", "test-google", raising=False)
     monkeypatch.setattr(config, "GROQ_API_KEY", "", raising=False)
     monkeypatch.setattr(config, "CUSTOM_CONNECTIONS", [], raising=False)
+    from core import ollama_manager
     from core.auth import chatgpt as chatgpt_auth
     from core.auth import copilot_auth
-    from core import ollama_manager
 
     monkeypatch.setattr(chatgpt_auth, "get_tokens", lambda: None)
     monkeypatch.setattr(copilot_auth, "has_effective_token", lambda: False)

@@ -1516,7 +1516,7 @@
         {"source_state": "claude", "target_state": "updated", "expected_result": "Only the matching Claude row updates in place."},
         {"source_state": "claude", "target_state": "unchanged", "expected_result": "The unchanged Claude row is counted without persistence."}
       ],
-      "test_node_ids": ["tests/test_app_user_workflows.py::test_chat_external_transcript_pull_button_and_count_matrix"],
+      "test_node_ids": ["tests/test_app_user_workflows.py::test_chat_external_import_buttons_keep_providers_separate"],
       "status": "accepted"
     },
     {

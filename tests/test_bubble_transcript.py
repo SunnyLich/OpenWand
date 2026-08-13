@@ -141,7 +141,9 @@ def test_bubble_text_and_container_appear_disappear_and_reappear_together():
         assert bubble.isHidden()
         assert bubble._text_view.isHidden()
 
-        bubble.show_notice("Second visible notice", timeout_ms=1)
+        # Keep the real timer from racing this visibility assertion. The next
+        # block invokes the same timeout callback deterministically.
+        bubble.show_notice("Second visible notice", timeout_ms=60_000)
         app.processEvents()
         assert bubble.isVisible()
         assert bubble._text_view.isVisible()

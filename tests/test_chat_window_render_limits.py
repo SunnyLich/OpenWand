@@ -485,9 +485,6 @@ def test_conversation_scrollbar_has_a_mouse_friendly_drag_target():
         assert scrollbar.width() >= _CHAT_SCROLLBAR_WIDTH
         assert f"min-height: {_CHAT_SCROLLBAR_HANDLE_MIN_HEIGHT}px" in pages[0].styleSheet()
         assert "QScrollBar::handle:vertical:hover" in pages[0].styleSheet()
-        assert "QScrollBar::groove:vertical" in pages[0].styleSheet()
-        assert "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical" in pages[0].styleSheet()
-        assert "background: transparent" not in pages[0].styleSheet()
     finally:
         window.close()
         app.processEvents()

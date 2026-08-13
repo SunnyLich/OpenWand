@@ -939,12 +939,15 @@ class ConfigEnvTests(unittest.TestCase):
                 config.reload()
 
             row = config.CALLER_ROWS[0]
-            self.assertEqual(row["context_documents_mode"], "off")
-            self.assertEqual(row["context_browser_mode"], "off")
-            self.assertEqual(row["context_github_mode"], "off")
-            self.assertEqual(row["context_memory_mode"], "off")
-            self.assertFalse(row["context_documents"])
-            self.assertFalse(row["context_tools"])
+            for key in (
+                "context_documents_mode",
+                "context_browser_mode",
+                "context_github_mode",
+                "context_memory_mode",
+                "context_documents",
+                "context_tools",
+            ):
+                self.assertEqual(row[key], previous_rows[0][key])
         finally:
             config.CALLER_ROWS[:] = previous_rows
 
@@ -1012,15 +1015,18 @@ class ConfigEnvTests(unittest.TestCase):
                 config.reload()
 
             row = config.CALLER_ROWS[0]
-            self.assertEqual(row["hotkey"], config._caller_default_hotkey(0))
-            self.assertFalse(row["context_ambient"])
-            self.assertFalse(row["context_clipboard"])
-            self.assertEqual(row["context_documents_mode"], "off")
-            self.assertEqual(row["context_browser_mode"], "off")
-            self.assertEqual(row["context_github_mode"], "off")
-            self.assertEqual(row["context_memory_mode"], "off")
-            self.assertEqual(row["context_screenshot"], "off")
-            self.assertFalse(row["context_tools"])
+            for key in (
+                "hotkey",
+                "context_ambient",
+                "context_clipboard",
+                "context_documents_mode",
+                "context_browser_mode",
+                "context_github_mode",
+                "context_memory_mode",
+                "context_screenshot",
+                "context_tools",
+            ):
+                self.assertEqual(row[key], previous_rows[0][key])
         finally:
             config.CALLER_ROWS[:] = previous_rows
 
@@ -1034,20 +1040,7 @@ class ConfigEnvTests(unittest.TestCase):
             with patch.object(config.sys, "platform", platform):
                 self.assertEqual(config._caller_default_hotkey(0), "ctrl+alt+space")
                 self.assertEqual(config._caller_default_hotkey(1), "ctrl+alt+shift+space")
-        try:
-            with patch("config.load_dotenv"), patch.object(config.sys, "platform", "darwin"), patch.dict(
-                os.environ,
-                {},
-                clear=False,
-            ):
-                for key in ("CALLER_COUNT", "CALLER_1_HOTKEY", "CALLER_2_HOTKEY"):
-                    os.environ.pop(key, None)
-                config.reload()
-
-            self.assertEqual(config.CALLER_ROWS[0]["hotkey"], "ctrl+alt+space")
-            self.assertEqual(config.CALLER_ROWS[1]["hotkey"], "ctrl+alt+shift+space")
-        finally:
-            config.CALLER_ROWS[:] = previous_rows
+        self.assertEqual(config.CALLER_ROWS, previous_rows)
 
     def test_secondary_shortcuts_and_enabled_flags_load_from_env(self):
         """File callers ignore env while special shortcut settings remain env-backed."""
@@ -1085,9 +1078,9 @@ class ConfigEnvTests(unittest.TestCase):
                 config.reload()
 
             caller = config.CALLER_ROWS[0]
-            self.assertEqual(caller["hotkey"], "ctrl+q")
-            self.assertEqual(caller["hotkey_2"], "")
-            self.assertTrue(caller["enabled"])
+            self.assertEqual(caller["hotkey"], previous_rows[0]["hotkey"])
+            self.assertEqual(caller["hotkey_2"], previous_rows[0]["hotkey_2"])
+            self.assertEqual(caller["enabled"], previous_rows[0]["enabled"])
             self.assertEqual(config.HOTKEY_ADD_CONTEXT, "")
             self.assertEqual(config.HOTKEY_ADD_CONTEXT_2, "")
             self.assertFalse(config.HOTKEY_ADD_CONTEXT_ENABLED)
@@ -1250,7 +1243,10 @@ class ConfigEnvTests(unittest.TestCase):
             ):
                 config.reload()
 
-            self.assertEqual(config.CALLER_ROWS[0]["context_memory_mode"], "off")
+            self.assertEqual(
+                config.CALLER_ROWS[0]["context_memory_mode"],
+                previous_rows[0]["context_memory_mode"],
+            )
             self.assertEqual(config.VOICE_CALLER["context_memory_mode"], "on")
         finally:
             config.CALLER_ROWS[:] = previous_rows

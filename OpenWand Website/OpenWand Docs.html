@@ -4,35 +4,34 @@
   <meta charset="utf-8" />
   <title>OpenWand Docs</title>
   <meta name="viewport" content="width=1280" />
+  <link rel="icon" type="image/png" href="assets/openwand-logo.png?v=0.11" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       /* surfaces */
-      --bg:        #0b0c0e;
-      --bg-elev:   #121316;
-      --bg-code:   #0f1012;
-      --bg-hover:  #16181c;
+      --bg:        #16181b;
+      --bg-elev:   #1c1f23;
+      --bg-code:   #0e1013;
+      --bg-hover:  #141619;
       /* lines */
-      --border:    #212429;
-      --border-2:  #2c2f36;
+      --border:    #262a2f;
+      --border-2:  #30353b;
       /* text */
-      --text:      #e8eaed;
-      --text-2:    #b3b8c0;
-      --dim:       #8a8f99;
-      --dimmer:    #5b606b;
+      --text:      #e9e6e0;
+      --text-2:    #b8b4ac;
+      --dim:       #8b8a86;
+      --dimmer:    #5f574f;
       /* accent */
-      --accent:    #6ea8fe;
-      --accent-2:  #4d8df5;
-      --accent-soft: rgba(110,168,254,0.13);
-      --accent-line: rgba(110,168,254,0.35);
+      --accent:    #d8a145;
+      --accent-2:  #e6b45c;
+      --accent-soft: rgba(216,161,69,0.13);
+      --accent-line: rgba(216,161,69,0.35);
       /* semantic */
       --green:     #56c98a;
       --yellow:    #e0b341;
       --purple:    #b29bf5;
       --green-soft:  rgba(86,201,138,0.10);
-      --yellow-soft: rgba(224,179,65,0.10);
-      --purple-soft: rgba(178,155,245,0.10);
-      --blue-soft:   rgba(110,168,254,0.10);
+      --accent-wash: rgba(216,161,69,0.10);
       /* type */
       --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif;
       --mono: 'SF Mono', 'Cascadia Code', 'Cascadia Mono', Consolas, Menlo, monospace;
@@ -58,7 +57,7 @@
     header {
       position: fixed; top: 0; left: 0; right: 0; z-index: 100;
       height: var(--header-h);
-      background: rgba(11,12,14,0.82);
+      background: rgba(22,24,27,0.88);
       backdrop-filter: saturate(160%) blur(14px);
       -webkit-backdrop-filter: saturate(160%) blur(14px);
       border-bottom: 1px solid var(--border);
@@ -230,12 +229,12 @@
     .copy-btn.copied { color: var(--green); border-color: var(--green); }
 
     /* syntax colours */
-    .c-comment { color: #5c6573; font-style: italic; }
-    .c-key     { color: #84b6f0; }
+    .c-comment { color: #6f716f; font-style: italic; }
+    .c-key     { color: #e6b45c; }
     .c-val     { color: #9ed49c; }
     .c-str     { color: #e0b88a; }
     .c-section { color: #e09a72; }
-    .c-blue    { color: var(--accent); }
+    .c-accent  { color: var(--accent); }
     .c-green   { color: var(--green); }
     .c-purple  { color: var(--purple); }
     .c-dim     { color: var(--dim); }
@@ -273,20 +272,20 @@
     em     { font-style: italic; color: inherit; }
 
     .callout {
-      border: 1px solid var(--border); border-left: 3px solid var(--accent);
-      background: var(--blue-soft);
+      border: 1px solid var(--border);
+      background: var(--accent-wash);
       padding: 14px 18px; margin: 20px 0; border-radius: 10px;
     }
-    .callout.warn { border-left-color: var(--yellow); background: var(--yellow-soft); }
-    .callout.tip  { border-left-color: var(--green);  background: var(--green-soft); }
-    .callout.note { border-left-color: var(--purple); background: var(--purple-soft); }
+    .callout.warn,
+    .callout.tip,
+    .callout.note { background: var(--accent-wash); }
     .callout-label {
       font-size: 11px; font-weight: 700; letter-spacing: 0.6px;
       text-transform: uppercase; margin-bottom: 6px; color: var(--accent);
     }
-    .callout.warn .callout-label { color: var(--yellow); }
-    .callout.tip  .callout-label { color: var(--green); }
-    .callout.note .callout-label { color: var(--purple); }
+    .callout.warn .callout-label,
+    .callout.tip  .callout-label,
+    .callout.note .callout-label { color: var(--accent); }
     .callout p { margin: 0; font-size: 14px; color: var(--text-2); }
 
     /* ── SECURITY PILLARS ─────────────────────────────── */
@@ -312,14 +311,14 @@
     .compare-head, .compare-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; }
     .compare-head > div { padding: 9px 16px; background: var(--bg-code); font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; display: flex; align-items: center; gap: 7px; }
     .compare-head .ch-issue { color: var(--dim); }
-    .compare-head .ch-sol { color: var(--green); }
+    .compare-head .ch-sol { color: var(--accent); }
     .compare-row > div { padding: 13px 16px; font-size: 13.5px; line-height: 1.6; color: var(--text-2); }
     .compare-row .c-issue { background: var(--bg-elev); }
-    .compare-row .c-sol { background: var(--green-soft); }
-    .compare-row .c-sol strong { color: var(--green); font-weight: 600; }
+    .compare-row .c-sol { background: var(--accent-wash); }
+    .compare-row .c-sol strong { color: var(--accent); font-weight: 600; }
     .compare-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
     .compare-head .ch-issue .compare-dot { background: var(--dim); }
-    .compare-head .ch-sol .compare-dot { background: var(--green); }
+    .compare-head .ch-sol .compare-dot { background: var(--accent); }
 
     /* demo gallery */
     .demo-grid {
@@ -472,7 +471,7 @@
     .toc {
       width: var(--toc-w); flex-shrink: 0;
       padding: 40px 20px 40px 24px;
-      border-left: 1px solid var(--border); overflow-y: auto;
+      overflow-y: auto;
     }
     .toc::-webkit-scrollbar { width: 5px; }
     .toc::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
@@ -482,13 +481,12 @@
     }
     .toc-link {
       display: block; font-size: 13px; color: var(--dim); font-weight: 500;
-      text-decoration: none; padding: 5px 0 5px 14px; margin-bottom: 1px;
-      border-left: 2px solid var(--border); cursor: pointer;
-      transition: color .12s, border-color .12s; line-height: 1.4;
+      text-decoration: none; padding: 5px 0; margin-bottom: 1px;
+      cursor: pointer; transition: color .12s; line-height: 1.4;
     }
-    .toc-link:hover { color: var(--text-2); border-left-color: var(--dimmer); }
-    .toc-link.active { color: var(--accent); font-weight: 600; border-left-color: var(--accent); }
-    .toc-link.sub { padding-left: 26px; font-size: 12.5px; }
+    .toc-link:hover { color: var(--text-2); }
+    .toc-link.active { color: var(--accent); font-weight: 600; }
+    .toc-link.sub { padding-left: 12px; font-size: 12.5px; }
 
     /* ── SEARCH MODAL ───────────────────────────────── */
     .search-modal {
@@ -544,7 +542,7 @@
 <!-- ── HEADER ─────────────────────────────────────────── -->
 <header>
   <div class="logo-area">
-    <img class="openwand-icon" src="assets/openwand-logo.png" alt="OpenWand logo" />
+    <img class="openwand-icon" src="assets/openwand-logo.png?v=0.11" alt="OpenWand logo" />
     <span class="logo-text">OpenWand</span>
     <span class="logo-ver">Docs</span>
   </div>

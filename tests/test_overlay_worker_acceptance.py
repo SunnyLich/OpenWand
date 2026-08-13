@@ -103,6 +103,7 @@ def _run_real_worker_shell_case(
     assert all(path == case_root or case_root in path.parents for path in isolated_paths.values())
 
     env_path.write_text(
+        "APP_LANGUAGE=en\n"
         f"OPENWAND_ONBOARDING_COMPLETE=True\nCHAT_EXECUTION_MODE={execution_mode}\nTTS_PROVIDER=none\n",
         encoding="utf-8",
     )
@@ -133,6 +134,7 @@ def _run_real_worker_shell_case(
         "PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring",
         "TTS_PROVIDER": "none",
         "OPENWAND_ONBOARDING_COMPLETE": "True",
+        "APP_LANGUAGE": "en",
     }
     for name, value in parent_env.items():
         monkeypatch.setenv(name, value)

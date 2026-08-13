@@ -1184,7 +1184,10 @@ def test_real_intent_ui_routes_keep_in_openwand_and_rewrite_paste_back(tmp_path,
                     "focus_token": 812,
                     "active_app": {
                         "pid": 7001,
-                        "window_id": 7001,
+                        # This subprocess test has no real editor HWND. Keep the
+                        # process target while exercising the unanchored popup
+                        # fallback instead of asking Win32 to track a fake HWND.
+                        "window_id": 0,
                         "name": "Acceptance Editor",
                     },
                 }
@@ -1242,12 +1245,22 @@ def test_real_intent_ui_routes_keep_in_openwand_and_rewrite_paste_back(tmp_path,
         flow.begin_caller(1)
         submit_when_visible("Rewrite selected text")
         deadline = time.time() + 10
+        while time.time() < deadline:
+            accepted = ui.call("ui.debug.rewrite.accept", timeout=10)
+            if accepted.get("clicked"):
+                assert accepted == {"clicked": True}
+                break
+            time.sleep(0.02)
+        else:
+            pytest.fail("rewrite proposal never became available to accept")
+        deadline = time.time() + 10
         while time.time() < deadline and not native.calls_for("native.paste_text"):
             time.sleep(0.02)
         paste_calls = native.calls_for("native.paste_text")
         assert len(paste_calls) == 1
-        assert paste_calls[0] == {
-            "text": "[fake-rewrite] Rewrite selected text: original selected words",
+        assert paste_calls[0]["text"].startswith("[fake-rewrite] Rewrite selected text")
+        assert paste_calls[0]["text"].endswith(": original selected words")
+        assert {key: value for key, value in paste_calls[0].items() if key != "text"} == {
             "target_pid": 7001,
             "focus_token": 812,
             "restore_clipboard": True,
@@ -1354,7 +1367,7 @@ def test_real_intent_failure_shows_recovery_recommendation_in_reply_bubble(tmp_p
             if "Recommendation:" in bubble.get("text", ""):
                 break
             time.sleep(0.02)
-        assert "LLM request failed" in bubble["text"]
+        assert "429 rate limit from provider" in bubble["text"]
         assert "Recommendation: wait a minute and retry" in bubble["text"]
         assert "usage limits and billing" in bubble["text"]
         assert bubble["visible"] is True

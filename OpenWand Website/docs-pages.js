@@ -669,8 +669,8 @@ python -m runtime.supervisor.app</code></pre>
 <h2 id="stt">Speech-to-text (STT)</h2>
 <p><code>core/stt.py</code> transcribes speech using <strong>faster-whisper</strong> — a CPU-friendly, int8-quantised build of Whisper that runs entirely on your machine. No cloud API needed.</p>
 <p><strong>Push-to-talk flow:</strong></p>
-<pre><code>Hold voice hotkey → <span class="c-blue">start_recording()</span> → microphone buffer fills
-Release             → <span class="c-blue">stop_and_transcribe()</span> → text returned in ~200–600 ms</code></pre>
+<pre><code>Hold voice hotkey → <span class="c-accent">start_recording()</span> → microphone buffer fills
+Release             → <span class="c-accent">stop_and_transcribe()</span> → text returned in ~200–600 ms</code></pre>
 <p>Clips shorter than 0.3 s are silently discarded. VAD (voice activity detection) filters silent regions before transcription.</p>
 <p>For longer recordings, OpenWand keeps recording while a serial background STT worker transcribes settled chunks: 0.0-10.5 s after the first 15 s, then 9.5-20.5 s, 19.5-30.5 s, and so on. The 1 s overlap and 4.5 s live-edge delay make stop transcription faster without pausing the microphone.</p>
 <table>
@@ -1962,23 +1962,23 @@ Use simple prose on first reply. Use bullets, tables, or code blocks only on sec
 <hr />
 <h2 id="hooks">Hooks</h2>
 <p>The entry module implements whatever hooks it needs — all are optional:</p>
-<pre><span class="pre-lang">python</span><code><span class="c-blue">def</span> <span class="c-green">on_startup</span>(app_context):       <span class="c-comment"># app_context.config + .data_dir</span>
-    <span class="c-blue">pass</span>
+<pre><span class="pre-lang">python</span><code><span class="c-accent">def</span> <span class="c-green">on_startup</span>(app_context):       <span class="c-comment"># app_context.config + .data_dir</span>
+    <span class="c-accent">pass</span>
 
-<span class="c-blue">def</span> <span class="c-green">before_query</span>(prompt: str, context: str) -> tuple[str, str]:
-    <span class="c-blue">return</span> prompt, context
+<span class="c-accent">def</span> <span class="c-green">before_query</span>(prompt: str, context: str) -> tuple[str, str]:
+    <span class="c-accent">return</span> prompt, context
 
-<span class="c-blue">def</span> <span class="c-green">after_response</span>(text: str):
-    <span class="c-blue">pass</span>
+<span class="c-accent">def</span> <span class="c-green">after_response</span>(text: str):
+    <span class="c-accent">pass</span>
 
-<span class="c-blue">def</span> <span class="c-green">get_tray_actions</span>() -> list[dict]:
-    <span class="c-blue">return</span> [{<span class="c-str">"label"</span>: <span class="c-str">"Run thing"</span>, <span class="c-str">"callback"</span>: run_thing}]
+<span class="c-accent">def</span> <span class="c-green">get_tray_actions</span>() -> list[dict]:
+    <span class="c-accent">return</span> [{<span class="c-str">"label"</span>: <span class="c-str">"Run thing"</span>, <span class="c-str">"callback"</span>: run_thing}]
 
-<span class="c-blue">def</span> <span class="c-green">get_settings</span>() -> list[dict]:
-    <span class="c-blue">return</span> [{<span class="c-str">"key"</span>: <span class="c-str">"prefix"</span>, <span class="c-str">"label"</span>: <span class="c-str">"Prefix"</span>, <span class="c-str">"type"</span>: <span class="c-str">"text"</span>}]
+<span class="c-accent">def</span> <span class="c-green">get_settings</span>() -> list[dict]:
+    <span class="c-accent">return</span> [{<span class="c-str">"key"</span>: <span class="c-str">"prefix"</span>, <span class="c-str">"label"</span>: <span class="c-str">"Prefix"</span>, <span class="c-str">"type"</span>: <span class="c-str">"text"</span>}]
 
-<span class="c-blue">def</span> <span class="c-green">get_tools</span>() -> list[dict]:
-    <span class="c-blue">return</span> [{<span class="c-str">"name"</span>: <span class="c-str">"my_tool"</span>, <span class="c-str">"description"</span>: <span class="c-str">"…"</span>,
+<span class="c-accent">def</span> <span class="c-green">get_tools</span>() -> list[dict]:
+    <span class="c-accent">return</span> [{<span class="c-str">"name"</span>: <span class="c-str">"my_tool"</span>, <span class="c-str">"description"</span>: <span class="c-str">"…"</span>,
              <span class="c-str">"input_schema"</span>: {...}, <span class="c-str">"executor"</span>: run}]</code></pre>
 <p>Read your own settings with <code>addon_setting("my-addon", "prefix", default)</code> from <code>core.addon_manager</code>.</p>
 

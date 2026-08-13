@@ -222,23 +222,24 @@ def test_file_backed_caller_can_select_profile_without_changing_active_profile(t
 
 
 def test_default_profile_preserves_legacy_second_caller_defaults():
-    """Verify default profile does not accidentally enable rewrite context."""
+    """Verify reloading the default profile preserves file-backed callers."""
     previous_config = _snapshot_config_globals()
     try:
         with patch("config.load_dotenv"), patch.dict(os.environ, {}, clear=True):
             config.reload()
 
-        row = config.CALLER_ROWS[1]
         default_profile = config.resolve_profile("default")
 
         assert config.ACTIVE_PROFILE == "default"
         assert default_profile.caller_defaults["context_documents_mode"] == "off"
-        assert config.CALLER_ROWS[0]["context_ambient"] is False
-        assert config.CALLER_ROWS[0]["context_documents_mode"] == "off"
-        assert config.CALLER_ROWS[0]["context_memory_mode"] == "off"
-        assert row["context_ambient"] is False
-        assert row["context_documents_mode"] == "off"
-        assert row["context_memory_mode"] == "off"
+        for index, previous_row in enumerate(previous_config["CALLER_ROWS"]):
+            row = config.CALLER_ROWS[index]
+            for key in (
+                "context_ambient",
+                "context_documents_mode",
+                "context_memory_mode",
+            ):
+                assert row[key] == previous_row[key]
     finally:
         _restore_config_globals(previous_config)
 

@@ -93,8 +93,10 @@ def _compare_images(actual, expected) -> tuple[float, float]:
 
 def _make_surface(name: str):
     import config
+    from ui import i18n
 
     config.APP_LANGUAGE = "en"
+    i18n.set_language("en")
     config.THEME_MODE = "light"
     config.DARK_MODE = False
 
@@ -171,11 +173,15 @@ def _make_surface(name: str):
 
 def _render_surface_to_path(surface: str, output_path: Path) -> None:
     """Render one surface in a fresh QApplication process."""
-    from PySide6.QtGui import QFont
+    from PySide6.QtGui import QFont, QFontDatabase
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication(["openwand-visual-capture"])
     app.setStyle("Fusion")
+    if sys.platform == "win32":
+        font_path = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "segoeui.ttf"
+        if font_path.exists():
+            QFontDatabase.addApplicationFont(str(font_path))
     app.setFont(QFont("Segoe UI", 10))
     app.setPalette(app.style().standardPalette())
     widget = _make_surface(surface)
@@ -196,6 +202,10 @@ def _capture_in_subprocess(surface: str, output_path: Path) -> None:
             "QT_QPA_PLATFORM": "offscreen",
             "QT_SCALE_FACTOR": "1",
             "QT_FONT_DPI": "96",
+            "APP_LANGUAGE": "en",
+            "ASSISTANT_LANGUAGE": "en",
+            "OPENWAND_SETTINGS_ENV_PATH": str(output_path.parent / "visual-capture.env"),
+            "OPENWAND_ADDONS_DIR": str(output_path.parent / "visual-capture-addons"),
             "PYTHONPATH": os.pathsep.join(filter(None, (str(repo_root), env.get("PYTHONPATH", "")))),
         }
     )

@@ -277,11 +277,14 @@ def localize_widget_tree(root: Any) -> None:
                 widget.setToolTip(t(_original(widget, "tooltip", tip)))
         except Exception:
             pass
-        try:
-            for action in widget.actions():
-                _translate_action(action)
-        except Exception:
-            pass
+    # Only explicit actions attached to the requested root belong to this
+    # localization pass. Descendant controls expose private Qt actions whose
+    # wrappers can outlive their C++ objects and crash PySide when dereferenced.
+    try:
+        for action in root.actions():
+            _translate_action(action)
+    except Exception:
+        pass
 
 
 def refresh_all_widgets(app: Any = None) -> None:

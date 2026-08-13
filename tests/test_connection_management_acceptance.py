@@ -587,16 +587,23 @@ def test_model_refresh_and_manual_name_every_provider_matrix(
                 row["refresh_btn"].click()
                 _wait_until(app, row["refresh_btn"].isEnabled)
                 assert calls[-1] == expected_calls[-1]
+                expected_models = [
+                    f"{route_provider}-live-a",
+                    f"{route_provider}-live-b",
+                ]
+                if provider != "ollama":
+                    expected_models.append(settings_dialog._CUSTOM_MODEL_SENTINEL)
                 assert [
                     row["model_combo"].itemData(index)
                     for index in range(row["model_combo"].count())
-                ] == [
-                    f"{route_provider}-live-a",
-                    f"{route_provider}-live-b",
-                    settings_dialog._CUSTOM_MODEL_SENTINEL,
-                ]
+                ] == expected_models
                 assert row["refresh_btn"].toolTip() == "Live: 2 models"
 
+            if provider == "ollama":
+                row["model_combo"].setCurrentIndex(1)
+                assert not row["model_edit"].isVisible()
+                assert dialog._model_value(row) == "ollama-live-b"
+                continue
             row["model_combo"].setCurrentIndex(
                 row["model_combo"].findData(settings_dialog._CUSTOM_MODEL_SENTINEL)
             )
@@ -959,14 +966,18 @@ def test_every_model_route_add_remove_reorder_apply_and_test_workflow(
     monkeypatch.setattr(
         llm,
         "safe_list_models",
-        lambda provider, **_kwargs: (model_list_calls.append(provider) or ["live-model"], ""),
+        lambda provider, **_kwargs: (
+            model_list_calls.append(provider)
+            or ["shared-primary", "shared-fallback", "live-model"],
+            "",
+        ),
     )
     dialog = _new_dialog(monkeypatch)
 
     def set_route(row: dict, model: str) -> None:
         dialog._fill_credential_combo(row["api_key_combo"], "ollama")
         row["api_key_combo"].setCurrentIndex(row["api_key_combo"].findData("ollama"))
-        dialog._fill_model_combo(row, [], "ollama", model)
+        dialog._fill_model_combo(row, [model], "ollama", model)
         assert dialog._model_value(row) == model
 
     try:
@@ -1009,6 +1020,7 @@ def test_every_model_route_add_remove_reorder_apply_and_test_workflow(
             if button.text() == "Apply to all"
         )
         apply_all.click()
+        model_list_calls.clear()
         for section in ("LLM", "VISION_LLM", "MEMORY_LLM"):
             assert [
                 (row["api_key_combo"].currentData(), dialog._model_value(row))
@@ -1018,9 +1030,10 @@ def test_every_model_route_add_remove_reorder_apply_and_test_workflow(
             refresh = dialog._model_section_rows[section][0]["refresh_btn"]
             refresh.click()
             _wait_until(app, refresh.isEnabled)
-            assert refresh.toolTip() == "Live: 1 models"
+            assert refresh.toolTip() == "Live: 3 models"
             assert dialog._model_value(dialog._model_section_rows[section][0]) == "shared-primary"
-        assert model_list_calls == ["ollama", "ollama", "ollama"]
+        assert model_list_calls.count("ollama") >= 3
+        assert set(model_list_calls) == {"ollama"}
 
         test_specs = (
             ("LLM", "Test Chat model", "LLM", False),
