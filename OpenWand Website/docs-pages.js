@@ -10,7 +10,7 @@ const DOCS_PAGES = {
 'overview': {
   title: 'Overview',
   sub: 'What OpenWand is and how it fits together.',
-  toc: ['concept','what-you-get','chat-workspace','design-goals'],
+  toc: ['concept','what-you-get','app-actions','chat-workspace','design-goals'],
   html: `
 <h2 id="concept">Concept</h2>
 <p>OpenWand is a completely free, open-source desktop AI assistant for fast AI co-work across Windows, macOS, and Linux. It gives you provider freedom — from popular model providers and free API routes to local servers and custom endpoints, your workflow stays portable. It responds to custom hotkeys from any application, with pop-up display and voice interaction designed for quick turnaround so you never have to break focus to get an answer.</p>
@@ -29,10 +29,15 @@ const DOCS_PAGES = {
 <p>Click the icon any time to open a full chat window that remembers past conversations and can continue from context captured in the overlay. With project writes enabled, the chat model can delegate substantial coding work to the background and return the result to that conversation. Separately, <a onclick="navigate('team-mode')">Agent Team</a> lets you configure the project, goal, team, models, and permissions yourself.</p>
 
 <hr />
+<h2 id="app-actions">App actions</h2>
+<p>On Windows, OpenWand ships verified preview-first actions for three focused application workflows. PowerPoint desktop can create a slide, restyle the selected slide, or update speaker notes. LibreOffice Calc can work with charts, clean tables, sort data, and run focused analysis. VS Code can apply focused fixes and refactors to saved files.</p>
+<p>These actions show the proposed change before applying it, require confirmation, and read the result back afterward. Broader web-office, email, calendar, and advanced spreadsheet or editor actions are not presented as available.</p>
+
+<hr />
 <h2 id="chat-workspace">Chat workspace</h2>
 <p>The full chat window uses the entire conversation area, groups and searches history by project, and keeps the selected conversation attached to its composer. Replies use safe native Markdown styling for headings, lists, nested steps, quotations, tables, code, links, task markers, and multilingual text without a second model call. Long conversations support the mouse wheel, browser-style middle-button autoscroll, and a wider draggable scrollbar.</p>
 <p>OpenWand can scan local ChatGPT/Codex and Claude conversation files and present the conversations inside a full-width picker instead of a filesystem chooser. You choose the conversations before anything is added, and optional automatic sync remains local to the files already on your computer.</p>
-<p>The optional <strong>Formatted Replies</strong> add-on can restyle an individual reply or every reply. The original remains available, the exact chat model stays beside the composer, and the formatting model appears in the format-button tooltip before a formatting call. OpenWand rejects or repairs output that drops visible source content. The built-in renderer remains available when no formatting model is desired.</p>
+<p>The optional <strong>Formatted Replies (Experimental)</strong> add-on can restyle an individual reply or every reply. The original remains available, the exact chat model stays beside the composer, and the formatting model appears in the format-button tooltip before a formatting call. OpenWand rejects or repairs output that drops visible source content. The built-in renderer remains available when no formatting model is desired.</p>
 
 <hr />
 <h2 id="design-goals">Design goals</h2>
