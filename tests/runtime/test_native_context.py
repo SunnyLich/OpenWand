@@ -728,7 +728,12 @@ def test_windows_uia_browser_fallback_focuses_pastes_verifies_and_restores(monke
         lambda combo: state.update(document="A two words sentence.") if combo == "ctrl+v" else None,
     )
 
-    result = native_host._win_uia_apply_selected_text(41, "two words", restore_clipboard=True)
+    result = native_host._win_uia_apply_selected_text(
+        41,
+        "two words",
+        paste_combo="ctrl+v",
+        restore_clipboard=True,
+    )
 
     assert result["ok"] is True, result
     assert result["method"] == "win-uia-foreground-paste"
