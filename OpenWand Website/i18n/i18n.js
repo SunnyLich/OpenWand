@@ -90,7 +90,9 @@ function applyContentI18n() {
     const key = _norm(el.textContent);
     if (!key) return;
     const val = d.tr[key];
-    if (val == null) return;
+    // A no-op translation must not replace the authored element markup.
+    // For example, "OpenWand" inside <code> would otherwise become plain text.
+    if (val == null || val === key) return;
     // preserve a leading decorative empty element (e.g. the compare dot)
     const lead = el.firstElementChild;
     if (lead && lead.textContent.trim() === '' &&
