@@ -2450,9 +2450,6 @@ class QtProtocolHost:
                 "close_cancels": bool(getattr(bubble, "_close_cancels", False)),
             }
         if method == "ui.debug.intent.submit" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
-            from PySide6.QtCore import Qt
-            from PySide6.QtTest import QTest
-
             overlay = self._intent
             if overlay is None or not overlay.isVisible():
                 popup = next(
@@ -2474,11 +2471,12 @@ class QtProtocolHost:
             field = getattr(overlay, "_input_line", None)
             if field is not None:
                 overlay._enter_custom_mode(drop_trigger_key=False)
+                field.setPlainText(text)
+                overlay._fire_custom()
             else:
                 field = overlay._comment
-            field.setFocus()
-            QTest.keyClicks(field, text)
-            QTest.keyClick(field, Qt.Key.Key_Return)
+                field.setPlainText(text)
+                overlay._submit(False)
             return {"submitted": True, "text": text}
         if method == "ui.debug.rewrite.accept" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
             popup = next(
