@@ -257,10 +257,6 @@ def _configure_environment(root: Path, workspace: Path, script_path: Path, base_
         "MEMORY_AUTO_CONSOLIDATE": "0",
         "QT_QPA_PLATFORM": "offscreen",
         "OPENWAND_UI_DEBUG_METHODS": "1",
-        # This acceptance uses a controlled localhost endpoint and specifically
-        # verifies the live tool loop that macOS safe mode disables by default.
-        "OPENWAND_MACOS_OPENAI_COMPAT_STREAMING": "1",
-        "OPENWAND_MACOS_ENABLE_OPENAI_TOOLS": "1",
         "PYTHONPATH": python_path,
     }
     os.environ.update(values)

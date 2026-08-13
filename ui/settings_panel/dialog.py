@@ -26,6 +26,7 @@ from typing import Any
 
 from PySide6.QtCore import QMimeData, QObject, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
+    QAction,
     QColor,
     QDesktopServices,
     QDrag,
@@ -2028,15 +2029,24 @@ class SettingsDialog(QDialog):
     def _build_profiles_menu(self, parent: QWidget) -> QMenu:
         """Build profiles menu."""
         menu = QMenu(parent)
+
+        def add_action(label: str) -> QAction:
+            # Construct the action explicitly. PySide's addAction(text)
+            # convenience overload can return a stale wrapper after a prior
+            # Settings menu is destroyed and the dialog is opened again.
+            action = QAction(label, menu)
+            menu.addAction(action)
+            return action
+
         for slug, name in _PRESET_LABELS.items():
-            action = menu.addAction(t(name))
+            action = add_action(t(name))
             action.setToolTip(t(_PRESET_DESCRIPTIONS[slug]))
             action.triggered.connect(lambda _checked=False, preset=slug: self._apply_preset(preset))
         saved_profiles = self._saved_custom_profile_entries()
         if saved_profiles:
             menu.addSeparator()
             for index, profile_id, _label in saved_profiles:
-                action = menu.addAction(
+                action = add_action(
                     self._custom_profile_display_label(profile_id, _label, saved_profiles)
                 )
                 action.setToolTip(t("Load this custom profile into Settings."))
@@ -2044,14 +2054,14 @@ class SettingsDialog(QDialog):
                     lambda _checked=False, slot=index: self._apply_saved_profile(slot)
                 )
             menu.addSeparator()
-            rename_action = menu.addAction(t("Rename profile..."))
+            rename_action = add_action(t("Rename profile..."))
             rename_action.setToolTip(t("Change the display name for a saved custom profile."))
             rename_action.triggered.connect(self._rename_custom_profile)
-            delete_action = menu.addAction(t("Delete profile..."))
+            delete_action = add_action(t("Delete profile..."))
             delete_action.setToolTip(t("Delete a saved custom profile."))
             delete_action.triggered.connect(self._delete_custom_profile)
         menu.addSeparator()
-        create_action = menu.addAction(t("Create custom profile..."))
+        create_action = add_action(t("Create custom profile..."))
         create_action.setToolTip(t("Save the current model, context, and budget settings as a reusable profile."))
         create_action.triggered.connect(self._create_custom_profile)
         return menu

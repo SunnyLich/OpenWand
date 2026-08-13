@@ -6,7 +6,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 
+
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS safe mode disables OpenAI-compatible live tool loops",
+)
 def test_chat_model_delegates_real_detached_work_and_result_returns(tmp_path: Path) -> None:
     runner = Path(__file__).parent / "support" / "background_task_app_runner.py"
     completed = subprocess.run(
