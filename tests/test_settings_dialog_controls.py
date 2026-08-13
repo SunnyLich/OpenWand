@@ -5075,7 +5075,11 @@ def test_settings_search_filters_to_matching_page(monkeypatch, tmp_path):
         assert picker_calls
         assert allowed_roots.paths() == [str(chosen)]
         one_row_height = folder_list.height()
-        assert one_row_height == empty_list_height
+        # Both states remain a single compact row. Native styles may give a
+        # populated item extra vertical padding that an empty view cannot
+        # report until its first item exists.
+        assert one_row_height >= empty_list_height
+        assert one_row_height <= empty_list_height + folder_list.fontMetrics().height()
         add_folder.click()
         assert allowed_roots.paths() == [str(chosen)]
         folder_list.setCurrentRow(0)

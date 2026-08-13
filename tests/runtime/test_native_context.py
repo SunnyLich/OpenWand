@@ -530,6 +530,7 @@ def test_windows_wordpad_capture_prefers_exact_native_edit_range(monkeypatch):
         "range_context_bound": True,
     }
     monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(native_host, "IS_MAC", False)
     monkeypatch.setattr(native_host, "_focus_seq", 40)
     monkeypatch.setattr(native_host, "_focus_cache", {})
     monkeypatch.setattr(native_host, "_win_edit_control_snapshot", lambda: dict(snapshot))
@@ -602,6 +603,7 @@ def test_windows_wordpad_rich_edit_replaces_and_verifies_without_focus_or_clipbo
             return 1
 
     monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(native_host, "IS_MAC", False)
     monkeypatch.setattr(native_host, "_focus_cache", cached)
     monkeypatch.setattr(native_host, "_win_edit_control_snapshot", snapshot)
     monkeypatch.setattr(
@@ -676,6 +678,7 @@ def test_windows_uia_browser_fallback_focuses_pastes_verifies_and_restores(monke
             return state["foreground"]
 
     monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(native_host, "IS_MAC", False)
     monkeypatch.setattr(
         native_host,
         "ctypes",

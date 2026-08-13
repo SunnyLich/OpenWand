@@ -369,7 +369,15 @@ def test_calc_uno_cleanup_is_one_undo_item_and_rolls_back_verification_failure(m
     )
     monkeypatch.setattr(helper, "_desktop", lambda **_kwargs: object())
     monkeypatch.setattr(helper, "_find_document", lambda _desktop, _title: document)
-    monkeypatch.setattr(helper.ctypes.windll.user32, "GetForegroundWindow", lambda: 100)
+    monkeypatch.setattr(
+        helper,
+        "ctypes",
+        SimpleNamespace(
+            windll=SimpleNamespace(
+                user32=SimpleNamespace(GetForegroundWindow=lambda: 100),
+            )
+        ),
+    )
     fingerprint = helper._fingerprint(source.getDataArray(), source.getFormulaArray())
     change = {
         "row_offset": 1,

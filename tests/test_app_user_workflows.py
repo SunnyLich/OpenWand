@@ -4091,6 +4091,7 @@ def test_ui_accessibility_layout_and_model_popup_workflow(qapp, monkeypatch: pyt
     from PySide6.QtWidgets import QComboBox, QLineEdit, QPushButton
 
     import config
+    from core.auth import chatgpt as chatgpt_auth
     from ui.agent.task_window import AgentTaskDialog
     from ui.settings_panel.dialog import _PROVIDER_LABELS, _PROVIDER_MODELS, SettingsDialog
     from ui.shared.theme import apply_app_theme
@@ -4098,6 +4099,7 @@ def test_ui_accessibility_layout_and_model_popup_workflow(qapp, monkeypatch: pyt
     monkeypatch.setattr(config, "LLM_PROVIDER", "chatgpt", raising=False)
     monkeypatch.setattr(config, "LLM_MODEL", "gpt-5.5", raising=False)
     monkeypatch.setattr(config, "THEME_MODE", "dark", raising=False)
+    monkeypatch.setattr(chatgpt_auth, "get_tokens", lambda: {"access_token": "test-token"})
 
     apply_app_theme(qapp)
     assert "QComboBox QAbstractItemView" in qapp.styleSheet()
