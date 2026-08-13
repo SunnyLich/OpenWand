@@ -7,6 +7,7 @@ import json
 import re
 import sys
 import time
+import uuid
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -1678,7 +1679,7 @@ class VirtualWorkspaceWindow(QDialog):
         expanded: bool = False,
         status: str = "",
     ) -> None:
-        event_id = f"ui-{time.time_ns()}"
+        event_id = f"ui-{uuid.uuid4().hex}"
         stamp = datetime.now().strftime("%H:%M:%S")
         self._add_activity_item(
             event_id,
