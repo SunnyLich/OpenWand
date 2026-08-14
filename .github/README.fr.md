@@ -19,9 +19,9 @@ OpenWand vous offre une IA pilotée par raccourcis clavier qui peut lire votre s
 
 [Démarrage rapide](#démarrage-rapide) | [Fonctionnalités](#ce-que-fait-openwand) | [Démos](#démos) | [Configuration](#configuration) | [APIs gratuites](#sources-dapi-de-modèles-gratuites) | [Confidentialité](#confidentialité-et-contrôle)
 
-![Démo OpenWand Ctrl+Q](readme-assets/readme-1st-demo.gif)
+![Démo d’invite OpenWand](readme-assets/openwand-prompt-demo.gif)
 
-**Requête en superposition :** Appuyez sur un raccourci, choisissez une action, et obtenez une réponse diffusée sans quitter l'application que vous utilisez déjà.
+**Une invite depuis n’importe où :** Sélectionnez du contenu dans n’importe quelle application, invoquez OpenWand et exécutez une invite enregistrée ou personnalisée sans quitter votre travail.
 </div>
 
 ---
@@ -63,15 +63,23 @@ Sélectionnez du texte, appuyez sur le raccourci général, appuyez sur une touc
 
 ## Démos
 
-![Démo de capture d'écran OpenWand Ctrl+Alt+Q](readme-assets/readme-2nd-demo.gif)
+![Démo de contexte inter-applications OpenWand](readme-assets/openwand-context-demo.gif)
+
+**Contexte inter-applications :** Combinez la sélection active avec le contexte activé du navigateur et de l’application afin de fournir au modèle les éléments nécessaires sans copier-coller manuel.
+
+![Démo de capture d'écran OpenWand Ctrl+Alt+Q](readme-assets/openwand-screen-snip-demo.gif)
 
 **Capture visuelle :** Le flux de capture est destiné aux cas où le contexte visuel est important. `Ctrl+Alt+Q` vous permet de tracer une région, d'envoyer uniquement ce recadrage à un modèle de vision, et de garder la réponse dans la superposition au lieu de changer d'application.
 
-![Démo de réécriture contextuelle OpenWand](readme-assets/readme-3rd-demo.gif)
+![Démo de réécriture OpenWand](readme-assets/openwand-rewrite-demo.gif)
 
-**Réécriture contextuelle :** OpenWand peut rassembler un contexte d'application utile sans prendre de capture d'écran, donc le modèle sait sur quoi vous travaillez. Puis le raccourci de réécriture réécrit uniquement le texte sélectionné et vise le collage dans le champ d'origine capturé au moment du raccourci.
+**Réécriture sur place :** Réécrivez uniquement le texte sélectionné, examinez la proposition et recollez le résultat accepté dans le champ actif au moment où vous avez invoqué OpenWand.
 
-![Démo de l’équipe d’agents OpenWand](readme-assets/readme-4th-demo.gif)
+![Démo d’action adaptée à l’application OpenWand](readme-assets/openwand-app-aware-action-demo.gif)
+
+**Action adaptée à l’application :** Utilisez le contexte ciblé de l’application pour analyser le travail en cours ou agir dessus, avec un résultat clair et une confirmation lorsqu’aucune cellule n’a été modifiée.
+
+![Démo de l’équipe d’agents OpenWand](readme-assets/openwand-agent-task-demo.gif)
 
 **Équipe d’agents :** Déléguez un travail plus long aux rôles de coordinateur, constructeur et réviseur. L’équipe peut inspecter les fichiers du projet, effectuer une modification ciblée, lancer des vérifications et laisser un rapport final et des artefacts vérifiables pendant que vous continuez à utiliser OpenWand.
 
@@ -266,6 +274,10 @@ OpenWand est conçu comme un assistant de bureau local. **Le stockage reste sur 
 Les vérifications de configuration axées sur la confidentialité et les avertissements restent activés, y compris l’état de l’expurgation avant l’envoi de contexte sensible. Dans **Paramètres → Application → Mode de confidentialité**, choisissez l'un des trois modes mutuellement exclusifs : **Désactivé**, **Intégré** (par défaut) ou **Avancé**. Le mode intégré utilise des règles locales pour détecter les identifiants, les jetons, les données de paiement et d'autres secrets structurés. Le mode avancé conserve ces règles et ajoute le modèle facultatif [OpenAI Privacy Filter](https://openai.com/index/introducing-openai-privacy-filter/), exécuté entièrement sur votre ordinateur pour détecter en fonction du contexte les noms, adresses, adresses e-mail, numéros de téléphone, URL et dates privées, numéros de compte et secrets.
 
 Le modèle avancé représente un téléchargement facultatif d'environ 2,8 Go, auquel s'ajoute son environnement d'exécution local dédié. OpenWand le charge en mémoire et le préchauffe en arrière-plan au démarrage ou après l'activation du mode avancé. Le préchauffage peut prendre plusieurs dizaines de secondes sur un processeur. Si vous envoyez une requête avant la fin, elle attend ; les analyses suivantes réutilisent le modèle chargé et sont plus rapides. OpenWand remplace les passages détectés par des espaces réservés stables comme `[PERSON_1]`, peut afficher une vérification avant l'envoi, puis contrôle à nouveau le texte expurgé. Si le modèle avancé est indisponible, si la détection échoue ou s'il reste du texte sensible, OpenWand bloque l'envoi vers le cloud.
+
+### Protection contre l’injection de prompt
+
+OpenWand vérifie aussi le texte capturé pour repérer de simples tentatives de remplacer les instructions du modèle. Dans les Paramètres, vous pouvez activer la détection et choisir si OpenWand vous avertit avant l’envoi afin de continuer ou d’annuler.
 
 Le filtrage de confidentialité réduit les divulgations accidentelles ; il ne garantit ni l'anonymisation ni la conformité réglementaire.
 

@@ -112,6 +112,24 @@ WORKSPACE_OPERATION_SOURCES = {
     "{actor} removed {path}",
     "{actor} updated file {path}",
 }
+PROMPT_INJECTION_SOURCES = {
+    "Detect possible prompt injections in captured text",
+    "Prompt injection detection",
+    "Checks captured app, document, selection, and clipboard text for simple attempts to "
+    "override model instructions. It looks for words such as Ignore or Override followed "
+    "by an instruction-like word within the next five words. Your typed prompt is not scanned.",
+    "Warn me before sending when a possible injection is found",
+    "Injection warning",
+    "Pause before the model request and show the matching captured text. You can continue "
+    "with the request or cancel it. Turn this off to detect silently.",
+    "Possible prompt injection detected",
+    "OpenWand found {count} possible prompt-injection phrase(s) in captured text.",
+    "Captured content may be trying to give instructions to the model. Review the matches, "
+    "then continue or cancel the request.",
+    "No match details available.",
+    "Captured text being sent with your request:",
+    "Continue with request",
+}
 
 # These are characteristic artifacts of UTF-8 text decoded as a single-byte
 # encoding.  The narrower patterns avoid flagging legitimate accented text.
@@ -247,6 +265,47 @@ def test_qt_catalogs_translate_workspace_operation_messages() -> None:
             assert translation != source, (language, source)
             for placeholder in re.findall(r"\{[^}]+\}", source):
                 assert placeholder in translation, (language, source, placeholder)
+
+
+def test_prompt_injection_ui_and_docs_are_translated() -> None:
+    """The protection never falls back to English in a supported locale."""
+    for language in LANGUAGES:
+        translations = {
+            source: translation
+            for source, translation, unfinished in _catalog_messages(language)
+            if source in PROMPT_INJECTION_SOURCES and not unfinished
+        }
+        assert set(translations) == PROMPT_INJECTION_SOURCES, language
+        assert all(translation != source for source, translation in translations.items())
+        assert "{count}" in translations[
+            "OpenWand found {count} possible prompt-injection phrase(s) in captured text."
+        ]
+
+    docs_root = ROOT / "OpenWand Website"
+    heading = "Prompt injection protection"
+    body = (
+        "This checks captured text for simple attempts to override the model's instructions. "
+        "You can enable detection and choose whether OpenWand warns before sending, so you can "
+        "continue or cancel."
+    )
+    docs_source = (docs_root / "docs-pages.js").read_text(encoding="utf-8")
+    assert heading in docs_source
+    assert body in docs_source
+    for filename in ("es-extra.js", "fr-extra.js", "zh-Hans-extra.js", "zh-Hant-extra.js"):
+        catalog = (docs_root / "i18n" / filename).read_text(encoding="utf-8")
+        assert f'"{heading}"' in catalog, filename
+        assert f'"{body}"' in catalog, filename
+
+    readme_headings = {
+        "README.md": "Prompt Injection Protection",
+        "README.es.md": "Protección contra inyecciones de prompt",
+        "README.fr.md": "Protection contre l’injection de prompt",
+        "README.zh-CN.md": "提示注入防护",
+        "README.zh-TW.md": "提示注入防護",
+    }
+    for filename, translated_heading in readme_headings.items():
+        readme = (ROOT / ".github" / filename).read_text(encoding="utf-8")
+        assert f"### {translated_heading}" in readme, filename
 
 
 def test_workspace_windows_do_not_bypass_translation_calls() -> None:

@@ -1711,6 +1711,52 @@ def _screen_size() -> dict[str, int]:
     return {"width": 0, "height": 0}
 
 
+def _browser_page_payload(window: Any, content: str = "") -> dict[str, Any]:
+    """Serialize one top-level browser window as an independent context source."""
+    hwnd = int(getattr(window, "hwnd", 0) or 0)
+    app = str(getattr(window, "process_name", "") or "").strip()
+    source_key = str(hwnd) if hwnd else app.casefold()
+    return {
+        "id": f"browser:{source_key}",
+        "title": str(getattr(window, "title", "") or "").strip(),
+        "process_name": app,
+        "pid": int(getattr(window, "pid", 0) or 0),
+        "hwnd": hwnd,
+        "url": str(getattr(window, "url", "") or "").strip(),
+        "app": app,
+        "content": str(content or ""),
+    }
+
+
+def _apply_primary_browser_page(snapshot: dict[str, Any], pages: list[dict[str, Any]]) -> None:
+    """Keep legacy singular browser fields mapped to the first captured page."""
+    snapshot["browser_pages"] = pages
+    if not pages:
+        return
+    primary = pages[0]
+    snapshot["browser_url"] = str(primary.get("url") or "")
+    snapshot["browser_hwnd"] = int(primary.get("hwnd") or 0)
+    snapshot["browser_app"] = str(primary.get("app") or primary.get("process_name") or "")
+    snapshot["browser_content"] = str(primary.get("content") or "")
+    snapshot["debug"]["browser_window"] = {
+        "title": primary.get("title") or "",
+        "process_name": primary.get("process_name") or "",
+        "pid": primary.get("pid") or 0,
+        "hwnd": primary.get("hwnd") or 0,
+        "url": primary.get("url") or "",
+    }
+    snapshot["debug"]["browser_windows"] = [
+        {
+            "title": page.get("title") or "",
+            "process_name": page.get("process_name") or "",
+            "pid": page.get("pid") or 0,
+            "hwnd": page.get("hwnd") or 0,
+            "url": page.get("url") or "",
+        }
+        for page in pages
+    ]
+
+
 def context_snapshot(
     include_clipboard: bool = True,
     include_selection: bool = True,
@@ -1740,6 +1786,7 @@ def context_snapshot(
         "browser_hwnd": 0,
         "browser_app": "",
         "browser_content": "",
+        "browser_pages": [],
         "screen_size": _screen_size(),
         "focus_token": 0,
         "captured_at": time.time(),
@@ -1907,100 +1954,39 @@ def context_snapshot(
         _s = time.monotonic()
         snapshot["selected_paths"] = selected_paths()
         path_dt = time.monotonic() - _s
-    if include_browser_content:
+    if include_browser_content or include_browser_url:
         _s = time.monotonic()
         try:
-            from core.context_fetcher import WindowInfo, _browser_content, get_browser_window_for_context
+            from core.context_fetcher import (
+                _BROWSER_PROCS,
+                WindowInfo,
+                _browser_content,
+                get_browser_windows_for_context,
+            )
 
             if not IS_WIN and not IS_MAC and os.environ.get("WAYLAND_DISPLAY"):
-                browser_window = WindowInfo(
-                    title=str(active.get("name") or ""),
-                    process_name=str(active.get("process_name") or ""),
-                    pid=int(active.get("pid") or 0),
-                    url=str(active.get("browser_url") or ""),
-                )
+                active_process = str(active.get("process_name") or "").strip()
+                browser_windows = []
+                if active_process.lower() in _BROWSER_PROCS or active.get("browser_url"):
+                    browser_windows.append(
+                        WindowInfo(
+                            title=str(active.get("name") or ""),
+                            process_name=active_process,
+                            pid=int(active.get("pid") or 0),
+                            url=str(active.get("browser_url") or ""),
+                        )
+                    )
             else:
-                active_hwnd = int(active.get("window_id") or 0) if IS_WIN else 0
-                browser_window = get_browser_window_for_context(active_hwnd)
-            snapshot["browser_url"] = getattr(browser_window, "url", "") or ""
-            snapshot["browser_hwnd"] = int(getattr(browser_window, "hwnd", 0) or 0)
-            snapshot["browser_content"] = _browser_content(browser_window) if browser_window.hwnd or browser_window.url else ""
-            snapshot["debug"]["browser_window"] = {
-                "title": getattr(browser_window, "title", ""),
-                "process_name": getattr(browser_window, "process_name", ""),
-                "pid": getattr(browser_window, "pid", 0),
-                "hwnd": getattr(browser_window, "hwnd", 0),
-                "url": getattr(browser_window, "url", ""),
-            }
+                active_hwnd = int(active.get("window_id") or 0) if not IS_MAC else 0
+                browser_windows = get_browser_windows_for_context(active_hwnd)
+            pages: list[dict[str, Any]] = []
+            for browser_window in browser_windows:
+                content = ""
+                if include_browser_content and (browser_window.hwnd or browser_window.url or browser_window.process_name):
+                    content = _browser_content(browser_window)
+                pages.append(_browser_page_payload(browser_window, content))
+            _apply_primary_browser_page(snapshot, pages)
         except Exception as exc:  # noqa: BLE001 - browser context should not block answering
-            snapshot["browser_error"] = f"{type(exc).__name__}: {exc}"
-        br_dt = time.monotonic() - _s
-    elif include_browser_url:
-        # Cheap URL grab while the browser is still foreground (hotkey time). Each
-        # OS captures what it can defer cheaply; the page text is read later.
-        _s = time.monotonic()
-        try:
-            if IS_WIN:
-                # Windows: grab the URL + window handle now; the page text is
-                # fetched later by handle (UIA needs no focus, so the picker
-                # stealing focus does not matter).
-                from core.context_fetcher import get_browser_window_for_context
-
-                active_hwnd = int(active.get("window_id") or 0)
-                win = get_browser_window_for_context(active_hwnd)
-                snapshot["debug"]["browser_window"] = {
-                    "title": getattr(win, "title", ""),
-                    "process_name": getattr(win, "process_name", ""),
-                    "pid": getattr(win, "pid", 0),
-                    "hwnd": getattr(win, "hwnd", 0),
-                    "url": getattr(win, "url", ""),
-                }
-                if win.url:
-                    snapshot["browser_url"] = win.url
-                if win.hwnd:
-                    snapshot["browser_hwnd"] = int(win.hwnd or 0)
-            elif IS_MAC:
-                # macOS: Browser/Web is independent from the active app/document.
-                # Ask visible browser apps for their own front tab so a document
-                # foreground can still provide browser context.
-                from core.context_fetcher import get_browser_window_for_context
-
-                win = get_browser_window_for_context(0)
-                snapshot["browser_app"] = getattr(win, "process_name", "") or ""
-                snapshot["browser_url"] = getattr(win, "url", "") or ""
-                snapshot["debug"]["browser_window"] = {
-                    "title": getattr(win, "title", ""),
-                    "process_name": getattr(win, "process_name", ""),
-                    "pid": getattr(win, "pid", 0),
-                    "hwnd": getattr(win, "hwnd", 0),
-                    "url": getattr(win, "url", ""),
-                }
-            else:
-                if os.environ.get("WAYLAND_DISPLAY"):
-                    snapshot["browser_url"] = str(active.get("browser_url") or "")
-                    snapshot["browser_app"] = str(active.get("process_name") or "")
-                else:
-                    # Linux/X11: keep the hotkey-time browser window id.
-                    from core.context_fetcher import _BROWSER_PROCS, get_browser_window_for_context
-
-                    active_hwnd = int(active.get("window_id") or 0)
-                    win = get_browser_window_for_context(active_hwnd)
-                    snapshot["debug"]["browser_window"] = {
-                        "title": getattr(win, "title", ""),
-                        "process_name": getattr(win, "process_name", ""),
-                        "pid": getattr(win, "pid", 0),
-                        "hwnd": getattr(win, "hwnd", 0),
-                        "url": getattr(win, "url", ""),
-                    }
-                    if getattr(win, "url", ""):
-                        snapshot["browser_url"] = getattr(win, "url", "")
-                    active_process = str(active.get("process_name") or "").strip().lower()
-                    browser_hwnd = int(getattr(win, "hwnd", 0) or 0)
-                    if not browser_hwnd and active_hwnd and active_process in _BROWSER_PROCS:
-                        browser_hwnd = active_hwnd
-                    if browser_hwnd:
-                        snapshot["browser_hwnd"] = browser_hwnd
-        except Exception as exc:  # noqa: BLE001 - browser context should not block the picker
             snapshot["browser_error"] = f"{type(exc).__name__}: {exc}"
         br_dt = time.monotonic() - _s
     print(
@@ -3182,6 +3168,18 @@ def selection_anchor_resolve(
             source_window_id=viewport_hwnd,
         )
         if rect:
+            # Rectangles from text providers do not all mean the same thing.
+            # UIA/app-native rectangles cover the final selected text run, so
+            # its endpoint is the trailing edge. Native Edit/caret/mouse
+            # rectangles are already positioned at the endpoint. Preserve an
+            # explicit point so the UI never infers the wrong one from width.
+            rect = dict(rect)
+            if source in {"native-edit", "os-caret", "mouse"}:
+                endpoint_x = float(rect["left"])
+            else:
+                endpoint_x = float(rect["left"]) + float(rect["width"])
+            rect["endpoint_x"] = endpoint_x
+            rect["endpoint_y"] = float(rect["top"]) + float(rect["height"]) / 2.0
             # Initial resolution is useful diagnostic context. Refreshes are
             # intentionally quiet: a visible popup polls frequently and the UI
             # worker emits one aggregate anchor summary when that popup closes.
@@ -3492,27 +3490,31 @@ def _win_edit_apply_selected_text(token: int, text: str) -> dict[str, Any]:
     identity_fields = ("root_hwnd", "target_pid", "class_name")
     if any(before.get(field) != state.get(field) for field in identity_fields):
         return {"ok": False, "method": method, "error": "the WordPad text control changed", "stale": True}
-    freshness_fields = (
-        "document_text",
-        "selection_start",
-        "selection_end",
-        "selected_text",
-    )
-    if any(before.get(field) != state.get(field) for field in freshness_fields):
+    if before.get("document_text") != state.get("document_text"):
         return {
             "ok": False,
             "method": method,
-            "error": "the WordPad text or selection changed before Rewrite was accepted",
+            "error": "the WordPad text changed before Rewrite was accepted",
             "stale": True,
         }
-    original_document = str(before.get("document_text") or "")
+    original_document = str(state.get("document_text") or "")
+    selection_start = int(state.get("selection_start") or 0)
+    selection_end = int(state.get("selection_end") or 0)
+    selected = str(state.get("selected_text") or "")
+    if _win_utf16_slice(original_document, selection_start, selection_end) != selected:
+        return {
+            "ok": False,
+            "method": method,
+            "error": "the captured WordPad text range is no longer valid",
+            "stale": True,
+        }
     normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
     if "\r\n" in original_document:
         normalized = normalized.replace("\n", "\r\n")
     expected = (
-        f"{before.get('document_prefix') or ''}"
+        f"{state.get('document_prefix') or ''}"
         f"{normalized}"
-        f"{before.get('document_suffix') or ''}"
+        f"{state.get('document_suffix') or ''}"
     )
     foreground_before = int(ctypes.windll.user32.GetForegroundWindow() or 0)
     try:
@@ -3520,8 +3522,8 @@ def _win_edit_apply_selected_text(token: int, text: str) -> dict[str, Any]:
         user32.SendMessageW(
             input_hwnd,
             _EM_SETSEL,
-            int(before["selection_start"]),
-            int(before["selection_end"]),
+            selection_start,
+            selection_end,
         )
         user32.SendMessageW(input_hwnd, _EM_REPLACESEL, 1, ctypes.c_wchar_p(normalized))
         after = _win_edit_control_snapshot(input_hwnd, require_selection=False)

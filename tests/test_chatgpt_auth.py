@@ -120,6 +120,8 @@ def test_validate_login_checks_authenticated_catalog_without_model_call(monkeypa
         seen["url"] = request.full_url
         seen["authorization"] = request.get_header("Authorization")
         seen["account"] = request.get_header("Chatgpt-account-id")
+        seen["originator"] = request.get_header("Originator")
+        seen["user_agent"] = request.get_header("User-agent")
         seen["timeout"] = timeout
         return Response()
 
@@ -129,11 +131,21 @@ def test_validate_login_checks_authenticated_catalog_without_model_call(monkeypa
     monkeypatch.setattr(urllib.request, "urlopen", open_request)
 
     assert chatgpt_auth.validate_login(timeout_seconds=3) == (True, "acct-123")
-    assert "/backend-api/codex/models?client_version=" in str(seen["url"])
+    assert "/backend-api/codex/models?client_version=0.11.0" in str(seen["url"])
     assert seen["authorization"] == "Bearer live-access"
     assert seen["account"] == "acct-123"
+    assert seen["originator"] == "codex_cli_rs"
+    assert seen["user_agent"] == "OpenWand/0.11.0"
     assert seen["timeout"] == 3
     assert seen["read_size"] == 1
+
+
+@pytest.mark.parametrize(
+    ("version", "expected"),
+    [("0.11", "0.11.0"), ("1", "1.0.0"), ("1.2.3", "1.2.3")],
+)
+def test_codex_client_version_is_three_part(version, expected):
+    assert chatgpt_auth._codex_client_version(version) == expected
 
 
 def test_validate_login_rejects_saved_chatgpt_token_after_remote_401(monkeypatch):

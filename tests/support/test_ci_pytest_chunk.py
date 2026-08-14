@@ -99,6 +99,27 @@ def test_per_file_inactivity_timeout_stops_the_process_tree(
     assert status == run_ci_pytest_chunk._FILE_TIMEOUT_EXIT_CODE
 
 
+def test_per_file_runner_removes_basetemp_after_success(tmp_path: Path, monkeypatch) -> None:
+    """The parent runner owns cleanup even if pytest teardown cannot do it."""
+
+    test_file = tmp_path / "tests" / "test_example.py"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text("def test_example(): pass\n", encoding="utf-8")
+    created: list[Path] = []
+
+    def fake_run_file(_root, _path, basetemp, _timeout):
+        basetemp.mkdir(parents=True)
+        (basetemp / "leftover.txt").write_text("temporary", encoding="utf-8")
+        created.append(basetemp)
+        return 0
+
+    monkeypatch.setattr(run_ci_pytest_chunk, "_run_file", fake_run_file)
+
+    assert run_ci_pytest_chunk._run_per_file(tmp_path, [test_file], 1) == 0
+    assert created
+    assert not created[0].exists()
+
+
 def test_per_file_inactivity_timeout_resets_when_output_arrives(
     tmp_path: Path,
     monkeypatch,

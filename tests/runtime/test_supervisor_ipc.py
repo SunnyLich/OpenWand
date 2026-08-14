@@ -8,6 +8,7 @@ import io
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -1048,7 +1049,9 @@ def test_real_bubble_stop_click_cancels_real_brain_query_over_ipc(tmp_path, monk
         def on_event(self, event, handler):
             self.events.setdefault(event, []).append(handler)
 
+    test_data_root = tmp_path / "data"
     shared_env = {
+        "OPENWAND_DATA_ROOT": str(test_data_root),
         "OPENWAND_RUN_LOG_DIR": str(tmp_path / "logs"),
         "OPENWAND_BRAIN_FAKE_LLM_DELAY": "0.02",
     }
@@ -1130,6 +1133,7 @@ def test_real_bubble_stop_click_cancels_real_brain_query_over_ipc(tmp_path, monk
         query_thread.join(timeout=1)
         ui.shutdown()
         brain.shutdown()
+        shutil.rmtree(test_data_root, ignore_errors=True)
 
 
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 not installed")

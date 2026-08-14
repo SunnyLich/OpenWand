@@ -88,15 +88,22 @@ class BuiltContext:
     privacy_report: dict = field(default_factory=dict)
 
 
-def _context_sources(ambient_text: str, all_contexts: list[str], active_document_text: str) -> set[str]:
+def _context_sources(
+    ambient_text: str,
+    context_blocks: list[str],
+    selected_block: str,
+    active_document_text: str,
+) -> set[str]:
     """Handle context sources for query pipeline."""
     sources: set[str] = set()
     if "[Browser/Web]" in (ambient_text or ""):
         sources.add("Browser/Web")
     elif ambient_text:
         sources.add("Ambient context")
-    if all_contexts:
+    if context_blocks:
         sources.add("User-provided context")
+    if selected_block:
+        sources.add("Selection")
     if active_document_text:
         sources.add("Active document")
     return sources
@@ -107,6 +114,13 @@ def _context_priority_note(priority_context: str, sources: set[str]) -> str:
     priority = (priority_context or "").strip()
     if priority not in sources or len(sources) < 2:
         return ""
+    if priority == "Selection":
+        return (
+            "[Context priority]\nGive the Selection the greatest weight as the primary "
+            "task context. Treat every other attached source as supporting background: "
+            "use it to clarify the Selection, but do not let it replace or override the "
+            "Selection unless the user's request explicitly asks you to."
+        )
     return (
         f"[Context priority]\nPrioritize {priority} because it was the active "
         "or last-used context when this request was captured. Use the other "
@@ -247,7 +261,12 @@ def build_context(
     reports.extend([selected_report, ambient_report, document_report])
 
     all_contexts = context_blocks + ([selected_block] if selected_block else [])
-    sources = _context_sources(ambient_text, all_contexts, active_document_text)
+    sources = _context_sources(
+        ambient_text,
+        context_blocks,
+        selected_block,
+        active_document_text,
+    )
 
     ctx_block = "\n\n".join(all_contexts)
     active_doc_block = ""

@@ -33,11 +33,11 @@ from ui.settings_panel import env as settings_env
 from ui.shared.window_utils import enable_standard_window_controls, fit_window_to_screen
 
 _PROVIDER_DEFAULTS: dict[str, str] = {
-    "groq": "llama-3.3-70b-versatile",
+    "groq": "openai/gpt-oss-120b",
     "openai": "gpt-5.5",
     "anthropic": "claude-sonnet-4-6",
     "google": "gemini-3.5-flash",
-    "deepseek": "deepseek-chat",
+    "deepseek": "deepseek-v4-flash",
     "openrouter": "openai/gpt-5.5",
     "mistral": "mistral-large-latest",
     "xai": "grok-4.3",

@@ -4,7 +4,7 @@ const AGENT_TEAM_I18N_20260722 = {
   es: {
     label: 'Equipo de agentes',
     sub: 'Un equipo en segundo plano y de alcance limitado para trabajos más grandes y de varios pasos.',
-    demosSub: 'Ejecuciones reales de OpenWand capturando contexto, reescribiendo texto y delegando trabajos más largos a un equipo de agentes.',
+    demosSub: 'Ejecuciones reales de OpenWand con prompts, contexto de aplicaciones, visión, reescrituras, acciones y tareas del Equipo de agentes.',
     tr: {
       'Agent Team': 'Equipo de agentes',
       'Click the icon any time to open a full chat window that remembers past conversations and can continue from context captured in the overlay. For bigger, multi-step jobs, launch an Agent Team that keeps working in the background while you continue using OpenWand.': 'Haz clic en el icono cuando quieras para abrir una ventana de chat completa que recuerda conversaciones anteriores y puede continuar desde el contexto capturado en la superposición. Para trabajos más grandes y de varios pasos, inicia un <a onclick="navigate(\'team-mode\')">equipo de agentes</a> que sigue trabajando en segundo plano mientras continúas usando OpenWand.',
@@ -30,7 +30,7 @@ const AGENT_TEAM_I18N_20260722 = {
   fr: {
     label: 'Équipe d’agents',
     sub: 'Une équipe en arrière-plan au périmètre défini pour les travaux plus longs et multi-étapes.',
-    demosSub: 'Des exécutions réelles de OpenWand capturant le contexte, réécrivant du texte et déléguant les travaux plus longs à une équipe d’agents.',
+    demosSub: 'Exécutions réelles de OpenWand avec invites, contexte applicatif, vision, réécriture, actions et tâches de l’Équipe d’agents.',
     tr: {
       'Agent Team': 'Équipe d’agents',
       'Click the icon any time to open a full chat window that remembers past conversations and can continue from context captured in the overlay. For bigger, multi-step jobs, launch an Agent Team that keeps working in the background while you continue using OpenWand.': 'Cliquez sur l’icône à tout moment pour ouvrir une fenêtre de chat complète qui mémorise les conversations précédentes et reprend le contexte capturé dans la superposition. Pour les travaux plus longs et multi-étapes, lancez une <a onclick="navigate(\'team-mode\')">équipe d’agents</a> qui continue à travailler en arrière-plan pendant que vous utilisez OpenWand.',
@@ -56,7 +56,7 @@ const AGENT_TEAM_I18N_20260722 = {
   'zh-Hans': {
     label: '代理团队',
     sub: '适用于大型多步骤工作的范围受限后台团队。',
-    demosSub: 'OpenWand 捕获上下文、重写文本并将较长工作委派给代理团队的真实演示。',
+    demosSub: 'OpenWand 在提示词、应用上下文、视觉、重写、操作和代理团队任务中的真实运行。',
     tr: {
       'Agent Team': '代理团队',
       'Click the icon any time to open a full chat window that remembers past conversations and can continue from context captured in the overlay. For bigger, multi-step jobs, launch an Agent Team that keeps working in the background while you continue using OpenWand.': '随时点击图标即可打开完整聊天窗口，它会记住以往对话并延续悬浮界面捕获的上下文。对于更大型的多步骤工作，可启动一个<a onclick="navigate(\'team-mode\')">代理团队</a>，让它在后台持续工作，而你可以继续使用 OpenWand。',
@@ -82,7 +82,7 @@ const AGENT_TEAM_I18N_20260722 = {
   'zh-Hant': {
     label: '代理團隊',
     sub: '適用於大型多步驟工作的範圍受限背景團隊。',
-    demosSub: 'OpenWand 擷取情境、改寫文字並將較長工作委派給代理團隊的實際示範。',
+    demosSub: 'OpenWand 在提示詞、應用程式情境、視覺、改寫、操作和代理團隊任務中的真實執行。',
     tr: {
       'Agent Team': '代理團隊',
       'Click the icon any time to open a full chat window that remembers past conversations and can continue from context captured in the overlay. For bigger, multi-step jobs, launch an Agent Team that keeps working in the background while you continue using OpenWand.': '隨時點擊圖示即可開啟完整聊天視窗，它會記住過往對話並延續覆蓋介面擷取的情境。對於更大型的多步驟工作，可啟動一個<a onclick="navigate(\'team-mode\')">代理團隊</a>，讓它在背景持續工作，而你可以繼續使用 OpenWand。',

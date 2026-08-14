@@ -11,16 +11,20 @@ import os
 import re
 import shutil
 import stat
+import subprocess
+import sys
 import time
 import warnings
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 KEEP_TEMP_ENV = "OPENWAND_KEEP_PYTEST_TEMP"
-_RETRY_DELAYS_SECONDS = (0.0, 0.05, 0.2)
+_RETRY_DELAYS_SECONDS = (0.0, 0.05, 0.2, 1.0, 2.0)
 _OWNED_CHILD_PATTERN = re.compile(
     r"^(?P<kind>pytest|app_workflows|app_architecture|failure_evidence|workflow)_(?P<pid>\d+)(?:_|$)"
 )
+_OWNED_ROOT_PATTERN = re.compile(r"^\.pytest-tmp-pytest_(?P<pid>\d+)(?:_|$)")
 
 
 def _is_truthy(value: str | None) -> bool:
@@ -57,7 +61,35 @@ def _owned_basetemp(config: object) -> Path | None:
     return None
 
 
-def _remove_tree_with_retries(path: Path) -> None:
+def remove_owned_basetemp(
+    root: Path,
+    target: Path | str,
+    *,
+    defer_until_process_exit: bool = False,
+) -> bool:
+    """Remove one repository-owned pytest basetemp and nothing broader."""
+
+    if _is_truthy(os.environ.get(KEEP_TEMP_ENV)):
+        return False
+
+    config = SimpleNamespace(
+        rootpath=Path(root),
+        option=SimpleNamespace(basetemp=target),
+    )
+    owned = _owned_basetemp(config)
+    if owned is None:
+        return False
+
+    removed = _remove_tree_with_retries(
+        owned,
+        warn=not defer_until_process_exit,
+    )
+    if not removed and defer_until_process_exit:
+        _schedule_deferred_removal(Path(root).resolve(), owned)
+    return removed
+
+
+def _remove_tree_with_retries(path: Path, *, warn: bool = True) -> bool:
     """Remove a temporary tree, retrying briefly for released Windows handles."""
 
     deletion_path = path
@@ -83,20 +115,78 @@ def _remove_tree_with_retries(path: Path) -> None:
             time.sleep(delay)
         try:
             shutil.rmtree(deletion_path, onexc=handle_error)
-            return
+            return True
         except FileNotFoundError as exc:
             if not path.exists():
-                return
+                return True
             last_error = exc
         except OSError as exc:
             last_error = exc
 
-    if last_error is not None:
+    if last_error is not None and warn:
         warnings.warn(
             f"Could not remove pytest temporary directory {path}: {last_error}",
             RuntimeWarning,
             stacklevel=2,
         )
+    return not path.exists()
+
+
+def _schedule_deferred_removal(root: Path, target: Path) -> None:
+    """Launch a quiet reaper for handles released only during interpreter exit."""
+
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--reap",
+        str(root),
+        str(target),
+        str(os.getpid()),
+    ]
+    kwargs: dict[str, object] = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = (
+            subprocess.CREATE_NEW_PROCESS_GROUP
+            | subprocess.DETACHED_PROCESS
+            | subprocess.CREATE_NO_WINDOW
+        )
+    else:
+        kwargs["start_new_session"] = True
+    try:
+        subprocess.Popen(command, **kwargs)
+    except OSError as exc:
+        warnings.warn(
+            f"Could not schedule deferred pytest cleanup for {target}: {exc}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+
+def _reap_after_process_exit(root: Path, target: Path, owner_pid: int) -> int:
+    """Wait for one runner to exit, then remove its validated basetemp."""
+
+    config = SimpleNamespace(
+        rootpath=root,
+        option=SimpleNamespace(basetemp=target),
+    )
+    owned = _owned_basetemp(config)
+    if owned is None:
+        return 2
+
+    while _process_is_running(owner_pid):
+        time.sleep(0.1)
+
+    deadline = time.monotonic() + 60.0
+    while owned.exists() and time.monotonic() < deadline:
+        if _remove_tree_with_retries(owned, warn=False):
+            break
+        time.sleep(0.5)
+    return 0 if not owned.exists() else 1
 
 
 def _process_is_running(pid: int) -> bool:
@@ -157,45 +247,60 @@ def cleanup_stale_owned_basetemps(root: Path, *, runner_pid: int | None = None) 
 
     if _is_truthy(os.environ.get(KEEP_TEMP_ENV)):
         return []
-    temp_root = (Path(root).resolve() / ".tmp_pytest").resolve()
-    if not temp_root.is_dir():
-        return []
+    root = Path(root).resolve()
+    temp_root = (root / ".tmp_pytest").resolve()
 
     removed: list[Path] = []
-    for child in list(temp_root.iterdir()):
+    if temp_root.is_dir():
+        for child in list(temp_root.iterdir()):
+            if not child.is_dir():
+                continue
+            match = _OWNED_CHILD_PATTERN.match(child.name)
+            if match is None:
+                continue
+            owner_pid = int(match.group("pid"))
+            is_runner_phase = match.group("kind") != "pytest"
+            owned_by_finished_runner = bool(
+                is_runner_phase and runner_pid is not None and owner_pid == runner_pid
+            )
+            if not owned_by_finished_runner and _process_is_running(owner_pid):
+                continue
+            _remove_tree_with_retries(child)
+            if not child.exists():
+                removed.append(child)
+        try:
+            temp_root.rmdir()
+        except OSError:
+            pass
+
+    for child in list(root.iterdir()):
         if not child.is_dir():
             continue
-        match = _OWNED_CHILD_PATTERN.match(child.name)
-        if match is None:
-            continue
-        owner_pid = int(match.group("pid"))
-        is_runner_phase = match.group("kind") != "pytest"
-        owned_by_finished_runner = bool(
-            is_runner_phase and runner_pid is not None and owner_pid == runner_pid
-        )
-        if not owned_by_finished_runner and _process_is_running(owner_pid):
+        match = _OWNED_ROOT_PATTERN.match(child.name)
+        if match is None or _process_is_running(int(match.group("pid"))):
             continue
         _remove_tree_with_retries(child)
         if not child.exists():
             removed.append(child)
-    try:
-        temp_root.rmdir()
-    except OSError:
-        pass
     return removed
 
 
 def pytest_configure(config: object) -> None:
-    """Give plain pytest runs a unique repository-owned basetemp."""
+    """Collect abandoned runs, then give plain pytest a unique basetemp."""
 
     option = getattr(config, "option", None)
-    if option is None or getattr(option, "basetemp", None):
+    rootpath = getattr(config, "rootpath", None)
+    if option is None or rootpath is None:
         return
 
-    root = Path(config.rootpath).resolve()
-    pytest_temp_root = root / ".tmp_pytest"
-    pytest_temp_root.mkdir(parents=True, exist_ok=True)
-    option.basetemp = str(pytest_temp_root / f"pytest_{os.getpid()}_{time.time_ns()}")
+    root = Path(rootpath).resolve()
+    cleanup_stale_owned_basetemps(root)
+    if getattr(option, "basetemp", None):
+        return
+
+    option.basetemp = str(
+        root / f".pytest-tmp-pytest_{os.getpid()}_{time.time_ns()}"
+    )
 
 
 def pytest_unconfigure(config: object) -> None:
@@ -214,4 +319,20 @@ def pytest_unconfigure(config: object) -> None:
     if basetemp is None:
         return
 
-    _remove_tree_with_retries(basetemp)
+    remove_owned_basetemp(
+        Path(config.rootpath),
+        basetemp,
+        defer_until_process_exit=True,
+    )
+
+
+def _main(argv: list[str]) -> int:
+    """Run the private detached-reaper entry point."""
+
+    if len(argv) != 5 or argv[1] != "--reap":
+        return 2
+    return _reap_after_process_exit(Path(argv[2]), Path(argv[3]), int(argv[4]))
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main(sys.argv))

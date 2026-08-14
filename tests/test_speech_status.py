@@ -74,6 +74,23 @@ def test_cloudflare_stt_status_requires_credentials_without_local_packages():
     assert ready["provider"] == "cloudflare"
 
 
+def test_disabled_stt_status_never_checks_a_model_or_package(monkeypatch):
+    monkeypatch.setattr(
+        optional_deps,
+        "optional_package_runtime_status",
+        lambda *_args, **_kwargs: pytest.fail("disabled STT must not inspect packages"),
+    )
+
+    status = speech_status.stt_status(_config(STT_PROVIDER="none"), verify_runtime=True)
+
+    assert status["provider"] == "none"
+    assert status["configured"] is False
+    assert status["state"] == "disabled"
+    assert status["usable"] is False
+    assert status["model"] == ""
+    assert status["summary"] == "Speech to text is disabled."
+
+
 def test_kokoro_status_rejects_missing_selected_voice_assets(monkeypatch):
     monkeypatch.setattr(
         optional_deps,

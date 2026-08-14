@@ -263,6 +263,39 @@ def test_default_icon_position_reserves_context_panel_space(monkeypatch):
         app.processEvents()
 
 
+def test_bubble_can_overlap_taskbar_reserved_area(monkeypatch):
+    """Clamp the passive bubble to full monitor bounds, not the desktop work area."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QPoint, QRect
+    from PySide6.QtWidgets import QApplication
+
+    import config
+    import ui.overlay as overlay_module
+    from ui.overlay import IconOverlay, OverlaySignals
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    monkeypatch.setattr(IconOverlay, "_pin_overlay_windows", lambda self: None)
+    monkeypatch.setattr(config, "ICON_SIZE", 60, raising=False)
+    monkeypatch.setattr(
+        overlay_module,
+        "_screen_geometry_at",
+        lambda _point: QRect(0, 0, 1920, 1080),
+    )
+    overlay = IconOverlay(OverlaySignals())
+
+    try:
+        overlay._bubble._bubble_h = 300
+        overlay._position_bubble_next_to_icon(QPoint(1800, 1000))
+
+        assert overlay._bubble.y() == 772
+        assert overlay._bubble.y() + overlay._bubble._bubble_h == 1072
+    finally:
+        overlay._bubble.clear()
+        overlay._icon_label.close()
+        overlay.close()
+        app.processEvents()
+
+
 def test_tray_menu_keeps_icon_surface_as_parent_after_rebuild(monkeypatch):
     """Keep the native Wayland popup attached to the visible icon surface."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

@@ -3769,6 +3769,8 @@ Continue?</source>
     <message><source>Final report is ready. Log:</source><translation>最終報告已就緒。記錄：</translation></message>
     <message><source>Finished. Log:</source><translation>已完成。記錄：</translation></message>
     <message><source>Installed addon:</source><translation>已安裝附加元件：</translation></message>
+    <message><source>Live conversation is disabled in Settings.</source><translation>即時對話已在設定中停用。</translation></message>
+    <message><source>Disabled does not start a live microphone session. Gemini Live uses the Google API key from Connections.</source><translation>停用後不會啟動即時麥克風工作階段。Gemini Live 使用「連線」中的 Google API 金鑰。</translation></message>
     <message><source>Live voice currently supports Gemini Live through the Google provider.</source><translation>即時語音目前透過 Google 提供者支援 Gemini Live。</translation></message>
     <message><source>Memory tokens are estimated after the prompt is known.</source><translation>將在提示詞確定後估算記憶使用的權杖數。</translation></message>
     <message><source>Message options</source><translation>訊息選項</translation></message>
@@ -6518,7 +6520,7 @@ This cannot be undone. Imported ChatGPT and Claude source files will not be dele
     <message><source>Language code for assistant replies sent to GPT-SoVITS.</source><translation>傳送至 GPT-SoVITS 的助理回覆語言代碼。</translation></message>
     <message><source>Language code for the reference audio transcript, such as en, zh, ja, ko, or yue.</source><translation>參考音訊逐字稿的語言代碼，例如 en、zh、ja、ko 或 yue。</translation></message>
     <message><source>Local GPT-SoVITS API URL. Start api_v2.py in GPT-SoVITS, then use its host and port here.</source><translation>本機 GPT-SoVITS API URL。請在 GPT-SoVITS 中啟動 api_v2.py，然後在此填入其主機與連接埠。</translation></message>
-    <message><source>Local stays on this computer. Cloudflare uploads captured speech audio to Workers AI.</source><translation>本機模式的資料保留在這台電腦上。Cloudflare 會將錄製的語音音訊上傳至 Workers AI。</translation></message>
+    <message><source>Disabled does not record or transcribe speech. Local stays on this computer. Cloudflare uploads captured speech audio to Workers AI.</source><translation>停用後不會錄音或轉寫語音。本機模式的資料保留在這台電腦上。Cloudflare 會將錄製的語音音訊上傳至 Workers AI。</translation></message>
     <message><source>Maximum words per read-aloud TTS chunk before OpenWand splits anyway.</source><translation>OpenWand 強制分段前，每個朗讀 TTS 分段的最大詞數。</translation></message>
     <message><source>Minimum words before read-aloud TTS may split at punctuation.</source><translation>朗讀 TTS 可在標點處分段前的最小詞數。</translation></message>
     <message><source>Path to a clean reference WAV on the machine running GPT-SoVITS.</source><translation>執行 GPT-SoVITS 的電腦上乾淨參考 WAV 檔案的路徑。</translation></message>
@@ -6551,5 +6553,24 @@ This cannot be undone. Imported ChatGPT and Claude source files will not be dele
     <message><source>Change model</source><translation>變更模型</translation></message>
     <message><source>Same as OpenWand chat</source><translation>與 OpenWand 聊天相同</translation></message>
     <message><source>Exact model used for this chat: {model}</source><translation>此聊天使用的確切模型：{model}</translation></message>
+    <message><source>Detect possible prompt injections in captured text</source><translation>偵測擷取文字中的潛在提示注入</translation></message>
+    <message><source>Prompt injection detection</source><translation>提示注入偵測</translation></message>
+    <message><source>Checks captured app, document, selection, and clipboard text for simple attempts to override model instructions. It looks for words such as Ignore or Override followed by an instruction-like word within the next five words. Your typed prompt is not scanned.</source><translation>檢查從應用程式、文件、選取範圍和剪貼簿擷取的文字，尋找試圖覆寫模型指令的簡單表達。它會尋找「忽略」或「覆寫」等詞，並檢查後五個詞內是否出現與指令相關的詞。不會掃描您輸入的提示詞。</translation></message>
+    <message><source>Warn me before sending when a possible injection is found</source><translation>發現潛在注入時，在傳送前提醒我</translation></message>
+    <message><source>Injection warning</source><translation>注入警告</translation></message>
+    <message><source>Pause before the model request and show the matching captured text. You can continue with the request or cancel it. Turn this off to detect silently.</source><translation>在模型請求前暫停，並顯示相符的擷取文字。您可以繼續請求或取消。關閉此選項將靜默偵測。</translation></message>
+    <message><source>Possible prompt injection detected</source><translation>偵測到潛在提示注入</translation></message>
+    <message><source>OpenWand found {count} possible prompt-injection phrase(s) in captured text.</source><translation>OpenWand 在擷取文字中發現 {count} 個潛在提示注入詞句。</translation></message>
+    <message><source>Captured content may be trying to give instructions to the model. Review the matches, then continue or cancel the request.</source><translation>擷取的內容可能正試圖向模型發出指令。請檢查相符項目，然後繼續或取消請求。</translation></message>
+    <message><source>No match details available.</source><translation>沒有可用的相符詳細資料。</translation></message>
+    <message><source>Captured text being sent with your request:</source><translation>將隨請求傳送的擷取文字：</translation></message>
+    <message><source>Continue with request</source><translation>繼續請求</translation></message>
+    <message><source>Unpin selected</source><translation>取消置頂所選對話</translation></message>
+    <message><source>Pin selected</source><translation>置頂所選對話</translation></message>
+    <message><source>Delete selected ({count})</source><translation>刪除所選對話（{count}）</translation></message>
+    <message><source>Delete these {count} conversations? This cannot be undone.</source><translation>要刪除這 {count} 個對話嗎？此操作無法復原。</translation></message>
+    <message><source>Delete conversations</source><translation>刪除對話</translation></message>
+    <message><source>Delete conversations failed</source><translation>刪除對話失敗</translation></message>
+    <message><source>OpenWand could not delete the conversation(s): {error}</source><translation>OpenWand 無法刪除對話：{error}</translation></message>
   </context>
 </TS>

@@ -781,6 +781,7 @@ def test_chat_real_project_and_conversation_options_workflow(qapp, monkeypatch, 
         assert conversations[-1]["project_id"] == "p2"
 
         menu = open_options("first")
+        assert not any(item.isSeparator() for item in menu.actions())
         action(menu, "Pin").trigger()
         assert conversations[0]["pinned"] is True
         menu = open_options("first")
@@ -809,6 +810,95 @@ def test_chat_real_project_and_conversation_options_workflow(qapp, monkeypatch, 
         action(menu, "Delete").trigger()
         assert all(conv["id"] != "first" for conv in conversations)
         assert len(persisted) == 6
+    finally:
+        window.close()
+        window.deleteLater()
+        qapp.processEvents()
+
+
+def test_chat_sidebar_supports_explorer_style_multi_selection(qapp, monkeypatch):
+    """Plain, Ctrl, and Shift clicks follow familiar desktop list selection rules."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QMenu, QMessageBox
+
+    from ui.chat_window import _TEXT, ChatWindow
+
+    conversations = [
+        {
+            "id": f"conversation-{index}",
+            "project_id": "general",
+            "messages": [{"role": "user", "content": f"Conversation {index}"}],
+        }
+        for index in range(5)
+    ]
+    window = ChatWindow(conversations, lambda _messages, **_kwargs: iter(()), active_idx=4)
+
+    def button(index):
+        return next(item for real_idx, item in window._sidebar_btns if real_idx == index)
+
+    try:
+        window.show()
+        window.activateWindow()
+        qapp.processEvents()
+
+        # The latest title is no longer assigned the orange accent colour.
+        assert _TEXT in window._btn_style(False, True)
+        assert window._btn_style(False, True) == window._btn_style(False, False)
+
+        QTest.mouseClick(button(1), Qt.MouseButton.LeftButton)
+        assert window._selected_conversation_indices == {1}
+
+        QTest.mouseClick(
+            button(3),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+        assert window._selected_conversation_indices == {1, 3}
+        assert window._active_idx == 3
+
+        # Rows are newest-first, so the visual range from 3 through 0 is 3, 2, 1, 0.
+        QTest.mouseClick(
+            button(0),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ShiftModifier,
+        )
+        assert window._selected_conversation_indices == {0, 1, 2, 3}
+
+        QTest.mouseClick(
+            button(2),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+        assert window._selected_conversation_indices == {0, 1, 3}
+
+        QTest.mouseClick(button(4), Qt.MouseButton.LeftButton)
+        assert window._selected_conversation_indices == {4}
+
+        QTest.mouseClick(
+            button(3),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+        monkeypatch.setattr(QMenu, "popup", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(
+            QMessageBox,
+            "question",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+        )
+        window._open_conversation_menu(3)
+        menu = window._conversation_menu
+        assert menu is not None
+        assert not any(item.isSeparator() for item in menu.actions())
+        delete_selected = next(
+            item for item in menu.actions() if item.text() == "Delete selected (2)"
+        )
+        delete_selected.trigger()
+        assert [conversation["id"] for conversation in conversations] == [
+            "conversation-0",
+            "conversation-1",
+            "conversation-2",
+        ]
     finally:
         window.close()
         window.deleteLater()

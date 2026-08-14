@@ -277,6 +277,81 @@ def test_tts_voice_tab_switches_to_cloudflare_stt_controls():
         tab.deleteLater()
         app.processEvents()
 
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_tts_voice_tab_can_disable_stt_without_leaving_model_controls_active():
+    """The explicit disabled provider hides every model-specific STT control."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ui.settings_panel.dialog import SettingsDialog
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    dialog = SettingsDialog.__new__(SettingsDialog)
+    dialog._fields = {}
+    tab = SettingsDialog._tab_tts(dialog)
+    tab.show()
+
+    try:
+        provider = dialog._fields["STT_PROVIDER"]
+        provider.setCurrentIndex(provider.findData("none"))
+        SettingsDialog._update_stt_provider_fields(dialog)
+        app.processEvents()
+
+        assert provider.currentText() == "None"
+        assert dialog._fields["STT_MODEL"].isHidden()
+        assert dialog._fields["STT_LANGUAGE"].isHidden()
+        assert dialog._fields["STT_BEAM_SIZE"].isHidden()
+        assert dialog._fields["STT_CLOUDFLARE_ACCOUNT_ID"].isHidden()
+        assert dialog._stt_download_btn.isHidden()
+        assert dialog._stt_active_lbl.isHidden()
+        assert dialog._stt_active_lbl.text() == ""
+
+        provider.setCurrentIndex(provider.findData("local"))
+        SettingsDialog._update_stt_provider_fields(dialog)
+        assert not dialog._stt_active_lbl.isHidden()
+        assert not dialog._stt_download_btn.isHidden()
+    finally:
+        tab.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_tts_voice_tab_can_disable_live_conversation_and_only_lists_supported_choices():
+    """Live Conversation offers Disabled/Google only and hides session controls when off."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ui.settings_panel.dialog import SettingsDialog
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    dialog = SettingsDialog.__new__(SettingsDialog)
+    dialog._fields = {}
+    tab = SettingsDialog._tab_tts(dialog)
+    tab.show()
+
+    try:
+        provider = dialog._fields["LIVE_VOICE_PROVIDER"]
+        assert [provider.itemData(index) for index in range(provider.count())] == ["none", "google"]
+
+        provider.setCurrentIndex(provider.findData("none"))
+        SettingsDialog._update_live_voice_provider_fields(dialog)
+        app.processEvents()
+
+        assert provider.currentText() == "None"
+        assert all(widget.isHidden() for widget in dialog._live_voice_enabled_widgets)
+        assert dialog._live_voice_install_btn.isHidden()
+        assert dialog._live_voice_key_note_lbl.isHidden()
+        assert dialog._live_voice_key_note_lbl.text() == ""
+
+        provider.setCurrentIndex(provider.findData("google"))
+        SettingsDialog._update_live_voice_provider_fields(dialog)
+        assert not dialog._live_voice_key_note_lbl.isHidden()
+        assert not dialog._live_voice_install_btn.isHidden()
+    finally:
+        tab.deleteLater()
+        app.processEvents()
+
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_speech_settings_group_tts_fields_and_use_compact_actions():
     """Speech settings keep volume first and present each speech mode consistently."""
@@ -1188,16 +1263,29 @@ def test_provider_model_lists_include_current_defaults():
     from ui.settings_panel.dialog import _PROVIDER_MODELS
 
     expected = {
-        "openai": {"gpt-5.5", "gpt-5.4-mini", "gpt-5.4-nano"},
-        "chatgpt": {"gpt-5.5", "gpt-5.4-mini", "gpt-5.4-nano"},
-        "google": {"gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-2.5-flash"},
-        "anthropic": {"claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"},
-        "groq": {"openai/gpt-oss-120b", "meta-llama/llama-4-scout-17b-16e-instruct"},
-        "xai": {"grok-4.3", "grok-4"},
+        "openai": {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"},
+        "chatgpt": {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"},
+        "google": {"gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"},
+        "anthropic": {"claude-fable-5", "claude-opus-5", "claude-sonnet-5"},
+        "groq": {"openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"},
+        "deepseek": {"deepseek-v4-flash", "deepseek-v4-pro"},
+        "mistral": {"mistral-medium-3-5", "mistral-small-2603"},
+        "xai": {"grok-4.5", "grok-4.3"},
+        "openrouter": {"openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna"},
+        "vercel": {"openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna"},
+        "cohere": {"command-a-plus-05-2026", "command-a-03-2025"},
+        "ai21": {"jamba-large-1.7", "jamba-mini-2"},
     }
 
     for provider, models in expected.items():
         assert models <= set(_PROVIDER_MODELS[provider])
+    assert not {
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+        "qwen/qwen3-32b",
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+    } & set(_PROVIDER_MODELS["groq"])
+    assert not {"deepseek-chat", "deepseek-reasoner"} & set(_PROVIDER_MODELS["deepseek"])
     assert _PROVIDER_MODELS["ollama"] == []
 
 
@@ -1223,12 +1311,16 @@ def test_app_tab_exposes_assistant_language_setting():
         assert "APP_LANGUAGE" in dialog._fields
         assert "ASSISTANT_LANGUAGE" in dialog._fields
         assert "PRIVACY_MODE" in dialog._fields
+        assert "PROMPT_INJECTION_PROTECTION" in dialog._fields
+        assert "PROMPT_INJECTION_WARN" in dialog._fields
         assert "START_ON_LOGIN" in dialog._fields
         labels = {label.text() for label in tab.findChildren(QLabel)}
         checkboxes = {checkbox.text() for checkbox in tab.findChildren(QCheckBox)}
         assert "App language  ⓘ" in labels
         assert "Assistant language  ⓘ" in labels
         assert "Ask me before sending when private text is found" in checkboxes
+        assert "Detect possible prompt injections in captured text" in checkboxes
+        assert "Warn me before sending when a possible injection is found" in checkboxes
         assert {
             "Secrets and credentials",
             "Contact details",
@@ -1267,10 +1359,19 @@ def test_app_tab_exposes_assistant_language_setting():
             for label in privacy_card.findChildren(QLabel)
             if label.property("privacyHelpKey")
         }
-        assert set(privacy_help) == {"mode", "review", "protected-content", "advanced-model"}
+        assert set(privacy_help) == {
+            "mode",
+            "review",
+            "prompt-injection",
+            "prompt-injection-warning",
+            "protected-content",
+            "advanced-model",
+        }
         assert privacy_help["mode"].accessibleName() == "Protection level"
         assert "Screenshots and images are not inspected" in privacy_help["mode"].toolTip()
         assert "send the original text" in privacy_help["review"].toolTip()
+        assert "within the next five words" in privacy_help["prompt-injection"].toolTip()
+        assert "detect silently" in privacy_help["prompt-injection-warning"].toolTip()
         assert "prompt, captured app or document context" in privacy_help["protected-content"].toolTip()
         assert "Screenshots and other images are not inspected" in privacy_help["protected-content"].toolTip()
         assert "about 2.8 GB plus its runtime" in privacy_help["advanced-model"].toolTip()

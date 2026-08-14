@@ -29,6 +29,20 @@ _SPREADSHEET_CLEANUP_UPGRADES = {
     "excel": ("excel.clean_range@1", "excel_plan_clean_range"),
     "libreoffice_calc": ("calc.clean_range@1", "calc_plan_clean_range"),
 }
+_LEGACY_EXPLAIN_FORMULA_COPY = (
+    "Explain the selected formula",
+    "Describe its inputs and logic, then flag likely mistakes",
+    (
+        "Explain the selected spreadsheet formula in plain language, including its inputs, logic, and output. "
+        "Flag broken references, risky assumptions, or inconsistencies with neighboring formulas. If no formula "
+        "text is available, say exactly what the user needs to select. Do not change any cells."
+    ),
+)
+_EXPLAIN_FORMULA_COPY = (
+    "Explain formula",
+    _LEGACY_EXPLAIN_FORMULA_COPY[1],
+    _LEGACY_EXPLAIN_FORMULA_COPY[2],
+)
 
 
 def _tree_signature(root: Path) -> tuple[tuple[str, int, int], ...]:
@@ -317,20 +331,45 @@ def action_runtime_route(
     return capability, planner
 
 
+def action_runtime_copy(
+    app_folder: str,
+    action_name: str,
+    label: str,
+    hint: str,
+    prompt: str,
+) -> tuple[str, str, str]:
+    """Upgrade unchanged stock wording while preserving user-authored copy."""
+    current = (label, hint, prompt)
+    if (
+        app_folder in {"excel", "libreoffice_calc"}
+        and action_name == "explain_formula"
+        and current == _LEGACY_EXPLAIN_FORMULA_COPY
+    ):
+        return _EXPLAIN_FORMULA_COPY
+    return current
+
+
 def _app_picker_context(app: AppDef) -> dict[str, Any]:
     suggestions: list[dict[str, Any]] = []
     for item in app.actions:
         action = item.action
         if not action.enabled:
             continue
+        label, hint, prompt = action_runtime_copy(
+            app.folder,
+            action.name,
+            action.label,
+            action.hint,
+            action.prompt,
+        )
         capability, planner = action_runtime_route(
             app.folder,
             action.name,
             action.capability,
             action.planner,
-            label=action.label,
-            hint=action.hint,
-            prompt=action.prompt,
+            label=label,
+            hint=hint,
+            prompt=prompt,
         )
         legacy_cleanup_upgrade = bool(capability and not action.capability)
         # Existing live trees predate the reviewed cleanup capability. Keep
@@ -339,9 +378,9 @@ def _app_picker_context(app: AppDef) -> dict[str, Any]:
         suggestions.append(
             {
                 "id": action.name,
-                "label": action.label,
-                "hint": action.hint,
-                "prompt": action.prompt,
+                "label": label,
+                "hint": hint,
+                "prompt": prompt,
                 "preferred_key": item.key,
                 "mode": "action" if capability else "file" if action.has_code else "answer",
                 "capability_type": capability,
@@ -368,6 +407,7 @@ def _app_picker_context(app: AppDef) -> dict[str, Any]:
 
 __all__ = [
     "ActionCatalogStore",
+    "action_runtime_copy",
     "action_runtime_route",
     "app_picker_context",
     "caller_row",

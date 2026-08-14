@@ -6105,6 +6105,7 @@ class QtProtocolHost:
         scrubbed_preview: str = "",
         count: int = 0,
         ai_enabled: bool = False,
+        review_kind: str = "privacy",
         **_extra: Any,
     ) -> dict[str, Any]:
         """Show one blocking, local-only review before a model request starts."""
@@ -6115,6 +6116,75 @@ class QtProtocolHost:
             QTextEdit,
             QVBoxLayout,
         )
+
+        if str(review_kind or "privacy").strip().lower() == "prompt_injection":
+            dialog = QDialog()
+            dialog.setWindowTitle(t("Possible prompt injection detected"))
+            dialog.setModal(True)
+            layout = QVBoxLayout(dialog)
+            heading = QLabel(
+                t(
+                    "OpenWand found {count} possible prompt-injection phrase(s) in captured text."
+                ).format(count=int(count or len(items or [])))
+            )
+            heading.setWordWrap(True)
+            layout.addWidget(heading)
+            explanation = QLabel(
+                t(
+                    "Captured content may be trying to give instructions to the model. "
+                    "Review the matches, then continue or cancel the request."
+                )
+            )
+            explanation.setWordWrap(True)
+            layout.addWidget(explanation)
+
+            match_lines: list[str] = []
+            for item in items or []:
+                if not isinstance(item, dict):
+                    continue
+                source = _privacy_source_label(str(item.get("source") or "Context"))
+                preview_text = str(item.get("preview") or "")
+                match_lines.append(f"{source}: {preview_text}")
+            matches = QTextEdit()
+            matches.setObjectName("promptInjectionReviewMatches")
+            matches.setReadOnly(True)
+            matches.setPlainText("\n".join(match_lines) or t("No match details available."))
+            matches.setMaximumHeight(180)
+            layout.addWidget(matches)
+
+            preview_label = QLabel(t("Captured text being sent with your request:"))
+            preview_label.setWordWrap(True)
+            layout.addWidget(preview_label)
+            preview = QTextEdit()
+            preview.setObjectName("promptInjectionReviewPreview")
+            preview.setReadOnly(True)
+            preview.setPlainText(str(scrubbed_preview or ""))
+            layout.addWidget(preview, 1)
+
+            decision = "cancel"
+
+            def _choose_injection(value: str) -> None:
+                nonlocal decision
+                decision = value
+                dialog.accept() if value == "full" else dialog.reject()
+
+            buttons = QDialogButtonBox()
+            continue_button = buttons.addButton(
+                t("Continue with request"), QDialogButtonBox.ButtonRole.AcceptRole
+            )
+            cancel_button = buttons.addButton(
+                t("Cancel send"), QDialogButtonBox.ButtonRole.RejectRole
+            )
+            continue_button.clicked.connect(lambda: _choose_injection("full"))
+            cancel_button.clicked.connect(lambda: _choose_injection("cancel"))
+            layout.addWidget(buttons)
+            dialog.resize(760, 620)
+            dialog.exec()
+            return {
+                "approval_id": approval_id,
+                "approved": decision == "full",
+                "decision": decision,
+            }
 
         dialog = QDialog()
         dialog.setWindowTitle(t("Review private information"))

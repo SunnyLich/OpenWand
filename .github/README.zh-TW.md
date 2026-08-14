@@ -19,9 +19,9 @@ OpenWand 為您提供快捷鍵驅動的 AI，能夠讀取您的選取內容、�
 
 [快速開始](#快速開始) | [功能介紹](#openwand-的功能) | [示範](#示範) | [設定](#設定) | [免費 API](#免費模型-api-來源) | [隱私](#隱私與控制)
 
-![OpenWand Ctrl+Q 示範](readme-assets/readme-1st-demo.gif)
+![OpenWand 提示詞示範](readme-assets/openwand-prompt-demo.gif)
 
-**懸浮視窗查詢：** 按下快捷鍵，選擇操作，無需離開目前應用即可獲得串流回答。
+**隨處發起提示：** 在任意應用程式中選取內容，叫出 OpenWand，然後執行已儲存或自訂的提示詞，無需離開目前工作。
 </div>
 
 ---
@@ -63,15 +63,23 @@ OpenWand 專為那些開啟聊天應用程式會打斷工作流程的時刻而�
 
 ## 示範
 
-![OpenWand Ctrl+Alt+Q 螢幕截圖示範](readme-assets/readme-2nd-demo.gif)
+![OpenWand 跨應用程式情境示範](readme-assets/openwand-context-demo.gif)
+
+**跨應用程式情境：** 將目前選取內容與已啟用的瀏覽器及應用程式情境結合，為模型提供所需材料，無需手動複製貼上。
+
+![OpenWand Ctrl+Alt+Q 螢幕截圖示範](readme-assets/openwand-screen-snip-demo.gif)
 
 **視覺截圖：** 截圖流程適用於視覺上下文重要的場景。`Ctrl+Alt+Q` 允許您繪製區域，將該截圖傳送給視覺模型，並將答案保留在懸浮視窗中而不需要切換應用程式。
 
-![OpenWand 上下文感知改寫示範](readme-assets/readme-3rd-demo.gif)
+![OpenWand 改寫示範](readme-assets/openwand-rewrite-demo.gif)
 
-**上下文感知改寫：** OpenWand 可以在不截圖的情況下收集有用的應用程式上下文，讓模型了解您正在做什麼。然後改寫快捷鍵只重寫選取的文字，並把貼回目標指向按下快捷鍵時擷取的原始欄位。
+**原位改寫：** 僅改寫選取的文字，審閱建議措辭，然後將接受的結果貼回叫出 OpenWand 時處於作用中的欄位。
 
-![OpenWand 代理團隊示範](readme-assets/readme-4th-demo.gif)
+![OpenWand 應用程式感知操作示範](readme-assets/openwand-app-aware-action-demo.gif)
+
+**應用程式感知操作：** 使用聚焦的應用程式情境分析目前工作或執行操作，並在未變更任何儲存格時提供明確結果與確認。
+
+![OpenWand 代理團隊示範](readme-assets/openwand-agent-task-demo.gif)
 
 **代理團隊：** 將較長的工作委派給協調者、建構者和審查者。團隊可以檢查專案檔案、進行有針對性的變更、執行檢查，並在你繼續使用 OpenWand 時留下最終報告和可審查的產出物。
 
@@ -266,6 +274,10 @@ OpenWand 被設計為本地桌面助手。**儲存保留在您的機器上**，�
 隱私優先的設定檢查和警告行為會保持啟用，包括在傳送敏感上下文之前顯示去識別化狀態。在**設定 → 應用程式 → 隱私模式**中選擇三個互斥模式之一：**關閉**、**內建**（預設）或**進階**。內建模式使用本機模式比對來偵測認證資訊、權杖、付款資料及其他結構化機密。進階模式會保留這些規則，並加入選用的 [OpenAI Privacy Filter](https://openai.com/index/introducing-openai-privacy-filter/)；該模型完全在您的電腦上執行，可結合上下文偵測姓名、地址、電子郵件地址、電話號碼、私人 URL 和日期、帳號及機密。
 
 進階模型為選用下載，大小約 2.8 GB，此外還會安裝其專用本機執行環境。OpenWand 啟動時或您啟用進階模式後，會在背景將模型載入記憶體並進行預熱。在 CPU 上，預熱可能需要數十秒。如果您在預熱完成前傳送請求，該請求會等待；後續掃描會重複使用已載入的模型，因此速度更快。OpenWand 會將偵測到的片段替換為 `[PERSON_1]` 等穩定預留位置，可在傳送前顯示審查畫面，並再次檢查去識別化後的文字。如果進階模型無法使用、偵測失敗或仍有敏感文字殘留，OpenWand 會阻止傳送至雲端。
+
+### 提示注入防護
+
+OpenWand 也會檢查擷取的文字，尋找試圖覆寫模型指令的簡單表達。您可以在設定中啟用偵測，並選擇是否在傳送前顯示警告，以便繼續或取消請求。
 
 隱私過濾可以降低意外洩露的風險，但不能保證匿名化或符合法規要求。
 

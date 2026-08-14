@@ -911,11 +911,30 @@ Object.assign(I18N.reg['zh-Hans'].nav.labels, {
 Object.assign(I18N.reg['zh-Hans'].meta, {
   'technical-demos': {
     title: '技术演示',
-    sub: 'OpenWand 的真实运行：捕获上下文、重写文本，并驱动更长的智能体任务。',
+    sub: 'OpenWand 在提示词、应用上下文、视觉、重写、操作和代理团队任务中的真实运行。',
   },
 });
 
 Object.assign(I18N.reg['zh-Hans'].tr, {
+  'These clips show OpenWand staying in the current app, collecting the right context, acting on focused work, and handing longer jobs to an Agent Team.':
+    '这些片段展示 OpenWand 如何停留在当前应用中、收集合适的上下文、处理聚焦的工作，并将更长的任务交给代理团队。',
+  'Prompt from anywhere': '随处发起提示',
+  'Select content in any app, invoke OpenWand, and run a saved or custom prompt without leaving what you are working on.':
+    '在任意应用中选中内容，调用 OpenWand，然后运行已保存或自定义的提示词，无需离开当前工作。',
+  'Cross-app context': '跨应用上下文',
+  'OpenWand can combine the active selection with enabled browser and app context, giving the model the material it needs without manual copy-paste.':
+    'OpenWand 可以将当前选区与已启用的浏览器和应用上下文结合，为模型提供所需材料，无需手动复制粘贴。',
+  'Rewrite in place': '原位重写',
+  'Rewrite only the selected text, review the proposed wording, and paste the accepted result back into the field that was active when you invoked OpenWand.':
+    '仅重写选中的文本，审阅建议措辞，然后将接受的结果贴回调用 OpenWand 时处于活动状态的字段。',
+  'App-aware action': '应用感知操作',
+  'Use focused application context to analyze or act on the current work, with a clear result and confirmation when no document cells were changed.':
+    '使用聚焦的应用上下文分析当前工作或执行操作，并在未更改单元格时给出明确结果和确认。',
+  'OpenWand prompt demo': 'OpenWand 提示词演示',
+  'OpenWand cross-app context demo': 'OpenWand 跨应用上下文演示',
+  'OpenWand rewrite demo': 'OpenWand 重写演示',
+  'OpenWand app-aware action demo': 'OpenWand 应用感知操作演示',
+  'OpenWand Agent Team task demo': 'OpenWand 代理团队任务演示',
   'These clips show OpenWand doing the practical work behind the docs: staying in the current app, collecting the right context, and handing longer tasks to the experimental agent framework.':
     '这些片段展示了文档背后 OpenWand 真正做事的样子：停留在当前应用中，收集合适的上下文，并把更长的任务交给实验性的智能体框架。',
   'Overlay query': '悬浮层查询',
@@ -1113,6 +1132,8 @@ Object.assign(I18N.reg['zh-Hans'].tr, {
   "Advanced mode uses the optional OpenAI Privacy Filter on your computer. Unfiltered text is not sent to a cloud service for detection. Installing it downloads about 2.8 GB plus a dedicated local runtime.": "高级模式会在您的电脑上使用可选的 <a href=\"https://openai.com/index/introducing-openai-privacy-filter/\" target=\"_blank\" rel=\"noopener\">OpenAI Privacy Filter</a>。未经筛选的文本不会发送到云服务进行检测。安装时需下载约 2.8 GB 的内容以及专用本地运行环境。",
   "OpenWand loads the advanced model into memory and warms it in the background when OpenWand starts or after you enable Advanced mode. Warm-up may take tens of seconds on a CPU. If you send a request before it finishes, that request waits; later scans reuse the loaded model and are faster.": "OpenWand 启动时或您启用高级模式后，会在后台将高级模型加载到内存并进行预热。在 CPU 上，预热可能需要数十秒。如果您在预热完成前发送请求，该请求会等待；后续扫描会复用已加载的模型，因此速度更快。",
   "OpenWand merges the AI model's findings with the built-in detector, replaces sensitive spans with stable session placeholders such as [PERSON_1], and can show a review before the request is sent. It then checks the redacted text again. If the model is unavailable, detection fails, or sensitive text remains, OpenWand blocks the cloud send.": "OpenWand 会合并 AI 模型与内置检测器的结果，将敏感片段替换为 <code>[PERSON_1]</code> 等稳定的会话占位符，并可在请求发出前显示审查界面。随后，它会再次检查脱敏文本。如果模型不可用、检测失败或仍有敏感文本残留，OpenWand 会阻止向云端发送。",
+  "Prompt injection protection": "提示注入防护",
+  "This checks captured text for simple attempts to override the model's instructions. You can enable detection and choose whether OpenWand warns before sending, so you can continue or cancel.": "此功能会检查捕获的文本，查找试图覆盖模型指令的简单表达。您可以启用检测，并选择是否在发送前显示警告，以便继续或取消请求。",
   "Know the limits": "了解限制",
   "Privacy filtering reduces accidental disclosure; it is not a guarantee of anonymization or regulatory compliance. Review high-sensitivity content before sending it to any provider.": "隐私过滤可以降低意外泄露的风险，但不能保证匿名化或符合监管要求。向任何提供商发送高度敏感的内容之前，请务必进行审查。",
 });

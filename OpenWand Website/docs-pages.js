@@ -54,24 +54,34 @@ const DOCS_PAGES = {
 
 'technical-demos': {
   title: 'Technical Demos',
-  sub: 'Real runs of OpenWand capturing context, rewriting text, and delegating longer jobs to an Agent Team.',
-  toc: ['overlay-query','vision-snip','rewrite-flow','agent-team'],
+  sub: 'Real OpenWand runs across prompts, app context, vision, rewrites, actions, and Agent Team tasks.',
+  toc: ['prompt-flow','context-flow','vision-snip','rewrite-flow','app-action','agent-team'],
   html: `
-<p>These clips show OpenWand doing the practical work behind the docs: staying in the current app, collecting the right context, and handing longer jobs to an Agent Team.</p>
+<p>These clips show OpenWand staying in the current app, collecting the right context, acting on focused work, and handing longer jobs to an Agent Team.</p>
 <div class="demo-grid">
   <figure class="demo-card">
-    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/readme-1st-demo.gif', 'OpenWand hotkey overlay query demo')">
-      <img src="assets/readme-1st-demo.gif" alt="OpenWand hotkey overlay query demo" loading="lazy" />
+    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-prompt-demo.gif', 'OpenWand prompt demo')">
+      <img src="assets/openwand-prompt-demo.gif" alt="OpenWand prompt demo" loading="lazy" />
     </button>
     <figcaption>
-      <h2 id="overlay-query">Overlay query</h2>
-      <p>The core OpenWand loop: press the hotkey, choose an intent, send selected or enabled context, and read the streamed answer without leaving the active app.</p>
+      <h2 id="prompt-flow">Prompt from anywhere</h2>
+      <p>Select content in any app, invoke OpenWand, and run a saved or custom prompt without leaving what you are working on.</p>
     </figcaption>
   </figure>
 
   <figure class="demo-card">
-    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/readme-2nd-demo.gif', 'OpenWand screen snip demo')">
-      <img src="assets/readme-2nd-demo.gif" alt="OpenWand screen snip demo" loading="lazy" />
+    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-context-demo.gif', 'OpenWand cross-app context demo')">
+      <img src="assets/openwand-context-demo.gif" alt="OpenWand cross-app context demo" loading="lazy" />
+    </button>
+    <figcaption>
+      <h2 id="context-flow">Cross-app context</h2>
+      <p>OpenWand can combine the active selection with enabled browser and app context, giving the model the material it needs without manual copy-paste.</p>
+    </figcaption>
+  </figure>
+
+  <figure class="demo-card">
+    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-screen-snip-demo.gif', 'OpenWand screen snip demo')">
+      <img src="assets/openwand-screen-snip-demo.gif" alt="OpenWand screen snip demo" loading="lazy" />
     </button>
     <figcaption>
       <h2 id="vision-snip">Vision snip</h2>
@@ -80,18 +90,28 @@ const DOCS_PAGES = {
   </figure>
 
   <figure class="demo-card">
-    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/readme-3rd-demo.gif', 'OpenWand context-aware rewrite demo')">
-      <img src="assets/readme-3rd-demo.gif" alt="OpenWand context-aware rewrite demo" loading="lazy" />
+    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-rewrite-demo.gif', 'OpenWand rewrite demo')">
+      <img src="assets/openwand-rewrite-demo.gif" alt="OpenWand rewrite demo" loading="lazy" />
     </button>
     <figcaption>
-      <h2 id="rewrite-flow">Context-aware rewrite</h2>
-      <p>OpenWand can gather useful app context without taking a screenshot, so the model knows what you are working on. Then the rewrite hotkey rewrites only the selected text and targets paste-back at the original field captured when you pressed the hotkey.</p>
+      <h2 id="rewrite-flow">Rewrite in place</h2>
+      <p>Rewrite only the selected text, review the proposed wording, and paste the accepted result back into the field that was active when you invoked OpenWand.</p>
     </figcaption>
   </figure>
 
   <figure class="demo-card">
-    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/readme-4th-demo.gif', 'OpenWand Agent Team demo')">
-      <img src="assets/readme-4th-demo.gif" alt="OpenWand Agent Team demo" loading="lazy" />
+    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-app-aware-action-demo.gif', 'OpenWand app-aware action demo')">
+      <img src="assets/openwand-app-aware-action-demo.gif" alt="OpenWand app-aware action demo" loading="lazy" />
+    </button>
+    <figcaption>
+      <h2 id="app-action">App-aware action</h2>
+      <p>Use focused application context to analyze or act on the current work, with a clear result and confirmation when no document cells were changed.</p>
+    </figcaption>
+  </figure>
+
+  <figure class="demo-card">
+    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-agent-task-demo.gif', 'OpenWand Agent Team task demo')">
+      <img src="assets/openwand-agent-task-demo.gif" alt="OpenWand Agent Team task demo" loading="lazy" />
     </button>
     <figcaption>
       <h2 id="agent-team">Agent Team</h2>
@@ -1000,6 +1020,8 @@ Release             → <span class="c-accent">stop_and_transcribe()</span> → 
 <p>Advanced mode uses the optional <a href="https://openai.com/index/introducing-openai-privacy-filter/" target="_blank" rel="noopener">OpenAI Privacy Filter</a> on your computer. Unfiltered text is not sent to a cloud service for detection. Installing it downloads about 2.8 GB plus a dedicated local runtime.</p>
 <p>OpenWand loads the advanced model into memory and warms it in the background when OpenWand starts or after you enable Advanced mode. Warm-up may take tens of seconds on a CPU. If you send a request before it finishes, that request waits; later scans reuse the loaded model and are faster.</p>
 <p>OpenWand merges the AI model's findings with the built-in detector, replaces sensitive spans with stable session placeholders such as <code>[PERSON_1]</code>, and can show a review before the request is sent. It then checks the redacted text again. If the model is unavailable, detection fails, or sensitive text remains, OpenWand blocks the cloud send.</p>
+<h3>Prompt injection protection</h3>
+<p>This checks captured text for simple attempts to override the model's instructions. You can enable detection and choose whether OpenWand warns before sending, so you can continue or cancel.</p>
 <div class="callout warn"><div class="callout-label">Know the limits</div><p>Privacy filtering reduces accidental disclosure; it is not a guarantee of anonymization or regulatory compliance. Review high-sensitivity content before sending it to any provider.</p></div>
 
 <hr />

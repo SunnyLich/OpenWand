@@ -19,9 +19,9 @@ OpenWand gives you hotkey-driven AI that can read your selection, clipboard, app
 
 [Quick start](#quick-start) | [What it does](#what-openwand-does) | [Demos](#demos) | [Configuration](#configuration) | [Free APIs](#free-model-api-sources) | [Privacy](#privacy-and-control)
 
-![OpenWand Ctrl+Q demo](readme-assets/readme-1st-demo.gif)
+![OpenWand prompt demo](readme-assets/openwand-prompt-demo.gif)
 
-**Overlay query:** Press a hotkey, choose an action, and get a streamed answer without leaving the app you are already using.
+**Prompt from anywhere:** Select content in any app, invoke OpenWand, and run a saved or custom prompt without leaving what you are working on.
 </div>
 
 ---
@@ -64,15 +64,23 @@ Highlight text, press the general hotkey, hit one action key, and OpenWand asks 
 
 ## Demos
 
-![OpenWand Ctrl+Alt+Q screen snip demo](readme-assets/readme-2nd-demo.gif)
+![OpenWand cross-app context demo](readme-assets/openwand-context-demo.gif)
+
+**Cross-app context:** Combine the active selection with enabled browser and app context, giving the model the material it needs without manual copy-paste.
+
+![OpenWand Ctrl+Alt+Q screen snip demo](readme-assets/openwand-screen-snip-demo.gif)
 
 **Vision snip:** The snip flow is for cases where visual context matters. `Ctrl+Alt+Q` lets you draw a region, send just that crop to a vision model, and keep the answer in the overlay instead of switching apps.
 
-![OpenWand context-aware rewrite demo](readme-assets/readme-3rd-demo.gif)
+![OpenWand rewrite demo](readme-assets/openwand-rewrite-demo.gif)
 
-**Context-aware rewrite:** OpenWand can gather useful app context without taking a screenshot, so the model knows what you are working on. Then the rewrite hotkey rewrites only the selected text and targets paste-back at the original field captured when you pressed the hotkey.
+**Rewrite in place:** Rewrite only the selected text, review the proposed wording, and paste the accepted result back into the field that was active when you invoked OpenWand.
 
-![OpenWand Agent Team demo](readme-assets/readme-4th-demo.gif)
+![OpenWand app-aware action demo](readme-assets/openwand-app-aware-action-demo.gif)
+
+**App-aware action:** Use focused application context to analyze or act on the current work, with a clear result and confirmation when no document cells were changed.
+
+![OpenWand Agent Team demo](readme-assets/openwand-agent-task-demo.gif)
 
 **Agent Team:** Delegate a longer workspace job to coordinator, builder, and reviewer roles. The team can inspect project files, make a focused change, run checks, and leave behind a final report and reviewable artifacts while you keep using OpenWand.
 
@@ -288,6 +296,10 @@ OpenWand is designed as a local desktop assistant. **Storage stays on your machi
 Privacy-first setup checks and warning behavior remain enabled, including redaction status before sensitive context is sent. Choose **Settings → App → Privacy mode** to use one of three mutually exclusive modes: **Off**, **Built-in** (the default), or **Advanced**. Built-in mode uses local pattern matching for credentials, tokens, payment details, and other structured secrets. Advanced mode keeps those rules and adds the optional [OpenAI Privacy Filter](https://openai.com/index/introducing-openai-privacy-filter/), running entirely on your computer for context-aware detection of names, addresses, email addresses, phone numbers, private URLs and dates, account numbers, and secrets.
 
 The advanced model is an optional download of about 2.8 GB plus its dedicated local runtime. OpenWand loads it into memory and warms it in the background when OpenWand starts or after you enable Advanced mode. Warm-up may take tens of seconds on a CPU. If you send a request before it finishes, that request waits; later scans reuse the loaded model and are faster. OpenWand replaces detected spans with stable placeholders such as `[PERSON_1]`, can show a review before sending, and checks the redacted text again. If the advanced model is unavailable, detection fails, or sensitive text remains, OpenWand blocks the cloud send.
+
+### Prompt Injection Protection
+
+OpenWand also checks captured text for simple attempts to override the model's instructions. In Settings, you can enable detection and choose whether OpenWand warns before sending so you can continue or cancel.
 
 Privacy filtering reduces accidental disclosure; it is not a guarantee of anonymization or regulatory compliance.
 

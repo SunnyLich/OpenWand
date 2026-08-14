@@ -2125,6 +2125,10 @@ def brain_query(
     )
     built = _apply_frontloaded_tools(built, frontload_tools)
     built = _apply_addon_before_query(built)
+    _inspect_prompt_injection(
+        ctx,
+        {"context": str(getattr(built, "ambient_ctx", "") or "")},
+    )
     normalized_history = _normalize_chat_messages(history or []) if history else None
     privacy_session = None
     if trust_privacy_mode:
@@ -2549,6 +2553,14 @@ def brain_rewrite(
     if not selected_text.strip():
         raise ValueError("selected_text is required")
 
+    _inspect_prompt_injection(
+        ctx,
+        {
+            "rewrite_text": selected_text,
+            "context": rewrite_context,
+        },
+    )
+
     privacy_session = None
     privacy_report: dict[str, Any] = {}
     import config
@@ -2670,6 +2682,8 @@ def brain_action_plan(
             context_text = json.dumps(app_context or {}, ensure_ascii=False, sort_keys=True)
         except (TypeError, ValueError) as exc:
             raise ValueError("app_context must be a string or JSON-compatible value") from exc
+
+    _inspect_prompt_injection(ctx, {"ambient": context_text})
 
     privacy_session = None
     privacy_report: dict[str, Any] = {}
@@ -3424,6 +3438,29 @@ def _privacy_review_callback(ctx: StreamContext) -> Callable[[dict[str, Any]], s
                 _PRIVACY_APPROVALS.pop(approval_id, None)
 
     return request_review
+
+
+def _inspect_prompt_injection(
+    ctx: StreamContext,
+    fields: dict[str, object],
+) -> dict[str, Any]:
+    """Inspect untrusted captured text and optionally pause before sending."""
+    from core.prompt_injection import inspect_captured_text, warning_enabled
+
+    report = inspect_captured_text(
+        fields,
+        review=(
+            _privacy_review_callback(ctx)
+            if warning_enabled() and not _offline_brain()
+            else None
+        ),
+    )
+    if report.get("count"):
+        _log(
+            "prompt injection detector found "
+            f"{int(report.get('count') or 0)} possible match(es) in captured text"
+        )
+    return report
 
 
 def _merge_privacy_report(target: dict[str, Any] | None, report: dict[str, Any]) -> None:

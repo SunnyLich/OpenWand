@@ -117,6 +117,7 @@ def test_chatgpt_settings_login_status_and_logout_real_button_workflow(
     store: dict[str, object] = {"tokens": None}
     starts: list[str] = []
     clears: list[str] = []
+    browser_callbacks: dict[str, object] = {}
     monkeypatch.setattr(chatgpt_auth, "get_tokens", lambda: store["tokens"])
     monkeypatch.setattr(
         chatgpt_auth,
@@ -128,8 +129,7 @@ def test_chatgpt_settings_login_status_and_logout_real_button_workflow(
         "start_browser_login",
         lambda on_success, _on_error: (
             starts.append("browser"),
-            store.__setitem__("tokens", {"account_id": "acct-123456789"}),
-            on_success(store["tokens"]),
+            browser_callbacks.__setitem__("success", on_success),
         ),
     )
     monkeypatch.setattr(
@@ -148,6 +148,14 @@ def test_chatgpt_settings_login_status_and_logout_real_button_workflow(
         app.processEvents()
         assert starts == ["browser"]
         assert dialog._auth_poll_timer.isActive()
+
+        # An unrelated shared Codex credential must not complete this flow.
+        store["tokens"] = {"account_id": "existing-codex-account"}
+        dialog._auth_poll_tick()
+        assert dialog._auth_poll_timer.isActive()
+
+        store["tokens"] = {"account_id": "acct-123456789"}
+        browser_callbacks["success"](store["tokens"])
         dialog._auth_poll_tick()
         assert not dialog._auth_poll_timer.isActive()
         dialog._refresh_chatgpt_status()

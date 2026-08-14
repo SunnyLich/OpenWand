@@ -883,6 +883,7 @@ def _load_config() -> None:
     global PRIVACY_MODE, TRUST_PRIVACY_MODE, PRIVACY_REVIEW_BEFORE_SEND, PRIVACY_AI_ENABLED, PRIVACY_CUSTOM_PATTERNS
     global PRIVACY_HIDE_SECRETS, PRIVACY_HIDE_CONTACT_DETAILS, PRIVACY_HIDE_FINANCIAL_DETAILS
     global PRIVACY_HIDE_GOVERNMENT_IDS, PRIVACY_HIDE_URLS
+    global PROMPT_INJECTION_PROTECTION, PROMPT_INJECTION_WARN
     global APP_LANGUAGE, ASSISTANT_LANGUAGE
     global THEME_DARK_BG, THEME_DARK_SURFACE, THEME_DARK_TEXT, THEME_DARK_ACCENT
     global THEME_LIGHT_BG, THEME_LIGHT_SURFACE, THEME_LIGHT_TEXT, THEME_LIGHT_ACCENT
@@ -1073,6 +1074,8 @@ def _load_config() -> None:
     PRIVACY_HIDE_GOVERNMENT_IDS = env_bool("PRIVACY_HIDE_GOVERNMENT_IDS", True)
     PRIVACY_HIDE_URLS = env_bool("PRIVACY_HIDE_URLS", True)
     PRIVACY_CUSTOM_PATTERNS = os.getenv("PRIVACY_CUSTOM_PATTERNS", "[]")
+    PROMPT_INJECTION_PROTECTION = env_bool("PROMPT_INJECTION_PROTECTION", True)
+    PROMPT_INJECTION_WARN = env_bool("PROMPT_INJECTION_WARN", True)
     # Customizable theme templates. Each mode (light/dark) is a template of four
     # base colours; switching mode swaps the template. The rest of the palette
     # (cards, borders, buttons, hovers) is derived from these four, so the user

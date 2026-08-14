@@ -495,6 +495,17 @@ def get_account_id() -> str | None:
     return tokens.get("account_id") if tokens else None
 
 
+def _codex_client_version(version: str) -> str:
+    """Return the app version in the three-part form expected by Codex."""
+    value = str(version).strip()
+    core, separator, suffix = value.partition("-")
+    parts = core.split(".")
+    if parts and len(parts) < 3 and all(part.isdigit() for part in parts):
+        core = ".".join(parts + (["0"] * (3 - len(parts))))
+        return f"{core}{separator}{suffix}" if separator else core
+    return value
+
+
 def validate_login(*, timeout_seconds: float = 5.0) -> tuple[bool, str]:
     """Verify the saved OAuth credential against the authenticated model catalog.
 
@@ -516,13 +527,14 @@ def validate_login(*, timeout_seconds: float = 5.0) -> tuple[bool, str]:
 
     from runtime import VERSION
 
+    client_version = _codex_client_version(VERSION)
     request = urllib.request.Request(
-        f"https://chatgpt.com/backend-api/codex/models?client_version={VERSION}",
+        f"https://chatgpt.com/backend-api/codex/models?client_version={client_version}",
         headers={
             "Authorization": f"Bearer {access_token}",
             "ChatGPT-Account-Id": account_id,
-            "Originator": "opencode",
-            "User-Agent": f"OpenWand/{VERSION}",
+            "Originator": "codex_cli_rs",
+            "User-Agent": f"OpenWand/{client_version}",
         },
         method="GET",
     )

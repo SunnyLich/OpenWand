@@ -920,11 +920,30 @@ Object.assign(I18N.reg['fr'].nav.labels, {
 Object.assign(I18N.reg['fr'].meta, {
   'technical-demos': {
     title: 'Démos techniques',
-    sub: 'Exécutions réelles de OpenWand qui capture le contexte, réécrit du texte et pilote des tâches agentiques plus longues.',
+    sub: 'Exécutions réelles de OpenWand avec invites, contexte applicatif, vision, réécriture, actions et tâches de l’Équipe d’agents.',
   },
 });
 
 Object.assign(I18N.reg['fr'].tr, {
+  'These clips show OpenWand staying in the current app, collecting the right context, acting on focused work, and handing longer jobs to an Agent Team.':
+    'Ces clips montrent OpenWand restant dans l’application en cours, collectant le bon contexte, agissant sur le travail ciblé et confiant les tâches plus longues à une Équipe d’agents.',
+  'Prompt from anywhere': 'Une invite depuis n’importe où',
+  'Select content in any app, invoke OpenWand, and run a saved or custom prompt without leaving what you are working on.':
+    'Sélectionnez du contenu dans n’importe quelle application, invoquez OpenWand et exécutez une invite enregistrée ou personnalisée sans quitter votre travail.',
+  'Cross-app context': 'Contexte inter-applications',
+  'OpenWand can combine the active selection with enabled browser and app context, giving the model the material it needs without manual copy-paste.':
+    'OpenWand combine la sélection active avec le contexte activé du navigateur et de l’application afin de fournir au modèle les éléments nécessaires sans copier-coller manuel.',
+  'Rewrite in place': 'Réécriture sur place',
+  'Rewrite only the selected text, review the proposed wording, and paste the accepted result back into the field that was active when you invoked OpenWand.':
+    'Réécrivez uniquement le texte sélectionné, examinez la proposition et recollez le résultat accepté dans le champ actif au moment où vous avez invoqué OpenWand.',
+  'App-aware action': 'Action adaptée à l’application',
+  'Use focused application context to analyze or act on the current work, with a clear result and confirmation when no document cells were changed.':
+    'Utilisez le contexte ciblé de l’application pour analyser le travail en cours ou agir dessus, avec un résultat clair et une confirmation lorsqu’aucune cellule n’a été modifiée.',
+  'OpenWand prompt demo': 'Démo d’invite OpenWand',
+  'OpenWand cross-app context demo': 'Démo de contexte inter-applications OpenWand',
+  'OpenWand rewrite demo': 'Démo de réécriture OpenWand',
+  'OpenWand app-aware action demo': 'Démo d’action adaptée à l’application OpenWand',
+  'OpenWand Agent Team task demo': 'Démo de tâche de l’Équipe d’agents OpenWand',
   'These clips show OpenWand doing the practical work behind the docs: staying in the current app, collecting the right context, and handing longer tasks to the experimental agent framework.':
     "Ces clips montrent OpenWand en action derrière la documentation : rester dans l'application en cours, collecter le bon contexte et confier les tâches plus longues au framework d'agents expérimental.",
   'Overlay query': 'Requête dans la surimpression',
@@ -1123,6 +1142,8 @@ Object.assign(I18N.reg['fr'].tr, {
   "Advanced mode uses the optional OpenAI Privacy Filter on your computer. Unfiltered text is not sent to a cloud service for detection. Installing it downloads about 2.8 GB plus a dedicated local runtime.": "Le mode avancé utilise le modèle facultatif <a href=\"https://openai.com/index/introducing-openai-privacy-filter/\" target=\"_blank\" rel=\"noopener\">OpenAI Privacy Filter</a> sur votre ordinateur. Le texte non filtré n'est pas envoyé à un service cloud pour être détecté. Son installation télécharge environ 2,8 Go, plus un environnement d'exécution local dédié.",
   "OpenWand loads the advanced model into memory and warms it in the background when OpenWand starts or after you enable Advanced mode. Warm-up may take tens of seconds on a CPU. If you send a request before it finishes, that request waits; later scans reuse the loaded model and are faster.": "OpenWand charge le modèle avancé en mémoire et le préchauffe en arrière-plan au démarrage ou après l'activation du mode avancé. Le préchauffage peut prendre plusieurs dizaines de secondes sur un processeur. Si vous envoyez une requête avant la fin, elle attend ; les analyses suivantes réutilisent le modèle chargé et sont plus rapides.",
   "OpenWand merges the AI model's findings with the built-in detector, replaces sensitive spans with stable session placeholders such as [PERSON_1], and can show a review before the request is sent. It then checks the redacted text again. If the model is unavailable, detection fails, or sensitive text remains, OpenWand blocks the cloud send.": "OpenWand fusionne les résultats du modèle d'IA avec ceux du détecteur intégré, remplace les passages sensibles par des espaces réservés de session stables comme <code>[PERSON_1]</code> et peut afficher une vérification avant l'envoi de la requête. Il contrôle ensuite à nouveau le texte expurgé. Si le modèle est indisponible, si la détection échoue ou s'il reste du texte sensible, OpenWand bloque l'envoi vers le cloud.",
+  "Prompt injection protection": "Protection contre l’injection de prompt",
+  "This checks captured text for simple attempts to override the model's instructions. You can enable detection and choose whether OpenWand warns before sending, so you can continue or cancel.": "Cette protection vérifie le texte capturé pour repérer de simples tentatives de remplacer les instructions du modèle. Vous pouvez activer la détection et choisir si OpenWand vous avertit avant l’envoi, afin de continuer ou d’annuler.",
   "Know the limits": "Connaître les limites",
   "Privacy filtering reduces accidental disclosure; it is not a guarantee of anonymization or regulatory compliance. Review high-sensitivity content before sending it to any provider.": "Le filtrage de confidentialité réduit les divulgations accidentelles ; il ne garantit ni l’anonymisation ni la conformité réglementaire. Vérifiez les contenus très sensibles avant de les envoyer à un fournisseur.",
 });

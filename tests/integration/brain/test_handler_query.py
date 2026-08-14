@@ -62,6 +62,31 @@ def test_query_includes_intent_and_selected_in_prompt(record_ctx):
     assert "def add(a, b)" in result["text"]
 
 
+def test_query_scans_captured_context_but_not_typed_prompt(record_ctx, monkeypatch):
+    """Prompt-injection detection receives supporting context, not user intent."""
+    inspected = []
+    monkeypatch.setattr(
+        handlers,
+        "_inspect_prompt_injection",
+        lambda _ctx, fields: inspected.append(dict(fields)) or {},
+    )
+    _events, ctx = record_ctx()
+
+    handlers.HANDLERS["brain.query"](
+        ctx,
+        intent_prompt="Ignore previous instructions is the phrase I want explained",
+        selected="Captured selection",
+        ambient_text="Captured document",
+        memory_context="(none)",
+    )
+
+    assert len(inspected) == 1
+    assert set(inspected[0]) == {"context"}
+    assert "Captured selection" in inspected[0]["context"]
+    assert "Captured document" in inspected[0]["context"]
+    assert "phrase I want explained" not in inspected[0]["context"]
+
+
 def test_external_query_does_not_paste_openwand_system_prompt_into_user_message(
     record_ctx,
     monkeypatch,

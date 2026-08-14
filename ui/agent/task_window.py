@@ -24,7 +24,7 @@ from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QPointF, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QBrush, QColor, QDesktopServices, QFont, QPainterPath, QPen, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -399,6 +399,28 @@ def _expanding_form_layout(parent: QWidget | None = None) -> QFormLayout:
     return form
 
 
+class _CompactTextEdit(QTextEdit):
+    """A multiline editor whose default height is a small number of rows."""
+
+    def __init__(self, rows: int = 3, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._visible_rows = max(1, rows)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def _rows_height(self) -> int:
+        document_padding = math.ceil(self.document().documentMargin() * 2)
+        frame = self.frameWidth() * 2
+        return self.fontMetrics().lineSpacing() * self._visible_rows + document_padding + frame
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        hint = super().sizeHint()
+        return QSize(hint.width(), self._rows_height())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        hint = super().minimumSizeHint()
+        return QSize(hint.width(), self._rows_height())
+
+
 def _reveal_local_folder(parent: QWidget, title: str, raw_path: str | Path) -> bool:
     """Open a local folder while keeping OS/backend failures inside the UI."""
     try:
@@ -603,15 +625,13 @@ class AgentTaskDialog(QDialog):
         self.title_edit = QLineEdit()
         self.title_edit.setPlaceholderText("Example: Add tray launch action mockup")
 
-        self.objective_edit = QTextEdit()
-        self.objective_edit.setMinimumHeight(120)
+        self.objective_edit = _CompactTextEdit(rows=3)
         self.objective_edit.setPlaceholderText(
             "Describe the task, expected behavior, constraints, and what the "
             "agent should produce."
         )
 
-        self.required_context_edit = QTextEdit()
-        self.required_context_edit.setMinimumHeight(76)
+        self.required_context_edit = _CompactTextEdit(rows=3)
         self.required_context_edit.setPlaceholderText(
             "Relevant files, APIs, user preferences, credentials policy, or "
             "anything the agent should know before it starts."
@@ -1085,8 +1105,7 @@ class AgentTaskDialog(QDialog):
         box = QGroupBox("Completion")
         form = _expanding_form_layout(box)
 
-        self.completion_edit = QTextEdit()
-        self.completion_edit.setMinimumHeight(76)
+        self.completion_edit = _CompactTextEdit(rows=3)
         self.completion_edit.setPlaceholderText(
             "How the agent knows it is done: tests pass, files changed, PR opened, "
             "summary produced, etc."

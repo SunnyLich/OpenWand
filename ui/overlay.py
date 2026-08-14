@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 
-from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QIcon, QPixmap
 from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QPushButton, QSystemTrayIcon
 
@@ -31,6 +31,12 @@ _PROVIDER_BADGE_HEIGHT = 18
 _PROVIDER_BADGE_GAP = 2
 _REWRITE_BATCH_HEIGHT = 34
 _REWRITE_BATCH_GAP = 6
+
+
+def _screen_geometry_at(point: QPoint) -> QRect:
+    """Return full monitor bounds for overlays that may cover reserved desktop UI."""
+    screen = QApplication.screenAt(point) or QApplication.primaryScreen()
+    return screen.geometry() if screen is not None else QRect()
 
 
 class OverlaySignals(QObject):
@@ -975,8 +981,12 @@ class IconOverlay(QMainWindow):
         from ui.bubble import _TAIL_W
         bx = icon_pos.x() - bw - _TAIL_W - 6
         by = icon_pos.y() + (sz - bh) // 2
-        screen = QApplication.primaryScreen().availableGeometry()
-        by = max(screen.y() + 8, min(by, screen.y() + screen.height() - bh - 8))
+        # The bubble is an intentional always-on-top overlay. Clamp it to the
+        # monitor rather than availableGeometry(), which excludes the Windows
+        # taskbar/macOS Dock and created an artificial hard edge above it.
+        screen = _screen_geometry_at(icon_pos + QPoint(sz // 2, sz // 2))
+        if not screen.isNull():
+            by = max(screen.top() + 8, min(by, screen.bottom() - bh + 1 - 8))
         self._bubble.move(bx, by)
 
     def _mark_icon_ready_for_bubble(self):

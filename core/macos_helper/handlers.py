@@ -171,7 +171,7 @@ def _cloudflare_configured() -> tuple[bool, str]:
 def stt_prewarm(wait: bool = False) -> None:
     """Load the model in a background thread; return immediately so the request
     loop is not blocked by the (slow) first model load."""
-    if _stt_provider() == "cloudflare":
+    if _stt_provider() in {"none", "cloudflare"}:
         return None
     if wait:
         _get_model()
@@ -207,7 +207,16 @@ def stt_is_ready() -> dict[str, Any]:
     Reads a flag only (never the model lock), so it answers instantly even while
     prewarm is still loading on its background thread — letting the GUI show a
     "warming up" indicator instead of a silent slow first transcription."""
-    if _stt_provider() == "cloudflare":
+    provider = _stt_provider()
+    if provider == "none":
+        return {
+            "ready": False,
+            "provider": "none",
+            "warming": False,
+            "error": "",
+            "disabled": True,
+        }
+    if provider == "cloudflare":
         configured, missing = _cloudflare_configured()
         return {
             "ready": configured,
@@ -454,6 +463,8 @@ def stt_start_recording() -> None:
     on the worker's main thread (this request loop) — safe here because no Qt run
     loop owns this process."""
     global _stream, _recording
+    if _stt_provider() == "none":
+        raise RuntimeError("Speech to text is disabled in Settings.")
     import sounddevice as sd
     with _recording_lock:
         _stop_background_stt()
@@ -509,6 +520,8 @@ def stt_stop_and_transcribe() -> str:
             chunks = list(_chunks)
             _chunks.clear()
         background_results = _stop_background_stt()
+    if _stt_provider() == "none":
+        return ""
     if not chunks:
         _log("transcribe skipped: no audio chunks captured")
         return ""

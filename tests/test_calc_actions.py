@@ -221,7 +221,7 @@ def test_calc_provider_offers_useful_actions_and_analysis() -> None:
         "Find trends and relationships",
         "Summarize this data",
         "Clean up this export",
-        "Explain the selected formula",
+        "Explain formula",
     ]
     assert {
         item["label"]: (item["mode"], item["capability_type"])
@@ -231,7 +231,7 @@ def test_calc_provider_offers_useful_actions_and_analysis() -> None:
         "Find trends and relationships": ("answer", ""),
         "Summarize this data": ("answer", ""),
         "Clean up this export": ("action", "calc.clean_range@1"),
-        "Explain the selected formula": ("answer", ""),
+        "Explain formula": ("answer", ""),
     }
     cleanup = next(item for item in visible if item["label"] == "Clean up this export")
     assert cleanup["access"] == ["files"]

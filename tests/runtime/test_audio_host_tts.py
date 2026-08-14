@@ -95,6 +95,28 @@ def test_record_start_reports_mic_open_failure_without_raising(monkeypatch):
     assert result == {"recording": False, "error": "RuntimeError: PortAudio unavailable"}
 
 
+def test_record_start_refuses_to_open_the_microphone_when_stt_is_disabled(monkeypatch):
+    """The audio worker must enforce the setting, not merely hide its UI."""
+    import config
+    from core.macos_helper import handlers as stt_handlers
+
+    monkeypatch.setattr(config, "STT_PROVIDER", "none", raising=False)
+
+    result = audio_host.record_start()
+
+    assert result == {
+        "recording": False,
+        "error": "RuntimeError: Speech to text is disabled in Settings.",
+    }
+    assert stt_handlers.stt_is_ready() == {
+        "ready": False,
+        "provider": "none",
+        "warming": False,
+        "error": "",
+        "disabled": True,
+    }
+
+
 def test_tts_synthesize_uses_provider_pcm_format_for_kokoro(monkeypatch):
     """Kokoro streams int16 PCM, so the audio worker must not parse it as float32."""
     import config

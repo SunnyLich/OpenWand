@@ -137,8 +137,6 @@ def test_provider_suggestions_precede_but_preserve_configured_and_custom_rows(qa
         assert overlay._rows[1]["glyph"] == "F"
         assert overlay._rows[1]["routing"] == {"mode": "answer", "source": "configured"}
         assert overlay._rows[-1]["routing"] == {"mode": "auto", "source": "custom"}
-        assert overlay._provider_display_name() == "VS Code"
-
         overlay._selection_pending_idx = 0
         overlay._fire(0)
         assert overlay.selected_intent_routing() == {
@@ -232,6 +230,13 @@ def test_writer_app_action_is_golden_and_precedes_normal_actions():
         ]
         assert rows[0]["appearance"] == "app_action"
         assert all(row.get("appearance") != "app_action" for row in rows[1:])
+        palette = intent_overlay._theme_palette()
+        assert intent_overlay._intent_label_color(
+            rows[0], palette, available=True
+        ) == palette["app_action"]
+        assert intent_overlay._intent_label_color(
+            rows[1], palette, available=True
+        ) == palette["label"]
     finally:
         config.CALLER_ROWS[:] = old_rows
 
@@ -832,6 +837,29 @@ def test_intent_overlay_close_emits_cancelled_once(qapp):
         qapp.processEvents()
 
         assert cancelled == [True]
+    finally:
+        config.CALLER_ROWS[:] = old_rows
+        _close_overlay_if_valid(overlay, qapp)
+
+
+def test_escape_restores_hotkey_source_window_before_next_invocation(qapp, monkeypatch):
+    """Escape returns focus so a repeated hotkey still detects the source app."""
+    import config
+    import ui.intent_overlay as intent_overlay
+
+    old_rows = list(config.CALLER_ROWS)
+    restored: list[int] = []
+    cancelled: list[bool] = []
+    config.CALLER_ROWS[:] = [{"intents": [], "custom_key": "s"}]
+    monkeypatch.setattr(intent_overlay, "_restore_foreground_window", restored.append)
+    overlay = intent_overlay.IntentOverlay(caller_idx=0, target_hwnd=777)
+    overlay.cancelled.connect(lambda: cancelled.append(True))
+    try:
+        overlay._on_raw_key("escape")
+
+        assert cancelled == [True]
+        assert restored == [777]
+        assert overlay._handled is True
     finally:
         config.CALLER_ROWS[:] = old_rows
         _close_overlay_if_valid(overlay, qapp)
@@ -2047,6 +2075,47 @@ def test_intent_overlay_remove_buttons_remove_rows_and_disable_groups(qapp):
         assert choices["clipboard"]["state"] == "off"
         assert choices["clipboard"]["touched"] is True
         assert overlay._context_preview_entries() == []
+    finally:
+        _close_overlay_if_valid(overlay, qapp)
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_intent_overlay_lists_chrome_and_edge_as_separate_browser_rows(qapp):
+    from ui.intent_overlay import IntentOverlay
+
+    overlay = IntentOverlay(
+        context_items=[
+            {
+                "id": "browser",
+                "key": "2",
+                "label": "Browser/Web",
+                "state": "on",
+                "sources": [
+                    {
+                        "id": "browser:701",
+                        "app": "Chrome",
+                        "label": "Guide.pdf",
+                        "preview": "PDF preparation guide",
+                    },
+                    {
+                        "id": "browser:702",
+                        "app": "Edge",
+                        "label": "Project site",
+                        "preview": "Website project plan",
+                    },
+                ],
+            }
+        ]
+    )
+    try:
+        assert overlay._context_preview_entries() == [
+            ("Chrome: Guide.pdf", "PDF preparation guide", "browser", "browser:701"),
+            ("Edge: Project site", "Website project plan", "browser", "browser:702"),
+        ]
+        overlay._remove_context_entry("browser", "browser:701")
+        assert overlay._context_preview_entries() == [
+            ("Edge: Project site", "Website project plan", "browser", "browser:702")
+        ]
     finally:
         _close_overlay_if_valid(overlay, qapp)
 

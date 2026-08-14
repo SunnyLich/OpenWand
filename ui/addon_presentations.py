@@ -231,7 +231,7 @@ def presentation_document(fragment: str, palette: dict[str, str], font_px: int =
         "code_text": palette.get("code_text", "#eff6ff"), "size": f"{max(13, min(int(font_px), 22))}px",
     }
     css_vars = ";".join(f"--{key.replace('_', '-')}:{html.escape(value)}" for key, value in variables.items())
-    policy = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'"
+    policy = "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'"
     return (
         "<!doctype html><html><head><meta charset='utf-8'>"
         f"<meta http-equiv='Content-Security-Policy' content=\"{policy}\">"
@@ -286,7 +286,12 @@ class RichPresentationView(QTextBrowser if QWebEngineView is None else QWebEngin
         self.setPage(_PresentationPage(self))
         self.page().setBackgroundColor(QColor("transparent"))
         settings = self.settings()
-        settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, False)
+        # QWebEnginePage.runJavaScript() is also disabled by this attribute.
+        # Keep it enabled so the host can measure the sanitized article after a
+        # responsive reflow. Presentation markup still cannot supply scripts:
+        # the parser rejects script tags and event attributes, while the CSP
+        # independently declares script-src 'none'.
+        settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, False)
         settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, False)

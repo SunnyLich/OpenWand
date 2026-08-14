@@ -4517,10 +4517,10 @@ class SettingsDialog(QDialog):
     # ---- Custom provider helpers ----
 
     _CUSTOM_ENDPOINTS: list[tuple[str, str, str, str]] = [
-        ("DeepSeek",     "https://api.deepseek.com/v1",          "deepseek-chat", ""),
+        ("DeepSeek",     "https://api.deepseek.com/v1",          "deepseek-v4-flash", ""),
         ("OpenRouter",   "https://openrouter.ai/api/v1",         "openai/gpt-4o", ""),
         ("Mistral",      "https://api.mistral.ai/v1",            "mistral-large-latest", ""),
-        ("xAI (Grok)",   "https://api.x.ai/v1",                  "grok-3", ""),
+        ("xAI (Grok)",   "https://api.x.ai/v1",                  "grok-4.5", ""),
         ("Together AI",  "https://api.together.xyz/v1",          "meta-llama/Llama-3-70b-chat-hf", ""),
         ("Cerebras",     "https://api.cerebras.ai/v1",           "llama-3.3-70b", ""),
         ("Z.AI / GLM",   "https://api.z.ai/api/paas/v4",         "glm-4.7-flash", ""),
@@ -4656,7 +4656,10 @@ class SettingsDialog(QDialog):
 
         def on_success(_tokens):
             """Handle success events."""
-            pass  # polling timer will detect the saved tokens
+            # This callback runs only after this browser flow has persisted its
+            # OpenWand credential. A shared Codex login may already exist, so
+            # observing just any token is not proof that this flow completed.
+            self._auth_poll_succeeded = True
 
         def on_error(msg):
             """Handle error events."""
@@ -4665,8 +4668,9 @@ class SettingsDialog(QDialog):
         chatgpt_auth.start_browser_login(on_success, on_error)
 
     def _start_auth_poll(self) -> None:
-        """Start a 1-second main-thread timer that detects when OAuth tokens land."""
+        """Start a 1-second main-thread timer for this browser OAuth flow."""
         self._auth_poll_error: str | None = None
+        self._auth_poll_succeeded = False
         self._auth_poll_ticks = 0
         self._auth_poll_timer = QTimer(self)
         self._auth_poll_timer.setInterval(1000)
@@ -4687,16 +4691,11 @@ class SettingsDialog(QDialog):
                 message=_translate_status_message(f"Error: {msg}"),
             )
             return
-        # Check if tokens have appeared in the keychain
-        try:
-            from core.auth import chatgpt as chatgpt_auth
-            if chatgpt_auth.get_tokens():
-                self._auth_poll_timer.stop()
-                self._schedule_open_status_refresh()
-                self._refresh_model_api_key_combos()
-                return
-        except Exception:
-            pass
+        if self._auth_poll_succeeded:
+            self._auth_poll_timer.stop()
+            self._schedule_open_status_refresh()
+            self._refresh_model_api_key_combos()
+            return
         # Timeout after 5 minutes
         self._auth_poll_ticks += 1
         if self._auth_poll_ticks >= 300:
@@ -4922,10 +4921,13 @@ class SettingsDialog(QDialog):
         stt_cv.addWidget(stt_first_use)
 
         stt_provider = _NoScrollCombo()
+        stt_provider.addItem(t("None"), "none")
         stt_provider.addItem(t("Local — faster-whisper"), "local")
         stt_provider.addItem(t("Cloudflare — Whisper Large v3 Turbo"), "cloudflare")
+        stt_provider.setCurrentIndex(stt_provider.findData("local"))
         stt_provider_tip = (
-            "Local stays on this computer. Cloudflare uploads captured speech audio to Workers AI."
+            "Disabled does not record or transcribe speech. Local stays on this computer. "
+            "Cloudflare uploads captured speech audio to Workers AI."
         )
         self._fields["STT_PROVIDER"] = stt_provider
 
@@ -5069,6 +5071,13 @@ class SettingsDialog(QDialog):
         )
         stt_hint.setWordWrap(True)
         stt_cv.addWidget(stt_hint)
+        self._stt_enabled_widgets = [
+            stt_language_label,
+            self._fields["STT_LANGUAGE"],
+            stt_beam_label,
+            self._fields["STT_BEAM_SIZE"],
+            stt_hint,
+        ]
 
         # Backend readout. Avoid importing core.stt while building Settings:
         # that pulls in NumPy/faster-whisper and can freeze the Qt UI thread.
@@ -5421,11 +5430,13 @@ class SettingsDialog(QDialog):
         self._live_voice_install_status_lbl.setWordWrap(True)
 
         live_provider = _NoScrollCombo()
-        self._fill_credential_combo(live_provider, "google")
+        live_provider.addItem(t("None"), "none")
+        live_provider.addItem(t(_PROVIDER_LABELS["google"]), "google")
+        live_provider.setCurrentIndex(live_provider.findData("google"))
         live_provider.setMinimumWidth(140)
         live_provider_tip = (
-            "Provider/API key used for the live conversation. Gemini Live "
-            "currently uses the Google API key from Connections."
+            "Disabled does not start a live microphone session. Gemini Live "
+            "uses the Google API key from Connections."
         )
         self._fields["LIVE_VOICE_PROVIDER"] = live_provider
 
@@ -5466,8 +5477,9 @@ class SettingsDialog(QDialog):
 
         def _on_live_voice_provider_change() -> None:
             provider = _get(live_provider).strip() or "google"
-            self._fill_live_voice_model_combo(provider, self._live_voice_model_value())
-            self._refresh_live_voice_key_note()
+            if provider != "none":
+                self._fill_live_voice_model_combo(provider, self._live_voice_model_value())
+            self._update_live_voice_provider_fields()
 
         live_provider.currentIndexChanged.connect(lambda _: _on_live_voice_provider_change())
         live_model.currentIndexChanged.connect(lambda _: self._schedule_dirty_refresh())
@@ -5510,17 +5522,31 @@ class SettingsDialog(QDialog):
         lvf = _expanding_form_layout(live_fw)
         lvf.setContentsMargins(0, 0, 0, 0)
         lvf.setSpacing(8)
-        lvf.addRow(self._status_action_row(
+        live_install_row = self._status_action_row(
             self._live_voice_install_status_lbl,
             self._live_voice_install_btn,
-        ))
-        lvf.addRow(_tooltip_label("Conversation provider", live_provider_tip), live_provider)
-        lvf.addRow(_tooltip_label("Conversation model", live_model_tip), live_model_container)
-        lvf.addRow(_tooltip_label("Conversation voice", live_voice_name_tip), live_voice_container)
+        )
+        live_provider_label = _tooltip_label("Conversation provider", live_provider_tip)
+        live_model_label = _tooltip_label("Conversation model", live_model_tip)
+        live_voice_label = _tooltip_label("Conversation voice", live_voice_name_tip)
+        live_speaker_label = _tooltip_label("Speaker mode", live_half_duplex_tip)
+        lvf.addRow(live_install_row)
+        lvf.addRow(live_provider_label, live_provider)
+        lvf.addRow(live_model_label, live_model_container)
+        lvf.addRow(live_voice_label, live_voice_container)
         lvf.addRow(
-            _tooltip_label("Speaker mode", live_half_duplex_tip),
+            live_speaker_label,
             self._fields["LIVE_VOICE_HALF_DUPLEX"],
         )
+        self._live_voice_enabled_widgets = [
+            live_install_row,
+            live_model_label,
+            live_model_container,
+            live_voice_label,
+            live_voice_container,
+            live_speaker_label,
+            self._fields["LIVE_VOICE_HALF_DUPLEX"],
+        ]
         live_cv.addWidget(live_fw)
         outer.addWidget(live_card)
         self._voice_feature_cards["live"] = live_card
@@ -5621,18 +5647,24 @@ class SettingsDialog(QDialog):
             self._refresh_tts_optional_install_status()
 
     def _update_stt_provider_fields(self) -> None:
-        """Switch the STT editor and action between local and Cloudflare modes."""
-        provider = _get(self._fields.get("STT_PROVIDER")).strip().lower() or "local"
+        """Switch STT controls between disabled, local, and Cloudflare modes."""
+        provider = _get(getattr(self, "_fields", {}).get("STT_PROVIDER")).strip().lower() or "local"
+        is_disabled = provider == "none"
         is_cloudflare = provider == "cloudflare"
         for widget in getattr(self, "_stt_local_widgets", []):
-            widget.setVisible(not is_cloudflare)
+            widget.setVisible(provider == "local")
         for widget in getattr(self, "_stt_cloud_widgets", []):
             widget.setVisible(is_cloudflare)
+        for widget in getattr(self, "_stt_enabled_widgets", []):
+            widget.setVisible(not is_disabled)
         self._rebuild_stt_languages()
 
         button = getattr(self, "_stt_download_btn", None)
         if isinstance(button, QPushButton):
-            if is_cloudflare:
+            button.setVisible(not is_disabled)
+            if is_disabled:
+                pass
+            elif is_cloudflare:
                 self._connect_button_action(button, self._test_cloudflare_stt_connection)
                 button.setText(t("Test Cloudflare STT"))
                 button.setToolTip(t("Send a half-second silent clip to verify Workers AI access."))
@@ -5645,6 +5677,8 @@ class SettingsDialog(QDialog):
                         "model so the first hold-to-talk does not stall."
                     )
                 )
+        if getattr(self, "_stt_active_lbl", None) is not None:
+            self._refresh_stt_active_backend()
 
     def _test_cloudflare_stt_connection(self) -> None:
         """Verify the currently entered/stored Cloudflare Workers AI credentials."""
@@ -6075,7 +6109,15 @@ class SettingsDialog(QDialog):
         button = getattr(self, "_stt_download_btn", None)
         if not isinstance(label, QLabel) or not isinstance(button, QPushButton):
             return
+        provider = _get(getattr(self, "_fields", {}).get("STT_PROVIDER")).strip().lower() or "local"
+        if provider == "none":
+            label.clear()
+            label.setVisible(False)
+            button.setVisible(False)
+            return
+        label.setVisible(True)
         self._connect_button_action(button, self._preload_stt_model)
+        button.setVisible(True)
         button.setEnabled(True)
         package_installed = bool(result.get("stt_package_installed"))
         runtime = result.get("stt_runtime_status") if isinstance(result.get("stt_runtime_status"), dict) else {}
@@ -6259,6 +6301,12 @@ class SettingsDialog(QDialog):
         button = getattr(self, "_live_voice_install_btn", None)
         if not isinstance(label, QLabel) or not isinstance(button, QPushButton):
             return
+        provider = _get(getattr(self, "_fields", {}).get("LIVE_VOICE_PROVIDER")).strip() or "google"
+        if provider == "none":
+            button.setVisible(False)
+            label.clear()
+            return
+        button.setVisible(True)
         install_status: dict[str, object] = {}
         try:
             from core import optional_deps
@@ -6298,7 +6346,11 @@ class SettingsDialog(QDialog):
         import config as cfg
 
         provider = _get(self._fields.get("LIVE_VOICE_PROVIDER")).strip() or "google"
-        if provider != "google":
+        if provider == "none":
+            label.clear()
+            label.setVisible(False)
+        elif provider != "google":
+            label.setVisible(True)
             label.setText(
                 "<small>"
                 + t("Live voice currently supports Gemini Live through the Google provider.")
@@ -6306,15 +6358,26 @@ class SettingsDialog(QDialog):
             )
             label.setStyleSheet("color: #d8932a;")
         elif str(getattr(cfg, "GOOGLE_API_KEY", "") or "").strip():
+            label.setVisible(True)
             label.setText(f"<small>{t('Uses the Google API key from Connections.')}</small>")
             label.setStyleSheet("")
         else:
+            label.setVisible(True)
             label.setText(
                 "<small>"
                 + t("Live voice needs a Google API key. Add one in Connections first.")
                 + "</small>"
             )
             label.setStyleSheet("color: #d8932a;")
+
+    def _update_live_voice_provider_fields(self) -> None:
+        """Show live-session controls only when a provider is enabled."""
+        provider = _get(getattr(self, "_fields", {}).get("LIVE_VOICE_PROVIDER")).strip() or "google"
+        enabled = provider != "none"
+        for widget in getattr(self, "_live_voice_enabled_widgets", []):
+            widget.setVisible(enabled)
+        self._refresh_live_voice_install_status()
+        self._refresh_live_voice_key_note()
 
     def _fill_live_voice_model_combo(self, provider: str, selected: str) -> None:
         """Populate the live voice model picker with built-ins plus Custom."""
@@ -8766,6 +8829,35 @@ class SettingsDialog(QDialog):
         review_help.setProperty("privacyHelpKey", "review")
         self._fields["PRIVACY_REVIEW_BEFORE_SEND"].setToolTip(review_help.toolTip())
         privacy_form.addRow(review_help, self._fields["PRIVACY_REVIEW_BEFORE_SEND"])
+
+        self._fields["PROMPT_INJECTION_PROTECTION"] = QCheckBox(
+            t("Detect possible prompt injections in captured text")
+        )
+        injection_help = _tooltip_label(
+            "Prompt injection detection",
+            "Checks captured app, document, selection, and clipboard text for simple attempts "
+            "to override model instructions. It looks for words such as Ignore or Override "
+            "followed by an instruction-like word within the next five words. Your typed prompt "
+            "is not scanned.",
+        )
+        injection_help.setProperty("privacyHelpKey", "prompt-injection")
+        self._fields["PROMPT_INJECTION_PROTECTION"].setToolTip(injection_help.toolTip())
+        privacy_form.addRow(injection_help, self._fields["PROMPT_INJECTION_PROTECTION"])
+
+        self._fields["PROMPT_INJECTION_WARN"] = QCheckBox(
+            t("Warn me before sending when a possible injection is found")
+        )
+        injection_warning_help = _tooltip_label(
+            "Injection warning",
+            "Pause before the model request and show the matching captured text. You can "
+            "continue with the request or cancel it. Turn this off to detect silently.",
+        )
+        injection_warning_help.setProperty("privacyHelpKey", "prompt-injection-warning")
+        self._fields["PROMPT_INJECTION_WARN"].setToolTip(injection_warning_help.toolTip())
+        privacy_form.addRow(injection_warning_help, self._fields["PROMPT_INJECTION_WARN"])
+        self._fields["PROMPT_INJECTION_PROTECTION"].toggled.connect(
+            self._fields["PROMPT_INJECTION_WARN"].setEnabled
+        )
         privacy_cv.addLayout(privacy_form)
 
         category_header = QLabel(t("Built-in categories to hide"))
@@ -10282,6 +10374,18 @@ class SettingsDialog(QDialog):
                 str(getattr(cfg, "PRIVACY_REVIEW_BEFORE_SEND", True)),
             ).lower() == "true"
         )
+        injection_protection = self._env.get(
+            "PROMPT_INJECTION_PROTECTION",
+            str(getattr(cfg, "PROMPT_INJECTION_PROTECTION", True)),
+        ).lower() == "true"
+        self._fields["PROMPT_INJECTION_PROTECTION"].setChecked(injection_protection)
+        self._fields["PROMPT_INJECTION_WARN"].setChecked(
+            self._env.get(
+                "PROMPT_INJECTION_WARN",
+                str(getattr(cfg, "PROMPT_INJECTION_WARN", True)),
+            ).lower() == "true"
+        )
+        self._fields["PROMPT_INJECTION_WARN"].setEnabled(injection_protection)
         for key in (
             "PRIVACY_HIDE_SECRETS",
             "PRIVACY_HIDE_CONTACT_DETAILS",
@@ -10508,8 +10612,10 @@ class SettingsDialog(QDialog):
         )
         live_voice_provider_combo = self._fields["LIVE_VOICE_PROVIDER"]
         if isinstance(live_voice_provider_combo, QComboBox):
-            self._fill_credential_combo(live_voice_provider_combo, live_voice_provider)
-        self._fill_live_voice_model_combo(_get(self._fields["LIVE_VOICE_PROVIDER"]).strip() or "google", live_voice_model)
+            _set(live_voice_provider_combo, live_voice_provider)
+        selected_live_voice_provider = _get(self._fields["LIVE_VOICE_PROVIDER"]).strip() or "google"
+        if selected_live_voice_provider != "none":
+            self._fill_live_voice_model_combo(selected_live_voice_provider, live_voice_model)
         self._fill_live_voice_voice_combo(
             self._env.get("LIVE_VOICE_VOICE_NAME", getattr(cfg, "LIVE_VOICE_VOICE_NAME", ""))
         )
@@ -10517,6 +10623,7 @@ class SettingsDialog(QDialog):
             self._fields["LIVE_VOICE_HALF_DUPLEX"],
             self._env.get("LIVE_VOICE_HALF_DUPLEX", str(getattr(cfg, "LIVE_VOICE_HALF_DUPLEX", False))),
         )
+        self._update_live_voice_provider_fields()
         _set(self._fields["TTS_VOLUME"], self._env.get("TTS_VOLUME", str(getattr(cfg, "TTS_VOLUME", 1.0))))
         _set(
             self._fields["TTS_READ_ALOUD_MIN_WORDS"],
@@ -11476,6 +11583,15 @@ class SettingsDialog(QDialog):
             or env.get("STT_PROVIDER")
             or getattr(cfg, "STT_PROVIDER", "local")
         ).strip().lower()
+        if provider == "none":
+            lbl.clear()
+            lbl.setVisible(False)
+            if isinstance(button, QPushButton):
+                button.setVisible(False)
+            return
+        lbl.setVisible(True)
+        if isinstance(button, QPushButton):
+            button.setVisible(True)
         if provider == "cloudflare":
             if isinstance(button, QPushButton):
                 self._connect_button_action(button, self._test_cloudflare_stt_connection)
@@ -12066,7 +12182,7 @@ class SettingsDialog(QDialog):
                 "PRIVACY_REVIEW_BEFORE_SEND", "PRIVACY_AI_ENABLED",
                 "PRIVACY_HIDE_SECRETS", "PRIVACY_HIDE_CONTACT_DETAILS",
                 "PRIVACY_HIDE_FINANCIAL_DETAILS", "PRIVACY_HIDE_GOVERNMENT_IDS",
-                "PRIVACY_HIDE_URLS",
+                "PRIVACY_HIDE_URLS", "PROMPT_INJECTION_PROTECTION", "PROMPT_INJECTION_WARN",
                 "ICON_AUTO_HIDE", "DOLL_AUTO_HIDE", "START_ON_LOGIN",
                 "THEME_DARK_BG", "THEME_DARK_SURFACE", "THEME_DARK_TEXT", "THEME_DARK_ACCENT",
                 "THEME_LIGHT_BG", "THEME_LIGHT_SURFACE", "THEME_LIGHT_TEXT", "THEME_LIGHT_ACCENT",
@@ -12589,6 +12705,10 @@ class SettingsDialog(QDialog):
             "PRIVACY_HIDE_FINANCIAL_DETAILS": str(self._fields["PRIVACY_HIDE_FINANCIAL_DETAILS"].isChecked()),
             "PRIVACY_HIDE_GOVERNMENT_IDS": str(self._fields["PRIVACY_HIDE_GOVERNMENT_IDS"].isChecked()),
             "PRIVACY_HIDE_URLS": str(self._fields["PRIVACY_HIDE_URLS"].isChecked()),
+            "PROMPT_INJECTION_PROTECTION": str(
+                self._fields["PROMPT_INJECTION_PROTECTION"].isChecked()
+            ),
+            "PROMPT_INJECTION_WARN": str(self._fields["PROMPT_INJECTION_WARN"].isChecked()),
             "ICON_AUTO_HIDE":    str(self._fields["ICON_AUTO_HIDE"].isChecked()),  # type: ignore
             "START_ON_LOGIN": str(self._fields["START_ON_LOGIN"].isChecked()),  # type: ignore
             "CHAT_AUTO_ELABORATE": str(self._fields["CHAT_AUTO_ELABORATE"].isChecked()),  # type: ignore
@@ -12813,16 +12933,16 @@ _PROVIDER_KEY_NAMES: dict[str, str] = {
 }
 
 _MODEL_HINTS: dict[str, str] = {
-    "groq":       "e.g. llama-3.3-70b-versatile",
-    "openai":     "e.g. gpt-5.5",
-    "anthropic":  "e.g. claude-sonnet-4-6",
-    "google":     "e.g. gemini-3.5-flash",
-    "chatgpt":    "gpt-5.5  |  gpt-5.4  |  gpt-5.4-mini  |  gpt-5.4-nano  |  gpt-5.3-codex",
+    "groq":       "e.g. openai/gpt-oss-120b",
+    "openai":     "e.g. gpt-5.6-sol",
+    "anthropic":  "e.g. claude-sonnet-5",
+    "google":     "e.g. gemini-3.6-flash",
+    "chatgpt":    "gpt-5.6-sol  |  gpt-5.6-terra  |  gpt-5.6-luna  |  gpt-5.5  |  gpt-5.3-codex",
     "copilot":    "e.g. gpt-4.1",
-    "deepseek":   "e.g. deepseek-chat",
-    "openrouter": "e.g. openai/gpt-5.5",
-    "mistral":    "e.g. mistral-large-latest",
-    "xai":        "e.g. grok-4.3",
+    "deepseek":   "e.g. deepseek-v4-flash",
+    "openrouter": "e.g. openai/gpt-5.6-sol",
+    "mistral":    "e.g. mistral-medium-3-5",
+    "xai":        "e.g. grok-4.5",
     "together":   "e.g. meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
     "cerebras":   "e.g. llama-4-scout-17b-16e-instruct",
     "zai":        "e.g. glm-4.5-flash",
@@ -12833,8 +12953,8 @@ _MODEL_HINTS: dict[str, str] = {
     "chutes":     "e.g. deepseek-ai/DeepSeek-V3-0324",
     "vercel":     "e.g. openai/gpt-5.4-mini",
     "fireworks":  "e.g. accounts/fireworks/models/llama-v3p1-8b-instruct",
-    "cohere":     "e.g. command-r-plus",
-    "ai21":       "e.g. jamba-large",
+    "cohere":     "e.g. command-a-plus-05-2026",
+    "ai21":       "e.g. jamba-mini-2",
     "nebius":     "e.g. meta-llama/Meta-Llama-3.3-70B-Instruct",
     "ollama":     "e.g. llama3  (model pulled locally)",
     "custom":     "model name for your custom endpoint",
@@ -12846,26 +12966,27 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "groq/compound-mini",
         "openai/gpt-oss-120b",
         "openai/gpt-oss-20b",
-        "meta-llama/llama-4-scout-17b-16e-instruct",
-        "qwen/qwen3-32b",
         "qwen/qwen3.6-27b",
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-        "gemma2-9b-it",
     ],
     "openai": [
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
         "gpt-5.5",
+        "gpt-5.5-pro",
         "gpt-5.4",
+        "gpt-5.4-pro",
         "gpt-5.4-mini",
         "gpt-5.4-nano",
-        "gpt-4o",
-        "gpt-4o-mini",
+        "gpt-5.3-codex",
         "gpt-4.1",
         "gpt-4.1-mini",
         "o3",
-        "o4-mini",
     ],
     "anthropic": [
+        "claude-fable-5",
+        "claude-opus-5",
+        "claude-sonnet-5",
         "claude-opus-4-8",
         "claude-opus-4-7",
         "claude-sonnet-4-6",
@@ -12875,7 +12996,9 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "claude-sonnet-4-5",
     ],
     "google": [
+        "gemini-3.6-flash",
         "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
         "gemini-3.1-pro-preview",
         "gemini-3-flash-preview",
         "gemini-3.1-flash-lite",
@@ -12886,6 +13009,9 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "gemini-2.5-flash-lite",
     ],
     "chatgpt": [
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
         "gpt-5.5",
         "gpt-5.4",
         "gpt-5.4-mini",
@@ -12901,12 +13027,13 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "gemini-2.5-pro",
     ],
     "deepseek": [
-        "deepseek-chat",
-        "deepseek-reasoner",
-        "deepseek-r1",
-        "deepseek-v3.1",
+        "deepseek-v4-flash",
+        "deepseek-v4-pro",
     ],
     "openrouter": [
+        "openai/gpt-5.6-sol",
+        "openai/gpt-5.6-terra",
+        "openai/gpt-5.6-luna",
         "openai/gpt-5.5",
         "openai/gpt-5.4-mini",
         "anthropic/claude-sonnet-4-6",
@@ -12923,6 +13050,8 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "mistralai/mistral-large",
     ],
     "mistral": [
+        "mistral-medium-3-5",
+        "mistral-small-2603",
         "mistral-large-latest",
         "magistral-medium-latest",
         "magistral-small-latest",
@@ -12933,6 +13062,10 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "ministral-8b-latest",
     ],
     "xai": [
+        "grok-4.5",
+        "grok-4.20-0309-reasoning",
+        "grok-4.20-0309-non-reasoning",
+        "grok-4.20-multi-agent-0309",
         "grok-4.3",
         "grok-build-0.1",
         "grok-4",
@@ -13003,6 +13136,9 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "meta-llama/Llama-3.3-70B-Instruct",
     ],
     "vercel": [
+        "openai/gpt-5.6-sol",
+        "openai/gpt-5.6-terra",
+        "openai/gpt-5.6-luna",
         "openai/gpt-5.4-mini",
         "openai/gpt-5.4",
         "anthropic/claude-sonnet-4-6",
@@ -13021,15 +13157,18 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "accounts/fireworks/models/mixtral-8x7b-instruct",
     ],
     "cohere": [
+        "command-a-plus-05-2026",
         "command-a-03-2025",
         "command-r-plus",
         "command-r",
     ],
     "ai21": [
-        "jamba-large-1.7",
-        "jamba-mini-1.7",
         "jamba-large",
         "jamba-mini",
+        "jamba-large-1.7",
+        "jamba-mini-2",
+        "jamba-large-1.7-2025-07",
+        "jamba-mini-2-2026-01",
     ],
     "nebius": [
         "meta-llama/Meta-Llama-3.3-70B-Instruct",

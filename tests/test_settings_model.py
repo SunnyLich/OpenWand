@@ -108,6 +108,8 @@ def test_get_settings_returns_typed_snapshot(tmp_path: Path):
         assert settings.ui.start_on_login is True
         assert settings.privacy.mode == "builtin"
         assert settings.privacy.trust_privacy_mode is True
+        assert settings.privacy.prompt_injection_protection is True
+        assert settings.privacy.prompt_injection_warn is True
         assert settings.callers.callers[0]["label"] == "Typed"
         assert settings.callers.voice["context_memory_mode"] == "model"
     finally:

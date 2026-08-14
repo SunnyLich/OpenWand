@@ -48,6 +48,7 @@ def test_ui_revalidates_fragment_and_builds_network_isolated_document() -> None:
         {"accent": "#a99bff", "warm": "#f0ae72", "warm_soft": "#3c2b25"},
     )
     assert "default-src 'none'" in document
+    assert "script-src 'none'" in document
     assert "decision-ticket" in document
     assert "--warm:#f0ae72" in document
     assert "--warm-soft:#3c2b25" in document
@@ -1097,6 +1098,66 @@ def test_addon_enable_switches_chat_ui_and_disable_restores_original(qapp, monke
         chat_module._refresh_chat_palette(False)
 
 
+def test_repeated_addon_action_refresh_keeps_formatted_conversation_page(qapp) -> None:
+    """Only changed addon discovery may recreate live WebEngine replies."""
+    from PySide6.QtWidgets import QPushButton
+
+    from ui.addon_presentations import RichPresentationView
+    from ui.chat_window import ChatWindow
+
+    action = {
+        "addon_id": "formatted-replies",
+        "id": "format-reply",
+        "label": "Format",
+        "role": "assistant",
+        "presentation": True,
+        "auto": False,
+    }
+    conversations = [{
+        "id": "stable-formatted-page",
+        "messages": [
+            {"id": "u1", "role": "user", "content": "Choose."},
+            {
+                "id": "a1",
+                "role": "assistant",
+                "content": "Use AI-02.",
+                "addon_presentations": {
+                    "formatted-replies": {"html": DECISION_HTML, "label": "Formatted"}
+                },
+            },
+        ],
+    }]
+    window = ChatWindow(
+        conversations,
+        lambda _messages: iter(()),
+        addon_message_actions=[action],
+    )
+    try:
+        page = window._stack.currentWidget()
+        rich = page.findChild(RichPresentationView)
+        assert rich is not None
+
+        window.update_addon_message_actions([dict(action)])
+        qapp.processEvents()
+
+        assert window._stack.currentWidget() is page
+        assert page.findChild(RichPresentationView) is rich
+
+        updated_action = {**action, "model": "formatter-v2"}
+        window.update_addon_message_actions([updated_action])
+        qapp.processEvents()
+
+        replacement = window._stack.currentWidget()
+        assert replacement is not page
+        assert any(
+            "formatter-v2" in button.toolTip()
+            for button in replacement.findChildren(QPushButton)
+            if button.objectName() == "addonMessageActionButton"
+        )
+    finally:
+        window.close()
+
+
 def test_chat_first_paint_uses_shared_light_palette(qapp, monkeypatch) -> None:
     import config
     from ui import chat_window as chat_module
@@ -1169,6 +1230,45 @@ def test_enabled_addon_uses_approved_chat_shell_geometry(qapp) -> None:
         assert delete_all is not None and delete_all.text() == "Delete all conversations"
         assert window._past_notice.isVisible() is False
         assert window._context_controls == {}
+    finally:
+        window.close()
+
+
+@pytest.mark.parametrize("enabled_at_start", [True, False], ids=["first-paint", "mode-switch"])
+def test_enabled_addon_new_chat_uses_formatted_sidebar_search(qapp, enabled_at_start) -> None:
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from ui.chat_window import ChatWindow
+
+    action = {
+        "addon_id": "formatted-replies",
+        "id": "format-reply",
+        "label": "Format",
+        "role": "assistant",
+        "presentation": True,
+        "auto": False,
+    }
+    conversations = [{"id": "existing-chat", "messages": []}]
+    window = ChatWindow(
+        conversations,
+        lambda _messages: iter(()),
+        addon_message_actions=[action] if enabled_at_start else [],
+    )
+    try:
+        window.show()
+        qapp.processEvents()
+        if not enabled_at_start:
+            window.update_addon_message_actions([action])
+            qapp.processEvents()
+        window._sidebar_search.setText("existing")
+
+        QTest.mouseClick(window._new_chat_btn, Qt.MouseButton.LeftButton)
+        qapp.processEvents()
+
+        assert len(conversations) == 2
+        assert window._active_idx == 1
+        assert window._sidebar_search.text() == ""
     finally:
         window.close()
 

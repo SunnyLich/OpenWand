@@ -45,6 +45,32 @@ class STTMacOSSafetyTests(unittest.TestCase):
 
         self.assertEqual(stt.stop_and_transcribe(), "")
 
+    def test_disabled_stt_does_not_load_a_model_or_open_the_microphone(self):
+        with mock.patch.object(config, "STT_PROVIDER", "none"), \
+             mock.patch.object(stt, "_get_model", side_effect=AssertionError("no model load")), \
+             mock.patch.object(stt.macos_helper, "is_enabled", side_effect=AssertionError("no helper")), \
+             mock.patch.object(stt, "run_on_main", side_effect=AssertionError("no microphone")):
+            self.assertIsNone(stt.preload_model())
+            stt.prewarm()
+            stt.start_recording()
+            self.assertEqual(stt.stop_and_transcribe(), "")
+
+    def test_disabled_worker_handler_rejects_recording_before_importing_sounddevice(self):
+        with mock.patch.object(config, "STT_PROVIDER", "none"), \
+             mock.patch.dict(sys.modules, {"sounddevice": None}):
+            with self.assertRaisesRegex(RuntimeError, "disabled in Settings"):
+                helper_handlers.stt_start_recording()
+            self.assertEqual(
+                helper_handlers.stt_is_ready(),
+                {
+                    "ready": False,
+                    "provider": "none",
+                    "warming": False,
+                    "error": "",
+                    "disabled": True,
+                },
+            )
+
     def test_repeated_token_noise_is_discarded(self):
         noisy = " ".join(["Cont"] * 20)
 

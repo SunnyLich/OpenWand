@@ -193,7 +193,7 @@ def test_excel_and_calc_offer_the_same_core_spreadsheet_goals(catalog) -> None:
         "Find trends and relationships",
         "Summarize this data",
         "Clean up this export",
-        "Explain the selected formula",
+        "Explain formula",
     }
     assert shared <= labels(excel)
     assert shared <= labels(calc)

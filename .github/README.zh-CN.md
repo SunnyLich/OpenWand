@@ -19,9 +19,9 @@ OpenWand 为您提供快捷键驱动的 AI，能够读取您的选中内容、�
 
 [快速开始](#快速开始) | [功能介绍](#openwand-的功能) | [演示](#演示) | [配置](#配置) | [免费 API](#免费模型-api-来源) | [隐私](#隐私与控制)
 
-![OpenWand Ctrl+Q 演示](readme-assets/readme-1st-demo.gif)
+![OpenWand 提示词演示](readme-assets/openwand-prompt-demo.gif)
 
-**悬浮窗查询：** 按下快捷键，选择操作，无需离开当前应用即可获得流式回答。
+**随处发起提示：** 在任意应用中选中内容，调用 OpenWand，然后运行已保存或自定义的提示词，无需离开当前工作。
 </div>
 
 ---
@@ -63,15 +63,23 @@ OpenWand 专为那些打开聊天应用会打断工作流的时刻而设计。
 
 ## 演示
 
-![OpenWand Ctrl+Alt+Q 屏幕截图演示](readme-assets/readme-2nd-demo.gif)
+![OpenWand 跨应用上下文演示](readme-assets/openwand-context-demo.gif)
+
+**跨应用上下文：** 将当前选区与已启用的浏览器和应用上下文结合，为模型提供所需材料，无需手动复制粘贴。
+
+![OpenWand Ctrl+Alt+Q 屏幕截图演示](readme-assets/openwand-screen-snip-demo.gif)
 
 **视觉截图：** 截图流程适用于视觉上下文重要的场景。`Ctrl+Alt+Q` 允许您绘制区域，将该截图发送给视觉模型，并将答案保留在悬浮窗中而不需要切换应用。
 
-![OpenWand 上下文感知重写演示](readme-assets/readme-3rd-demo.gif)
+![OpenWand 重写演示](readme-assets/openwand-rewrite-demo.gif)
 
-**上下文感知重写：** OpenWand 可以在不截图的情况下收集有用的应用上下文，让模型了解您正在做什么。然后重写快捷键只重写选中文本，并把回贴目标指向按下快捷键时捕获的原始字段。
+**原位重写：** 仅重写选中的文本，审阅建议措辞，然后将接受的结果贴回调用 OpenWand 时处于活动状态的字段。
 
-![OpenWand 代理团队演示](readme-assets/readme-4th-demo.gif)
+![OpenWand 应用感知操作演示](readme-assets/openwand-app-aware-action-demo.gif)
+
+**应用感知操作：** 使用聚焦的应用上下文分析当前工作或执行操作，并在未更改单元格时给出明确结果和确认。
+
+![OpenWand 代理团队演示](readme-assets/openwand-agent-task-demo.gif)
 
 **代理团队：** 将较长的工作委派给协调者、构建者和审查者。团队可以检查项目文件、进行有针对性的更改、运行检查，并在你继续使用 OpenWand 时留下最终报告和可审查的产出物。
 
@@ -266,6 +274,10 @@ OpenWand 被设计为本地桌面助手。**存储保留在您的机器上**，�
 隐私优先的设置检查和警告行为会保持启用，包括在发送敏感上下文之前显示脱敏状态。在**设置 → 应用 → 隐私模式**中选择三个互斥模式之一：**关闭**、**内置**（默认）或**高级**。内置模式使用本地模式匹配来检测凭据、令牌、付款信息及其他结构化机密。高级模式会保留这些规则，并加入可选的 [OpenAI Privacy Filter](https://openai.com/index/introducing-openai-privacy-filter/)；该模型完全在您的电脑上运行，可结合上下文检测姓名、地址、电子邮件地址、电话号码、私人 URL 和日期、账号及机密。
 
 高级模型为可选下载，大小约 2.8 GB，此外还会安装其专用本地运行环境。OpenWand 启动时或您启用高级模式后，会在后台将模型加载到内存并进行预热。在 CPU 上，预热可能需要数十秒。如果您在预热完成前发送请求，该请求会等待；后续扫描会复用已加载的模型，因此速度更快。OpenWand 会将检测到的片段替换为 `[PERSON_1]` 等稳定占位符，可在发送前显示审查界面，并再次检查脱敏后的文本。如果高级模型不可用、检测失败或仍有敏感文本残留，OpenWand 会阻止向云端发送。
+
+### 提示注入防护
+
+OpenWand 还会检查捕获的文本，查找试图覆盖模型指令的简单表达。您可以在设置中启用检测，并选择是否在发送前显示警告，以便继续或取消请求。
 
 隐私过滤可以降低意外泄露的风险，但不能保证匿名化或符合监管要求。
 

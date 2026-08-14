@@ -109,11 +109,14 @@ def stt_status(
 ) -> dict[str, object]:
     """Return local speech-recognition status without loading a Whisper model."""
     provider = _text(config, "STT_PROVIDER", "local").lower()
-    model = (
-        _text(config, "STT_CLOUDFLARE_MODEL", "@cf/openai/whisper-large-v3-turbo")
-        if provider == "cloudflare"
-        else _text(config, "STT_MODEL")
-    )
+    if provider == "none":
+        model = ""
+    else:
+        model = (
+            _text(config, "STT_CLOUDFLARE_MODEL", "@cf/openai/whisper-large-v3-turbo")
+            if provider == "cloudflare"
+            else _text(config, "STT_MODEL")
+        )
     device = _text(config, "STT_DEVICE", "auto").lower()
     compute = _text(config, "STT_COMPUTE_TYPE", "int8").lower()
     result: dict[str, object] = {
@@ -130,7 +133,11 @@ def stt_status(
         "ready": None,
         "warming": False,
         "state": "disabled" if not model else "checking",
-        "summary": "STT is not configured; voice and dictation can stay off.",
+        "summary": (
+            "Speech to text is disabled."
+            if provider == "none"
+            else "STT is not configured; voice and dictation can stay off."
+        ),
         "error": "",
         "action": "",
         "package": {},

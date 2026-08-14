@@ -128,6 +128,23 @@ class BuildContextTests(unittest.TestCase):
         )
         self.assertEqual(out.ambient_ctx, "[Active document]\nACTIVE")
 
+    def test_selection_priority_makes_other_sources_supporting_background(self):
+        out = _build(
+            selected="TARGET TEXT",
+            ambient_text="[Browser/Web]\nREFERENCE PAGE",
+            active_document_text="OPEN DOCUMENT",
+            priority_context="Selection",
+        )
+
+        self.assertIn(
+            "[Context priority]\nGive the Selection the greatest weight as the primary "
+            "task context. Treat every other attached source as supporting background",
+            out.ambient_ctx,
+        )
+        self.assertIn("[Selection]\nTARGET TEXT", out.ambient_ctx)
+        self.assertIn("[Browser/Web]\nREFERENCE PAGE", out.ambient_ctx)
+        self.assertIn("[Active document]\nOPEN DOCUMENT", out.ambient_ctx)
+
     def test_active_document_kept_when_screenshot_present(self):
         # A screenshot shows pixels, not document text — enabling documents must
         # still inject them even on vision queries.

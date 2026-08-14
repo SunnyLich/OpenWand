@@ -129,11 +129,14 @@ def preload_model() -> dict | None:
     ~150 MB. On macOS the helper owns STT out-of-process, so this just kicks its
     prewarm and returns ``None``.
     """
+    provider = str(getattr(config, "STT_PROVIDER", "local") or "local").strip().lower()
+    if provider == "none":
+        return None
     if macos_helper.is_enabled():
         from core.macos_helper import stt_client
         stt_client.prewarm()
         return None
-    if str(getattr(config, "STT_PROVIDER", "local") or "local").strip().lower() == "cloudflare":
+    if provider == "cloudflare":
         return {
             "model": config.STT_CLOUDFLARE_MODEL,
             "device": "cloudflare",
@@ -149,11 +152,14 @@ def prewarm(on_ready=None):
     use. ``on_ready`` (if given) is called with ``active_backend()`` once the
     model is warmed, so callers can surface which device/precision it landed on.
     It runs on the background thread — marshal back to the UI thread yourself."""
+    provider = str(getattr(config, "STT_PROVIDER", "local") or "local").strip().lower()
+    if provider == "none":
+        return
     if macos_helper.is_enabled():
         from core.macos_helper import stt_client
         stt_client.prewarm()
         return
-    if str(getattr(config, "STT_PROVIDER", "local") or "local").strip().lower() == "cloudflare":
+    if provider == "cloudflare":
         if on_ready is not None:
             on_ready(
                 {
@@ -191,6 +197,12 @@ def prewarm(on_ready=None):
 def start_recording():
     """Open the microphone and start buffering audio. Call from any thread."""
     global _stream, _recording
+    provider = str(getattr(config, "STT_PROVIDER", "local") or "local").strip().lower()
+    if provider == "none":
+        _recording = False
+        with _chunks_lock:
+            _chunks.clear()
+        return
     if macos_helper.is_enabled():
         from core.macos_helper import stt_client
         stt_client.start_recording()
@@ -258,6 +270,9 @@ def stop_and_transcribe() -> str:
     Blocks for ~200–600 ms depending on clip length and model size.
     """
     global _stream, _recording
+    provider = str(getattr(config, "STT_PROVIDER", "local") or "local").strip().lower()
+    if provider == "none" and not _recording and _stream is None:
+        return ""
     if macos_helper.is_enabled():
         from core.macos_helper import stt_client
         return stt_client.stop_and_transcribe()
@@ -282,6 +297,8 @@ def stop_and_transcribe() -> str:
         chunks = list(_chunks)
         _chunks.clear()
 
+    if provider == "none":
+        return ""
     if not chunks:
         return ""
 
@@ -300,7 +317,6 @@ def stop_and_transcribe() -> str:
     if peak < 0.3:
         audio = audio * (0.3 / peak)
 
-    provider = str(getattr(config, "STT_PROVIDER", "local") or "local").strip().lower()
     language = config.STT_LANGUAGE or None
     beam_size = config.STT_BEAM_SIZE
     if provider == "cloudflare":

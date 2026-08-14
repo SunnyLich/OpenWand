@@ -66,6 +66,17 @@ def _pytest_command(root: Path, files: list[Path], basetemp: Path) -> list[str]:
     ]
 
 
+def _cleanup_basetemp(root: Path, basetemp: Path) -> None:
+    """Remove a CI basetemp even when its pytest child timed out or failed."""
+
+    if __package__:
+        from scripts.pytest_temp_cleanup import remove_owned_basetemp
+    else:
+        from pytest_temp_cleanup import remove_owned_basetemp
+
+    remove_owned_basetemp(root, basetemp, defer_until_process_exit=True)
+
+
 def _terminate_process_tree(process: subprocess.Popen) -> None:
     """Terminate one timed-out pytest process and its worker descendants."""
     if os.name == "nt":
@@ -232,7 +243,9 @@ def _run_per_file(
 ) -> int:
     for index, path in enumerate(files, start=1):
         rel_path = path.relative_to(root)
-        basetemp = root / f".pytest-tmp-ci-chunk-{chunk_index}-file-{index:03d}"
+        basetemp = root / (
+            f".pytest-tmp-pytest_{os.getpid()}_ci_chunk_{chunk_index}_file_{index:03d}"
+        )
         print(f"=== running file {index}/{len(files)}: {rel_path} ===", flush=True)
         file_timeout = _file_inactivity_timeout(
             root,
@@ -244,6 +257,8 @@ def _run_per_file(
         except KeyboardInterrupt:
             print(f"=== runner interrupted while waiting for file {index}/{len(files)}: {rel_path} ===", flush=True)
             raise
+        finally:
+            _cleanup_basetemp(root, basetemp)
         print(f"=== file exit code {status}: {rel_path} ===", flush=True)
         if status == _PYTEST_NO_TESTS_COLLECTED:
             print(f"=== file skipped by selection: {rel_path} ===", flush=True)
@@ -259,6 +274,8 @@ def _run_chunk(root: Path, files: list[Path], basetemp: Path) -> int:
     except KeyboardInterrupt:
         print("=== runner interrupted while waiting for pytest chunk ===", flush=True)
         raise
+    finally:
+        _cleanup_basetemp(root, basetemp)
     print(f"=== chunk exit code {status} ===", flush=True)
     return status
 
@@ -306,7 +323,7 @@ def main() -> int:
             inactivity_timeout_seconds=args.per_file_inactivity_timeout_seconds,
         )
 
-    basetemp = root / f".pytest-tmp-ci-chunk-{args.chunk_index}"
+    basetemp = root / f".pytest-tmp-pytest_{os.getpid()}_ci_chunk_{args.chunk_index}"
     return _run_chunk(root, files, basetemp)
 
 

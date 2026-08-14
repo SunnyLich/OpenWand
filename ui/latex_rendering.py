@@ -91,6 +91,12 @@ _MATRIX_RE = re.compile(
     r"(.*?)\\end\{\1\}\s*$",
     re.DOTALL,
 )
+_CURRENCY_AMOUNT_RE = re.compile(
+    r"\$(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?(?:[kKmMbB])?"
+)
+_INLINE_MATH_SIGNAL_RE = re.compile(
+    r"\\[A-Za-z]+|[=^_<>±×÷∑∫]|(?:\d|\s)[+*/-](?:\d|\s)"
+)
 
 
 def _is_escaped(text: str, index: int) -> bool:
@@ -100,6 +106,26 @@ def _is_escaped(text: str, index: int) -> bool:
         slashes += 1
         index -= 1
     return bool(slashes % 2)
+
+
+def _looks_like_currency_span(text: str, start: int, close: int) -> bool:
+    """Return whether a single-dollar candidate starts as a money amount.
+
+    Dollar-delimited inline math is ambiguous with ordinary currency.  A
+    standalone amount such as ``$500`` must not borrow a later dollar sign as
+    its closing delimiter.  Numeric equations such as ``$2 + 2 = 4$`` remain
+    math because the candidate contains an explicit mathematical operator.
+    """
+    amount = _CURRENCY_AMOUNT_RE.match(text, start)
+    if amount is None or amount.end() == close:
+        return False
+    if _CURRENCY_AMOUNT_RE.match(text, close) is not None:
+        # In ``$500 - $300`` the second dollar starts another amount; it is not
+        # a closing math delimiter even though the intervening prose contains
+        # an arithmetic operator.
+        return True
+    expression = text[start + 1:close]
+    return _INLINE_MATH_SIGNAL_RE.search(expression) is None
 
 
 def iter_math_spans(text: str) -> list[MathSpan]:
@@ -139,9 +165,17 @@ def iter_math_spans(text: str) -> list[MathSpan]:
                 if _is_escaped(source, close):
                     close += width
                     continue
+                if not display and "\n" in source[i + 1:close]:
+                    # Inline TeX cannot span a line.  Without this boundary,
+                    # currency-heavy prose (for example Calc analysis with one
+                    # ``$amount`` per bullet) pairs unrelated dollar signs and
+                    # turns several rows of text into one malformed equation.
+                    break
                 if not display and close > i + 1 and source[close - 1].isspace():
                     close += width
                     continue
+                if not display and _looks_like_currency_span(source, i, close):
+                    break
                 spans.append(MathSpan(i, close + width, source[i + width:close], display))
                 i = close + width
                 matched = True

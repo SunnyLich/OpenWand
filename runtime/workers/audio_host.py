@@ -744,12 +744,15 @@ def audio_live_start() -> dict[str, Any]:
     """
     global _live_session
     import config
+
+    provider = str(getattr(config, "LIVE_VOICE_PROVIDER", "google") or "google").strip().lower()
+    if provider == "none":
+        return {"started": False, "error": "disabled"}
+    if provider != "google":
+        return {"started": False, "error": "unsupported_provider", "provider": provider}
     from core import live_voice
     from core.macos_helper import handlers as stt_handlers
 
-    provider = str(getattr(config, "LIVE_VOICE_PROVIDER", "google") or "google").strip().lower()
-    if provider != "google":
-        return {"started": False, "error": "unsupported_provider", "provider": provider}
     if not live_voice.genai_available():
         return {"started": False, "error": "missing_package"}
 

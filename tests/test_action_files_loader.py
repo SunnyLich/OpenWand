@@ -15,7 +15,7 @@ from core.action_files import (
     run_action_script,
     save_callers,
 )
-from core.action_files.store import ActionCatalogStore, action_runtime_route, caller_row
+from core.action_files.store import ActionCatalogStore, action_runtime_copy, action_runtime_route, caller_row
 
 PROMPT_ACTION = """
 label = "Fix grammar"
@@ -122,6 +122,37 @@ def test_legacy_cleanup_route_upgrades_without_converting_custom_actions() -> No
 
     assert route == ("excel.clean_range@1", "excel_plan_clean_range")
     assert custom == ("", "")
+
+
+def test_legacy_formula_copy_upgrades_without_rewording_custom_actions() -> None:
+    legacy = action_runtime_copy(
+        "libreoffice_calc",
+        "explain_formula",
+        "Explain the selected formula",
+        "Describe its inputs and logic, then flag likely mistakes",
+        (
+            "Explain the selected spreadsheet formula in plain language, including its inputs, logic, and output. "
+            "Flag broken references, risky assumptions, or inconsistencies with neighboring formulas. If no formula "
+            "text is available, say exactly what the user needs to select. Do not change any cells."
+        ),
+    )
+    custom = action_runtime_copy(
+        "libreoffice_calc",
+        "explain_formula",
+        "Explain my model",
+        "Use our accounting conventions",
+        "Explain this using the team's terminology.",
+    )
+
+    assert legacy[:2] == (
+        "Explain formula",
+        "Describe its inputs and logic, then flag likely mistakes",
+    )
+    assert custom == (
+        "Explain my model",
+        "Use our accounting conventions",
+        "Explain this using the team's terminology.",
+    )
 
 
 def test_prompt_only_action_needs_no_script_and_runs_inline(tmp_path: Path) -> None:

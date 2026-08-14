@@ -137,6 +137,8 @@ class PrivacySettings:
     hide_financial_details: bool
     hide_government_ids: bool
     hide_urls: bool
+    prompt_injection_protection: bool
+    prompt_injection_warn: bool
 
 
 @dataclass(frozen=True)
@@ -249,6 +251,10 @@ class AppSettings:
                 hide_financial_details=_copy_bool(values.get("PRIVACY_HIDE_FINANCIAL_DETAILS"), True),
                 hide_government_ids=_copy_bool(values.get("PRIVACY_HIDE_GOVERNMENT_IDS"), True),
                 hide_urls=_copy_bool(values.get("PRIVACY_HIDE_URLS"), True),
+                prompt_injection_protection=_copy_bool(
+                    values.get("PROMPT_INJECTION_PROTECTION"), True
+                ),
+                prompt_injection_warn=_copy_bool(values.get("PROMPT_INJECTION_WARN"), True),
             ),
             callers=CallerSettings(
                 callers=_copy_rows(values.get("CALLER_ROWS")),

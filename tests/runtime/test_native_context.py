@@ -104,8 +104,16 @@ def test_two_annotations_keep_their_own_screen_positions(monkeypatch):
     annotation_a = native_host.selection_anchor_resolve(focus_token=101, allow_mouse=False)
     annotation_b = native_host.selection_anchor_resolve(focus_token=202, allow_mouse=False)
 
-    assert annotation_a["selection_rect"] == rect_a
-    assert annotation_b["selection_rect"] == rect_b
+    assert annotation_a["selection_rect"] == {
+        **rect_a,
+        "endpoint_x": 180.0,
+        "endpoint_y": 209.0,
+    }
+    assert annotation_b["selection_rect"] == {
+        **rect_b,
+        "endpoint_x": 590.0,
+        "endpoint_y": 609.0,
+    }
 
 
 def test_windows_classic_richedit_uses_cached_uia_range_for_geometry(monkeypatch):
@@ -136,7 +144,11 @@ def test_windows_classic_richedit_uses_cached_uia_range_for_geometry(monkeypatch
     result = native_host.selection_anchor_resolve(focus_token=14, refresh=True)
 
     assert result["source"] == "uia"
-    assert result["selection_rect"] == expected
+    assert result["selection_rect"] == {
+        **expected,
+        "endpoint_x": 470.0,
+        "endpoint_y": 270.0,
+    }
 
 
 def test_windows_scroll_visibility_uses_editor_viewport_not_whole_app(monkeypatch):
@@ -178,6 +190,42 @@ def test_windows_scroll_visibility_uses_editor_viewport_not_whole_app(monkeypatc
     assert result["visible"] is False
     assert result["source"] == "native-edit"
     assert validated_against == [222]
+
+
+def test_windows_native_edit_anchor_endpoint_is_not_shifted_by_caret_width(monkeypatch):
+    rect = {"left": 410.0, "top": 260.0, "width": 2.0, "height": 20.0}
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(
+        native_host,
+        "_focus_cache",
+        {
+            "token": 16,
+            "kind": "win-edit",
+            "class_name": "EDIT",
+            "input_hwnd": 222,
+            "selection_end": 8,
+            "document_text": "selected",
+        },
+    )
+    monkeypatch.setattr(
+        native_host,
+        "_win_edit_selection_screen_rect",
+        lambda *_args, **_kwargs: rect,
+    )
+    monkeypatch.setattr(
+        native_host,
+        "_win_valid_selection_anchor",
+        lambda value, **_kwargs: dict(value or {}),
+    )
+
+    result = native_host.selection_anchor_resolve(
+        focus_token=16,
+        refresh=True,
+    )
+
+    assert result["source"] == "native-edit"
+    assert result["selection_rect"]["endpoint_x"] == 410.0
+    assert result["selection_rect"]["endpoint_y"] == 270.0
 
 
 def test_windows_uia_selection_uses_last_visible_screen_rectangle(monkeypatch):
@@ -627,6 +675,79 @@ def test_windows_wordpad_rich_edit_replaces_and_verifies_without_focus_or_clipbo
     assert result["text_verified"] is True
     assert result["clipboard_restored"] is True
     assert result["foreground_unchanged"] is True
+    assert state["document"] == "A clear sentence."
+
+
+def test_windows_wordpad_reselects_captured_range_after_user_clicks_away(monkeypatch):
+    import ctypes as real_ctypes
+    import types
+
+    state = {"document": "A rough sentence.", "replaced": False}
+    cached = {
+        "token": 42,
+        "kind": "win-edit",
+        "input_hwnd": 501,
+        "root_hwnd": 500,
+        "target_pid": 77,
+        "class_name": "RICHEDIT50W",
+        "selection_start": 2,
+        "selection_end": 7,
+        "selected_text": "rough",
+        "document_prefix": "A ",
+        "document_suffix": " sentence.",
+        "document_text": "A rough sentence.",
+        "range_context_bound": True,
+    }
+    current = {
+        **cached,
+        # The document is unchanged, but the user clicked at its end while the
+        # model was working. Rewrite must use the captured offsets, not this
+        # new caret.
+        "selection_start": 17,
+        "selection_end": 17,
+        "selected_text": "",
+        "document_prefix": "A rough sentence.",
+        "document_suffix": "",
+    }
+    selected_messages: list[tuple[int, int]] = []
+
+    def snapshot(_hwnd=0, *, require_selection=True):
+        del require_selection
+        if not state["replaced"]:
+            return dict(current)
+        return {**current, "document_text": state["document"]}
+
+    class User32:
+        @staticmethod
+        def GetForegroundWindow():
+            return 900
+
+        @staticmethod
+        def SendMessageW(_hwnd, message, wparam, lparam):
+            if message == native_host._EM_SETSEL:
+                selected_messages.append((int(wparam), int(lparam)))
+            elif message == native_host._EM_REPLACESEL:
+                state["document"] = f"A {lparam.value} sentence."
+                state["replaced"] = True
+            return 1
+
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(native_host, "IS_MAC", False)
+    monkeypatch.setattr(native_host, "_focus_cache", cached)
+    monkeypatch.setattr(native_host, "_win_edit_control_snapshot", snapshot)
+    monkeypatch.setattr(
+        native_host,
+        "ctypes",
+        types.SimpleNamespace(
+            windll=types.SimpleNamespace(user32=User32()),
+            c_wchar_p=real_ctypes.c_wchar_p,
+        ),
+    )
+
+    result = native_host.paste_text("clear", target_pid=77, focus_token=42)
+
+    assert result["ok"] is True, result
+    assert selected_messages == [(2, 7)]
     assert state["document"] == "A clear sentence."
 
 
@@ -1344,8 +1465,8 @@ def test_context_snapshot_reads_background_browser_when_foreground_is_document(m
     )
     monkeypatch.setattr(
         context_fetcher,
-        "get_browser_window_for_context",
-        lambda preferred_hwnd=0: background_browser,
+        "get_browser_windows_for_context",
+        lambda preferred_hwnd=0: [background_browser],
     )
 
     snapshot = native_host.context_snapshot(
@@ -1357,6 +1478,54 @@ def test_context_snapshot_reads_background_browser_when_foreground_is_document(m
     assert snapshot["browser_url"] == "https://example.test/page"
     assert snapshot["browser_hwnd"] == 777
     assert snapshot["debug"]["browser_window"]["process_name"] == "chrome.exe"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows native context behavior is tested on Windows")
+def test_context_snapshot_keeps_each_visible_browser_as_a_separate_page(monkeypatch):
+    monkeypatch.setattr(native_host, "IS_WIN", True)
+    monkeypatch.setattr(native_host, "IS_MAC", False)
+    monkeypatch.setattr(context_fetcher, "_IS_WIN", True)
+    monkeypatch.setattr(context_fetcher, "_IS_MAC", False)
+    monkeypatch.setattr(
+        native_host,
+        "_active_app",
+        lambda: {"name": "Notepad", "pid": 42, "window_id": 111, "bundle_id": ""},
+    )
+    monkeypatch.setattr(native_host, "_selected_text_and_stale", lambda **_kwargs: ("", ""))
+    monkeypatch.setattr(native_host, "clipboard_get", lambda: {"text": ""})
+    windows = [
+        context_fetcher.WindowInfo(
+            title="Guide.pdf - Google Chrome",
+            process_name="chrome.exe",
+            url="file:///C:/Docs/Guide.pdf",
+            hwnd=701,
+        ),
+        context_fetcher.WindowInfo(
+            title="Project site - Microsoft Edge",
+            process_name="msedge.exe",
+            url="https://example.test/project",
+            hwnd=702,
+        ),
+    ]
+    monkeypatch.setattr(
+        context_fetcher,
+        "get_browser_windows_for_context",
+        lambda preferred_hwnd=0: windows,
+    )
+
+    snapshot = native_host.context_snapshot(
+        include_clipboard=False,
+        include_selection=False,
+        include_browser_url=True,
+    )
+
+    assert [page["process_name"] for page in snapshot["browser_pages"]] == [
+        "chrome.exe",
+        "msedge.exe",
+    ]
+    assert [page["hwnd"] for page in snapshot["browser_pages"]] == [701, 702]
+    assert snapshot["browser_url"] == "file:///C:/Docs/Guide.pdf"
+    assert len(snapshot["debug"]["browser_windows"]) == 2
 
 
 def test_linux_context_snapshot_keeps_browser_hwnd_for_deferred_read(monkeypatch):
@@ -1393,7 +1562,11 @@ def test_linux_context_snapshot_keeps_browser_hwnd_for_deferred_read(monkeypatch
             hwnd=777,
         )
 
-    monkeypatch.setattr(context_fetcher, "get_browser_window_for_context", fake_browser_window)
+    monkeypatch.setattr(
+        context_fetcher,
+        "get_browser_windows_for_context",
+        lambda preferred_hwnd=0: [fake_browser_window(preferred_hwnd)],
+    )
 
     snapshot = native_host.context_snapshot(
         include_clipboard=False,

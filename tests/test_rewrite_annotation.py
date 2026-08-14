@@ -31,7 +31,7 @@ def test_enter_submits_then_collapses_to_balloon(qapp) -> None:
     assert list(submitted.at(0)) == ["a1", "Make this clearer", False]
     assert popup.state == "processing"
     assert popup._stack.currentWidget() is popup._balloon
-    assert popup._balloon_number.text() == "1"
+    assert popup._balloon_button.display_number_text == "1"
     popup.remove()
 
 
@@ -103,9 +103,11 @@ def test_processing_balloon_shows_its_comment_number(qapp) -> None:
     popup.show()
     qapp.processEvents()
 
-    assert popup._balloon_number.text() == "7"
-    assert not popup.mask().contains(QPoint(0, 0))
-    assert popup.mask().contains(QPoint(popup.width() // 2, popup.height() // 2))
+    assert popup._balloon_button.display_number_text == "7"
+    assert popup._balloon_button._number_label.text() == "7"
+    assert popup._balloon_button._number_label.geometry() == QRect(5, 5, 34, 34)
+    assert popup._balloon_button.uses_vector_source
+    assert popup.mask().isEmpty()
     popup.remove()
 
 
@@ -261,8 +263,54 @@ def test_processing_balloon_keeps_the_composer_anchor_side(qapp) -> None:
 
     popup.show_processing()
     qapp.processEvents()
-    assert popup.geometry().right() < selection.left()
-    assert popup.geometry().right() == selection.left() - 11
+    endpoint = QPoint(selection.x() + selection.width(), selection.center().y())
+    assert popup.pos() + popup._balloon_button.tail_tip == endpoint
+    popup.remove()
+
+
+def test_processing_balloon_points_back_to_selection_on_right(qapp) -> None:
+    selection = QRect(100, 160, 70, 20)
+    popup = RewriteAnnotationPopup(
+        annotation_id="right-anchor",
+        selected_text="selected words",
+        selection_rect={
+            "left": selection.left(),
+            "top": selection.top(),
+            "width": selection.width(),
+            "height": selection.height(),
+        },
+    )
+
+    popup.show_composer()
+    popup.show_processing()
+    qapp.processEvents()
+
+    assert popup._selection_anchor_side == "right"
+    assert popup._balloon_button.tail_direction == "left"
+    endpoint = QPoint(selection.x() + selection.width(), selection.center().y())
+    assert popup.pos() + popup._balloon_button.tail_tip == endpoint
+    popup.remove()
+
+
+def test_processing_tail_uses_explicit_native_character_endpoint(qapp) -> None:
+    popup = RewriteAnnotationPopup(
+        annotation_id="native-endpoint",
+        selected_text="selected words",
+        selection_rect={
+            "left": 300,
+            "top": 160,
+            "width": 2,
+            "height": 20,
+            "endpoint_x": 300,
+            "endpoint_y": 170,
+        },
+    )
+
+    popup.show_composer()
+    popup.show_processing()
+    qapp.processEvents()
+
+    assert popup.pos() + popup._balloon_button.tail_tip == QPoint(300, 170)
     popup.remove()
 
 
@@ -435,7 +483,7 @@ def test_processing_balloon_follows_scroll_hides_and_reappears(qapp) -> None:
     qapp.processEvents()
     assert popup.state == "processing"
     assert popup._stack.currentWidget() is popup._balloon
-    assert popup._balloon_number.text() == "4"
+    assert popup._balloon_button.display_number_text == "4"
     assert popup.y() == first.y() - 80
 
     popup.update_selection_anchor(None, visible=False)
@@ -488,4 +536,29 @@ def test_popup_and_text_hide_when_source_loses_focus_then_reappear_together(qapp
     assert popup.isVisible()
     assert popup._diff.isVisible()
     assert "replacement" in popup._diff.text()
+    popup.remove()
+
+
+def test_processing_balloon_survives_temporary_source_focus_loss(qapp, monkeypatch) -> None:
+    """A screen-snipping tool taking focus must not make active work disappear."""
+    popup = RewriteAnnotationPopup(
+        annotation_id="snip-focus",
+        selected_text="selected words",
+        source_window_id=101,
+        selection_rect={"left": 220, "top": 240, "width": 90, "height": 20},
+    )
+    source_rect = QRect(100, 100, 900, 700)
+    monkeypatch.setattr(
+        popup,
+        "_source_window_state",
+        lambda: (False, source_rect),
+    )
+
+    popup.show_processing()
+    qapp.processEvents()
+    popup._sync_to_source_window()
+    qapp.processEvents()
+
+    assert popup.isVisible()
+    assert popup._balloon_button.isVisible()
     popup.remove()

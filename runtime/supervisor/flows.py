@@ -1455,10 +1455,30 @@ class FlowController:
         # it - audio.stop just flips a flag in the audio worker.
         self._fire(self.audio, "audio.stop")
         self._fire(self.ui, "ui.overlay.state", {"state": "listening"})
-        # Capture the desktop before showing OpenWand, but defer active-app and
-        # selection capture until the non-activating picker shell is visible.
-        # App-specific actions are injected into that shell as soon as the
-        # hotkey-time context arrives.
+        # Capture the foreground app, selection, and selected paths before any
+        # OpenWand top-level window is shown. Even a nominally non-activating
+        # Windows popup can change the focused accessibility element or make a
+        # synthetic Copy land in OpenWand instead of the source app.
+        initial_context: dict[str, Any] = {}
+        try:
+            initial_context = self._context_snapshot(
+                caller,
+                include_browser=False,
+                include_selected_paths=True,
+                preview_context_sources=True,
+                dedupe_selection=True,
+            )
+        except Exception:
+            # Context capture remains best-effort: a denied native permission
+            # must not prevent the caller picker from opening.
+            log.exception("pre-picker context snapshot failed")
+            initial_context = {}
+        if not self._is_current(generation):
+            return
+
+        # A requested desktop capture also happens before the picker so the
+        # screenshot cannot include OpenWand itself. Slow browser/document
+        # content remains deferred and is prefetched after the picker appears.
         screenshot_b64 = None
         screenshot_tool_b64 = None
         t_shot0 = time.monotonic()
@@ -1472,25 +1492,26 @@ class FlowController:
         pending = PendingInvocation(
             caller_idx=caller_idx,
             caller=caller,
-            context={},
+            context=initial_context,
             action_provider_context={},
             screenshot_b64=screenshot_b64,
             screenshot_tool_b64=screenshot_tool_b64,
             invoked_at_unix_ns=invoked_at_unix_ns,
-            initial_context_at_unix_ns=0,
+            initial_context_at_unix_ns=time.time_ns(),
         )
+        target_id = self._intent_target_id(initial_context)
+        pending.intent_target_pid = target_id
+        pending.paste_target_pid = target_id if pending.caller.get("paste_back") else 0
         with self._lock:
             self._pending = pending
-        # Render immediately, but leave the picker inert and non-activating so
-        # the native worker can still capture the original app's selection and
-        # exact paste-back target. ui.intent.activate makes it interactive once
-        # that capture is complete.
+        # The source-app snapshot is now stable. Keep the initial shell inert
+        # only until its app-action provider and deferred metadata are ready.
         self._safe_call(
             self.ui,
             "ui.show_intent",
             {
                 "caller_idx": caller_idx,
-                "target_hwnd": 0,
+                "target_hwnd": target_id,
                 "context_items": self._intent_context_items(pending),
                 "action_provider": pending.action_provider_context,
                 "defer_focus": True,
@@ -1600,12 +1621,21 @@ class FlowController:
         session_key = self._rewrite_annotation_session_key(context)
         with self._lock:
             display_number = self._next_rewrite_display_number()
+        platform = str(context.get("platform") or "")
+        exact_target = bool(structured_target or context.get("focus_token"))
+        # Windows and macOS may edit only a captured native range. Merely
+        # knowing the source window is not enough: after the user clicks away,
+        # an ordinary paste would land at the new caret instead of replacing
+        # the text that Rewrite originally captured.
+        safe_in_place = exact_target or bool(
+            target_id and not platform.startswith(("win", "darwin"))
+        )
         request = RewriteAnnotationRequest(
             annotation_id=annotation_id,
             pending=pending,
             session_key=session_key,
             display_number=display_number,
-            copy_only=not bool(structured_target or target_id or context.get("focus_token")),
+            copy_only=not safe_in_place,
             structured_target=structured_target,
         )
         with self._lock:
@@ -2035,6 +2065,8 @@ class FlowController:
         annotation_id: str,
         comment: str,
         include_document: bool,
+        *,
+        allow_revision: bool = False,
     ) -> None:
         """Generate one proposal without editing the captured application."""
         key = str(annotation_id or "")
@@ -2042,6 +2074,11 @@ class FlowController:
         with self._lock:
             request = self._rewrite_annotations.get(key)
             if request is None or not clean_comment:
+                return
+            allowed_states = {"composing", "failed", "queued"}
+            if allow_revision:
+                allowed_states.add("proposal")
+            if request.state not in allowed_states:
                 return
             request.display_number = self._next_rewrite_display_number(excluding=request)
             request.comment = clean_comment
@@ -2360,15 +2397,23 @@ class FlowController:
             f"Previous proposal: {request.replacement_text}\n"
             f"Follow-up instruction: {clean_feedback}"
         )
-        self.submit_rewrite_annotation(key, revision_prompt, request.include_document)
+        self.submit_rewrite_annotation(
+            key,
+            revision_prompt,
+            request.include_document,
+            allow_revision=True,
+        )
 
     def accept_rewrite_annotation(self, annotation_id: str) -> None:
         """Immediately apply the captured proposal, falling back to Copy safely."""
         key = str(annotation_id or "")
         with self._lock:
             request = self._rewrite_annotations.get(key)
-        if request is None or request.state != "proposal" or not request.replacement_text:
-            return
+            if request is None or request.state != "proposal" or not request.replacement_text:
+                return
+            # Claim this proposal before leaving the lock. A double click or
+            # duplicate IPC event must never apply the same rewrite twice.
+            request.state = "applying"
         if request.structured_target:
             applied = self._apply_structured_rewrite(request)
             if applied:
@@ -2377,6 +2422,7 @@ class FlowController:
                 self._fire(self.ui, "ui.rewrite.annotation.remove", {"annotation_id": key})
                 return
             request.copy_only = True
+            request.state = "proposal"
             self._safe_call(
                 self.ui,
                 "ui.rewrite.annotation.proposal",
@@ -2402,6 +2448,8 @@ class FlowController:
                 with self._lock:
                     self._rewrite_annotations.pop(key, None)
                 self._fire(self.ui, "ui.rewrite.annotation.remove", {"annotation_id": key})
+            else:
+                request.state = "proposal"
             return
 
         context = request.pending.context
@@ -2430,6 +2478,7 @@ class FlowController:
         # Preserve the proposal and offer a safe manual path instead of applying
         # to whichever control happens to be focused now.
         request.copy_only = True
+        request.state = "proposal"
         self._safe_call(
             self.ui,
             "ui.rewrite.annotation.proposal",
@@ -2709,6 +2758,10 @@ class FlowController:
                 if text:
                     context["active_document_text"] = text
             pending.context = context
+        elif item_id == "browser":
+            pending.removed_context_sources = {
+                pair for pair in pending.removed_context_sources if pair[0] != "browser"
+            }
 
         with self._lock:
             if self._pending is pending:
@@ -5307,6 +5360,8 @@ class FlowController:
                 return
             if error == "missing_key":
                 self._notice(t("Live voice needs a Google API key. Add one in Settings."))
+            elif error == "disabled":
+                self._notice(t("Live conversation is disabled in Settings."))
             elif error == "missing_package":
                 self._notice(t("Live voice support is not installed. Install it in Settings > TTS / Voice."))
             elif error == "mic_busy":
@@ -5783,13 +5838,19 @@ class FlowController:
             if text:
                 context["active_document_text"] = text
                 changed = True
-        if self._context_mode(caller, "browser") == "auto" and not context.get("browser_content"):
+        preview_browser_pages = self._browser_pages_from_context(context)
+        if self._context_mode(caller, "browser") == "auto" and (
+            not preview_browser_pages
+            or any(not str(page.get("content") or "").strip() for page in preview_browser_pages)
+        ):
             browser = self._fetch_browser_content_for_context(context)
             if browser.get("browser_url") and not context.get("browser_url"):
                 context["browser_url"] = browser["browser_url"]
                 changed = True
             if browser.get("browser_content"):
                 context["browser_content"] = browser["browser_content"]
+                changed = True
+            if self._browser_pages_from_context(context):
                 changed = True
         if changed:
             pending.context = context
@@ -7899,7 +7960,7 @@ class FlowController:
         started_at: float,
         shown_at: float,
     ) -> None:
-        """Capture initial context after the picker is already visible."""
+        """Finalize pre-picker context and start deferred source prefetches."""
         try:
             if not self._is_current(generation):
                 return
@@ -8192,47 +8253,173 @@ class FlowController:
             return "Open app documents"
         return self._active_document_label(context)
 
-    def _fetch_browser_content_for_context(self, context: dict[str, Any]) -> dict[str, str]:
-        """Fetch browser page text using the URL/handle captured at hotkey time."""
-        browser_url = str(context.get("browser_url") or "").strip()
-        browser_hwnd = int(context.get("browser_hwnd") or 0)
-        browser_app = str(context.get("browser_app") or "").strip()
-        browser_content = str(context.get("browser_content") or "").strip()
-        accessibility_text = str(context.get("active_window_text") or "").strip()
-        if (browser_url or browser_hwnd or browser_app) and not browser_content:
-            result = self._safe_call(
-                self.native,
-                "native.context.browser_content",
+    @staticmethod
+    def _browser_page_id(page: dict[str, Any]) -> str:
+        """Return a stable picker/removal id for one captured browser window."""
+        explicit = str(page.get("id") or "").strip()
+        if explicit:
+            return explicit
+        hwnd = int(page.get("hwnd") or 0)
+        if hwnd:
+            return f"browser:{hwnd}"
+        app = str(page.get("app") or page.get("process_name") or "").strip().casefold()
+        url = str(page.get("url") or "").strip()
+        return f"browser:{app or url}"
+
+    @classmethod
+    def _browser_pages_from_context(cls, context: dict[str, Any]) -> list[dict[str, Any]]:
+        """Normalize plural browser pages, synthesizing the legacy singular page."""
+        raw_pages = context.get("browser_pages")
+        pages = [dict(page) for page in raw_pages or [] if isinstance(page, dict)]
+        if not pages and any(
+            context.get(key)
+            for key in ("browser_url", "browser_hwnd", "browser_app", "browser_content")
+        ):
+            pages = [
                 {
-                    "url": browser_url,
-                    "hwnd": browser_hwnd,
-                    "app": browser_app,
-                },
-                timeout=30.0,
-            ) or {}
-            browser_url = str(result.get("url") or browser_url).strip()
-            browser_content = str(result.get("content") or "").strip()
-            log.info(
-                "browser context by captured hwnd url=%r hwnd=%s chars=%d error=%r",
-                browser_url,
-                browser_hwnd,
-                len(browser_content),
-                result.get("error") if isinstance(result, dict) else None,
-            )
-        elif not browser_url and not browser_content:
+                    "title": "",
+                    "process_name": str(context.get("browser_app") or ""),
+                    "app": str(context.get("browser_app") or ""),
+                    "url": str(context.get("browser_url") or ""),
+                    "hwnd": int(context.get("browser_hwnd") or 0),
+                    "content": str(context.get("browser_content") or ""),
+                }
+            ]
+        normalized: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for page in pages:
+            page["title"] = str(page.get("title") or "").strip()
+            page["process_name"] = str(page.get("process_name") or page.get("app") or "").strip()
+            page["app"] = str(page.get("app") or page.get("process_name") or "").strip()
+            page["url"] = str(page.get("url") or "").strip()
+            page["hwnd"] = int(page.get("hwnd") or 0)
+            page["content"] = str(page.get("content") or "")
+            page["id"] = cls._browser_page_id(page)
+            if not page["id"] or page["id"] in seen:
+                continue
+            seen.add(page["id"])
+            normalized.append(page)
+        return normalized
+
+    @classmethod
+    def _store_browser_pages(
+        cls,
+        context: dict[str, Any],
+        pages: list[dict[str, Any]],
+    ) -> None:
+        """Store plural pages and keep legacy singular fields on the first page."""
+        normalized = cls._browser_pages_from_context({"browser_pages": pages})
+        context["browser_pages"] = normalized
+        if not normalized:
+            context["browser_url"] = ""
+            context["browser_hwnd"] = 0
+            context["browser_app"] = ""
+            context["browser_content"] = ""
+            return
+        primary = normalized[0]
+        context["browser_url"] = primary.get("url") or ""
+        context["browser_hwnd"] = int(primary.get("hwnd") or 0)
+        context["browser_app"] = primary.get("app") or primary.get("process_name") or ""
+        context["browser_content"] = primary.get("content") or ""
+
+    @staticmethod
+    def _browser_app_label(page: dict[str, Any]) -> str:
+        """Return a short user-facing browser name for picker and chat sources."""
+        raw = str(page.get("app") or page.get("process_name") or "Browser").strip()
+        key = raw.casefold().removesuffix(".exe")
+        return {
+            "chrome": "Chrome",
+            "google chrome": "Chrome",
+            "msedge": "Edge",
+            "microsoft edge": "Edge",
+            "firefox": "Firefox",
+            "brave": "Brave",
+            "brave browser": "Brave",
+            "vivaldi": "Vivaldi",
+            "opera": "Opera",
+            "safari": "Safari",
+        }.get(key, raw or "Browser")
+
+    @classmethod
+    def _browser_page_label(cls, page: dict[str, Any]) -> str:
+        """Return the page/window label beneath the browser application name."""
+        title = " ".join(str(page.get("title") or "").split()).strip()
+        if title:
+            return title
+        url = str(page.get("url") or "").strip()
+        return url or "Active page"
+
+    @classmethod
+    def _browser_page_prompt_block(
+        cls,
+        page: dict[str, Any],
+        *,
+        priority: str = "",
+    ) -> str:
+        """Render one browser window as a bounded, independently labelled block."""
+        source_label = f"{cls._browser_app_label(page)}: {cls._browser_page_label(page)}"
+        bits = [f"--- BEGIN BROWSER PAGE: {source_label} ---"]
+        if priority:
+            bits.append(f"Priority: {priority}")
+        url = str(page.get("url") or "").strip()
+        content = str(page.get("content") or "").strip()
+        if url:
+            bits.append(f"URL: {url}")
+        if content:
+            bits.append(content)
+        bits.append(f"--- END BROWSER PAGE: {source_label} ---")
+        return "\n".join(bits)
+
+    def _fetch_browser_content_for_context(self, context: dict[str, Any]) -> dict[str, Any]:
+        """Fetch every visible browser page captured at hotkey time."""
+        pages = self._browser_pages_from_context(context)
+        accessibility_text = str(context.get("active_window_text") or "").strip()
+        if not pages:
             fetched = self._fetch_browser_snapshot()
-            browser_url = str(fetched.get("browser_url") or "").strip()
-            browser_content = str(fetched.get("browser_content") or "").strip()
+            pages = self._browser_pages_from_context(fetched)
             log.info(
-                "browser context fallback snapshot url=%s hwnd=%s chars=%d error=%r",
-                "y" if browser_url else "n",
-                fetched.get("browser_hwnd") or 0,
-                len(browser_content),
+                "browser context fallback snapshot pages=%d chars=%d error=%r",
+                len(pages),
+                sum(len(str(page.get("content") or "")) for page in pages),
                 fetched.get("browser_error"),
             )
-        if not browser_content and accessibility_text and self._is_browser_active_context(context):
-            browser_content = accessibility_text
-        return {"browser_url": browser_url, "browser_content": browser_content}
+        else:
+            for page in pages:
+                if str(page.get("content") or "").strip():
+                    continue
+                result = self._safe_call(
+                    self.native,
+                    "native.context.browser_content",
+                    {
+                        "url": page.get("url") or "",
+                        "hwnd": int(page.get("hwnd") or 0),
+                        "app": page.get("app") or page.get("process_name") or "",
+                    },
+                    timeout=30.0,
+                ) or {}
+                page["url"] = str(result.get("url") or page.get("url") or "").strip()
+                page["content"] = str(result.get("content") or "").strip()
+                log.info(
+                    "browser context source id=%r url=%r hwnd=%s chars=%d error=%r",
+                    page.get("id"),
+                    page.get("url"),
+                    page.get("hwnd") or 0,
+                    len(page["content"]),
+                    result.get("error") if isinstance(result, dict) else None,
+                )
+        if (
+            pages
+            and not any(str(page.get("content") or "").strip() for page in pages)
+            and accessibility_text
+            and self._is_browser_active_context(context)
+        ):
+            pages[0]["content"] = accessibility_text
+        self._store_browser_pages(context, pages)
+        primary = pages[0] if pages else {}
+        return {
+            "browser_url": str(primary.get("url") or ""),
+            "browser_content": str(primary.get("content") or ""),
+        }
 
     def _prefetch_intent_context(self, pending: PendingInvocation, generation: int) -> None:
         """Fetch slow context while the intent overlay is open, then refresh chips."""
@@ -8247,8 +8434,12 @@ class FlowController:
             if text:
                 context["active_document_text"] = text
                 changed = True
-        browser_available = bool(context.get("browser_url") or context.get("browser_hwnd") or context.get("browser_app"))
-        if browser_available and not context.get("browser_content"):
+        browser_requested = self._context_mode(pending.caller, "browser") == "auto"
+        browser_pages = self._browser_pages_from_context(context)
+        if browser_requested and (
+            not browser_pages
+            or not all(str(page.get("content") or "").strip() for page in browser_pages)
+        ):
             browser = self._fetch_browser_content_for_context(context)
             if not self._is_current(generation):
                 return
@@ -8257,6 +8448,8 @@ class FlowController:
                 changed = True
             if browser.get("browser_content"):
                 context["browser_content"] = browser["browser_content"]
+                changed = True
+            if self._browser_pages_from_context(context):
                 changed = True
         if not changed or not self._is_current(generation):
             return
@@ -8296,6 +8489,11 @@ class FlowController:
         frontload_tools = self._frontloaded_model_tools(caller)
         memory_mode = self._context_mode(caller, "memory")
         documents_mode = self._effective_document_mode(caller)
+        selected_text = (
+            str(context.get("selected_text") or "")
+            if caller.get("_context_selection_enabled", True)
+            else ""
+        )
         include_active_document = documents_mode == "auto"
         active_document_text = str(context.get("active_document_text") or "") if include_active_document else ""
         if include_active_document:
@@ -8316,44 +8514,42 @@ class FlowController:
         if caller.get("context_clipboard") and context.get("clipboard_text"):
             ambient_parts.append(f"[Clipboard]\n{context.get('clipboard_text')}")
         if self._context_mode(caller, "browser") == "auto":
-            browser_bits: list[str] = []
-            browser_url = str(context.get("browser_url") or "").strip()
-            browser_app = str(context.get("browser_app") or "").strip()
-            browser_content = str(context.get("browser_content") or "").strip()
-            if not browser_content:
+            browser_pages = self._browser_pages_from_context(context)
+            if not browser_pages or any(
+                not str(page.get("content") or "").strip() for page in browser_pages
+            ):
                 # URL + window handle (Windows) or browser app name (macOS) were
-                # captured at hotkey time while the browser was foreground; read
-                # the page now (deferred off the picker path). Windows reads by
-                # handle; macOS asks the named app via AppleScript - both work
-                # with the picker/overlay holding focus.
-                browser = self._fetch_browser_content_for_context(context)
-                browser_url = browser.get("browser_url") or browser_url
-                browser_content = browser.get("browser_content") or ""
-            if browser_url or browser_content or browser_app:
-                browser_bits.append(
-                    f"Priority: {'primary' if self._is_browser_active_context(context) else 'supporting'}"
+                # captured at hotkey time; fetch every captured browser window
+                # without requiring it to be foreground.
+                self._fetch_browser_content_for_context(context)
+                browser_pages = self._browser_pages_from_context(context)
+            removed_browser_ids = {
+                sid for iid, sid in pending.removed_context_sources if iid == "browser" and sid
+            }
+            browser_pages = [
+                page
+                for page in browser_pages
+                if str(page.get("id") or "") not in removed_browser_ids
+            ]
+            self._store_browser_pages(context, browser_pages)
+            browser_blocks = [
+                self._browser_page_prompt_block(
+                    page,
+                    priority=(
+                        "primary"
+                        if (
+                            not selected_text.strip()
+                            and index == 0
+                            and self._is_browser_active_context(context)
+                        )
+                        else "supporting"
+                    ),
                 )
-            if browser_url:
-                browser_bits.append(f"URL: {browser_url}")
-            if browser_content:
-                browser_bits.append(browser_content)
-            elif browser_app:
-                # macOS only (browser_app is set only there). The page text came
-                # back empty - almost always a permission the user hasn't granted
-                # yet. Tell the model so it can relay the fix instead of just
-                # claiming it cannot read the page.
-                if browser_url:
-                    browser_bits.append(
-                        f"(Could not read the {browser_app} page text. In {browser_app}, enable "
-                        f"View â†’ Developer â†’ Allow JavaScript from Apple Events.)"
-                    )
-                else:
-                    browser_bits.append(
-                        f"(Could not read {browser_app}. Allow this app to control {browser_app} in "
-                        f"System Settings â†’ Privacy & Security â†’ Automation, then try again.)"
-                    )
-            if browser_bits:
-                ambient_parts.append("[Browser/Web]\n" + "\n\n".join(browser_bits))
+                for index, page in enumerate(browser_pages)
+                if page.get("url") or page.get("content") or page.get("app")
+            ]
+            if browser_blocks:
+                ambient_parts.append("[Browser/Web]\n" + "\n\n".join(browser_blocks))
         if buffered_items:
             ambient_parts.append("[Buffered context]\n" + "\n\n".join(buffered_items))
         if drop_items:
@@ -8373,15 +8569,14 @@ class FlowController:
             if drop_text_parts:
                 ambient_parts.append("[Dropped context]\n" + "\n\n".join(drop_text_parts))
         ambient_text = "\n\n".join(ambient_parts)
-        context_priority = self._context_priority_source(
-            context,
-            ambient_text,
-            active_document_text,
-        )
-        selected_text = (
-            str(context.get("selected_text") or "")
-            if caller.get("_context_selection_enabled", True)
-            else ""
+        context_priority = (
+            "Selection"
+            if selected_text.strip()
+            else self._context_priority_source(
+                context,
+                ambient_text,
+                active_document_text,
+            )
         )
         summary = self._context_summary_badges(
             selected=selected_text,
@@ -8448,6 +8643,7 @@ class FlowController:
                 "browser_hwnd",
                 "browser_window",
                 "browser_error",
+                "browser_pages",
             ):
                 context.pop(key, None)
         if not active_document_used:
@@ -8772,17 +8968,14 @@ class FlowController:
                 parts.append((f"Document: {label}", block, active_document_text))
 
         if wants_browser:
-            browser = self._fetch_browser_content_for_context(context)
-            browser_url = str(browser.get("browser_url") or context.get("browser_url") or "").strip()
-            browser_content = str(browser.get("browser_content") or "").strip()
-            browser_bits = []
-            if browser_url:
-                browser_bits.append(f"URL: {browser_url}")
-            if browser_content:
-                browser_bits.append(browser_content)
-            if browser_bits:
-                joined = "\n\n".join(browser_bits)
-                parts.append(("Browser/Web", f"[Browser/Web]\n{joined}", joined))
+            self._fetch_browser_content_for_context(context)
+            for page in self._browser_pages_from_context(context):
+                if not (page.get("url") or page.get("content")):
+                    continue
+                source_label = f"{self._browser_app_label(page)}: {self._browser_page_label(page)}"
+                block = self._browser_page_prompt_block(page)
+                preview_source = str(page.get("content") or page.get("url") or "")
+                parts.append((f"Browser/Web: {source_label}", f"[Browser/Web]\n{block}", preview_source))
 
         return parts
 
@@ -9026,16 +9219,25 @@ class FlowController:
             )
         )
 
-        browser_text = "\n".join(
-            str(part)
-            for part in (
-                context.get("browser_url"),
-                context.get("browser_content"),
+        removed_browser_ids = {
+            sid for iid, sid in removed_sources if iid == "browser" and sid
+        }
+        browser_pages = [
+            page
+            for page in self._browser_pages_from_context(context)
+            if str(page.get("id") or "") not in removed_browser_ids
+        ]
+        browser_text = "\n\n".join(
+            "\n".join(
+                str(part)
+                for part in (page.get("url"), page.get("content"))
+                if part
             )
-            if part
-        )
+            for page in browser_pages
+        ).strip()
         browser_available = bool(
-            browser_text
+            browser_pages
+            or browser_text
             or context.get("browser_hwnd")
             or context.get("browser_app")
         )
@@ -9046,7 +9248,8 @@ class FlowController:
             browser_requested
             and (
                 context_loading
-                or (browser_available and not context.get("browser_content"))
+                or not browser_pages
+                or any(not str(page.get("content") or "").strip() for page in browser_pages)
             )
         )
 
@@ -9086,7 +9289,18 @@ class FlowController:
         app_preview = self._context_preview_text(active_document_text or active_text)
         if app_source_previews:
             app_preview = str(app_source_previews[0].get("preview") or app_preview)
-        browser_preview = self._context_preview_text(browser_text)
+        browser_sources = [
+            {
+                "id": str(page.get("id") or ""),
+                "app": self._browser_app_label(page),
+                "label": self._browser_page_label(page),
+                "preview": self._context_preview_text(
+                    str(page.get("content") or page.get("url") or "Browser page text is loading.")
+                ),
+            }
+            for page in browser_pages
+        ]
+        browser_preview = str(browser_sources[0].get("preview") or "") if browser_sources else ""
         if not browser_preview and browser_requested and browser_available:
             browser_preview = self._context_preview_text(
                 context.get("browser_url")
@@ -9192,6 +9406,7 @@ class FlowController:
                     else self._token_label(browser_text)
                 ),
                 "preview": browser_preview,
+                "sources": browser_sources,
                 "privacy_count": browser_redactions,
                 "warning": self._with_privacy_warning(
                     self._context_warning(

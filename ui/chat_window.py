@@ -1343,26 +1343,36 @@ class _MessageTextView(QTextBrowser):
 class _ConversationTitleButton(QPushButton):
     """Paints a sidebar title with a right-edge fade under the overlaid menu."""
 
-    def __init__(self, title: str, subtitle: str = "", *, active: bool, latest: bool) -> None:
+    def __init__(
+        self,
+        title: str,
+        subtitle: str = "",
+        *,
+        active: bool,
+        selected: bool,
+        latest: bool,
+    ) -> None:
         """Initialize the conversation title button instance."""
         super().__init__("")
         self._title = title
         self._subtitle = subtitle
         self._active = active
+        self._selected = selected
         self._latest = latest
         self.setCheckable(True)
-        self.setChecked(active)
+        self.setChecked(selected)
         self.setMinimumWidth(0)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.setToolTip(title)
         self.setAccessibleName(title)
         self.setStyleSheet("QPushButton { background: transparent; border: none; }")
 
-    def set_sidebar_state(self, *, active: bool, latest: bool) -> None:
+    def set_sidebar_state(self, *, active: bool, selected: bool, latest: bool) -> None:
         """Set sidebar state."""
         self._active = active
+        self._selected = selected
         self._latest = latest
-        self.setChecked(active)
+        self.setChecked(selected)
         self.update()
 
     def paintEvent(self, event):  # noqa: N802 - Qt override
@@ -1374,18 +1384,19 @@ class _ConversationTitleButton(QPushButton):
         accent.setAlpha(34)
         hover = QColor(_TEXT)
         hover.setAlpha(16)
-        bg = accent if self._active or self.isChecked() else QColor(0, 0, 0, 0)
-        if self.underMouse() and not (self._active or self.isChecked()):
+        bg = accent if self._selected or self.isChecked() else QColor(0, 0, 0, 0)
+        if self.underMouse() and not (self._selected or self.isChecked()):
             bg = hover
         if bg.alpha():
             painter.fillRect(rect, bg)
+        if self._active:
+            painter.fillRect(rect.left(), rect.top(), 2, rect.height(), QColor(_ACCENT))
 
         text_rect = rect.adjusted(10, 0, -(_SIDEBAR_MENU_W + 10), 0)
         title_font = _ui_font(9)
         subtitle_font = _ui_font(8)
         painter.setFont(title_font)
-        color = QColor(_ACCENT if self._latest else _TEXT)
-        painter.setPen(QPen(color))
+        painter.setPen(QPen(QColor(_TEXT)))
 
         metrics = QFontMetrics(title_font)
         available = max(0, text_rect.width() - _SIDEBAR_FADE_W)
@@ -1413,10 +1424,10 @@ class _ConversationTitleButton(QPushButton):
             gradient = QLinearGradient(fade_left, 0, text_rect.right(), 0)
             fade_color = (
                 QColor(_mix_hex(_SIDEBAR_BG, _ACCENT, 0.07))
-                if self._active or self.isChecked()
+                if self._selected or self.isChecked()
                 else QColor(_SIDEBAR_BG)
             )
-            if self.underMouse() and not (self._active or self.isChecked()):
+            if self.underMouse() and not (self._selected or self.isChecked()):
                 fade_color = QColor(_mix_hex(_SIDEBAR_BG, _TEXT, 0.04))
             clear = QColor(fade_color)
             clear.setAlpha(0)
@@ -1722,6 +1733,10 @@ class ChatWindow(QWidget):
             self._active_idx = active_idx
         else:
             self._active_idx = max(0, len(conversations) - 1)
+        self._selected_conversation_indices: set[int] = (
+            {self._active_idx} if conversations else set()
+        )
+        self._selection_anchor_idx: int | None = self._active_idx if conversations else None
         self._built_pages: set[int] = set()
 
         self._signals = _StreamSignals()
@@ -2112,6 +2127,55 @@ class ChatWindow(QWidget):
             if row is not None:
                 row.setVisible(not needle or needle in title)
 
+    def _sidebar_selection_order(self) -> list[int]:
+        """Return selectable conversation indices in their current visual order."""
+        needle = ""
+        if self._formatted_replies_ui_enabled and hasattr(self, "_sidebar_search"):
+            needle = str(self._sidebar_search.text() or "").strip().casefold()
+        order: list[int] = []
+        for _project_id, _project_name, indices in self._grouped_sidebar_indices():
+            for idx in indices:
+                if not self._conversation_matches_search(idx):
+                    continue
+                if needle and needle not in self._conversation_title(
+                    idx, self._conversations[idx]
+                ).casefold():
+                    continue
+                order.append(idx)
+        return order
+
+    def _select_sidebar_conversation(self, idx: int) -> None:
+        """Apply Explorer-style click selection, then display the clicked chat."""
+        if not (0 <= idx < len(self._conversations)):
+            return
+        modifiers = QApplication.keyboardModifiers()
+        control = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+        shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+        selected = {
+            item
+            for item in self._selected_conversation_indices
+            if 0 <= item < len(self._conversations)
+        }
+
+        order = self._sidebar_selection_order()
+        anchor = self._selection_anchor_idx
+        if shift and anchor in order and idx in order:
+            start, end = sorted((order.index(anchor), order.index(idx)))
+            range_selection = set(order[start : end + 1])
+            selected = selected | range_selection if control else range_selection
+        elif control:
+            if idx in selected:
+                selected.remove(idx)
+            else:
+                selected.add(idx)
+            self._selection_anchor_idx = idx
+        else:
+            selected = {idx}
+            self._selection_anchor_idx = idx
+
+        self._selected_conversation_indices = selected
+        self._switch(idx, preserve_selection=True)
+
     def _make_external_sync_button(self, provider: str) -> QPushButton:
         """Create one provider-specific, preview-before-import button."""
         provider = str(provider or "").strip().lower()
@@ -2450,11 +2514,18 @@ class ChatWindow(QWidget):
 
     def _focus_history_search(self) -> None:
         """Focus the history search without changing the selected conversation."""
-        self._history_search.setFocus()
-        self._history_search.selectAll()
+        search = (
+            self._sidebar_search
+            if self._formatted_replies_ui_enabled
+            else self._history_search
+        )
+        search.setFocus()
+        search.selectAll()
 
     def _history_search_terms(self) -> list[str]:
         """Return case-insensitive terms from the current history query."""
+        if self._formatted_replies_ui_enabled:
+            return []
         search = getattr(self, "_history_search", None)
         if search is None:
             return []
@@ -2583,12 +2654,18 @@ class ChatWindow(QWidget):
             if self._formatted_replies_ui_enabled
             else self._conversation_search_excerpt(conv) or self._conversation_timestamp(conv)
         )
-        is_latest = (idx == len(self._conversations) - 1)
         is_active = (idx == self._active_idx)
+        is_selected = idx in self._selected_conversation_indices
 
-        btn = _ConversationTitleButton(title, subtitle, active=is_active, latest=is_latest)
+        btn = _ConversationTitleButton(
+            title,
+            subtitle,
+            active=is_active,
+            selected=is_selected,
+            latest=idx == len(self._conversations) - 1,
+        )
         btn.setToolTip("\n".join(part for part in (title, subtitle) if part))
-        btn.clicked.connect(lambda _checked, ix=idx: self._switch(ix))
+        btn.clicked.connect(lambda _checked, ix=idx: self._select_sidebar_conversation(ix))
 
         menu_btn = QPushButton("⋮")
         menu_btn.setFixedSize(_SIDEBAR_MENU_W, 36 if self._formatted_replies_ui_enabled else 52)
@@ -2615,6 +2692,12 @@ class ChatWindow(QWidget):
         """Open conversation menu."""
         if not (0 <= idx < len(self._conversations)):
             return
+        if idx not in self._selected_conversation_indices:
+            self._selected_conversation_indices = {idx}
+            self._selection_anchor_idx = idx
+        self._switch(idx, preserve_selection=True)
+        selected = sorted(self._selected_conversation_indices)
+        multiple = len(selected) > 1
         conv = self._conversations[idx]
         menu = QMenu(self)
         menu.setStyleSheet(
@@ -2622,22 +2705,38 @@ class ChatWindow(QWidget):
             f" border: 1px solid {_BORDER}; }}"
             f"QMenu::item:selected {{ background: {_SEL_BG}; }}"
         )
-        pin_label = t("Unpin") if conv.get("pinned") else t("Pin")
-        menu.addAction(pin_label, lambda: self._toggle_pin(idx))
-        menu.addAction(t("Rename"), lambda: self._rename_conversation(idx))
+        all_pinned = all(self._conversations[item].get("pinned") for item in selected)
+        pin_label = t("Unpin") if all_pinned else t("Pin")
+        if multiple:
+            pin_label = t("Unpin selected") if all_pinned else t("Pin selected")
+        menu.addAction(
+            pin_label,
+            lambda items=selected, pinned=not all_pinned: self._set_pinned(items, pinned),
+        )
+        rename_action = menu.addAction(t("Rename"), lambda: self._rename_conversation(idx))
+        rename_action.setEnabled(not multiple)
 
         project_menu = menu.addMenu(t("Add to project"))
         for proj in self._projects:
             pid = proj.get("id")
             name = self._project_display_name(proj)
-            act = project_menu.addAction(name, lambda p=pid: self._assign_project(idx, p))
+            act = project_menu.addAction(
+                name,
+                lambda p=pid, items=selected: self._assign_project_many(items, p),
+            )
             act.setCheckable(True)
-            act.setChecked(conv.get("project_id", _GENERAL_PROJECT_ID) == pid)
+            act.setChecked(
+                all(
+                    self._conversations[item].get("project_id", _GENERAL_PROJECT_ID) == pid
+                    for item in selected
+                )
+            )
 
-        menu.addAction(
+        browse_action = menu.addAction(
             t("Browse conversation files"),
             lambda: self._browse_conversation_files(idx),
         )
+        browse_action.setEnabled(not multiple)
         source = conv.get("external_source") if isinstance(conv.get("external_source"), dict) else {}
         provider = _external_provider_display_name(source.get("provider"))
         if not provider and any(
@@ -2653,8 +2752,13 @@ class ChatWindow(QWidget):
                 "Claude",
                 lambda: self._export_conversation_as_new_session(idx, "claude"),
             )
-        menu.addSeparator()
-        menu.addAction(t("Delete"), lambda: self._delete_conversation(idx))
+            export_menu.setEnabled(not multiple)
+        delete_label = (
+            t("Delete selected ({count})").format(count=len(selected))
+            if multiple
+            else t("Delete")
+        )
+        menu.addAction(delete_label, lambda items=selected: self._delete_conversations(items))
         # Drop the menu just below the ⋮ button that opened it.
         pos = (
             anchor.mapToGlobal(anchor.rect().bottomLeft())
@@ -2757,9 +2861,16 @@ class ChatWindow(QWidget):
         """Handle toggle pin for chat window."""
         if not (0 <= idx < len(self._conversations)):
             return
-        conv = self._conversations[idx]
-        conv["pinned"] = not conv.get("pinned")
-        _touch_conversation(conv)
+        self._set_pinned([idx], not self._conversations[idx].get("pinned"))
+
+    def _set_pinned(self, indices: list[int], pinned: bool) -> None:
+        """Set the pinned state for one or more selected conversations."""
+        valid = sorted({idx for idx in indices if 0 <= idx < len(self._conversations)})
+        if not valid:
+            return
+        for idx in valid:
+            self._conversations[idx]["pinned"] = pinned
+            _touch_conversation(self._conversations[idx])
         self._rebuild_sidebar()
         self._persist()
 
@@ -2810,40 +2921,82 @@ class ChatWindow(QWidget):
 
     def _assign_project(self, idx: int, project_id: str) -> None:
         """Handle assign project for chat window."""
-        if not (0 <= idx < len(self._conversations)):
-            return
+        self._assign_project_many([idx], project_id)
+
+    def _assign_project_many(self, indices: list[int], project_id: str) -> None:
+        """Move one or more selected conversations into a project."""
         if project_id not in {str(project.get("id") or "") for project in self._projects}:
             return
-        self._conversations[idx]["project_id"] = project_id
-        _touch_conversation(self._conversations[idx])
+        valid = sorted({idx for idx in indices if 0 <= idx < len(self._conversations)})
+        if not valid:
+            return
+        for idx in valid:
+            self._conversations[idx]["project_id"] = project_id
+            _touch_conversation(self._conversations[idx])
         self._rebuild_sidebar()
         self._persist()
 
     def _delete_conversation(self, idx: int) -> None:
         """Delete conversation."""
-        if not (0 <= idx < len(self._conversations)):
+        self._delete_conversations([idx])
+
+    def _delete_conversations(self, indices: list[int]) -> None:
+        """Delete one or more selected conversations after one confirmation."""
+        valid = sorted({idx for idx in indices if 0 <= idx < len(self._conversations)})
+        if not valid:
             return
-        if self._streaming and idx == self._active_idx:
+        if self._streaming and self._active_idx in valid:
             return  # don't delete the conversation mid-stream
+        multiple = len(valid) > 1
+        prompt = (
+            t("Delete these {count} conversations? This cannot be undone.").format(
+                count=len(valid)
+            )
+            if multiple
+            else t("Delete this conversation? This cannot be undone.")
+        )
         if QMessageBox.question(
-            self, t("Delete conversation"),
-            t("Delete this conversation? This cannot be undone."),
+            self,
+            t("Delete conversations") if multiple else t("Delete conversation"),
+            prompt,
         ) != QMessageBox.StandardButton.Yes:
             return
-        removed = self._conversations.pop(idx)
+        previous_conversations = list(self._conversations)
         previous_active_idx = self._active_idx
-        if self._active_idx >= idx:
-            self._active_idx = max(0, self._active_idx - 1)
+        active_conversation = (
+            self._conversations[self._active_idx]
+            if 0 <= self._active_idx < len(self._conversations)
+            else None
+        )
+        for idx in reversed(valid):
+            self._conversations.pop(idx)
+        surviving_active_idx = next(
+            (
+                idx
+                for idx, conversation in enumerate(self._conversations)
+                if conversation is active_conversation
+            ),
+            None,
+        )
+        if surviving_active_idx is not None:
+            self._active_idx = surviving_active_idx
+        else:
+            self._active_idx = min(previous_active_idx, max(0, len(self._conversations) - 1))
         if not self._persist():
-            self._conversations.insert(idx, removed)
+            self._conversations.clear()
+            self._conversations.extend(previous_conversations)
             self._active_idx = previous_active_idx
             detail = str(getattr(self, "_last_persist_error", "") or t("Unknown storage error."))
             QMessageBox.warning(
                 self,
-                t("Delete conversation failed"),
-                t("OpenWand could not delete the conversation: {error}").format(error=detail),
+                t("Delete conversations failed") if multiple else t("Delete conversation failed"),
+                t("OpenWand could not delete the conversation(s): {error}").format(error=detail),
             )
             return
+        self._selected_conversation_indices = (
+            {self._active_idx} if self._conversations else set()
+        )
+        self._selection_anchor_idx = self._active_idx if self._conversations else None
         self._rebuild_stack()
         self._rebuild_sidebar()
         if self._conversations:
@@ -2893,6 +3046,8 @@ class ChatWindow(QWidget):
             )
             return
 
+        self._selected_conversation_indices = set()
+        self._selection_anchor_idx = None
         self._rebuild_stack()
         self._rebuild_sidebar()
         self._input_frame.setEnabled(False)
@@ -2934,7 +3089,7 @@ class ChatWindow(QWidget):
     def _btn_style(self, active: bool, latest: bool) -> str:
         """Handle btn style for chat window."""
         bg = _SEL_BG if active else "transparent"
-        c  = _ACCENT if latest else _TEXT
+        c = _TEXT
         return (
             f"QPushButton {{ background: {bg}; color: {c}; border: none;"
             f" text-align: left; padding: 6px 10px; font-size: 9pt; }}"
@@ -2942,25 +3097,34 @@ class ChatWindow(QWidget):
             f"QPushButton:checked {{ background: {_SEL_BG}; }}"
         )
 
-    def _switch(self, idx: int):
+    def _switch(self, idx: int, *, preserve_selection: bool = False):
         """Handle switch for chat window."""
+        if not (0 <= idx < len(self._conversations)):
+            return
         self._stop_middle_autoscroll()
         self._active_idx = idx
+        if not preserve_selection:
+            self._selected_conversation_indices = {idx}
+            self._selection_anchor_idx = idx
         if idx < self._stack.count():
             self._ensure_page_built(idx)
             self._stack.setCurrentIndex(idx)
         self._update_selected_conversation_notice(idx)
         self._input_frame.setEnabled(bool(self._conversations))
         for real_idx, btn in self._sidebar_btns:
-            is_sel = (real_idx == idx)
+            is_active = real_idx == idx
+            is_selected = real_idx in self._selected_conversation_indices
             if isinstance(btn, _ConversationTitleButton):
                 btn.set_sidebar_state(
-                    active=is_sel,
+                    active=is_active,
+                    selected=is_selected,
                     latest=real_idx == len(self._conversations) - 1,
                 )
             else:
-                btn.setChecked(is_sel)
-                btn.setStyleSheet(self._btn_style(is_sel, real_idx == len(self._conversations) - 1))
+                btn.setChecked(is_selected)
+                btn.setStyleSheet(
+                    self._btn_style(is_selected, real_idx == len(self._conversations) - 1)
+                )
         if self._on_select and 0 <= idx < len(self._conversations):
             self._on_select(idx)
         self._refresh_context_controls()
@@ -3202,8 +3366,13 @@ class ChatWindow(QWidget):
         if self._streaming:
             return
 
-        if self._history_search.text():
-            self._history_search.clear()
+        search = (
+            self._sidebar_search
+            if self._formatted_replies_ui_enabled
+            else self._history_search
+        )
+        if search.text():
+            search.clear()
 
         was_empty = not self._conversations
         conv = {
@@ -3978,12 +4147,20 @@ class ChatWindow(QWidget):
     def update_addon_message_actions(self, actions: list[dict] | None = None) -> None:
         """Install enabled actions and switch addon-owned Chat UI when needed."""
         normalized = _normalized_addon_message_actions(actions)
+        actions_changed = normalized != self._addon_message_actions
         enabled = _formatted_replies_ui_enabled(normalized)
         mode_changed = enabled != self._formatted_replies_ui_enabled
         self._addon_message_actions = normalized
         self._formatted_replies_ui_enabled = enabled
         if mode_changed:
             self._apply_addon_ui_mode()
+            return
+        # The host refreshes addon discovery whenever Chat is shown.  Most of
+        # those responses repeat the action list already used for first paint.
+        # Replacing the active page in that case needlessly destroys and
+        # recreates every rich presentation (including its WebEngine surface),
+        # which makes formatted conversations flash like the window reloaded.
+        if not actions_changed:
             return
         if 0 <= self._active_idx < len(self._conversations):
             self._built_pages.discard(self._active_idx)

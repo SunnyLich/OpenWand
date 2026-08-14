@@ -9,9 +9,11 @@ import re
 import sys
 import time
 import uuid
+from pathlib import Path
 
-from PySide6.QtCore import QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QFont, QRegion
+from PySide6.QtCore import QByteArray, QPoint, QRect, QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import QFont, QPainter
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -25,6 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.system.paths import ASSETS_DIR
 from ui.i18n import t
 from ui.shared.theme import theme_colors
 
@@ -35,6 +38,7 @@ _ANCHOR_POLL_MS = 200
 _FOCUS_CLAIM_INTERVAL_MS = 40
 _FOCUS_CLAIM_TIMEOUT_MS = 1_200
 _FOCUS_STABLE_SAMPLES = 3
+_BALLOON_SVG = Path(ASSETS_DIR) / "ui" / "rewrite-speech-bubble.svg"
 
 
 def _word_tokens(value: str) -> list[str]:
@@ -125,6 +129,9 @@ class _SubmitEdit(QPlainTextEdit):
 
     def keyPressEvent(self, event):  # noqa: N802 - Qt API
         if event.key() in {Qt.Key.Key_Return, Qt.Key.Key_Enter}:
+            if event.isAutoRepeat():
+                event.accept()
+                return
             modifiers = event.modifiers()
             if modifiers & Qt.KeyboardModifier.ShiftModifier:
                 super().keyPressEvent(event)
@@ -133,6 +140,98 @@ class _SubmitEdit(QPlainTextEdit):
             event.accept()
             return
         super().keyPressEvent(event)
+
+
+class _SpeechBubbleButton(QPushButton):
+    """Clickable, theme-coloured speech bubble rendered from an SVG asset."""
+
+    def __init__(
+        self,
+        *,
+        fill: str,
+        hover_fill: str,
+        number_color: str,
+        display_number: int,
+        parent=None,
+    ) -> None:
+        super().__init__("", parent)
+        self._vector_source_path = _BALLOON_SVG
+        self._renderer = self._renderer_for_color(fill)
+        self._hover_renderer = self._renderer_for_color(hover_fill)
+        self._number_color = str(number_color)
+        self._display_number = max(1, int(display_number or 1))
+        self._tail_direction = "left"
+        self.setStyleSheet(
+            "QPushButton { background:transparent; border:none; padding:0; outline:none; }"
+        )
+        self._number_label = QLabel(str(self._display_number), self)
+        self._number_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._number_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        # Centre the independent text layer on the SVG's circular head. The
+        # tail deliberately sits outside these bounds and cannot shift it.
+        self._number_label.setGeometry(5, 5, 34, 34)
+        self._number_label.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        self._number_label.setStyleSheet(
+            f"QLabel {{ background:transparent; color:{self._number_color}; border:none; }}"
+        )
+
+    @property
+    def uses_vector_source(self) -> bool:
+        return bool(self._renderer.isValid() and self._hover_renderer.isValid())
+
+    @property
+    def display_number_text(self) -> str:
+        return str(self._display_number)
+
+    def set_display_number(self, value: int) -> None:
+        self._display_number = max(1, int(value or 1))
+        self._number_label.setText(str(self._display_number))
+
+    @property
+    def tail_direction(self) -> str:
+        return self._tail_direction
+
+    def set_tail_direction(self, direction: str) -> None:
+        normalized = str(direction).casefold()
+        if normalized not in {"left", "right", "up", "down"}:
+            normalized = "left"
+        if normalized == self._tail_direction:
+            return
+        self._tail_direction = normalized
+        self.update()
+
+    @property
+    def tail_tip(self) -> QPoint:
+        return {
+            "left": QPoint(1, 22),
+            "right": QPoint(43, 22),
+            "up": QPoint(22, 1),
+            "down": QPoint(22, 43),
+        }[self._tail_direction]
+
+    def _renderer_for_color(self, color: str) -> QSvgRenderer:
+        try:
+            source = self._vector_source_path.read_text(encoding="utf-8")
+        except OSError:
+            source = ""
+        source = source.replace("#ffffff", str(color or "#ffffff"))
+        return QSvgRenderer(QByteArray(source.encode("utf-8")), self)
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt API override
+        renderer = self._hover_renderer if self.underMouse() else self._renderer
+        if not renderer.isValid():
+            super().paintEvent(event)
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        if self._tail_direction == "right":
+            painter.translate(self.width(), 0)
+            painter.scale(-1, 1)
+        elif self._tail_direction in {"up", "down"}:
+            painter.translate(self.width() / 2.0, self.height() / 2.0)
+            painter.rotate(90 if self._tail_direction == "up" else -90)
+            painter.translate(-self.width() / 2.0, -self.height() / 2.0)
+        renderer.render(painter, QRectF(self.rect()))
 
 
 class RewriteAnnotationPopup(QWidget):
@@ -166,6 +265,11 @@ class RewriteAnnotationPopup(QWidget):
         self.source_pid = int(source_pid or 0)
         self.source_label = str(source_label or "")
         self.selection_rect = self._normalized_rect(selection_rect)
+        self.selection_endpoint = self._normalized_endpoint(
+            selection_rect,
+            self.selection_rect,
+        )
+        self._position_endpoint: QPoint | None = None
         self._anchor_visible = True
         self._source_origin_rect: QRect | None = None
         self.state = "composing"
@@ -345,28 +449,19 @@ class RewriteAnnotationPopup(QWidget):
         shell.setFixedSize(_BALLOON_SIZE, _BALLOON_SIZE)
         layout = QVBoxLayout(shell)
         layout.setContentsMargins(0, 0, 0, 0)
-        button = QPushButton("")
+        button = _SpeechBubbleButton(
+            fill=accent_fill,
+            hover_fill=c["accent_fill_hover"],
+            number_color=c["on_accent"],
+            display_number=self.display_number,
+        )
         button.setObjectName("processingBalloon")
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         button.setFixedSize(_BALLOON_SIZE, _BALLOON_SIZE)
         button.setToolTip(t("Rewrite is processing"))
-        button.setStyleSheet(
-            f"QPushButton {{ background:{accent_fill}; border:2px solid {c['accent']}; "
-            "border-radius:22px; padding:0; outline:none; }"
-            f"QPushButton:hover {{ background:{c['accent_fill_hover']}; }}"
-        )
-        number = QLabel(str(self.display_number), button)
-        number.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        number.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        number.setGeometry(0, 0, _BALLOON_SIZE, _BALLOON_SIZE)
-        number.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        number.setStyleSheet(
-            f"QLabel {{ background:transparent; color:{c['on_accent']}; border:none; }}"
-        )
         button.clicked.connect(self._open_processing)
         layout.addWidget(button)
         self._balloon_button = button
-        self._balloon_number = number
         return shell
 
     def show_composer(self) -> None:
@@ -387,15 +482,15 @@ class RewriteAnnotationPopup(QWidget):
         self._stop_composer_focus_claim()
         if display_number is not None:
             self.display_number = max(1, int(display_number or 1))
-            self._balloon_number.setText(str(self.display_number))
+            self._balloon_button.set_display_number(self.display_number)
         self.state = "processing"
         self._stack.setCurrentWidget(self._balloon)
         self.setFixedSize(_BALLOON_SIZE, _BALLOON_SIZE)
-        # The application-wide QWidget background otherwise paints the
-        # transparent top-level corners. Clip the native tool window itself so
-        # the processing badge is a real circle, never a black square holding
-        # a circular icon.
-        self.setMask(QRegion(self.rect(), QRegion.RegionType.Ellipse))
+        # Do not clip this window with QRegion. Native window masks are binary,
+        # so they destroy the SVG's antialiased curve and make its upper-left
+        # edge visibly stair-stepped. This top-level and its balloon shell are
+        # translucent; the SVG itself provides the smooth visible silhouette.
+        self.clearMask()
         self._desired_visible = True
         self._sync_to_source_window()
         self.raise_()
@@ -580,13 +675,17 @@ class RewriteAnnotationPopup(QWidget):
         self.setFixedSize(_POPUP_WIDTH, desired_height)
 
     def _submit(self, force_document: bool) -> None:
+        if self.state not in {"composing", "failed"}:
+            return
         comment = self._comment.toPlainText().strip()
         if not comment:
             self._comment.setFocus()
             return
         include_document = bool(force_document or self._include_document.isChecked())
-        self.submitted.emit(self.annotation_id, comment, include_document)
+        # Enter processing before emitting. Signal delivery can re-enter the UI;
+        # changing state first closes the duplicate-submit window completely.
         self.show_processing()
+        self.submitted.emit(self.annotation_id, comment, include_document)
 
     def _hold_comment(self) -> None:
         comment = self._comment.toPlainText().strip()
@@ -659,6 +758,17 @@ class RewriteAnnotationPopup(QWidget):
     ) -> None:
         """Apply a refreshed accessibility/native range after document scrolling."""
         if not visible:
+            source_active, source_rect = self._source_window_state()
+            if (
+                self.state == "processing"
+                and source_active is False
+                and source_rect is not None
+            ):
+                # External snipping tools temporarily take foreground focus and
+                # some accessibility providers report no live geometry during
+                # that transition. Keep the last exact anchor instead of
+                # turning a transient capture into a multi-second disappearance.
+                return
             self._anchor_visible = False
             self.hide()
             return
@@ -666,6 +776,7 @@ class RewriteAnnotationPopup(QWidget):
         if rect is None:
             return
         self.selection_rect = rect
+        self.selection_endpoint = self._normalized_endpoint(selection_rect, rect)
         self._anchor_visible = True
         self._sync_to_source_window()
 
@@ -682,7 +793,9 @@ class RewriteAnnotationPopup(QWidget):
         if not self._anchor_visible:
             self.hide()
             return
-        if visible is False:
+        if visible is False and not (
+            self.state == "processing" and source_rect is not None
+        ):
             self.hide()
             return
         anchor_rect = self._selection_anchor_for_source(source_rect)
@@ -693,15 +806,18 @@ class RewriteAnnotationPopup(QWidget):
     def _selection_anchor_for_source(self, source_rect: QRect | None) -> QRect | None:
         """Move the captured selection with its source window without visual scanning."""
         if self.selection_rect is None:
+            self._position_endpoint = None
             return None
         anchor = QRect(self.selection_rect)
+        endpoint = QPoint(self.selection_endpoint)
         if source_rect is not None:
             if self._source_origin_rect is None:
                 self._source_origin_rect = QRect(source_rect)
-            anchor.translate(
-                source_rect.left() - self._source_origin_rect.left(),
-                source_rect.top() - self._source_origin_rect.top(),
-            )
+            dx = source_rect.left() - self._source_origin_rect.left()
+            dy = source_rect.top() - self._source_origin_rect.top()
+            anchor.translate(dx, dy)
+            endpoint += QPoint(dx, dy)
+        self._position_endpoint = endpoint
         return anchor
 
     def _position_for_rect(self, source_rect: QRect | None, *, selection_anchor: bool = False) -> None:
@@ -715,21 +831,52 @@ class RewriteAnnotationPopup(QWidget):
                 self._selection_anchor_side = (
                     "right" if right_x + _POPUP_WIDTH <= available.right() else "left"
                 )
-            # QRect.right() is inclusive; x + width is the first pixel after
-            # the selection, which keeps the requested ten-pixel gap exact.
-            if self._selection_anchor_side == "left":
-                x = source_rect.left() - width - 10
+            if self._stack.currentWidget() is self._balloon:
+                # Native selection geometry is the final visible text-line
+                # rectangle. Its trailing edge is therefore the endpoint of
+                # the final character. Place the SVG tail *tip* on that exact
+                # point; do not aim the bubble's centre at the selection box.
+                endpoint = QPoint(
+                    self._position_endpoint
+                    or QPoint(
+                        source_rect.x() + source_rect.width(),
+                        source_rect.center().y(),
+                    )
+                )
+                candidates = (
+                    ("left", endpoint.x() - 1, endpoint.y() - 22),
+                    ("down", endpoint.x() - 22, endpoint.y() - 43),
+                    ("up", endpoint.x() - 22, endpoint.y() - 1),
+                    ("right", endpoint.x() - 43, endpoint.y() - 22),
+                )
+                direction, x, y = next(
+                    (
+                        (candidate_direction, candidate_x, candidate_y)
+                        for candidate_direction, candidate_x, candidate_y in candidates
+                        if candidate_x >= available.left()
+                        and candidate_y >= available.top()
+                        and candidate_x + _BALLOON_SIZE - 1 <= available.right()
+                        and candidate_y + _BALLOON_SIZE - 1 <= available.bottom()
+                    ),
+                    candidates[-1],
+                )
+                self._balloon_button.set_tail_direction(direction)
             else:
-                x = source_rect.x() + source_rect.width() + 10
-            y = source_rect.top() - 12
+                # QRect.right() is inclusive; x + width is the first pixel
+                # after the selection, keeping the composer gap exact.
+                if self._selection_anchor_side == "left":
+                    x = source_rect.left() - width - 10
+                else:
+                    x = source_rect.x() + source_rect.width() + 10
+                y = source_rect.top() - 12
         elif source_rect:
             x = source_rect.right() - width - 18
             y = source_rect.top() + 72
         else:
             x = available.right() - width - 20
             y = available.bottom() - height - 20
-        x = max(available.left(), min(x, available.right() - width))
-        y = max(available.top(), min(y, available.bottom() - height))
+        x = max(available.left(), min(x, available.right() - width + 1))
+        y = max(available.top(), min(y, available.bottom() - height + 1))
         self.move(x, y)
 
     @staticmethod
@@ -746,6 +893,24 @@ class RewriteAnnotationPopup(QWidget):
         if width <= 0 or height <= 0:
             return None
         return QRect(left, top, width, height)
+
+    @staticmethod
+    def _normalized_endpoint(
+        value: dict[str, float] | None,
+        rect: QRect | None,
+    ) -> QPoint:
+        if rect is None:
+            return QPoint()
+        if isinstance(value, dict):
+            try:
+                if value.get("endpoint_x") is not None and value.get("endpoint_y") is not None:
+                    return QPoint(
+                        int(round(float(value["endpoint_x"]))),
+                        int(round(float(value["endpoint_y"]))),
+                    )
+            except (TypeError, ValueError, OverflowError):
+                pass
+        return QPoint(rect.x() + rect.width(), rect.center().y())
 
     def _source_window_state(self) -> tuple[bool | None, QRect | None]:
         if sys.platform != "win32" or not self.source_window_id:
@@ -784,16 +949,15 @@ class RewriteAnnotationPopup(QWidget):
                 or int(foreground_pid.value or 0) == int(self.source_pid or 0)
                 or int(foreground_pid.value or 0) == os.getpid()
             )
-            if not source_is_active:
-                return False, None
             rect = wintypes.RECT()
             if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
-                return True, None
-            return True, QRect(
+                return source_is_active, None
+            source_rect = QRect(
                 int(rect.left),
                 int(rect.top),
                 max(1, int(rect.right - rect.left)),
                 max(1, int(rect.bottom - rect.top)),
             )
+            return source_is_active, source_rect
         except Exception:
             return None, None

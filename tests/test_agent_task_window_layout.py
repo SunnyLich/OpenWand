@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 
 import pytest
@@ -81,6 +82,34 @@ def test_agent_task_title_field_uses_extra_window_width():
         }
         form = dialog.title_edit.parentWidget().layout()
         assert form.fieldGrowthPolicy().name == "AllNonFixedFieldsGrow"
+    finally:
+        dialog.close()
+        dialog.deleteLater()
+
+
+def test_agent_task_multiline_fields_default_to_three_expandable_rows():
+    """Keep the primary task fields compact without fixing their height."""
+    _qapp()
+    from PySide6.QtWidgets import QSizePolicy
+
+    from ui.agent.task_window import AgentTaskDialog
+
+    dialog = AgentTaskDialog()
+    try:
+        for editor in (
+            dialog.objective_edit,
+            dialog.required_context_edit,
+            dialog.completion_edit,
+        ):
+            expected_height = (
+                editor.fontMetrics().lineSpacing() * 3
+                + math.ceil(editor.document().documentMargin() * 2)
+                + editor.frameWidth() * 2
+            )
+            assert editor.sizeHint().height() == expected_height
+            assert editor.minimumSizeHint().height() == expected_height
+            assert editor.maximumHeight() > expected_height
+            assert editor.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Expanding
     finally:
         dialog.close()
         dialog.deleteLater()

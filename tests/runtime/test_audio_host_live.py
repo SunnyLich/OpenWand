@@ -109,6 +109,19 @@ def test_start_rejects_unsupported_provider(monkeypatch):
     }
 
 
+def test_start_refuses_disabled_provider_before_checking_package_or_microphone(monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, "LIVE_VOICE_PROVIDER", "none", raising=False)
+    monkeypatch.setattr(
+        live_voice,
+        "genai_available",
+        lambda: pytest.fail("disabled live conversation must not inspect the package"),
+    )
+
+    assert audio_host.audio_live_start() == {"started": False, "error": "disabled"}
+
+
 def test_start_builds_session_from_config(startable):
     result = audio_host.audio_live_start()
 

@@ -1448,6 +1448,38 @@ def test_bubble_renders_latex_as_typeset_svg_math():
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_bubble_keeps_currency_heavy_calc_analysis_as_separate_text_lines():
+    """Calc summaries must not collapse when dollar amounts arrive in one reply."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ui.bubble import SpeechBubble
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    bubble = SpeechBubble()
+    text = (
+        "- Total: $93,900\n"
+        "- Monthly average: $15,650\n"
+        "- February: +$1,700 (+13.7%)\n"
+        "- March: -$500 (-3.5%)\n"
+        "- April: +$2,300 (+16.9%)"
+    )
+
+    try:
+        original_line_height = bubble._line_h
+        bubble.append_chunk(text)
+
+        assert bubble._math_renders == {}
+        assert bubble._line_h == original_line_height
+        assert "$93,900" in bubble._text_view.toPlainText()
+        assert "$2,300" in bubble._text_view.toPlainText()
+        assert len(bubble._all_line_segments) >= 5
+    finally:
+        bubble.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_bubble_font_size_applies_without_changing_width():
     """Verify bubble text size can change independently from bubble width."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

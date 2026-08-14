@@ -512,7 +512,7 @@ def browser_context_handler(selected: str = "selected"):
         ),
     ],
 )
-def test_caller_detects_action_provider_after_constructing_intent_overlay(
+def test_caller_detects_action_provider_from_pre_picker_context(
     active_app: dict[str, Any],
     provider_id: str,
     suggestion_id: str,
@@ -541,7 +541,7 @@ def test_caller_detects_action_provider_after_constructing_intent_overlay(
     assert provider["suggested_intents"][0]["id"] == suggestion_id
     assert provider["suggested_intents"][0]["mode"] == "action"
     assert provider["suggested_intents"][0]["planning_tool"]
-    assert order[:2] == ["show_intent", "snapshot"]
+    assert order[:2] == ["snapshot", "show_intent"]
 
 
 def test_unsupported_app_keeps_generic_intent_picker_fallback() -> None:
@@ -1095,7 +1095,7 @@ def test_late_audio_progress_after_done_cannot_reopen_timer_notice():
 
 
 def test_caller_hotkey_captures_selection_before_intent_steals_focus():
-    """The picker renders first but cannot steal focus until selection is captured."""
+    """Showing the picker must not happen until source-app selection is captured."""
     rows = [
         {
             "paste_back": False,
@@ -1108,23 +1108,27 @@ def test_caller_hotkey_captures_selection_before_intent_steals_focus():
         }
     ]
     order: list[str] = []
+    selection_available = True
 
     def snapshot(params: dict[str, Any]) -> dict[str, Any]:
-        """Record snapshot timing and mirror the native worker payload."""
+        """Simulate selection disappearing as soon as the picker is shown."""
         order.append("snapshot")
         assert params["include_selection"] is True
         assert params["include_clipboard"] is True
         assert params["include_selected_paths"] is True
         return {
-            "selected_text": "selected before picker",
+            "selected_text": "selected before picker" if selection_available else "",
             "clipboard_text": "original clipboard",
             "active_app": {"name": "Codex", "pid": 42, "window_id": 777, "bundle_id": ""},
         }
 
     def show_intent(params: dict[str, Any]) -> dict[str, Any]:
-        """Record when the non-activating picker shell is shown."""
+        """Model the real Windows boundary that invalidated later UIA reads."""
+        nonlocal selection_available
         assert params["defer_focus"] is True
+        assert params["target_hwnd"] == 777
         order.append("show_intent")
+        selection_available = False
         return {}
 
     def activate_intent(_params: dict[str, Any]) -> dict[str, Any]:
@@ -1137,7 +1141,7 @@ def test_caller_hotkey_captures_selection_before_intent_steals_focus():
         _flow, _native, ui, _brain, _audio = make_flow(native=native, ui=ui)
         _flow.begin_caller(0)
 
-    assert order == ["show_intent", "snapshot", "activate_intent"]
+    assert order == ["snapshot", "show_intent", "activate_intent"]
     chips = {
         item["id"]: item
         for item in ui.last_call("ui.intent.context_items")["params"]["context_items"]
@@ -1183,7 +1187,7 @@ def test_calc_selection_is_not_collected_while_intent_picker_is_open() -> None:
         flow, _native, ui, _brain, _audio = make_flow(native=native, ui=ui)
         flow.begin_caller(0)
 
-    assert order == ["show_intent", "snapshot"]
+    assert order == ["snapshot", "show_intent"]
     chips = {
         item["id"]: item
         for item in ui.last_call("ui.intent.context_items")["params"]["context_items"]
@@ -3689,6 +3693,90 @@ def test_browser_hwnd_without_url_fetches_content_by_handle():
     assert "Rendered browser text 777" in brain.last_call("brain.query")["params"]["ambient_text"]
 
 
+def test_background_chrome_and_edge_are_separate_removable_browser_sources():
+    rows = [
+        {
+            "paste_back": False,
+            "context_ambient": True,
+            "context_documents_mode": "off",
+            "context_browser_mode": "auto",
+            "context_github_mode": "off",
+            "context_memory_mode": "off",
+            "context_screenshot": "off",
+            "context_clipboard": False,
+        }
+    ]
+
+    def snapshot_handler(params: dict[str, Any]) -> dict[str, Any]:
+        pages = [
+            {
+                "id": "browser:701",
+                "title": "Guide.pdf - Google Chrome",
+                "process_name": "chrome.exe",
+                "app": "chrome.exe",
+                "url": "file:///C:/Docs/Guide.pdf",
+                "hwnd": 701,
+                "content": "",
+            },
+            {
+                "id": "browser:702",
+                "title": "Project site - Microsoft Edge",
+                "process_name": "msedge.exe",
+                "app": "msedge.exe",
+                "url": "https://example.test/project",
+                "hwnd": 702,
+                "content": "",
+            },
+        ]
+        return {
+            "selected_text": "",
+            "clipboard_text": "",
+            "active_app": {"name": "Notepad", "pid": 42, "window_id": 111},
+            "browser_pages": pages if params.get("include_browser_url") else [],
+            "browser_url": pages[0]["url"] if params.get("include_browser_url") else "",
+            "browser_hwnd": 701 if params.get("include_browser_url") else 0,
+        }
+
+    native = FakeWorker(
+        {
+            "native.context.snapshot": snapshot_handler,
+            "native.context.browser_content": lambda params: {
+                "url": params.get("url"),
+                "content": (
+                    "Chrome PDF preparation guide"
+                    if params.get("hwnd") == 701
+                    else "Edge project website"
+                ),
+            },
+        }
+    )
+    brain = FakeWorker(stream_handlers={"brain.query": query_stream("ok")})
+    with caller_config(rows):
+        flow, native, ui, brain, _audio = make_flow(native=native, brain=brain)
+        flow.begin_caller(0)
+        browser_chip = next(
+            item
+            for item in ui.last_call("ui.intent.context_items")["params"]["context_items"]
+            if item["id"] == "browser"
+        )
+        assert [source["app"] for source in browser_chip["sources"]] == ["Chrome", "Edge"]
+        assert len(native.calls_for("native.context.browser_content")) == 2
+
+        ui.emit("ui.intent.context.remove", {"id": "browser", "source_id": "browser:701"})
+        filtered_chip = next(
+            item
+            for item in ui.last_call("ui.intent.context_items")["params"]["context_items"]
+            if item["id"] == "browser"
+        )
+        assert [source["app"] for source in filtered_chip["sources"]] == ["Edge"]
+        ui.emit("ui.intent.chosen", {"custom": "Use the browser context"})
+
+    ambient = brain.last_call("brain.query")["params"]["ambient_text"]
+    assert "Edge project website" in ambient
+    assert "Chrome PDF preparation guide" not in ambient
+    assert "BEGIN BROWSER PAGE: Edge" in ambient
+
+
 def test_browser_app_captured_at_hotkey_time_fetches_text_via_applescript():
     """macOS path: the browser app name + URL are grabbed at hotkey time, then
     the page text is read by app (AppleScript) - no read-by-handle on macOS."""
@@ -3800,7 +3888,7 @@ def test_macos_begin_caller_captures_safari_before_intent_overlay(monkeypatch):
         )
         ui.emit("ui.intent.chosen", {"custom": "What is this page?"})
 
-    assert order[:2] == ["show", "snapshot"]
+    assert order[:2] == ["snapshot", "show"]
     assert len(native.calls_for("native.context.snapshot")) == 1
     assert first_browser_chip["tokens"] == "? tok"
     assert updated_browser_chip["tokens"].startswith("~")
@@ -4233,6 +4321,56 @@ def test_context_priority_marks_document_when_browser_was_background_context():
 
     query = brain.last_call("brain.query")["params"]
     assert query["context_priority"] == "Active document"
+
+
+def test_selected_context_is_primary_and_browser_is_supporting_context():
+    rows = [
+        {
+            "paste_back": False,
+            "context_ambient": True,
+            "context_documents_mode": "auto",
+            "context_browser_mode": "auto",
+            "context_github_mode": "off",
+            "context_memory_mode": "off",
+            "context_screenshot": "off",
+            "context_clipboard": False,
+        }
+    ]
+
+    def snapshot_handler(params: dict[str, Any]) -> dict[str, Any]:
+        result = {
+            "selected_text": "the exact selected target",
+            "clipboard_text": "",
+            "active_app": {"name": "Browser", "pid": 42, "bundle_id": "com.browser"},
+        }
+        if params.get("include_browser_url"):
+            result["browser_url"] = "https://example.test/reference"
+            result["browser_hwnd"] = 777
+        return result
+
+    native = FakeWorker(
+        {
+            "native.context.snapshot": snapshot_handler,
+            "native.context.browser_content": lambda _params: {
+                "url": "https://example.test/reference",
+                "content": "Supporting browser reference",
+            },
+        }
+    )
+    brain = FakeWorker(
+        handlers={"brain.context.active_document": lambda _params: {"text": "SUPPORTING DOC"}},
+        stream_handlers={"brain.query": query_stream("ok")},
+    )
+    with caller_config(rows):
+        flow, _native, ui, brain, _audio = make_flow(native=native, brain=brain)
+        flow.begin_caller(0)
+        ui.emit("ui.intent.chosen", {"custom": "Explain this"})
+
+    query = brain.last_call("brain.query")["params"]
+    assert query["selected"] == "the exact selected target"
+    assert query["context_priority"] == "Selection"
+    assert "Priority: supporting" in query["ambient_text"]
+    assert "Priority: primary" not in query["ambient_text"]
 
 
 def test_active_document_auto_fetches_before_query_and_summary():
@@ -5318,7 +5456,7 @@ def test_intent_selection_capture_uses_selected_paths_without_file_permission(tm
 
 
 def test_caller_screenshot_precaptures_before_intent_overlay(monkeypatch):
-    """Desktop capture precedes the shell; selection capture precedes activation."""
+    """Selection and desktop capture both precede the picker shell."""
     monkeypatch.setattr(sys, "platform", "linux")
     image_bytes = b"target screen"
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
@@ -5372,7 +5510,7 @@ def test_caller_screenshot_precaptures_before_intent_overlay(monkeypatch):
     finally:
         image_path.unlink(missing_ok=True)
 
-    assert order == ["overlay_state", "capture", "show_intent", "context", "activate_intent"]
+    assert order == ["overlay_state", "context", "capture", "show_intent", "activate_intent"]
     assert flow._pending is not None
     assert flow._pending.screenshot_tool_b64 == base64.b64encode(image_bytes).decode("ascii")
 
@@ -5416,7 +5554,7 @@ def test_intent_cancel_after_show_does_not_recapture_screenshot(monkeypatch):
     finally:
         image_path.unlink(missing_ok=True)
 
-    assert order == ["capture", "context"]
+    assert order == ["context", "capture"]
     assert flow._pending is None
     assert len(native.calls_for("native.capture.fullscreen")) == 1
     assert not ui.calls_for("ui.chat.add_conversation")
@@ -5647,6 +5785,123 @@ def test_rewrite_flow_pastes_back_to_original_pid():
     assert annotation["annotation_id"] not in _flow._rewrite_annotations
     assert not ui.calls_for("ui.reply.notice"), "rewrite status must not go in the bubble"
     assert not native.calls_for("native.notify"), "successful paste should not notify"
+
+
+def test_windows_rewrite_without_exact_range_is_copy_only() -> None:
+    """A source HWND must never become permission to paste at a later caret."""
+    native = FakeWorker({
+        "native.context.snapshot": lambda _params: {
+            "platform": "win32",
+            "selected_text": "bad grammar",
+            "active_app": {
+                "name": "Editor",
+                "process_name": "editor.exe",
+                "pid": 777,
+                "window_id": 888,
+            },
+            "focus_token": 0,
+        },
+        "native.clipboard.set": lambda _params: {"ok": True},
+    })
+    brain = FakeWorker(stream_handlers={"brain.rewrite": rewrite_stream("good grammar")})
+
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, native, ui, _brain, _audio = make_flow(native=native, brain=brain)
+        flow.begin_caller(0)
+        annotation = ui.last_call("ui.rewrite.annotation.show")["params"]
+        ui.emit(
+            "ui.rewrite.annotation.submitted",
+            {
+                "annotation_id": annotation["annotation_id"],
+                "comment": "Fix grammar",
+                "include_document": False,
+            },
+        )
+
+    proposal = ui.last_call("ui.rewrite.annotation.proposal")["params"]
+    assert proposal["copy_only"] is True
+    ui.emit("ui.rewrite.annotation.accepted", {"annotation_id": annotation["annotation_id"]})
+    assert not native.calls_for("native.paste_text")
+    assert native.last_call("native.clipboard.set")["params"]["text"] == "good grammar"
+    assert annotation["annotation_id"] not in flow._rewrite_annotations
+
+
+def test_duplicate_rewrite_submit_while_processing_starts_one_model_call() -> None:
+    started = threading.Event()
+    finish = threading.Event()
+
+    def blocked_rewrite(_params, _on_event):
+        started.set()
+        assert finish.wait(5)
+        return {"text": "good grammar"}
+
+    native = FakeWorker({
+        "native.context.snapshot": context_handler(
+            selected="bad grammar",
+            pid=777,
+            focus_token=9,
+        ),
+    })
+    brain = FakeWorker(stream_handlers={"brain.rewrite": blocked_rewrite})
+
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, _native, ui, brain, _audio = make_flow(native=native, brain=brain)
+        flow.begin_caller(0)
+        annotation = ui.last_call("ui.rewrite.annotation.show")["params"]
+        first = threading.Thread(
+            target=flow.submit_rewrite_annotation,
+            args=(annotation["annotation_id"], "Fix grammar", False),
+        )
+        first.start()
+        assert started.wait(5)
+        flow.submit_rewrite_annotation(
+            annotation["annotation_id"],
+            "Fix grammar",
+            False,
+        )
+        finish.set()
+        first.join(5)
+
+    assert not first.is_alive()
+    assert len(brain.calls_for("brain.rewrite")) == 1
+
+
+def test_duplicate_rewrite_accept_applies_once() -> None:
+    started = threading.Event()
+    finish = threading.Event()
+
+    def blocked_paste(_params):
+        started.set()
+        assert finish.wait(5)
+        return {"ok": True}
+
+    native = FakeWorker({
+        "native.context.snapshot": context_handler(
+            selected="bad grammar",
+            pid=777,
+            focus_token=9,
+        ),
+        "native.paste_text": blocked_paste,
+    })
+    brain = FakeWorker(stream_handlers={"brain.rewrite": rewrite_stream("good grammar")})
+
+    with caller_config([{"paste_back": True, "context_clipboard": False}]):
+        flow, native, ui, _brain, _audio = make_flow(native=native, brain=brain)
+        flow.begin_caller(0)
+        annotation = ui.last_call("ui.rewrite.annotation.show")["params"]
+        flow.submit_rewrite_annotation(annotation["annotation_id"], "Fix grammar", False)
+        first = threading.Thread(
+            target=flow.accept_rewrite_annotation,
+            args=(annotation["annotation_id"],),
+        )
+        first.start()
+        assert started.wait(5)
+        flow.accept_rewrite_annotation(annotation["annotation_id"])
+        finish.set()
+        first.join(5)
+
+    assert not first.is_alive()
+    assert len(native.calls_for("native.paste_text")) == 1
 
 
 def test_rewrite_reuses_number_after_previous_proposal_finishes():
@@ -7514,7 +7769,7 @@ def test_chat_context_preview_keeps_requested_browser_on_while_detecting():
     assert len(calls) == 2
     first_browser = next(item for item in calls[0]["params"]["context_items"] if item["id"] == "browser")
     assert first_browser["state"] == "on"
-    assert first_browser["tokens"] == "0 tok"
+    assert first_browser["tokens"] == "? tok"
     updated_browser = next(item for item in calls[-1]["params"]["context_items"] if item["id"] == "browser")
     assert updated_browser["state"] == "on"
     assert updated_browser["tokens"].startswith("~")

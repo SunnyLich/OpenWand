@@ -88,6 +88,20 @@ def _linux_qt_keyboard_grabs_enabled() -> bool:
     return not bool(getattr(sys, "frozen", False))
 
 
+def _restore_foreground_window(window_id: int) -> None:
+    """Return keyboard focus to the app that owned the hotkey-time context."""
+    target = int(window_id or 0)
+    if not target:
+        return
+    try:
+        from core.platform_utils import set_foreground_window
+
+        set_foreground_window(target)
+    except Exception:
+        # Focus restoration is best-effort; cancellation must always finish.
+        return
+
+
 def _build_rows(
     caller_idx: int = 0,
     provider_suggestions: list[dict] | None = None,
@@ -276,7 +290,6 @@ _INPUT_MAX_H   = 118      # fallback when usable screen geometry is unavailable
 _SCREEN_MARGIN = 24
 _CONV_H        = 77
 _CONV_TOP      = 36
-_PROVIDER_H    = 30
 _CTX_H         = 96
 _CTX_GAP       = 18
 _CTX_CHIP_H    = 22
@@ -450,6 +463,15 @@ def _theme_palette() -> dict[str, QColor]:
         "app_action_badge_hover": app_action_badge_hover,
         "app_action_row_hover": app_action_row_hover,
     }
+
+
+def _intent_label_color(row: dict, palette: dict[str, QColor], *, available: bool) -> QColor:
+    """Return the label colour, highlighting app-aware actions without a banner."""
+    if not available:
+        return palette["text_faint"]
+    if row.get("appearance") == "app_action":
+        return palette["app_action"]
+    return palette["label"]
 
 
 def _input_line_stylesheet() -> str:
@@ -869,12 +891,10 @@ class IntentOverlay(QWidget):
         """Return the picker height for the current rows and context previews."""
         conversation_h = _CONV_H if self._show_conversation_selector else 0
         context_h = self._context_controls_height() if self._context_items else 0
-        provider_h = _PROVIDER_H if self._provider_display_name() else 0
         intent_count = sum(not bool(row.get("is_custom")) for row in self._rows)
         return (
             conversation_h
             + context_h
-            + provider_h
             + _ROWS_TOP
             + _ROW_H * intent_count
             + self._context_preview_height()
@@ -904,10 +924,6 @@ class IntentOverlay(QWidget):
         surface = self._prompt_input_rect(height)
         left = surface.x() + 12 + _INPUT_KEY_W + _INPUT_KEY_GAP
         return QRect(left, surface.y(), max(1, surface.right() - left - 11), surface.height())
-
-    def _provider_display_name(self) -> str:
-        """Return the bounded app name painted above provider-owned actions."""
-        return " ".join(str(self._action_provider.get("display_name") or "").split())[:80]
 
     @staticmethod
     def _normalize_conversation_options(options: list[dict]) -> list[dict]:
@@ -1087,20 +1103,6 @@ class IntentOverlay(QWidget):
         if self._context_items:
             self._paint_context_items(p, y, ctx_label_font, ctx_state_font, ctx_token_font, palette)
             y += self._context_controls_height()
-        provider_name = self._provider_display_name()
-        if provider_name:
-            p.setFont(_mono_font(9, tracking=0.08))
-            p.setPen(QPen(palette["app_action"]))
-            p.drawText(
-                _PAD_H,
-                y,
-                _W - (_PAD_H * 2),
-                _PROVIDER_H,
-                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-                f"{provider_name.upper()} ACTIONS",
-            )
-            y += _PROVIDER_H
-
         y += _ROWS_TOP
         for i, row in enumerate(self._rows):
             if row.get("is_custom"):
@@ -1132,7 +1134,7 @@ class IntentOverlay(QWidget):
 
             label_x = _PAD_H + _ROW_KEY_W + _ROW_KEY_GAP
             p.setFont(label_font)
-            p.setPen(QPen(palette["label"] if available else palette["text_faint"]))
+            p.setPen(QPen(_intent_label_color(row, palette, available=available)))
             p.drawText(
                 label_x,
                 y,
@@ -1656,7 +1658,7 @@ class IntentOverlay(QWidget):
         self._note_interaction()
         self._resize_for_context_preview()
         self.update()
-        if item_id == "ambient" and state == "off" and item["state"] != "off":
+        if item_id in {"ambient", "browser"} and state == "off" and item["state"] != "off":
             QTimer.singleShot(0, lambda: self.context_source_reenabled.emit(item_id))
         if item_id == "screenshot" and state == "off" and item["state"] == "on":
             QTimer.singleShot(0, self.screenshot_snip_requested.emit)
@@ -2232,7 +2234,7 @@ class IntentOverlay(QWidget):
                 event.accept()
                 return True
             if event.key() == Qt.Key.Key_Escape:
-                self._cancel()
+                self._cancel(restore_target_focus=True)
                 return True
             if (
                 event.type() == QEvent.Type.KeyPress
@@ -2287,7 +2289,7 @@ class IntentOverlay(QWidget):
         if getattr(self, "_closed", False) or self._handled or self._custom_mode:
             return
         if name in ('escape', 'esc'):
-            self._cancel()
+            self._cancel(restore_target_focus=True)
             return
         if name.lower() in {"space", "spacebar"}:
             if self._space_starts_new_chat:
@@ -2341,7 +2343,7 @@ class IntentOverlay(QWidget):
             event.accept()
             return
         elif event.key() == Qt.Key.Key_Escape:
-            self._cancel()
+            self._cancel(restore_target_focus=True)
             event.accept()
             return
         super().keyPressEvent(event)
@@ -2555,9 +2557,12 @@ class IntentOverlay(QWidget):
         self.intent_chosen.emit(row["glyph"], row["prompt"])
         self.close()
 
-    def _cancel(self):
+    def _cancel(self, *, restore_target_focus: bool = False):
         """Cancel the intent overlay workflow."""
         if self._handled:
             return
+        target_id = self._target_hwnd if restore_target_focus else 0
         self._cancel_if_unhandled()
         self.close()
+        if target_id:
+            _restore_foreground_window(target_id)

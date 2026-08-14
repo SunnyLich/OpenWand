@@ -230,6 +230,36 @@ def test_assistant_html_renders_inline_and_display_latex_math():
     assert r"\frac" not in rendered
 
 
+def test_currency_amounts_are_not_paired_as_cross_line_latex():
+    """Spreadsheet summaries keep dollar amounts as text instead of giant equations."""
+    text = (
+        "- Total: $93,900\n"
+        "- Monthly average: $15,650\n"
+        "- February: +$1,700 (+13.7%)\n"
+        "- March: -$500 (-3.5%)\n"
+        "- April: +$2,300 (+16.9%)"
+    )
+
+    rendered = _assistant_text_to_html(text)
+
+    assert "data:image/svg+xml" not in rendered
+    for amount in ("$93,900", "$15,650", "$1,700", "$500", "$2,300"):
+        assert amount in rendered
+
+    same_line = _assistant_text_to_html(
+        "Revenue moved from $500 to $600; net was $500 - $300 = $200."
+    )
+    assert "data:image/svg+xml" not in same_line
+    assert "$500 - $300 = $200" in same_line
+
+
+def test_numeric_inline_equations_still_render_as_latex():
+    """The currency guard must preserve genuinely mathematical numeric spans."""
+    rendered = _assistant_text_to_html("Check $2 + 2 = 4$ and $2$.")
+
+    assert rendered.count("data:image/svg+xml;base64,") == 2
+
+
 def test_latex_is_not_interpreted_inside_inline_or_fenced_code():
     """Code examples keep their literal delimiters and TeX commands."""
     rendered = _assistant_text_to_html(

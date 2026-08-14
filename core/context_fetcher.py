@@ -786,25 +786,53 @@ def _fetch_window_info_win(hwnd: int) -> WindowInfo:
     return info
 
 
-def get_browser_window_for_context(preferred_hwnd: int = 0) -> WindowInfo:
-    """Return the preferred/first visible browser window for Browser/Web context.
+def get_browser_windows_for_context(preferred_hwnd: int = 0) -> list[WindowInfo]:
+    """Return visible browser windows in context priority order.
 
     Browser/Web set to "On" should mean "include browser context" even when the
     foreground target is a document. Prefer the hotkey-time foreground window
-    when it is a browser, otherwise scan visible browser windows.
+    when it is a browser, then include the remaining visible browser windows.
+    Each top-level browser window is a separate context source; tabs that are
+    not the active tab of their window are intentionally not exposed by OS
+    accessibility APIs.
     """
+    if _IS_WIN:
+        preferred = WindowInfo()
+        if preferred_hwnd:
+            preferred = _fetch_window_info_win(int(preferred_hwnd))
+        windows = _find_visible_browser_windows_win()
+        if (preferred.process_name or "").lower() in _BROWSER_PROCS:
+            windows = [preferred, *windows]
+        return _dedupe_browser_windows(windows)
+
+    if _IS_MAC:
+        return _find_visible_browser_windows_macos()
+
+    # Linux: prefer the hotkey-time window, then the active window, then scan
+    # the X11 stacking order so a background browser still provides context.
+    preferred = WindowInfo()
+    if preferred_hwnd:
+        preferred = _fetch_window_info_linux(int(preferred_hwnd))
+    active = _fetch_active_window()
+    windows: list[WindowInfo] = []
+    if (preferred.process_name or "").lower() in _BROWSER_PROCS:
+        windows.append(preferred)
+    if (active.process_name or "").lower() in _BROWSER_PROCS:
+        windows.append(active)
+    windows.extend(_find_visible_browser_windows_linux())
+    return _dedupe_browser_windows(windows)
+
+
+def get_browser_window_for_context(preferred_hwnd: int = 0) -> WindowInfo:
+    """Return the highest-priority visible browser window for compatibility."""
     if _IS_WIN:
         if preferred_hwnd:
             preferred = _fetch_window_info_win(int(preferred_hwnd))
             if (preferred.process_name or "").lower() in _BROWSER_PROCS:
                 return preferred
         return _find_visible_browser_window_win()
-
     if _IS_MAC:
         return _find_visible_browser_window_macos()
-
-    # Linux: prefer the hotkey-time window, then the active window, then scan
-    # the X11 stacking order so a background browser still provides context.
     if preferred_hwnd:
         preferred = _fetch_window_info_linux(int(preferred_hwnd))
         if (preferred.process_name or "").lower() in _BROWSER_PROCS:
@@ -815,10 +843,29 @@ def get_browser_window_for_context(preferred_hwnd: int = 0) -> WindowInfo:
     return _find_visible_browser_window_linux()
 
 
-def _find_visible_browser_window_macos() -> WindowInfo:
-    """Return a visible macOS browser window without requiring browser focus."""
+def _dedupe_browser_windows(windows: list[WindowInfo]) -> list[WindowInfo]:
+    """Keep one entry per top-level window while preserving priority order."""
+    kept: list[WindowInfo] = []
+    seen: set[tuple[str, int | str]] = set()
+    for window in windows:
+        if not isinstance(window, WindowInfo):
+            continue
+        if window.hwnd:
+            key: tuple[str, int | str] = ("hwnd", int(window.hwnd))
+        else:
+            app = (window.process_name or "").strip().casefold()
+            key = ("app", app)
+        if not key[1] or key in seen:
+            continue
+        seen.add(key)
+        kept.append(window)
+    return kept
+
+
+def _find_visible_browser_windows_macos() -> list[WindowInfo]:
+    """Return one active browser window per visible macOS browser app."""
     if not _IS_MAC:
-        return WindowInfo()
+        return []
     try:
         from core.platform import macos_native
 
@@ -842,15 +889,20 @@ def _find_visible_browser_window_macos() -> WindowInfo:
         )
         win.url = _mac_browser_url(process_name)
         candidates.append(win)
-        if win.url:
-            return win
-    return candidates[0] if candidates else WindowInfo()
+    return candidates
 
 
-def _find_visible_browser_window_win() -> WindowInfo:
-    """Find visible browser window win."""
+def _find_visible_browser_window_macos() -> WindowInfo:
+    """Return the highest-priority visible macOS browser for compatibility."""
+    windows = _find_visible_browser_windows_macos()
+    with_url = [window for window in windows if window.url]
+    return with_url[0] if with_url else (windows[0] if windows else WindowInfo())
+
+
+def _find_visible_browser_windows_win() -> list[WindowInfo]:
+    """Return visible Windows browser windows in top-level z-order."""
     if not _IS_WIN:
-        return WindowInfo()
+        return []
     import ctypes
     import ctypes.wintypes
 
@@ -870,14 +922,18 @@ def _find_visible_browser_window_win() -> WindowInfo:
             win = _fetch_window_info_win(int(hwnd))
             if (win.process_name or "").lower() in _BROWSER_PROCS:
                 results.append(win)
-                if win.url:
-                    return False
         return True
 
     try:
         user32.EnumWindows(WNDENUMPROC(_callback), 0)
     except Exception:
-        return WindowInfo()
+        return []
+    return _dedupe_browser_windows(results)
+
+
+def _find_visible_browser_window_win() -> WindowInfo:
+    """Return the highest-priority visible Windows browser for compatibility."""
+    results = _find_visible_browser_windows_win()
     if not results:
         return WindowInfo()
     with_url = [win for win in results if win.url]
@@ -915,17 +971,24 @@ def _fetch_window_info_linux(wid: int) -> WindowInfo:
     return info
 
 
-def _find_visible_browser_window_linux() -> WindowInfo:
-    """Return the topmost visible X11 browser window without requiring focus."""
+def _find_visible_browser_windows_linux() -> list[WindowInfo]:
+    """Return visible X11 browser windows in stacking order."""
     if _IS_WIN or _IS_MAC:
-        return WindowInfo()
+        return []
     from core.platform_utils import list_visible_windows_stacking
+    results: list[WindowInfo] = []
     with swallow():
         for wid in list_visible_windows_stacking():
             win = _fetch_window_info_linux(int(wid or 0))
             if (win.process_name or "").lower() in _BROWSER_PROCS:
-                return win
-    return WindowInfo()
+                results.append(win)
+    return _dedupe_browser_windows(results)
+
+
+def _find_visible_browser_window_linux() -> WindowInfo:
+    """Return the topmost visible X11 browser window for compatibility."""
+    windows = _find_visible_browser_windows_linux()
+    return windows[0] if windows else WindowInfo()
 
 
 def _fetch_active_window_macos() -> WindowInfo:

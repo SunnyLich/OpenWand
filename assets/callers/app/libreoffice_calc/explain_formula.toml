@@ -1,4 +1,4 @@
-label = "Explain the selected formula"
+label = "Explain formula"
 hint = "Describe its inputs and logic, then flag likely mistakes"
 prompt = "Explain the selected spreadsheet formula in plain language, including its inputs, logic, and output. Flag broken references, risky assumptions, or inconsistencies with neighboring formulas. If no formula text is available, say exactly what the user needs to select. Do not change any cells."
 access = ["text"]

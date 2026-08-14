@@ -207,6 +207,7 @@ def test_claude_controls_offer_and_save_full_model_ids(monkeypatch) -> None:
         }
         assert {
             "claude-fable-5",
+            "claude-opus-5",
             "claude-sonnet-5",
             "claude-opus-4-8",
             "claude-sonnet-4-6",

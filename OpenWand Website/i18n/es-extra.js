@@ -920,11 +920,30 @@ Object.assign(I18N.reg['es'].nav.labels, {
 Object.assign(I18N.reg['es'].meta, {
   'technical-demos': {
     title: 'Demos técnicas',
-    sub: 'Ejecuciones reales de OpenWand capturando contexto, reescribiendo texto y dirigiendo tareas de agentes más largas.',
+    sub: 'Ejecuciones reales de OpenWand con prompts, contexto de aplicaciones, visión, reescrituras, acciones y tareas del Equipo de agentes.',
   },
 });
 
 Object.assign(I18N.reg['es'].tr, {
+  'These clips show OpenWand staying in the current app, collecting the right context, acting on focused work, and handing longer jobs to an Agent Team.':
+    'Estos clips muestran a OpenWand permaneciendo en la aplicación actual, recopilando el contexto adecuado, actuando sobre el trabajo enfocado y delegando trabajos más largos a un Equipo de agentes.',
+  'Prompt from anywhere': 'Prompt desde cualquier lugar',
+  'Select content in any app, invoke OpenWand, and run a saved or custom prompt without leaving what you are working on.':
+    'Selecciona contenido en cualquier aplicación, invoca OpenWand y ejecuta un prompt guardado o personalizado sin salir de lo que estás haciendo.',
+  'Cross-app context': 'Contexto entre aplicaciones',
+  'OpenWand can combine the active selection with enabled browser and app context, giving the model the material it needs without manual copy-paste.':
+    'OpenWand combina la selección activa con el contexto habilitado del navegador y de la aplicación, para dar al modelo el material necesario sin copiar y pegar manualmente.',
+  'Rewrite in place': 'Reescritura en el mismo lugar',
+  'Rewrite only the selected text, review the proposed wording, and paste the accepted result back into the field that was active when you invoked OpenWand.':
+    'Reescribe solo el texto seleccionado, revisa la propuesta y pega el resultado aceptado en el campo que estaba activo cuando invocaste OpenWand.',
+  'App-aware action': 'Acción consciente de la aplicación',
+  'Use focused application context to analyze or act on the current work, with a clear result and confirmation when no document cells were changed.':
+    'Usa el contexto específico de la aplicación para analizar o actuar sobre el trabajo actual, con un resultado claro y confirmación cuando no se modificó ninguna celda.',
+  'OpenWand prompt demo': 'Demo de prompts de OpenWand',
+  'OpenWand cross-app context demo': 'Demo de contexto entre aplicaciones de OpenWand',
+  'OpenWand rewrite demo': 'Demo de reescritura de OpenWand',
+  'OpenWand app-aware action demo': 'Demo de acción consciente de la aplicación de OpenWand',
+  'OpenWand Agent Team task demo': 'Demo de tarea del Equipo de agentes de OpenWand',
   'These clips show OpenWand doing the practical work behind the docs: staying in the current app, collecting the right context, and handing longer tasks to the experimental agent framework.':
     'Estos clips muestran a OpenWand haciendo el trabajo práctico detrás de la documentación: permanecer en la app actual, recopilar el contexto adecuado y pasar tareas más largas al marco experimental de agentes.',
   'Overlay query': 'Consulta en la superposición',
@@ -1123,6 +1142,8 @@ Object.assign(I18N.reg['es'].tr, {
   "Advanced mode uses the optional OpenAI Privacy Filter on your computer. Unfiltered text is not sent to a cloud service for detection. Installing it downloads about 2.8 GB plus a dedicated local runtime.": "El modo avanzado usa el modelo opcional <a href=\"https://openai.com/index/introducing-openai-privacy-filter/\" target=\"_blank\" rel=\"noopener\">OpenAI Privacy Filter</a> en tu ordenador. El texto sin filtrar no se envía a un servicio en la nube para detectarlo. La instalación descarga unos 2,8 GB, además de un entorno de ejecución local dedicado.",
   "OpenWand loads the advanced model into memory and warms it in the background when OpenWand starts or after you enable Advanced mode. Warm-up may take tens of seconds on a CPU. If you send a request before it finishes, that request waits; later scans reuse the loaded model and are faster.": "OpenWand carga el modelo avanzado en memoria y lo calienta en segundo plano al iniciarse o después de activar el modo avanzado. El calentamiento puede tardar decenas de segundos en una CPU. Si envías una solicitud antes de que termine, esa solicitud espera; los análisis posteriores reutilizan el modelo cargado y son más rápidos.",
   "OpenWand merges the AI model's findings with the built-in detector, replaces sensitive spans with stable session placeholders such as [PERSON_1], and can show a review before the request is sent. It then checks the redacted text again. If the model is unavailable, detection fails, or sensitive text remains, OpenWand blocks the cloud send.": "OpenWand combina los resultados del modelo de IA con los del detector integrado, sustituye los fragmentos sensibles por marcadores de sesión estables como <code>[PERSON_1]</code> y puede mostrar una revisión antes de enviar la solicitud. Después vuelve a comprobar el texto redactado. Si el modelo no está disponible, la detección falla o queda texto sensible, OpenWand bloquea el envío a la nube.",
+  "Prompt injection protection": "Protección contra inyecciones de prompt",
+  "This checks captured text for simple attempts to override the model's instructions. You can enable detection and choose whether OpenWand warns before sending, so you can continue or cancel.": "Comprueba el texto capturado para detectar intentos simples de anular las instrucciones del modelo. Puedes activar la detección y elegir si OpenWand avisa antes de enviar, para que puedas continuar o cancelar.",
   "Know the limits": "Conoce los límites",
   "Privacy filtering reduces accidental disclosure; it is not a guarantee of anonymization or regulatory compliance. Review high-sensitivity content before sending it to any provider.": "El filtrado de privacidad reduce la divulgación accidental; no garantiza la anonimización ni el cumplimiento normativo. Revisa el contenido altamente sensible antes de enviarlo a cualquier proveedor.",
 });

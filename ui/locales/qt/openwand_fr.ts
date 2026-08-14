@@ -3805,6 +3805,8 @@ Continuer ?</translation>
     <message><source>Final report is ready. Log:</source><translation>Le rapport final est prêt. Journal :</translation></message>
     <message><source>Finished. Log:</source><translation>Terminé. Journal :</translation></message>
     <message><source>Installed addon:</source><translation>Extension installée :</translation></message>
+    <message><source>Live conversation is disabled in Settings.</source><translation>La conversation en direct est désactivée dans les paramètres.</translation></message>
+    <message><source>Disabled does not start a live microphone session. Gemini Live uses the Google API key from Connections.</source><translation>Le mode désactivé ne démarre aucune session de microphone en direct. Gemini Live utilise la clé API Google des Connexions.</translation></message>
     <message><source>Live voice currently supports Gemini Live through the Google provider.</source><translation>Le mode vocal en direct prend actuellement en charge Gemini Live via le fournisseur Google.</translation></message>
     <message><source>Memory tokens are estimated after the prompt is known.</source><translation>Les jetons de mémoire sont estimés une fois le prompt connu.</translation></message>
     <message><source>Message options</source><translation>Options du message</translation></message>
@@ -4218,7 +4220,7 @@ Demander avant d’écrire — afficher les différences avant toute modificatio
     <message><source>Language code for assistant replies sent to GPT-SoVITS.</source><translation>Code de langue des réponses de l’assistant envoyées à GPT-SoVITS.</translation></message>
     <message><source>Language code for the reference audio transcript, such as en, zh, ja, ko, or yue.</source><translation>Code de langue de la transcription audio de référence, par exemple en, zh, ja, ko ou yue.</translation></message>
     <message><source>Local GPT-SoVITS API URL. Start api_v2.py in GPT-SoVITS, then use its host and port here.</source><translation>URL de l’API GPT-SoVITS locale. Lancez api_v2.py dans GPT-SoVITS, puis indiquez ici son hôte et son port.</translation></message>
-    <message><source>Local stays on this computer. Cloudflare uploads captured speech audio to Workers AI.</source><translation>Le mode local reste sur cet ordinateur. Cloudflare envoie l’audio vocal capturé à Workers AI.</translation></message>
+    <message><source>Disabled does not record or transcribe speech. Local stays on this computer. Cloudflare uploads captured speech audio to Workers AI.</source><translation>Le mode désactivé n’enregistre ni ne transcrit la voix. Le mode local reste sur cet ordinateur. Cloudflare envoie l’audio vocal capturé à Workers AI.</translation></message>
     <message><source>Maximum words per read-aloud TTS chunk before OpenWand splits anyway.</source><translation>Nombre maximal de mots par segment TTS lu à voix haute avant qu’OpenWand ne le découpe.</translation></message>
     <message><source>Minimum words before read-aloud TTS may split at punctuation.</source><translation>Nombre minimal de mots avant que la lecture TTS puisse être découpée à la ponctuation.</translation></message>
     <message><source>Path to a clean reference WAV on the machine running GPT-SoVITS.</source><translation>Chemin vers un fichier WAV de référence propre sur la machine exécutant GPT-SoVITS.</translation></message>
@@ -6547,5 +6549,24 @@ Cette action est irréversible. Les fichiers sources ChatGPT et Claude importés
     <message><source>Change model</source><translation>Changer de modèle</translation></message>
     <message><source>Same as OpenWand chat</source><translation>Identique au chat OpenWand</translation></message>
     <message><source>Exact model used for this chat: {model}</source><translation>Modèle exact utilisé pour cette discussion : {model}</translation></message>
+    <message><source>Detect possible prompt injections in captured text</source><translation>Détecter les possibles injections de prompt dans le texte capturé</translation></message>
+    <message><source>Prompt injection detection</source><translation>Détection d’injection de prompt</translation></message>
+    <message><source>Checks captured app, document, selection, and clipboard text for simple attempts to override model instructions. It looks for words such as Ignore or Override followed by an instruction-like word within the next five words. Your typed prompt is not scanned.</source><translation>Vérifie le texte capturé des applications, documents, sélections et du presse-papiers afin de repérer de simples tentatives de remplacer les instructions du modèle. Il recherche des mots comme Ignorer ou Remplacer suivis d’un terme lié aux instructions dans les cinq mots suivants. Votre prompt saisi n’est pas analysé.</translation></message>
+    <message><source>Warn me before sending when a possible injection is found</source><translation>M’avertir avant l’envoi lorsqu’une possible injection est détectée</translation></message>
+    <message><source>Injection warning</source><translation>Avertissement d’injection</translation></message>
+    <message><source>Pause before the model request and show the matching captured text. You can continue with the request or cancel it. Turn this off to detect silently.</source><translation>Met en pause avant la requête au modèle et affiche le texte capturé correspondant. Vous pouvez continuer la requête ou l’annuler. Désactivez cette option pour effectuer la détection silencieusement.</translation></message>
+    <message><source>Possible prompt injection detected</source><translation>Possible injection de prompt détectée</translation></message>
+    <message><source>OpenWand found {count} possible prompt-injection phrase(s) in captured text.</source><translation>OpenWand a trouvé {count} phrase(s) de possible injection de prompt dans le texte capturé.</translation></message>
+    <message><source>Captured content may be trying to give instructions to the model. Review the matches, then continue or cancel the request.</source><translation>Le contenu capturé tente peut-être de donner des instructions au modèle. Vérifiez les correspondances, puis continuez ou annulez la requête.</translation></message>
+    <message><source>No match details available.</source><translation>Aucun détail de correspondance disponible.</translation></message>
+    <message><source>Captured text being sent with your request:</source><translation>Texte capturé envoyé avec votre requête :</translation></message>
+    <message><source>Continue with request</source><translation>Continuer la requête</translation></message>
+    <message><source>Unpin selected</source><translation>Désépingler la sélection</translation></message>
+    <message><source>Pin selected</source><translation>Épingler la sélection</translation></message>
+    <message><source>Delete selected ({count})</source><translation>Supprimer la sélection ({count})</translation></message>
+    <message><source>Delete these {count} conversations? This cannot be undone.</source><translation>Supprimer ces {count} conversations ? Cette action est irréversible.</translation></message>
+    <message><source>Delete conversations</source><translation>Supprimer les conversations</translation></message>
+    <message><source>Delete conversations failed</source><translation>Échec de la suppression des conversations</translation></message>
+    <message><source>OpenWand could not delete the conversation(s): {error}</source><translation>OpenWand n’a pas pu supprimer la ou les conversations : {error}</translation></message>
   </context>
 </TS>

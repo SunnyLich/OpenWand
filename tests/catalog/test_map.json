@@ -229,7 +229,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 40
+      "node_count": 41
     },
     {
       "path": "tests/integration/brain/test_handler_transcribe.py",
@@ -319,7 +319,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 12
+      "node_count": 13
     },
     {
       "path": "tests/runtime/test_audio_host_tts.py",
@@ -334,7 +334,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 20
+      "node_count": 21
     },
     {
       "path": "tests/runtime/test_bootstrap.py",
@@ -364,7 +364,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 232
+      "node_count": 237
     },
     {
       "path": "tests/runtime/test_flows_live_voice.py",
@@ -454,7 +454,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 47
+      "node_count": 50
     },
     {
       "path": "tests/runtime/test_runtime_log.py",
@@ -574,7 +574,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 8
+      "node_count": 9
     },
     {
       "path": "tests/support/test_dependency_locks.py",
@@ -649,7 +649,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 13
+      "node_count": 18
     },
     {
       "path": "tests/support/test_python_version_check.py",
@@ -784,7 +784,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 33
+      "node_count": 34
     },
     {
       "path": "tests/test_action_files_shipped.py",
@@ -994,7 +994,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 16
+      "node_count": 17
     },
     {
       "path": "tests/test_agent_task_workflows.py",
@@ -1039,7 +1039,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 101
+      "node_count": 102
     },
     {
       "path": "tests/test_assistant_text.py",
@@ -1144,7 +1144,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 49
+      "node_count": 50
     },
     {
       "path": "tests/test_builtin_model_tools.py",
@@ -1219,7 +1219,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 54
+      "node_count": 56
     },
     {
       "path": "tests/test_chat_window_render_limits.py",
@@ -1249,7 +1249,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 16
+      "node_count": 19
     },
     {
       "path": "tests/test_config_env.py",
@@ -1603,7 +1603,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 31
+      "node_count": 34
     },
     {
       "path": "tests/test_ghost_cursor.py",
@@ -1734,7 +1734,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 9
+      "node_count": 10
     },
     {
       "path": "tests/test_intent_actions_acceptance.py",
@@ -1779,7 +1779,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 56
+      "node_count": 58
     },
     {
       "path": "tests/test_intent_overlay_keyboard_hook.py",
@@ -2129,7 +2129,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 14
+      "node_count": 15
     },
     {
       "path": "tests/test_overlay_shell_acceptance.py",
@@ -2262,7 +2262,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 2
+      "node_count": 3
     },
     {
       "path": "tests/test_privacy_summary.py",
@@ -2295,6 +2295,21 @@
       "node_count": 9
     },
     {
+      "path": "tests/test_prompt_injection.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 8
+    },
+    {
       "path": "tests/test_provider_auth_acceptance.py",
       "kind": "pytest",
       "scope": "e2e",
@@ -2322,7 +2337,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 138
+      "node_count": 140
     },
     {
       "path": "tests/test_query_pipeline.py",
@@ -2337,7 +2352,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 28
+      "node_count": 29
     },
     {
       "path": "tests/test_real_gpt55_integration.py",
@@ -2427,7 +2442,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 21
+      "node_count": 24
     },
     {
       "path": "tests/test_rewrite_browser.py",
@@ -2562,7 +2577,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 176
+      "node_count": 178
     },
     {
       "path": "tests/test_settings_env.py",
@@ -2697,7 +2712,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 11
+      "node_count": 12
     },
     {
       "path": "tests/test_spreadsheet_advanced_actions.py",
@@ -2770,7 +2785,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 17
+      "node_count": 19
     },
     {
       "path": "tests/test_text_annotations.py",

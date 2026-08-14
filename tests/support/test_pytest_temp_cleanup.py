@@ -64,7 +64,7 @@ def test_owned_basetemp_rejects_broad_or_external_paths(tmp_path):
 
 
 def test_pytest_configure_assigns_owned_temp_to_plain_run(tmp_path):
-    """Direct pytest commands avoid the shared operating-system temp root."""
+    """Direct pytest commands use an isolated, removable repository temp."""
 
     config = _config(tmp_path, None)
 
@@ -72,7 +72,23 @@ def test_pytest_configure_assigns_owned_temp_to_plain_run(tmp_path):
 
     target = pytest_temp_cleanup._owned_basetemp(config)
     assert target is not None
-    assert target.parent == (tmp_path / ".tmp_pytest").resolve()
+    assert target.parent == tmp_path.resolve()
+    assert target.name.startswith(f".pytest-tmp-pytest_{os.getpid()}_")
+
+
+def test_pytest_configure_collects_abandoned_runs(tmp_path, monkeypatch):
+    """Starting any later pytest run sweeps basetemps whose owners exited."""
+
+    stale = tmp_path / ".tmp_pytest" / "pytest_1234_100"
+    stale.mkdir(parents=True)
+    (stale / "leftover.txt").write_text("stale", encoding="utf-8")
+    monkeypatch.setattr(pytest_temp_cleanup, "_process_is_running", lambda _pid: False)
+    config = _config(tmp_path, None)
+
+    pytest_temp_cleanup.pytest_configure(config)
+
+    assert not stale.exists()
+    assert pytest_temp_cleanup._owned_basetemp(config) is not None
 
 
 def test_pytest_configure_preserves_caller_basetemp(tmp_path):
@@ -129,6 +145,56 @@ def test_pytest_unconfigure_preserves_temp_when_requested(tmp_path, monkeypatch)
     assert target.exists()
 
 
+def test_remove_owned_basetemp_rejects_broad_path_and_removes_owned_child(tmp_path):
+    """Runner finalizers can clean exact basetemps without broad deletion risk."""
+
+    owned = tmp_path / ".pytest-tmp-ci-chunk-2"
+    owned.mkdir()
+    (owned / "result.txt").write_text("temporary", encoding="utf-8")
+
+    assert pytest_temp_cleanup.remove_owned_basetemp(tmp_path, tmp_path) is False
+    assert pytest_temp_cleanup.remove_owned_basetemp(tmp_path, owned) is True
+    assert not owned.exists()
+
+
+def test_remove_owned_basetemp_defers_locked_tree_until_process_exit(tmp_path, monkeypatch):
+    """A Windows-style lingering handle schedules cleanup after runner exit."""
+
+    owned = tmp_path / ".pytest-tmp-ci-chunk-2"
+    owned.mkdir()
+    scheduled: list[tuple[Path, Path]] = []
+    monkeypatch.setattr(
+        pytest_temp_cleanup,
+        "_remove_tree_with_retries",
+        lambda _path, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        pytest_temp_cleanup,
+        "_schedule_deferred_removal",
+        lambda root, target: scheduled.append((root, target)),
+    )
+
+    assert (
+        pytest_temp_cleanup.remove_owned_basetemp(
+            tmp_path,
+            owned,
+            defer_until_process_exit=True,
+        )
+        is False
+    )
+    assert scheduled == [(tmp_path.resolve(), owned.resolve())]
+
+
+def test_reaper_rejects_path_outside_owned_pytest_locations(tmp_path):
+    """The detached process cannot be repurposed for arbitrary deletion."""
+
+    outside = tmp_path / "ordinary-directory"
+    outside.mkdir()
+
+    assert pytest_temp_cleanup._reap_after_process_exit(tmp_path, outside, 1234) == 2
+    assert outside.exists()
+
+
 def test_remove_tree_ignores_a_child_that_vanished(tmp_path, monkeypatch):
     """A concurrently removed fixture does not leave its basetemp behind."""
 
@@ -162,6 +228,24 @@ def test_stale_cleanup_removes_dead_process_tree_but_preserves_live_sibling(tmp_
     assert dead in removed
     assert not dead.exists()
     assert (live / "active.txt").read_text(encoding="utf-8") == "keep"
+
+
+def test_stale_cleanup_removes_dead_root_basetemp_but_preserves_live_sibling(
+    tmp_path, monkeypatch
+):
+    """PID-labelled CI basetemps are recoverable after their runner is killed."""
+
+    dead = tmp_path / ".pytest-tmp-pytest_1234_ci_chunk_1"
+    live = tmp_path / ".pytest-tmp-pytest_5678_ci_chunk_2"
+    dead.mkdir()
+    live.mkdir()
+    monkeypatch.setattr(pytest_temp_cleanup, "_process_is_running", lambda pid: pid == 5678)
+
+    removed = pytest_temp_cleanup.cleanup_stale_owned_basetemps(tmp_path)
+
+    assert dead in removed
+    assert not dead.exists()
+    assert live.exists()
 
 
 def test_stale_cleanup_removes_completed_current_runner_phases(tmp_path, monkeypatch):
