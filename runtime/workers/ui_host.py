@@ -2451,7 +2451,12 @@ class QtProtocolHost:
             }
         if method == "ui.debug.intent.submit" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
             overlay = self._intent
-            if overlay is None or not overlay.isVisible():
+            # Qt's macOS offscreen backend can keep a valid, enabled top-level
+            # picker hidden even after deferred activation. Debug acceptance
+            # calls should exercise that live picker instead of treating the
+            # backend's visibility limitation as a missing UI surface.
+            offscreen = os.environ.get("QT_QPA_PLATFORM", "").strip().casefold() == "offscreen"
+            if overlay is None or (not overlay.isVisible() and not offscreen):
                 popup = next(
                     (
                         item

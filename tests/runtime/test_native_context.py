@@ -1431,6 +1431,10 @@ def test_context_snapshot_reads_browser_url_from_corrected_window(monkeypatch):
         )
 
     monkeypatch.setattr(context_fetcher, "_fetch_window_info_win", fake_fetch_window)
+    # Keep this focused-window contract independent from whatever browser
+    # windows happen to be open on the hosted Windows runner. Multi-window
+    # enumeration has its own deterministic test below.
+    monkeypatch.setattr(context_fetcher, "_find_visible_browser_windows_win", lambda: [])
 
     snapshot = native_host.context_snapshot(
         include_clipboard=False,
