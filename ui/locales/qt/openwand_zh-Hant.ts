@@ -4773,6 +4773,14 @@ Write automatically — apply edits without asking.</source><translation>本機�
       <translation>登入這台電腦後自動啟動 OpenWand。</translation>
     </message>
     <message>
+      <source>Use caller context defaults only for new conversations</source>
+      <translation>僅在新對話中使用呼叫項目的預設內容</translation>
+    </message>
+    <message>
+      <source>When continuing a conversation, start context sources Off. Conversation history is still included, and you can turn sources on for any prompt.</source>
+      <translation>繼續對話時，內容來源預設為關閉。對話記錄仍會包含在內，你也可以為任何提示開啟來源。</translation>
+    </message>
+    <message>
       <source>Could not update startup setting</source>
       <translation>無法更新啟動設定</translation>
     </message>

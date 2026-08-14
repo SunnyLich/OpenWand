@@ -43,6 +43,7 @@ def test_isolated_profiles_switch_without_cross_contamination(tmp_path: Path) ->
         "ACTIVE_PROFILE": "a",
         "OPENAI_API_KEY": "must-stay-shared",
         "START_ON_LOGIN": "True",
+        "CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY": "True",
         "LLM_PROVIDER": "ollama",
         "LLM_MODEL": "model-a",
         "THEME_MODE": "dark",
@@ -62,7 +63,9 @@ def test_isolated_profiles_switch_without_cross_contamination(tmp_path: Path) ->
     assert active["THEME_MODE"] == "light"
     assert active["OPENAI_API_KEY"] == "must-stay-shared"
     assert active["START_ON_LOGIN"] == "True"
+    assert active["CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY"] == "True"
     assert read_profile(env_path, "a")["LLM_MODEL"] == "model-a"
+    assert "CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY" not in read_profile(env_path, "a")
 
 
 def test_legacy_rows_and_low_setup_are_copied_to_complete_profile_files(tmp_path: Path) -> None:

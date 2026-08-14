@@ -608,7 +608,12 @@ class FlowController:
             if isinstance((data or {}).get("intent_routing"), dict)
             else {}
         )
-        self._schedule(self.intent_chosen, prompt, choices, routing)
+        conversation_choice = (
+            dict((data or {}).get("conversation_choice") or {})
+            if isinstance((data or {}).get("conversation_choice"), dict)
+            else {}
+        )
+        self._schedule(self.intent_chosen, prompt, choices, routing, conversation_choice)
 
     def _on_intent_cancelled(self, _data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle intent cancelled events."""
@@ -2599,9 +2604,11 @@ class FlowController:
             pending.caller["_context_screenshot_requires_snip"] = False
             self._pending = pending
         context_items = self._intent_context_items(pending)
-        if not screenshot_b64:
-            for item in context_items:
-                if item.get("id") == "screenshot":
+        for item in context_items:
+            if item.get("id") == "screenshot":
+                if screenshot_b64:
+                    item["touched"] = True
+                else:
                     item["force_state"] = True
         self._restore_intent_after_context_capture(pending, custom_text, context_items)
 
@@ -2855,8 +2862,11 @@ class FlowController:
         prompt: str,
         context_choices: list[dict[str, Any]] | None = None,
         intent_routing: dict[str, Any] | None = None,
+        conversation_choice: dict[str, Any] | None = None,
     ) -> None:
         """Handle intent chosen for flow controller."""
+        import config
+
         with self._lock:
             pending = self._pending
             self._pending = None
@@ -2866,6 +2876,18 @@ class FlowController:
         elif not pending.context_ready.is_set():
             pending.context_ready.wait(timeout=3.0)
         choices = context_choices or []
+        if (
+            bool(getattr(config, "CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY", False))
+            and str((conversation_choice or {}).get("mode") or "").strip().lower() == "continue"
+        ):
+            choices = [
+                (
+                    {**item, "state": "off", "default_state": "off"}
+                    if not item.get("locked") and not item.get("touched")
+                    else dict(item)
+                )
+                for item in choices
+            ]
         pending.caller = self._apply_intent_context_choices(pending.caller, choices)
         context = pending.context if isinstance(pending.context, dict) else {}
         if (
@@ -5117,13 +5139,18 @@ class FlowController:
             else:
                 pending.caller["_context_selection_enabled"] = False
             self._pending = pending
+        context_items = self._intent_context_items(pending)
+        if text or selected_paths:
+            for item in context_items:
+                if item.get("id") == "selection":
+                    item["touched"] = True
         self._safe_call(
             self.ui,
             "ui.show_intent",
             {
                 "caller_idx": pending.caller_idx,
                 "target_hwnd": pending.intent_target_pid,
-                "context_items": self._intent_context_items(pending),
+                "context_items": context_items,
                 "initial_custom_text": custom_text,
                 "focus_overlay": True,
                 "action_provider": pending.action_provider_context,

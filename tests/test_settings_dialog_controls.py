@@ -1314,6 +1314,7 @@ def test_app_tab_exposes_assistant_language_setting():
         assert "PROMPT_INJECTION_PROTECTION" in dialog._fields
         assert "PROMPT_INJECTION_WARN" in dialog._fields
         assert "START_ON_LOGIN" in dialog._fields
+        assert "CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY" in dialog._fields
         labels = {label.text() for label in tab.findChildren(QLabel)}
         checkboxes = {checkbox.text() for checkbox in tab.findChildren(QCheckBox)}
         assert "App language  ⓘ" in labels
@@ -1329,14 +1330,21 @@ def test_app_tab_exposes_assistant_language_setting():
             "Web addresses",
         } <= checkboxes
         assert "Start OpenWand when you sign in" in checkboxes
+        assert "Use caller context defaults only for new conversations" in checkboxes
+        assert "Conversation history is still included" in dialog._fields[
+            "CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY"
+        ].toolTip()
         app_form = dialog._fields["START_ON_LOGIN"].parentWidget().layout()
         auto_hide_row, _ = app_form.getWidgetPosition(dialog._fields["ICON_AUTO_HIDE"])
         start_on_login_row, _ = app_form.getWidgetPosition(dialog._fields["START_ON_LOGIN"])
+        first_prompt_context_row, _ = app_form.getWidgetPosition(
+            dialog._fields["CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY"]
+        )
         bubble_scroll_row, _ = app_form.getWidgetPosition(
             dialog._fields["BUBBLE_SCROLL_SNAP_ENABLED"]
         )
-        assert bubble_scroll_row < auto_hide_row < start_on_login_row
-        assert start_on_login_row == app_form.rowCount() - 1
+        assert bubble_scroll_row < auto_hide_row < start_on_login_row < first_prompt_context_row
+        assert first_prompt_context_row == app_form.rowCount() - 1
         privacy_selector = dialog._fields["PRIVACY_MODE"]
         assert isinstance(privacy_selector, QComboBox)
         assert {
@@ -4054,6 +4062,7 @@ def test_reset_page_key_mapping_is_scoped():
     assert "BUBBLE_SCROLL_ENABLED" in SettingsDialog._reset_env_keys_for_page("App", env)
     assert "BUBBLE_SCROLL_SNAP_DELAY_MS" in SettingsDialog._reset_env_keys_for_page("Advanced", env)
     assert "START_ON_LOGIN" in SettingsDialog._reset_env_keys_for_page("App", env)
+    assert "CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY" in SettingsDialog._reset_env_keys_for_page("App", env)
     assert "APP_LANGUAGE" in SettingsDialog._reset_env_keys_for_page("App", env)
     assert "ASSISTANT_LANGUAGE" in SettingsDialog._reset_env_keys_for_page("App", env)
     assert "CHAT_AUTO_ELABORATE" not in SettingsDialog._reset_env_keys_for_page("App", env)
@@ -5462,6 +5471,7 @@ def test_settings_do_save_localizes_qtextedit_prompt_fields(tmp_path, monkeypatc
         dialog._fields["OPENWAND_PLANNED_CHUNKING"].setChecked(True)
         dialog._fields["OPENWAND_PLANNED_CHUNKING_CHUNKS"].setText("4")
         dialog._fields["OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS"].setText("120")
+        dialog._fields["CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY"].setChecked(True)
         first_root = tmp_path / "model-files-one"
         second_root = tmp_path / "model-files-two"
         first_root.mkdir()
@@ -5485,6 +5495,7 @@ def test_settings_do_save_localizes_qtextedit_prompt_fields(tmp_path, monkeypatc
         assert captured["OPENWAND_PLANNED_CHUNKING"] == "True"
         assert captured["OPENWAND_PLANNED_CHUNKING_CHUNKS"] == "4"
         assert captured["OPENWAND_PLANNED_CHUNKING_MIN_PROMPT_CHARS"] == "120"
+        assert captured["CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY"] == "True"
         assert captured["TOOL_FILE_ROOTS"] == f"{first_root}\n{second_root}"
         assert captured["TTS_PROVIDER"] == "kokoro"
         assert captured["OPENWAND_CONNECTION_ALIAS_OPENAI"] == "Work"

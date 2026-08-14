@@ -8645,6 +8645,15 @@ class SettingsDialog(QDialog):
         self._fields["START_ON_LOGIN"].setToolTip(
             t("Launch OpenWand automatically after you sign in to this computer.")
         )
+        self._fields["CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY"] = QCheckBox(
+            t("Use caller context defaults only for new conversations")
+        )
+        self._fields["CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY"].setToolTip(
+            t(
+                "When continuing a conversation, start context sources Off. Conversation history "
+                "is still included, and you can turn sources on for any prompt."
+            )
+        )
         app_language = _NoScrollCombo()
         for label, value in LANGUAGE_OPTIONS:
             app_language.addItem(t(label), value)
@@ -8713,6 +8722,7 @@ class SettingsDialog(QDialog):
         f.addRow(t("Read word color"), _read_word_color_row)
         f.addRow("", self._fields["ICON_AUTO_HIDE"])
         f.addRow("", self._fields["START_ON_LOGIN"])
+        f.addRow("", self._fields["CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY"])
         cv.addWidget(fw)
         outer.addWidget(card)
 
@@ -10345,6 +10355,13 @@ class SettingsDialog(QDialog):
         self._fields["ICON_AUTO_HIDE"].setChecked(auto_hide)  # type: ignore
         self._fields["START_ON_LOGIN"].setChecked(  # type: ignore
             self._env.get("START_ON_LOGIN", str(getattr(cfg, "START_ON_LOGIN", False))).lower()
+            == "true"
+        )
+        self._fields["CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY"].setChecked(
+            self._env.get(
+                "CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY",
+                str(getattr(cfg, "CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY", False)),
+            ).lower()
             == "true"
         )
         privacy_mode = self._env.get("PRIVACY_MODE", "").strip().lower()
@@ -12184,6 +12201,7 @@ class SettingsDialog(QDialog):
                 "PRIVACY_HIDE_FINANCIAL_DETAILS", "PRIVACY_HIDE_GOVERNMENT_IDS",
                 "PRIVACY_HIDE_URLS", "PROMPT_INJECTION_PROTECTION", "PROMPT_INJECTION_WARN",
                 "ICON_AUTO_HIDE", "DOLL_AUTO_HIDE", "START_ON_LOGIN",
+                "CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY",
                 "THEME_DARK_BG", "THEME_DARK_SURFACE", "THEME_DARK_TEXT", "THEME_DARK_ACCENT",
                 "THEME_LIGHT_BG", "THEME_LIGHT_SURFACE", "THEME_LIGHT_TEXT", "THEME_LIGHT_ACCENT",
                 "APP_LANGUAGE", "ASSISTANT_LANGUAGE",
@@ -12711,6 +12729,9 @@ class SettingsDialog(QDialog):
             "PROMPT_INJECTION_WARN": str(self._fields["PROMPT_INJECTION_WARN"].isChecked()),
             "ICON_AUTO_HIDE":    str(self._fields["ICON_AUTO_HIDE"].isChecked()),  # type: ignore
             "START_ON_LOGIN": str(self._fields["START_ON_LOGIN"].isChecked()),  # type: ignore
+            "CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY": str(
+                self._fields["CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY"].isChecked()
+            ),
             "CHAT_AUTO_ELABORATE": str(self._fields["CHAT_AUTO_ELABORATE"].isChecked()),  # type: ignore
             "CHAT_ELABORATE_PROMPT": chat_elaborate_prompt,
             "APP_LANGUAGE": _get(self._fields["APP_LANGUAGE"]),

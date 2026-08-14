@@ -12,6 +12,31 @@ import config
 
 
 class ConfigEnvTests(unittest.TestCase):
+    def test_context_defaults_first_prompt_only_is_opt_in(self):
+        """Caller context continues on every prompt unless the user enables the toggle."""
+        key = "CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY"
+        previous_config = {
+            name: getattr(config, name)
+            for name in dir(config)
+            if name.isupper()
+        }
+        previous_env = os.environ.pop(key, None)
+        try:
+            with patch("config.load_dotenv"):
+                config.reload()
+            self.assertFalse(config.CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY)
+
+            with patch("config.load_dotenv"), patch.dict(os.environ, {key: "true"}, clear=False):
+                config.reload()
+            self.assertTrue(config.CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY)
+        finally:
+            if previous_env is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous_env
+            for name, value in previous_config.items():
+                setattr(config, name, value)
+
     def test_reload_parses_chat_harness_and_conversation_owner(self):
         """The two top-level conversation selectors load independently."""
         previous = {

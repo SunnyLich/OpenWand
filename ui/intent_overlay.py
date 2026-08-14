@@ -663,11 +663,17 @@ class IntentOverlay(QWidget):
         )
         self._selected_intent_routing: dict = {"mode": "auto", "source": "custom"}
         self._context_items = []
+        self._new_conversation_context_defaults: dict[str, str] = {}
         for item in context_items or _default_context_items():
             next_item = dict(item)
             next_item.setdefault("default_state", next_item.get("state", "off"))
             next_item.setdefault("touched", False)
             self._context_items.append(next_item)
+            item_id = str(next_item.get("id") or "")
+            if item_id:
+                self._new_conversation_context_defaults[item_id] = str(
+                    next_item.get("default_state") or next_item.get("state") or "off"
+                ).lower()
         self._project_options = self._normalize_project_options(project_options or [])
         self._project_id = active_project_id or self._default_project_id()
         if not any(item.get("id") == self._project_id for item in self._project_options):
@@ -685,6 +691,7 @@ class IntentOverlay(QWidget):
         self._conversation_mode = "continue" if selected is not None else "new"
         self._conversation_index = int(selected["index"]) if selected is not None else None
         self._conversation_choice_touched = False
+        self._apply_context_defaults_for_conversation_mode()
         self._project_rect = QRect()
         self._conversation_mode_rect = QRect()
         self._conversation_list_rect = QRect()
@@ -986,6 +993,28 @@ class IntentOverlay(QWidget):
         """Return whether the user changed the chat target in this overlay."""
         return bool(self._conversation_choice_touched)
 
+    def _apply_context_defaults_for_conversation_mode(self, *, restore_new: bool = False) -> None:
+        """Apply caller defaults to new chats and optional all-off defaults to continuations."""
+        first_prompt_only = bool(
+            getattr(config, "CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY", False)
+        )
+        if not first_prompt_only:
+            return
+        continuing = self._conversation_mode == "continue" and self._conversation_index is not None
+        if not continuing and not restore_new:
+            return
+        for item in self._context_items:
+            if item.get("locked") or item.get("touched"):
+                continue
+            item_id = str(item.get("id") or "")
+            caller_default = self._new_conversation_context_defaults.get(
+                item_id,
+                str(item.get("default_state") or item.get("state") or "off").lower(),
+            )
+            state = "off" if first_prompt_only and continuing else caller_default
+            item["state"] = state
+            item["default_state"] = state
+
     def project_choice(self) -> dict:
         """Return the selected project for this prompt."""
         if self._project_id == _NEW_PROJECT_SENTINEL:
@@ -1058,6 +1087,7 @@ class IntentOverlay(QWidget):
                     next_item["state"] = "on"
             refreshed.append(next_item)
         self._context_items = refreshed
+        self._apply_context_defaults_for_conversation_mode()
         self._warning_rects = []
         self._resize_for_context_preview()
         self.update()
@@ -1755,6 +1785,7 @@ class IntentOverlay(QWidget):
                 self._conversation_index = int(self._filtered_conversation_options()[0]["index"])
         else:
             self._conversation_mode = "new"
+        self._apply_context_defaults_for_conversation_mode(restore_new=True)
         self._note_interaction()
         self.update()
         return True
@@ -1798,6 +1829,7 @@ class IntentOverlay(QWidget):
         self._new_project_name = ""
         self._conversation_mode = "new"
         self._conversation_index = None
+        self._apply_context_defaults_for_conversation_mode(restore_new=True)
         self._note_interaction()
         self.update()
 
@@ -1814,6 +1846,7 @@ class IntentOverlay(QWidget):
         self._new_project_name = name
         self._conversation_mode = "new"
         self._conversation_index = None
+        self._apply_context_defaults_for_conversation_mode(restore_new=True)
         self._note_interaction()
         self.update()
 
@@ -1846,6 +1879,7 @@ class IntentOverlay(QWidget):
         self._conversation_choice_touched = True
         self._conversation_mode = "new"
         self._conversation_index = None
+        self._apply_context_defaults_for_conversation_mode(restore_new=True)
         self._note_interaction()
         self.update()
 
@@ -1853,6 +1887,7 @@ class IntentOverlay(QWidget):
         self._conversation_choice_touched = True
         self._conversation_mode = "continue"
         self._conversation_index = int(idx)
+        self._apply_context_defaults_for_conversation_mode(restore_new=True)
         self._note_interaction()
         self.update()
 

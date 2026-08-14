@@ -1370,6 +1370,38 @@ def test_intent_overlay_conversation_choice_toggles_new_and_continue():
         app.processEvents()
 
 
+def test_first_prompt_only_context_defaults_follow_conversation_mode(qapp, monkeypatch):
+    """Continuations start Off, while New chat restores untouched caller defaults."""
+    import config
+    from ui.intent_overlay import IntentOverlay
+
+    monkeypatch.setattr(config, "CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY", True, raising=False)
+    overlay = IntentOverlay(
+        context_items=[
+            {"id": "ambient", "key": "1", "label": "App", "state": "on"},
+            {"id": "browser", "key": "2", "label": "Browser", "state": "auto"},
+            {"id": "attachments", "key": "", "label": "Attachments", "state": "on", "locked": True},
+        ],
+        conversation_options=[{"index": 1, "title": "Latest chat", "selected": True}],
+    )
+    try:
+        states = {item["id"]: item["state"] for item in overlay.context_choices()}
+        assert states == {"ambient": "off", "browser": "off", "attachments": "on"}
+
+        overlay._cycle_context_key("1")
+        assert next(item for item in overlay.context_choices() if item["id"] == "ambient")["state"] == "on"
+
+        overlay._toggle_conversation_mode()
+        states = {item["id"]: item["state"] for item in overlay.context_choices()}
+        assert states == {"ambient": "on", "browser": "auto", "attachments": "on"}
+
+        overlay._set_conversation_choice(1)
+        states = {item["id"]: item["state"] for item in overlay.context_choices()}
+        assert states == {"ambient": "on", "browser": "off", "attachments": "on"}
+    finally:
+        _close_overlay_if_valid(overlay, qapp)
+
+
 @pytest.mark.parametrize("caller_idx", [0, 1])
 def test_space_toggles_conversation_for_intent_and_action_overlays(qapp, caller_idx):
     """Space invokes the same new/continue toggle in either overlay."""

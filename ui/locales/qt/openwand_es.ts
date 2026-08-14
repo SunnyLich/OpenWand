@@ -4770,6 +4770,14 @@ Escribir automáticamente — aplicar las ediciones sin preguntar.</translation>
       <translation>Inicia OpenWand automáticamente después de iniciar sesión en este equipo.</translation>
     </message>
     <message>
+      <source>Use caller context defaults only for new conversations</source>
+      <translation>Usar los valores de contexto del invocador solo para conversaciones nuevas</translation>
+    </message>
+    <message>
+      <source>When continuing a conversation, start context sources Off. Conversation history is still included, and you can turn sources on for any prompt.</source>
+      <translation>Al continuar una conversación, las fuentes de contexto comienzan desactivadas. El historial de la conversación se sigue incluyendo y puedes activar fuentes para cualquier solicitud.</translation>
+    </message>
+    <message>
       <source>Could not update startup setting</source>
       <translation>No se pudo actualizar el ajuste de inicio</translation>
     </message>

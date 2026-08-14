@@ -4825,6 +4825,14 @@ Demander avant d’écrire — afficher les différences avant toute modificatio
       <translation>Lance OpenWand automatiquement après votre connexion à cet ordinateur.</translation>
     </message>
     <message>
+      <source>Use caller context defaults only for new conversations</source>
+      <translation>Utiliser les valeurs de contexte de l’appelant uniquement pour les nouvelles conversations</translation>
+    </message>
+    <message>
+      <source>When continuing a conversation, start context sources Off. Conversation history is still included, and you can turn sources on for any prompt.</source>
+      <translation>Lorsque vous poursuivez une conversation, les sources de contexte sont désactivées au départ. L’historique de la conversation reste inclus et vous pouvez activer des sources pour n’importe quelle requête.</translation>
+    </message>
+    <message>
       <source>Could not update startup setting</source>
       <translation>Impossible de mettre à jour le réglage de démarrage</translation>
     </message>

@@ -4768,6 +4768,14 @@ Write automatically — apply edits without asking.</source><translation>本地�
       <translation>登录这台电脑后自动启动 OpenWand。</translation>
     </message>
     <message>
+      <source>Use caller context defaults only for new conversations</source>
+      <translation>仅在新对话中使用调用项的默认上下文</translation>
+    </message>
+    <message>
+      <source>When continuing a conversation, start context sources Off. Conversation history is still included, and you can turn sources on for any prompt.</source>
+      <translation>继续对话时，初始上下文来源将关闭。对话历史记录仍会包含在内，你也可以为任何提示开启所需来源。</translation>
+    </message>
+    <message>
       <source>Could not update startup setting</source>
       <translation>无法更新启动设置</translation>
     </message>

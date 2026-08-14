@@ -1664,6 +1664,51 @@ def test_unrecognized_calc_request_never_pastes_over_cells() -> None:
     assert not native.calls_for("native.paste_text")
 
 
+def test_first_prompt_only_setting_suppresses_untouched_context_on_continue(monkeypatch) -> None:
+    """The supervisor enforces continuation defaults even if an older UI sends caller defaults."""
+    import config
+
+    monkeypatch.setattr(config, "CONTEXT_DEFAULTS_FIRST_PROMPT_ONLY", True, raising=False)
+    pending = PendingInvocation(
+        caller_idx=0,
+        caller={
+            "paste_back": False,
+            "context_ambient": True,
+            "context_clipboard": True,
+            "context_browser_mode": "auto",
+            "context_memory_mode": "on",
+            "file_access": "read",
+        },
+        context={},
+    )
+    pending.context_ready.set()
+    flow, _native, _ui, _brain, _audio = make_flow()
+    flow._pending = pending  # noqa: SLF001 - direct context-policy boundary setup
+    captured = []
+    flow._query = lambda prompt, invocation: captured.append((prompt, invocation))  # type: ignore[method-assign]  # noqa: SLF001
+
+    flow.intent_chosen(
+        "continue without fresh context",
+        context_choices=[
+            {"id": "ambient", "state": "on", "default_state": "on", "touched": False},
+            {"id": "clipboard", "state": "on", "default_state": "on", "touched": False},
+            {"id": "browser", "state": "on", "default_state": "on", "touched": False},
+            {"id": "memory", "state": "on", "default_state": "on", "touched": False},
+            {"id": "files", "state": "on", "default_state": "on", "touched": False},
+            {"id": "selection", "state": "on", "default_state": "off", "touched": True},
+        ],
+        conversation_choice={"mode": "continue", "index": 0},
+    )
+
+    assert captured == [("continue without fresh context", pending)]
+    assert pending.caller["context_ambient"] is False
+    assert pending.caller["context_clipboard"] is False
+    assert pending.caller["context_browser_mode"] == "off"
+    assert pending.caller["context_memory_mode"] == "off"
+    assert pending.caller["file_access"] == "off"
+    assert pending.caller["_context_selection_enabled"] is True
+
+
 def test_addon_prompt_intent_uses_normal_query_path() -> None:
     pending = PendingInvocation(caller_idx=0, caller={"paste_back": False}, context={})
     pending.context_ready.set()
