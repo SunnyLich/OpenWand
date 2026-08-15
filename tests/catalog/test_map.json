@@ -364,7 +364,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 237
+      "node_count": 238
     },
     {
       "path": "tests/runtime/test_flows_live_voice.py",
@@ -1264,7 +1264,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 47
+      "node_count": 48
     },
     {
       "path": "tests/test_connection_management_acceptance.py",
@@ -1779,7 +1779,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 58
+      "node_count": 59
     },
     {
       "path": "tests/test_intent_overlay_keyboard_hook.py",
