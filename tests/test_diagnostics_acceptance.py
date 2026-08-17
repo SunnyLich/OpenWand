@@ -622,7 +622,9 @@ def test_settings_uninstall_exact_plan_and_isolated_self_removing_helper_matrix(
     def run_isolated_helper(command, *, cwd):
         script_path = Path(command[-1] if sys.platform == "win32" else command[0])
         helper_scripts.append(script_path.read_text(encoding="utf-8"))
-        completed = subprocess.run(command, cwd=cwd, capture_output=True, text=True, timeout=20, check=False)
+        # The Windows helper can legitimately retry a locked target for 15 seconds.
+        # Allow multiple slow targets on busy CI runners without timing out early.
+        completed = subprocess.run(command, cwd=cwd, capture_output=True, text=True, timeout=60, check=False)
         assert completed.returncode == 0, completed.stderr or completed.stdout
         return True
 
@@ -641,6 +643,7 @@ def test_settings_uninstall_exact_plan_and_isolated_self_removing_helper_matrix(
     )
     confirmations: list[str] = []
     completion_messages: list[str] = []
+    warning_messages: list[str] = []
     quit_schedules: list[int] = []
 
     def confirm(message_box):
@@ -649,6 +652,7 @@ def test_settings_uninstall_exact_plan_and_isolated_self_removing_helper_matrix(
 
     monkeypatch.setattr(QMessageBox, "exec", confirm)
     monkeypatch.setattr(QMessageBox, "information", lambda _p, _t, text: completion_messages.append(text))
+    monkeypatch.setattr(QMessageBox, "warning", lambda _p, _t, text: warning_messages.append(text))
     try:
         _show_about(dialog, driver)
         # Only capture timers scheduled by the uninstall itself. Opening a Settings
@@ -688,6 +692,7 @@ def test_settings_uninstall_exact_plan_and_isolated_self_removing_helper_matrix(
         assert "source checkout will be deleted" not in confirmations[0]
         assert "source checkout will be deleted" in confirmations[2]
         assert len(completion_messages) == 2
+        assert warning_messages == []
         assert quit_schedules == [0, 0]
 
         if sys.platform == "win32":
