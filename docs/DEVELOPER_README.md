@@ -1,7 +1,7 @@
 # OpenWand Developer README
 
 This document is the practical entry point for working on OpenWand. The GitHub
-README at `.github/README.md` explains the product; this file explains how the
+The README at `.github/README.md` explains the product; this file explains how the
 codebase is put together, how to run it locally, and where to look when changing
 behavior.
 

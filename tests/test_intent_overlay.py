@@ -136,7 +136,7 @@ def test_provider_suggestions_precede_but_preserve_configured_and_custom_rows(qa
         assert overlay._rows[0]["glyph"] != "F"
         assert overlay._rows[1]["glyph"] == "F"
         assert overlay._rows[1]["routing"] == {"mode": "answer", "source": "configured"}
-        assert overlay._rows[-1]["routing"] == {"mode": "auto", "source": "custom"}
+        assert overlay._rows[-1]["routing"] == {"mode": "answer", "source": "custom"}
         overlay._selection_pending_idx = 0
         overlay._fire(0)
         assert overlay.selected_intent_routing() == {
@@ -150,6 +150,18 @@ def test_provider_suggestions_precede_but_preserve_configured_and_custom_rows(qa
         }
     finally:
         config.CALLER_ROWS[:] = old_rows
+        _close_overlay_if_valid(overlay, qapp)
+
+
+def test_rewrite_custom_prompt_keeps_rewrite_routing(qapp):
+    """The explicit Rewrite & Paste caller remains an action surface."""
+    import ui.intent_overlay as intent_overlay
+
+    overlay = intent_overlay.IntentOverlay(caller_idx=1)
+    try:
+        custom = next(row for row in overlay._rows if row.get("is_custom"))
+        assert custom["routing"] == {"mode": "legacy", "source": "custom"}
+    finally:
         _close_overlay_if_valid(overlay, qapp)
 
 
@@ -439,6 +451,10 @@ def test_custom_prompt_single_line_has_vertical_room(qapp, monkeypatch):
         font_height = QFontMetrics(overlay._input_line.font()).lineSpacing()
         assert overlay._input_line.document().documentMargin() == 0
         assert overlay._input_line.viewport().height() >= font_height + 8
+        cursor = overlay._input_line.cursorRect()
+        content_top = overlay._input_line.viewport().geometry().top() + cursor.top()
+        content_bottom = content_top + cursor.height()
+        assert abs(content_top - (overlay._input_line.height() - content_bottom)) <= 1
     finally:
         config.CALLER_ROWS[:] = old_rows
         _close_overlay_if_valid(overlay, qapp)
@@ -1131,6 +1147,14 @@ def test_intent_overlay_fallback_context_tokens_are_unknown():
     finally:
         overlay.close()
         app.processEvents()
+
+
+def test_context_total_uses_exact_count_instead_of_rounded_chip_label():
+    """The large total must not turn every ~1.1k source into exactly 1,100."""
+    from ui.intent_overlay import _context_token_count
+
+    assert _context_token_count({"tokens": "~1.1k tok", "token_count": 1073}) == 1073
+    assert _context_token_count({"tokens": "~1.1k tok"}) == 1100
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")

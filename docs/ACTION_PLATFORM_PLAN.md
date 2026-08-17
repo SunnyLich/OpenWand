@@ -75,11 +75,11 @@ the same document identity, OpenWand keeps the file source and suppresses the no
 duplicate. A newer VS Code backup replaces the saved block instead of appearing
 as a second copy.
 
-Selecting an explicit provider action forces that exact planning function. A
-custom prompt, or a configured rewrite preset in a supported app, first forces a
-typed `answer | action | clarification | unsupported` disposition. Only a
-validated `action` disposition may enter the provider's exact planner. General
-informational presets use answer mode and do not mutate the app.
+Selecting an explicit provider action forces that exact planning function.
+Custom prompts and configured informational rows use answer mode directly; the
+presence of a supported app does not send them through action classification or
+permit a mutation. Only an explicitly selected provider action may enter the
+provider's exact planner.
 
 The shared `brain.action.plan` boundary supports OpenAI-compatible, Anthropic,
 and ChatGPT Responses routes. It validates a closed JSON schema, forces the

@@ -298,8 +298,8 @@ def test_prompt_injection_ui_and_docs_are_translated() -> None:
 
     readme_headings = {
         "README.md": "Prompt Injection Protection",
-        "README.es.md": "Protección contra inyecciones de prompt",
-        "README.fr.md": "Protection contre l’injection de prompt",
+        "README.es.md": "Protección contra la inyección de instrucciones",
+        "README.fr.md": "Protection contre l'injection d'invite",
         "README.zh-CN.md": "提示注入防护",
         "README.zh-TW.md": "提示注入防護",
     }

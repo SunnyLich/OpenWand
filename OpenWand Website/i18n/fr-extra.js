@@ -135,8 +135,6 @@ Object.assign(I18N.reg['fr'].tr, {
     "Les réponses s'affichent dans une bulle et sont lues à voix haute en même temps. Maintenez une touche pour parler au lieu de taper.",
   'Sees your screen': 'Voit votre écran',
   'Context, no copy-paste': 'Du contexte, sans copier-coller',
-  'OpenWand reads your selection, open documents, clipboard, and browser tab — or a region you draw — automatically.':
-    "OpenWand lit votre sélection, vos documents ouverts, le presse-papiers et l'onglet du navigateur — ou une zone que vous dessinez — automatiquement.",
   'Yours': 'Le vôtre',
   'Any model, cloud/local': 'Tout modèle, cloud/local',
   'Choose your provider, keep data on your machine, and remap every hotkey. Your setup stays portable.':

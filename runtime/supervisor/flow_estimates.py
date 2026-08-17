@@ -68,13 +68,13 @@ def image_size_from_b64(data: str | None) -> tuple[int, int] | None:
     return None
 
 
-def image_size_token_label(size: tuple[int, int] | None) -> str:
-    """Return a rough token estimate for an image of known dimensions."""
+def image_size_token_count(size: tuple[int, int] | None) -> int | None:
+    """Return a rough token count for an image of known dimensions."""
     if not size:
-        return deferred_token_label()
+        return None
     width, height = size
     if width <= 0 or height <= 0:
-        return deferred_token_label()
+        return None
     scale = min(1.0, 2048 / max(width, height))
     width = max(1, round(width * scale))
     height = max(1, round(height * scale))
@@ -83,7 +83,14 @@ def image_size_token_label(size: tuple[int, int] | None) -> str:
         width = max(1, round(width * scale))
         height = max(1, round(height * scale))
     tiles = max(1, ((width + 511) // 512) * ((height + 511) // 512))
-    tokens = 85 + 170 * tiles
+    return 85 + 170 * tiles
+
+
+def image_size_token_label(size: tuple[int, int] | None) -> str:
+    """Return a compact token estimate for an image of known dimensions."""
+    tokens = image_size_token_count(size)
+    if tokens is None:
+        return deferred_token_label()
     if tokens >= 1000:
         return f"~{tokens / 1000:.1f}k tok"
     return f"~{tokens} tok"
@@ -92,6 +99,11 @@ def image_size_token_label(size: tuple[int, int] | None) -> str:
 def image_token_label(data: str | None) -> str:
     """Return a rough token estimate for image input."""
     return image_size_token_label(image_size_from_b64(data))
+
+
+def image_token_count(data: str | None) -> int | None:
+    """Return a rough token count for image input."""
+    return image_size_token_count(image_size_from_b64(data))
 
 
 def screen_token_label(context: dict[str, Any]) -> str:

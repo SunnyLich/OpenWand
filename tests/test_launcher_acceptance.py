@@ -101,7 +101,12 @@ def test_packaged_launcher_starts_real_ui_workers_and_cleans_up() -> None:
     if executable.stat().st_mtime < max(path.stat().st_mtime for path in runtime_inputs):
         pytest.skip("packaged artifact predates the runtime under test; rebuild it first")
 
-    payload = run_launcher_smoke("packaged", root=ROOT, executable=executable)
+    try:
+        payload = run_launcher_smoke("packaged", root=ROOT, executable=executable)
+    except OSError as exc:
+        if sys.platform == "win32" and getattr(exc, "winerror", None) == 4551:
+            pytest.skip("Windows Application Control blocked the packaged artifact")
+        raise
 
     assert payload["launcher_kind"] == "packaged"
     assert payload["frozen"] is True

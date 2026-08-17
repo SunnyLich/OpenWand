@@ -244,9 +244,6 @@ I18N.register('zh-Hans', {
     'Portable build': '便携版',
     'You want a self-contained folder you can move or remove later': '你想要一个之后可移动或直接移除的自包含文件夹',
     'Unzip the portable package, keep the folder together, and run OpenWand from inside it': '解压便携包，保持文件夹内容完整，并从文件夹内运行 OpenWand',
-    'No repo required': '无需仓库',
-    'Packaged builds are separate from the source checkout path below. They should not require cloning the repository or manually creating a Python virtual environment.':
-      '打包版本与下方的源码 checkout 路径不同。不应需要克隆仓库或手动创建 Python 虚拟环境。',
     'Repo / source checkout': '仓库 / 源码 checkout',
     'If you want to run the repo version, download or clone the source and use the platform launcher. The first run provisions a virtual environment and installs dependencies; later runs just launch.':
       '如果你想运行仓库版本，请下载或克隆源码并使用平台启动器。首次运行会创建虚拟环境并安装依赖；之后只会启动。',
@@ -279,11 +276,6 @@ I18N.register('zh-Hans', {
     'Same thing, scripted': '同样的事，脚本化',
     'The platform launcher does all of this for you: bash "Start OpenWand.command" on macOS, bash "Start OpenWand.sh" on Linux, or double-click Start OpenWand.bat on Windows — each provisions dependencies and starts the same pure-Python worker supervisor.':
       '平台启动器会替你完成这一切：macOS 上 <code>bash "Start OpenWand.command"</code>，Linux 上 <code>bash "Start OpenWand.sh"</code>，或在 Windows 上双击 <code>Start OpenWand.bat</code>——每个都会配置依赖并启动同一个纯 Python 工作进程主管。',
-    'Dependency footprint': '依赖占用',
-    'The source checkout installs from exact platform locks: requirements/requirements-windows.lock, requirements/requirements-macos.lock, or requirements/requirements-linux.lock. requirements/requirements.txt remains the human-edited runtime manifest used to regenerate those locks.':
-      '源码检出版本从精确的平台锁定文件安装：<code>requirements/requirements-windows.lock</code>、<code>requirements/requirements-macos.lock</code> 或 <code>requirements/requirements-linux.lock</code>。<code>requirements/requirements.txt</code> 仍是人工编辑的运行时清单，用来重新生成这些锁定文件。',
-    'Optional capabilities stay inactive until configured: local STT needs an STT_MODEL, cloud TTS needs a provider and voice settings, GitHub Copilot needs sign-in, and document readers are only used when document context is enabled.':
-      '可选能力在配置前保持不启用：本地 STT 需要 <code>STT_MODEL</code>，云端 TTS 需要提供方和语音设置，GitHub Copilot 需要登录，文档读取器只会在启用文档上下文时使用。',
     'Full vs Lite install': '完整版与精简版安装',
     'The full requirements/requirements.txt includes local Whisper STT, document readers, and TTS SDKs. If you only need the core overlay + LLM replies, a lighter install works:':
       '完整的 <code>requirements/requirements.txt</code> 包含本地 Whisper STT、文档读取器和 TTS SDK。如果你只需要核心覆盖界面 + LLM 回复，可以选择更轻量的安装：',
@@ -313,6 +305,24 @@ I18N.register('zh-Hans', {
       '对于仓库版本，首次运行会安装 OpenWand 所需的一切，然后启动应用。需要 Python 3.12（参见 <a href="#" onclick="navigate(\'installation\')">安装</a>）。',
     'The OpenWand icon appears in the corner of your screen. If it does not, check the launcher window for errors.':
       'OpenWand 图标会出现在屏幕角落。如果没有，请检查启动器窗口中的错误信息。',
+    '2. Complete the first-run setup': '2. 完成首次设置',
+    'On a new installation, the setup wizard opens shortly after the floating icon appears. Use Continue to move forward and Back to revisit an earlier choice. You can change every choice later in Settings.':
+      '在新安装中，浮动图标出现后不久会打开设置向导。使用<strong>继续</strong>前进，使用<strong>返回</strong>重新查看之前的选择。之后可随时在“设置”中更改所有选项。',
+    'Screen': '页面',
+    'What to do': '操作说明',
+    'Language and theme': '语言和主题',
+    'Choose OpenWand’s interface language, the assistant’s response language, and a theme.': '选择 OpenWand 的界面语言、助手回复语言和主题。',
+    'Setup style': '设置方式',
+    'Choose Simple to keep the initial setup minimal. Choose Advanced to select a provider and optionally add an API key now.': '选择<strong>简单设置</strong>可保持最精简的初始配置。如需选择提供方或现在添加 API 密钥，请选择<strong>高级设置</strong>。',
+    'Your profile': '你的配置文件',
+    'Enter a name to create your local profile. This is the only required field.': '输入名称以创建本地配置文件。这是唯一的必填项。',
+    'Provider and sign-in': '提供方和登录',
+    'If you chose Advanced, select a provider and model, or leave it for later. The next screen also lets you sign in with a ChatGPT Plus or Pro subscription.': '如果选择了<strong>高级设置</strong>，请选择提供方和模型，或留待以后设置。下一页还可使用 ChatGPT Plus 或 Pro 订阅登录。',
+    'Voice preferences': '语音偏好',
+    'Choose local or cloud voice features, or select Not now. Choosing a local option opens its installer after setup.': '选择本地或云端语音功能，或选择<strong>暂不设置</strong>。选择本地选项后，会在设置完成后打开对应的安装程序。',
+    'Finish': '完成',
+    'Review the getting-started tips, optionally select Open a new chat after setup, then choose Finish setup.': '查看入门提示；如有需要，选择<strong>设置完成后打开新聊天</strong>，然后选择<strong>完成设置</strong>。',
+    'To finish with a model route, either select a provider in Advanced setup or sign in with ChatGPT on the next screen. If you skip both, you can add a provider later in Settings.': '要完成模型路线设置，请在<strong>高级设置</strong>中选择提供方，或在下一页登录 ChatGPT。如果两者都跳过，可稍后在“设置”中添加提供方。',
     '2. Set a model provider': '2. 设置模型提供方',
     'Once OpenWand is running, open Settings → LLM, choose the provider and model you want to use, then add the provider key there. If you need a no-cost option, start with Free API sources. Secrets are stored in the OS keychain, not in the config file.':
       'OpenWand 运行后，打开 <strong>设置 → LLM</strong>，选择要使用的提供方和模型，然后在那里添加提供方密钥。如果需要零成本选项，请先看<a href="#" onclick="navigate(\'free-apis\')">免费 API 来源</a>。密钥会存储在操作系统钥匙串中，而不是配置文件里。',

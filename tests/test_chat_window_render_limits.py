@@ -1706,7 +1706,7 @@ def test_chat_stale_records_and_active_stream_are_rejected_without_mutation():
 def test_chat_window_drop_attachments_feed_next_message_context_and_image(tmp_path, monkeypatch):
     """Verify dropped files/images attach to the next outgoing chat message."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication, QLabel
+    from PySide6.QtWidgets import QApplication, QPushButton, QTextBrowser, QWidget
 
     from core.conversation_store import store as conversation_store
 
@@ -1745,7 +1745,23 @@ def test_chat_window_drop_attachments_feed_next_message_context_and_image(tmp_pa
         assert user_message["attachments"][0]["path"].startswith("attachments/")
         assert "remember this text" in user_message["context"]
         assert "remember this text" not in conversations[0].get("context", "")
-        assert window.findChild(QLabel, "messageAttachmentContextHint") is not None
+        disclosure = window.findChild(QWidget, "messageContextDisclosure")
+        toggle = window.findChild(QPushButton, "messageContextToggle")
+        context_body = window.findChild(QTextBrowser, "messageContextBody")
+        assert disclosure is not None
+        assert toggle is not None
+        assert context_body is not None
+        assert context_body.isHidden()
+
+        toggle.click()
+        app.processEvents()
+        assert not context_body.isHidden()
+        assert "remember this text" in context_body.toPlainText()
+        assert toggle.text() == "Hide context"
+
+        toggle.click()
+        app.processEvents()
+        assert context_body.isHidden()
     finally:
         window.close()
         app.processEvents()

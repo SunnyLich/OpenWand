@@ -2,6 +2,8 @@
 id = "formatted-replies"
 name = "Formatted Replies (Experimental)"
 version = "0.2.0"
+author = "OpenWand"
+homepage = "https://sunnylich.github.io/OpenWand/"
 description = "Converts the canonical reply into a restricted rich presentation while keeping the original available."
 entry = "__init__.py"
 api_version = "1"

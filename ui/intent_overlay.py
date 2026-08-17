@@ -154,13 +154,14 @@ def _build_rows(
         rows.append(r)
     custom_key = str(caller.get("custom_key", "s") or "").strip()
     custom_label = str(caller.get("custom_label") or "").strip() or t("Custom prompt")
+    custom_mode = "legacy" if bool(caller.get("paste_back")) else "answer"
     rows.append({
         "glyph":     custom_key.upper(),
         "label":     custom_label,
         "hint":      t("Ask anything"),
         "prompt":    "",
         "is_custom": True,
-        "routing": {"mode": "auto", "source": "custom"},
+        "routing": {"mode": custom_mode, "source": "custom"},
     })
     used_keys.update(str(row.get("glyph") or "").upper() for row in rows)
     return _provider_intent_rows(provider_suggestions or [], used_keys) + rows
@@ -492,7 +493,10 @@ def _input_line_stylesheet() -> str:
         "  border: none;"
         "  border-radius: 0;"
         f"  color: {text};"
-        "  padding: 4px 0;"
+        # QPlainTextEdit starts its document at the top of its viewport.  Keep
+        # the same total inset while placing the single line in the visual
+        # centre of the 36 px prompt row instead of leaving it high.
+        "  padding: 9px 0 0 0;"
         f"  selection-background-color: {accent};"
         f"  selection-color: {on_accent};"
         "}"
@@ -549,7 +553,10 @@ def _context_chip_token_text(item: dict) -> str:
 
 
 def _context_token_count(item: dict) -> int | None:
-    """Parse a concrete supervisor token label into an integer estimate."""
+    """Return the exact estimate, falling back to older rounded UI labels."""
+    exact = item.get("token_count")
+    if isinstance(exact, int) and not isinstance(exact, bool) and exact >= 0:
+        return exact
     label = _context_chip_token_text(item).strip().lower().replace(",", "")
     match = re.search(r"(\d+(?:\.\d+)?)\s*(k)?", label)
     if match is None or "?" in label:
@@ -661,7 +668,12 @@ class IntentOverlay(QWidget):
             caller_idx,
             provider_suggestions if isinstance(provider_suggestions, list) else [],
         )
-        self._selected_intent_routing: dict = {"mode": "auto", "source": "custom"}
+        self._selected_intent_routing: dict = dict(
+            next(
+                (row.get("routing") or {} for row in self._rows if row.get("is_custom")),
+                {"mode": "answer", "source": "custom"},
+            )
+        )
         self._context_items = []
         self._new_conversation_context_defaults: dict[str, str] = {}
         for item in context_items or _default_context_items():
@@ -1239,9 +1251,6 @@ class IntentOverlay(QWidget):
                 Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
                 placeholder,
             )
-            caret_x = text_x + QFontMetrics(_serif_font(14.5)).horizontalAdvance(placeholder) + 2
-            p.setPen(QPen(palette["key"], 1))
-            p.drawLine(caret_x, input_rect.y() + 9, caret_x, input_rect.bottom() - 8)
 
         p.end()
 

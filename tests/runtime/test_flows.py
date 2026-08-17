@@ -2081,8 +2081,8 @@ def test_browser_form_action_uses_model_preview_and_verified_api_apply() -> None
     ]
 
 
-def test_supported_app_custom_prompt_forces_disposition_then_exact_action_tool() -> None:
-    """Custom prompts cannot bypass the structured app decision and planning tools."""
+def test_supported_app_custom_prompt_answers_without_action_disposition() -> None:
+    """Freeform prompts stay separate from the supported app-action rows."""
     from core.actions.adapters.browser import BrowserField, BrowserFormSnapshot
 
     fields = (BrowserField("field_1", "#name", "Name", "text", "", "Full name", True),)
@@ -2113,30 +2113,8 @@ def test_supported_app_custom_prompt_forces_disposition_then_exact_action_tool()
             "result": {"status": "applied", "message": "Filled and verified one field."},
         },
     })
-    ui = FakeWorker({
-        "ui.show_intent": lambda _params: {},
-        "ui.action.preview.request": lambda _params: {"approved": True},
-    })
-
-    def planned(params: dict[str, Any], on_event) -> dict[str, Any]:
-        name = str(params.get("planning_tool_name") or "")
-        if name == "openwand_choose_app_response":
-            arguments = {
-                "disposition": "action",
-                "capability_type": "browser.fill_form",
-                "action_instruction": "Fill the Name field with Sunny.",
-                "response_text": "",
-            }
-            visible = "This request uses the safe form-fill action."
-        else:
-            assert name == "browser_plan_fill_form"
-            arguments = {"assignments": [{"field_id": "field_1", "value": "Sunny"}]}
-            visible = "Prepared one field for review."
-        result = {"tool_name": name, "arguments": arguments, "visible_text": visible}
-        on_event("reply.done", result, 1)
-        return result
-
-    brain = FakeWorker(stream_handlers={"brain.action.plan": planned})
+    ui = FakeWorker({"ui.show_intent": lambda _params: {}})
+    brain = FakeWorker(stream_handlers={"brain.query": query_stream("That looks like a contact-form name.")})
     with caller_config([{"paste_back": False, "context_clipboard": False}]):
         flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
         flow.begin_caller(0)
@@ -2144,19 +2122,19 @@ def test_supported_app_custom_prompt_forces_disposition_then_exact_action_tool()
             "ui.intent.chosen",
             {
                 "custom": "Use my selected name in this form",
-                "intent_routing": {"mode": "auto", "source": "custom"},
+                "intent_routing": {"mode": "answer", "source": "custom"},
             },
         )
 
-    assert [
-        call["params"]["planning_tool_name"] for call in brain.calls_for("brain.action.plan")
-    ] == ["openwand_choose_app_response", "browser_plan_fill_form"]
-    assert native.calls_for("native.action.browser.form_apply")
+    assert brain.last_call("brain.query")["params"]["intent_prompt"] == "Use my selected name in this form"
+    assert not brain.calls_for("brain.action.plan")
+    assert not native.calls_for("native.action.browser.form_snapshot")
+    assert not native.calls_for("native.action.browser.form_apply")
     assert not native.calls_for("native.paste_text")
 
 
-def test_supported_app_custom_information_prompt_forces_answer_disposition_without_mutation() -> None:
-    """A custom informational prompt uses the forced decision tool and performs no app action."""
+def test_legacy_custom_auto_routing_also_answers_without_action_disposition() -> None:
+    """An older UI worker's custom/auto payload must not revive action guessing."""
     active_app = {
         "name": "Contact form - Google Chrome",
         "process_name": "chrome.exe",
@@ -2173,14 +2151,7 @@ def test_supported_app_custom_information_prompt_forces_answer_disposition_witho
         },
     })
     ui = FakeWorker({"ui.show_intent": lambda _params: {}})
-    brain = FakeWorker(stream_handlers={
-        "brain.action.plan": action_plan_stream({
-            "disposition": "answer",
-            "capability_type": "",
-            "action_instruction": "",
-            "response_text": "This page is asking for contact information.",
-        }, "Prepared a direct answer."),
-    })
+    brain = FakeWorker(stream_handlers={"brain.query": query_stream("This page asks for contact information.")})
     with caller_config([{"paste_back": False, "context_clipboard": False}]):
         flow, native, ui, brain, _audio = make_flow(native=native, ui=ui, brain=brain)
         flow.begin_caller(0)
@@ -2189,9 +2160,8 @@ def test_supported_app_custom_information_prompt_forces_answer_disposition_witho
             {"custom": "What is this page asking for?", "intent_routing": {"mode": "auto", "source": "custom"}},
         )
 
-    planner = brain.last_call("brain.action.plan")["params"]
-    assert planner["planning_tool_name"] == "openwand_choose_app_response"
-    assert ui.last_call("ui.reply.chunk")["params"]["text"] == "This page is asking for contact information."
+    assert brain.last_call("brain.query")["params"]["intent_prompt"] == "What is this page asking for?"
+    assert not brain.calls_for("brain.action.plan")
     assert not native.calls_for("native.action.browser.form_snapshot")
     assert not native.calls_for("native.action.browser.form_apply")
     assert not native.calls_for("native.paste_text")
@@ -2616,8 +2586,8 @@ def test_intent_context_estimates_known_text_and_marks_unknown_deferred_sources(
     assert chips["files"]["warning"] == ""
 
 
-def test_intent_screenshot_estimates_from_screen_size_without_capture():
-    """Verify screenshot chip estimates opt-in cost from screen dimensions."""
+def test_intent_screenshot_cost_is_unknown_until_snip_exists():
+    """A region snip must not inherit the dimensions of the whole monitor."""
     rows = [
         {
             "paste_back": False,
@@ -2646,9 +2616,24 @@ def test_intent_screenshot_estimates_from_screen_size_without_capture():
         if item["id"] == "screenshot"
     )
     assert screenshot_chip["state"] == "off"
-    assert screenshot_chip["tokens"] == "~1.1k tok"
+    assert screenshot_chip["tokens"] == "? tok"
+    assert screenshot_chip["token_count"] is None
     assert screenshot_chip["warning"] == ""
     assert not native.calls_for("native.capture.fullscreen")
+
+
+def test_image_context_estimate_uses_actual_cropped_dimensions():
+    """A captured region is priced from its image header, not monitor metadata."""
+    png_header = (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00\x00\x00\x0dIHDR"
+        + (300).to_bytes(4, "big")
+        + (200).to_bytes(4, "big")
+    )
+    image_b64 = base64.b64encode(png_header).decode("ascii")
+
+    assert FlowController._image_token_count(image_b64) == 255
+    assert FlowController._image_token_label(image_b64) == "~255 tok"
 
 
 def test_intent_off_context_sources_keep_available_estimates():
@@ -2690,7 +2675,7 @@ def test_intent_off_context_sources_keep_available_estimates():
     assert chips["clipboard"]["state"] == "off"
     assert chips["clipboard"]["tokens"].startswith("~")
     assert chips["screenshot"]["state"] == "off"
-    assert chips["screenshot"]["tokens"] == "~1.1k tok"
+    assert chips["screenshot"]["tokens"] == "? tok"
     assert chips["github"]["state"] == "off"
     assert chips["github"]["tokens"] == "0 tok"
     assert chips["memory"]["state"] == "off"
@@ -3588,12 +3573,15 @@ def test_query_begins_chat_conversation_before_tool_enabled_brain_call():
             "file_access": "ask",
         }
     ]
-    native = FakeWorker({"native.context.snapshot": context_handler(selected="")})
+    native = FakeWorker(
+        {"native.context.snapshot": context_handler(selected="article passage")}
+    )
     events: list[str] = []
 
     def begin_chat(params: dict[str, Any]) -> dict[str, Any]:
         events.append("begin")
         assert params["user"] == "edit file"
+        assert params["context"].startswith("[Selected text]\narticle passage")
         return {"started": True, "conversation_index": 2}
 
     def stream(_params: dict[str, Any], _on_event) -> dict[str, Any]:
@@ -3614,7 +3602,8 @@ def test_query_begins_chat_conversation_before_tool_enabled_brain_call():
     assert final_chat["conversation_index"] == 2
 
 
-def test_browser_url_captured_at_hotkey_time_fetches_content_by_handle():
+def test_browser_url_captured_at_hotkey_time_fetches_content_by_handle(monkeypatch):
+    monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", True)
     rows = [
         {
             "paste_back": False,
@@ -7618,8 +7607,9 @@ def test_chat_request_uses_selected_codex_project(monkeypatch, tmp_path):
     assert params["harness_cwd"] == str(tmp_path.resolve())
 
 
-def test_chat_context_preview_updates_token_estimates_before_send():
+def test_chat_context_preview_updates_token_estimates_before_send(monkeypatch):
     """Verify chat context preview refreshes visible context token estimates."""
+    monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", True)
     native = FakeWorker(
         {
             "native.context.snapshot": lambda _params: {
@@ -7723,8 +7713,9 @@ def test_context_estimate_failure_matrix_uses_fallbacks_and_refreshes_before_sen
     assert "stale preview text" not in sent
 
 
-def test_chat_context_preview_treats_legacy_browser_on_as_enabled():
+def test_chat_context_preview_treats_legacy_browser_on_as_enabled(monkeypatch):
     """Verify legacy chat Browser/Web on mode refreshes token estimates."""
+    monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", True)
     native = FakeWorker(
         {
             "native.context.snapshot": lambda _params: {
@@ -7820,8 +7811,9 @@ def test_chat_context_preview_keeps_requested_browser_on_while_detecting():
     assert updated_browser["tokens"].startswith("~")
 
 
-def test_chat_context_preview_estimates_off_context_sources_without_capture():
+def test_chat_context_preview_estimates_off_context_sources_without_capture(monkeypatch):
     """Verify chat previews off context costs without changing send policy."""
+    monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", True)
     native = FakeWorker(
         {
             "native.context.snapshot": lambda _params: {
@@ -7859,7 +7851,7 @@ def test_chat_context_preview_estimates_off_context_sources_without_capture():
         for item in calls[0]["params"]["context_items"]
     }
     assert chips["screenshot"]["state"] == "off"
-    assert chips["screenshot"]["tokens"] == "~1.1k tok"
+    assert chips["screenshot"]["tokens"] == "? tok"
     assert chips["selection"]["tokens"].startswith("~")
     assert chips["clipboard"]["tokens"].startswith("~")
     assert chips["selection"]["privacy_count"] == 1
@@ -7867,6 +7859,47 @@ def test_chat_context_preview_estimates_off_context_sources_without_capture():
     assert chips["clipboard"]["privacy_count"] == 1
     assert chips["ambient"]["tokens"].startswith("~")
     assert not native.calls_for("native.capture.fullscreen")
+
+
+def test_chat_context_preview_respects_disabled_privacy_mode(monkeypatch):
+    """Privacy-off previews must not claim that content was detected or censored."""
+    monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", False)
+    native = FakeWorker(
+        {
+            "native.context.snapshot": lambda _params: {
+                "selected_text": "api_key = sk-proj-abcdefghijklmnopqrstuvwxyz1234567890",  # secret-scan: allow
+                "clipboard_text": "",
+                "active_app": {"name": "Preview App", "pid": 42, "bundle_id": "com.preview"},
+            },
+        }
+    )
+    _flow, _native, ui, _brain, _audio = make_flow(native=native)
+
+    ui.emit(
+        "ui.chat.context_preview",
+        {
+            "preview_id": "preview-privacy-off",
+            "context_policy": {
+                "context_ambient": False,
+                "context_documents_mode": "off",
+                "context_browser_mode": "off",
+                "context_github_mode": "off",
+                "context_memory_mode": "off",
+                "context_screenshot": "off",
+                "context_clipboard": False,
+                "file_access": "off",
+                "tools": {},
+            },
+        },
+    )
+
+    selection = next(
+        item
+        for item in ui.last_call("ui.chat.context_preview")["params"]["context_items"]
+        if item["id"] == "selection"
+    )
+    assert selection["privacy_count"] == 0
+    assert "Privacy:" not in selection["warning"]
 
 
 def test_chat_request_forwards_file_context_metadata():
@@ -8486,6 +8519,7 @@ def test_addon_and_agent_tray_events_route_through_supervisor():
                 "virtual_workspace_url": "http://127.0.0.1:8765/?token=test",
             },
             "brain.addons.set_action_enabled": lambda _params: {"ok": True},
+            "brain.addons.approve": lambda _params: {"status": "loaded"},
             "brain.addons.repair_environment": lambda _params: {"ready": True},
             "brain.addons.install_archive": lambda _params: {"id": "demo2"},
             "brain.addons.install_folder": lambda _params: {"id": "demo3"},
@@ -8509,6 +8543,7 @@ def test_addon_and_agent_tray_events_route_through_supervisor():
         "ui.addons.set_action_enabled",
         {"addon_id": "demo", "action_id": "lookup", "enabled": False},
     )
+    ui.emit("ui.addons.approve", {"addon_id": "demo"})
     ui.emit("ui.addons.repair_environment", {"addon_id": "demo"})
     ui.emit("ui.addons.install_archive", {"path": "/tmp/demo.openwand"})
     ui.emit("ui.addons.install_folder", {"path": "/tmp/demo-folder"})
@@ -8523,6 +8558,7 @@ def test_addon_and_agent_tray_events_route_through_supervisor():
         "action_id": "lookup",
         "enabled": False,
     }
+    assert brain.last_call("brain.addons.approve")["params"]["addon_id"] == "demo"
     assert ui.last_call("ui.show_virtual_workspace")["params"]["endpoint"].startswith(
         "http://127.0.0.1:"
     )

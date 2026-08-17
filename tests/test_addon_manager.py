@@ -776,12 +776,91 @@ def test_addon_with_dependencies_waits_for_environment(tmp_path, monkeypatch):
     manager.load_all()
 
     summary = manager.summaries()[0]
-    assert summary["status"] == "needs_approval"
+    assert summary["status"] == "needs_dependencies"
     assert summary["runtime"]["tier"] == "2"
     assert summary["runtime"]["ready"] is False
-    assert summary["runtime"]["needs_approval"] is True
+    assert summary["approval"]["needs_approval"] is False
     assert summary["dependencies"]["packages"] == ["requests>=2.31"]
     assert manager.before_query("hi", "") == ("hi", "")
+
+
+def test_addon_access_review_uses_author_and_blocks_code_until_approved(tmp_path, monkeypatch):
+    addons_dir = tmp_path / "addons"
+    addon_dir = addons_dir / "reviewed"
+    addon_dir.mkdir(parents=True)
+    (addon_dir / "addon.toml").write_text(
+        textwrap.dedent(
+            """
+            [addon]
+            id = "reviewed"
+            name = "Reviewed"
+            author = "Example Publisher"
+            homepage = "https://example.test/addon"
+
+            [permissions]
+            query = "read"
+            tools = true
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    (addon_dir / "__init__.py").write_text("def hooks():\n    return ['before_query']\n", encoding="utf-8")
+    monkeypatch.setattr(addon_store, "_STORE_PATH", tmp_path / "addons.json")
+    monkeypatch.setattr(am.addon_store, "_STORE_PATH", tmp_path / "addons.json")
+
+    manager = am.AddonManager(addons_dir, require_approval=True)
+    manager.load_all()
+    pending = manager.summaries()[0]
+
+    assert pending["author"] == "Example Publisher"
+    assert pending["homepage"] == "https://example.test/addon"
+    assert pending["status"] == "needs_approval"
+    assert pending["approval"]["needs_approval"] is True
+    assert pending["hooks"] == []
+    assert {item["id"] for item in pending["approval"]["new_access"]} == {
+        "full_code",
+        "query:read",
+        "tools",
+    }
+
+    approved = manager.approve_addon("reviewed")
+
+    assert approved["status"] == "loaded"
+    assert approved["approval"]["needs_approval"] is False
+    assert addon_store.approved_access_ids("reviewed") == {"full_code", "query:read", "tools"}
+    manager.shutdown_hosts()
+
+
+def test_addon_update_only_reprompts_when_access_expands(tmp_path, monkeypatch):
+    addons_dir = tmp_path / "addons"
+    addon_dir = addons_dir / "updated"
+    addon_dir.mkdir(parents=True)
+    manifest = addon_dir / "addon.toml"
+    manifest.write_text(
+        '[addon]\nid = "updated"\nauthor = "Example Publisher"\n\n[permissions]\nresponse = "read"\n',
+        encoding="utf-8",
+    )
+    (addon_dir / "__init__.py").write_text("", encoding="utf-8")
+    monkeypatch.setattr(addon_store, "_STORE_PATH", tmp_path / "addons.json")
+    monkeypatch.setattr(am.addon_store, "_STORE_PATH", tmp_path / "addons.json")
+    manager = am.AddonManager(addons_dir, require_approval=True)
+    manager.load_all()
+    manager.approve_addon("updated")
+
+    manager.load_all()
+    assert manager.summaries()[0]["status"] == "loaded"
+
+    manifest.write_text(
+        '[addon]\nid = "updated"\nauthor = "Example Publisher"\n\n'
+        '[permissions]\nresponse = "read"\nllm = true\n',
+        encoding="utf-8",
+    )
+    manager.load_all()
+    expanded = manager.summaries()[0]
+
+    assert expanded["status"] == "needs_approval"
+    assert [item["id"] for item in expanded["approval"]["new_access"]] == ["llm"]
+    manager.shutdown_hosts()
 
 
 def test_addon_manifest_accepts_cp1252_punctuation(tmp_path, monkeypatch):
@@ -833,6 +912,8 @@ def test_manager_seeds_bundled_default_addons_when_missing(tmp_path, monkeypatch
     summaries = {item["id"]: item for item in manager.summaries()}
     assert summaries["mcp-bridge"]["enabled"] is False
     assert summaries["ui-lab"]["enabled"] is True
+    assert addon_store.approved_access_ids("mcp-bridge") == set()
+    assert addon_store.approved_access_ids("ui-lab") == set()
 
 
 def test_manager_does_not_overwrite_existing_default_addon(tmp_path, monkeypatch):
@@ -893,7 +974,7 @@ def test_approved_addon_with_missing_environment_needs_install(tmp_path, monkeyp
 
     summary = manager.summaries()[0]
     assert summary["status"] == "needs_dependencies"
-    assert summary["runtime"]["needs_approval"] is False
+    assert summary["approval"]["needs_approval"] is False
     assert summary["runtime"]["ready"] is False
 
 
@@ -912,7 +993,7 @@ def test_addon_repair_environment_uses_ready_runtime(tmp_path, monkeypatch):
     assert status["python"] == str(addon_runtime.python_path(env_dir))
 
 
-def test_repair_environment_approves_current_dependency_hash(tmp_path, monkeypatch):
+def test_repair_environment_does_not_create_a_package_approval(tmp_path, monkeypatch):
     addons_dir = tmp_path / "addons"
     addon_dir = addons_dir / "needs_deps"
     addon_dir.mkdir(parents=True)
@@ -953,8 +1034,7 @@ def test_repair_environment_approves_current_dependency_hash(tmp_path, monkeypat
 
     manager.repair_environment("needs-deps")
 
-    deps = manager._mods[0].manifest.dependencies
-    assert addon_store.approved_dependency_hash("needs-deps") == addon_runtime.dependency_hash(deps)
+    assert addon_store.approved_dependency_hash("needs-deps") == ""
 
 
 def test_install_addon_archive_rejects_path_traversal(tmp_path):

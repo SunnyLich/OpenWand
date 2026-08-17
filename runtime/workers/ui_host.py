@@ -2165,6 +2165,10 @@ class QtProtocolHost:
         self._chat_request_ids = itertools.count(1)
         self._chat_streams: dict[str, queue.Queue[tuple[str, Any]]] = {}
         self._chat_streams_lock = threading.Lock()
+        # Overlay/hotkey replies start even when the full Chat window has never
+        # been constructed.  Keep their visible stream until Chat can attach to
+        # it instead of dropping every chunk while that window is closed.
+        self._external_reply_stream: dict[str, Any] | None = None
         self._active_dispatch_method = ""
         self._active_dispatch_started = 0.0
         self._drain_ticks = 0  # bumped each pump tick so the watchdog can tell the IPC drain apart from an event-loop freeze
@@ -3331,7 +3335,7 @@ class QtProtocolHost:
                     "intent_routing": (
                         overlay.selected_intent_routing()
                         if overlay and hasattr(overlay, "selected_intent_routing")
-                        else {"mode": "auto", "source": "custom"}
+                        else {"mode": "answer", "source": "custom"}
                     ),
                     "context_choices": overlay.context_choices() if overlay else [],
                     "project_choice": applied_project,
@@ -4421,16 +4425,23 @@ class QtProtocolHost:
                     },
                 )
             )
-        elif self._chat_is_visible() and conversation_index is not None:
-            self._chat.external_reply_chunk(
-                int(conversation_index),
-                {
-                    "text": text,
-                    "is_progress": bool(is_progress),
-                    "is_thought": bool(is_thought),
-                    "local_work": dict(local_work or {}),
-                },
-            )
+        elif conversation_index is not None:
+            idx = int(conversation_index)
+            chunk = {
+                "text": text,
+                "is_progress": bool(is_progress),
+                "is_thought": bool(is_thought),
+                "local_work": dict(local_work or {}),
+            }
+            state = getattr(self, "_external_reply_stream", None)
+            if not isinstance(state, dict) or state.get("conversation_index") != idx:
+                state = {"conversation_index": idx, "chunks": [], "attached_chat_id": None, "done": False}
+                self._external_reply_stream = state
+            state.setdefault("chunks", []).append(chunk)
+            if self._chat is not None:
+                attached_now = self._restore_external_reply_stream()
+                if not attached_now:
+                    self._chat.external_reply_chunk(idx, chunk)
             return {"queued": True}
         return {"queued": stream is not None}
 
@@ -4478,8 +4489,17 @@ class QtProtocolHost:
                     },
                 )
             )
-        elif self._chat_is_visible() and conversation_index is not None:
-            self._chat.finish_external_reply_stream(int(conversation_index), text)
+        elif conversation_index is not None:
+            idx = int(conversation_index)
+            state = getattr(self, "_external_reply_stream", None)
+            if not isinstance(state, dict) or state.get("conversation_index") != idx:
+                state = {"conversation_index": idx, "chunks": [], "attached_chat_id": None}
+                self._external_reply_stream = state
+            state["done"] = True
+            state["final_text"] = text
+            if self._chat is not None:
+                self._restore_external_reply_stream()
+                self._chat.finish_external_reply_stream(idx, text)
             return {"queued": True}
         return {"queued": stream is not None}
 
@@ -4999,6 +5019,7 @@ class QtProtocolHost:
             elif normalized_harness:
                 conv.setdefault("harness_sessions", {})[harness_provider] = normalized_harness
             self._persist_conversations()
+            self._finish_external_reply_stream(idx)
             if self._chat_is_visible():
                 self._chat.sync_conversation(idx)
             return {"count": len(self._all_conversations), "continued": True}
@@ -5028,6 +5049,7 @@ class QtProtocolHost:
         )
         self._active_conversation_idx = len(self._all_conversations) - 1
         self._persist_conversations()
+        self._finish_external_reply_stream(self._active_conversation_idx)
         if self._chat_is_visible():
             self._chat.ingest_new_conversations(select_new=True)
         return {"count": len(self._all_conversations), "continued": False}
@@ -5053,8 +5075,19 @@ class QtProtocolHost:
             append_user=True,
         )
         idx = self._active_conversation_idx
-        if self._chat_is_visible() and idx is not None:
-            self._chat.begin_external_reply_stream(idx)
+        if idx is not None:
+            self._external_reply_stream = {
+                "conversation_index": idx,
+                "chunks": [],
+                "attached_chat_id": None,
+                "done": False,
+            }
+            if self._chat is not None:
+                if not self._chat_is_visible():
+                    sync = getattr(self._chat, "sync_conversation", None)
+                    if callable(sync):
+                        sync(idx)
+                self._restore_external_reply_stream()
         return {
             "started": True,
             "conversation_index": idx,
@@ -5066,6 +5099,38 @@ class QtProtocolHost:
             "continued": bool(result.get("continued")),
             "count": result.get("count"),
         }
+
+    def _restore_external_reply_stream(self) -> bool:
+        """Attach a buffered overlay reply to Chat, returning True on new attach."""
+        state = getattr(self, "_external_reply_stream", None)
+        chat = self._chat
+        if not isinstance(state, dict) or chat is None:
+            return False
+        idx = state.get("conversation_index")
+        if not isinstance(idx, int) or not (0 <= idx < len(self._all_conversations)):
+            return False
+        chat_id = id(chat)
+        if state.get("attached_chat_id") == chat_id:
+            return False
+        chat.begin_external_reply_stream(idx)
+        for chunk in list(state.get("chunks") or []):
+            chat.external_reply_chunk(idx, chunk)
+        state["attached_chat_id"] = chat_id
+        # If completion raced with opening Chat, keep the reconstructed final
+        # bubble visible until the immediately following durable sync replaces
+        # it.  Calling finish here would briefly make the answer disappear.
+        if state.get("done") and state.get("final_text"):
+            chat._on_final_text(str(state.get("final_text") or ""))
+        return True
+
+    def _finish_external_reply_stream(self, conversation_index: int | None) -> None:
+        """Remove a temporary stream once its durable assistant turn is stored."""
+        state = getattr(self, "_external_reply_stream", None)
+        if not isinstance(state, dict) or state.get("conversation_index") != conversation_index:
+            return
+        if self._chat is not None and state.get("attached_chat_id") == id(self._chat):
+            self._chat.finish_external_reply_stream(int(conversation_index), "")
+        self._external_reply_stream = None
 
     @staticmethod
     def _normalized_display_segments(items: object) -> list[dict[str, Any]]:
@@ -5319,6 +5384,11 @@ class QtProtocolHost:
             if force_new:
                 self._chat.start_new_conversation()
             else:
+                state = getattr(self, "_external_reply_stream", None)
+                if not isinstance(state, dict):
+                    idx = self._active_conversation_idx
+                    if isinstance(idx, int) and 0 <= idx < len(self._all_conversations):
+                        self._chat.sync_conversation(idx)
                 auto_message = self._chat_auto_elaborate_prompt(force_new=False)
                 if auto_message:
                     from PySide6.QtCore import QTimer
@@ -5327,6 +5397,7 @@ class QtProtocolHost:
             self._chat.show()
             self._chat.raise_()
             self._chat.activateWindow()
+            self._restore_external_reply_stream()
             self._chat.request_context_preview()
             self.emit("ui.chat.message_actions.requested", {})
             return {"shown": True, "reused": True}
@@ -5374,6 +5445,7 @@ class QtProtocolHost:
             self._chat.show()
             self._chat.raise_()
             self._chat.activateWindow()
+            self._restore_external_reply_stream()
             self.emit("ui.chat.message_actions.requested", {})
         finally:
             if watchdog is not None:
@@ -6503,16 +6575,23 @@ class QtProtocolHost:
         name_row.addWidget(logs_btn)
 
         runtime = addon.get("runtime") if isinstance(addon.get("runtime"), dict) else {}
-        packages = [str(p) for p in (runtime.get("packages") or [])]
+        approval = addon.get("approval") if isinstance(addon.get("approval"), dict) else {}
         has_dependencies = str(runtime.get("tier") or "1") == "2"
-        if has_dependencies:
+
+        if approval.get("needs_approval"):
+            approve_btn = QPushButton(t("Review access"))
+            approve_btn.setToolTip(t("Review the addon author and requested access before activation"))
+            approve_btn.clicked.connect(
+                lambda _checked=False, a=addon: self._confirm_addon_access(a)
+            )
+            name_row.addWidget(approve_btn)
+
+        if has_dependencies and not approval.get("needs_approval"):
             repair_btn = QPushButton(self._addon_runtime_action_label(runtime))
             repair_btn.setToolTip(t("Install or rebuild this addon's dependency environment"))
             repair_btn.clicked.connect(
-                lambda _checked=False, aid=addon_id, display_name=name, rt=runtime: self._confirm_addon_environment(
-                    aid,
-                    display_name,
-                    rt,
+                lambda _checked=False, aid=addon_id: self.emit(
+                    "ui.addons.repair_environment", {"addon_id": aid}
                 )
             )
             name_row.addWidget(repair_btn)
@@ -6530,6 +6609,11 @@ class QtProtocolHost:
         )
         name_row.addWidget(enable)
         layout.addLayout(name_row)
+
+        author = str(addon.get("author") or "").strip() or t("Unknown author")
+        author_lbl = QLabel(f"{t('Author:')} {author}")
+        author_lbl.setStyleSheet("font-size: 8pt; opacity: 0.65;")
+        layout.addWidget(author_lbl)
 
         path = str(addon.get("path") or "")
         if path:
@@ -6588,10 +6672,19 @@ class QtProtocolHost:
             issue_lbl.setStyleSheet("font-size: 8pt; color: #b42318;")
             layout.addWidget(issue_lbl)
 
+        access = [
+            t(str(item.get("label") or ""))
+            for item in (approval.get("access") or [])
+            if isinstance(item, dict)
+        ]
+        if access:
+            access_lbl = QLabel(t("Declared access:") + " " + "; ".join(access))
+            access_lbl.setWordWrap(True)
+            access_lbl.setStyleSheet("font-size: 8pt; opacity: 0.55;")
+            layout.addWidget(access_lbl)
+
         if has_dependencies:
             dep_parts = [self._addon_runtime_summary(runtime)]
-            if packages:
-                dep_parts.append(t("Packages: ") + ", ".join(packages))
             runtime_error = str(runtime.get("error") or "")
             if runtime_error:
                 dep_parts.append(runtime_error)
@@ -6608,46 +6701,54 @@ class QtProtocolHost:
             layout.addWidget(error_lbl)
         return card
 
-    def _confirm_addon_environment(self, addon_id: str, display_name: str, runtime: dict[str, Any]) -> None:
-        """Confirm installation of an addon's dependency environment."""
+    def _confirm_addon_access(self, addon: dict[str, Any]) -> None:
+        """Review addon identity and access before asking the brain to activate it."""
         from PySide6.QtWidgets import QMessageBox
 
-        packages = [str(p) for p in (runtime.get("packages") or [])]
-        lines = [
-            f"{display_name} {t('declares Python/package dependencies.')}",
-            "",
-            f"{t('Python: ')}{runtime.get('python_requirement') or t('current runtime')}",
-            t("Packages:"),
+        addon_id = str(addon.get("id") or "")
+        display_name = str(addon.get("name") or addon_id or t("Addon"))
+        author = str(addon.get("author") or "").strip() or t("Unknown author")
+        approval = addon.get("approval") if isinstance(addon.get("approval"), dict) else {}
+        access = [
+            t(str(item.get("label") or "").strip())
+            for item in (approval.get("new_access") or approval.get("access") or [])
+            if isinstance(item, dict) and str(item.get("label") or "").strip()
         ]
-        lines.extend(f"  {package}" for package in packages)
-        if not packages:
-            lines.append("  " + t("No packages declared"))
-        env_path = str(runtime.get("env_path") or "")
-        if env_path:
-            lines.extend(["", f"{t('Environment: ')}{env_path}"])
-        lines.extend(["", t("Install or rebuild this environment now?")])
+        disk = addon.get("disk") if isinstance(addon.get("disk"), dict) else {}
+        lines = [
+            display_name,
+            f"{t('Author:')} {author} ({t('self-declared')})",
+            "",
+            t("Requested access:"),
+        ]
+        lines.extend(f"  • {label}" for label in access)
+        lines.extend(["", f"{t('Current disk use:')} {disk.get('label') or t('Unknown')}"])
+        if disk.get("dependencies_pending"):
+            lines.append(t("Additional components will use more disk space."))
+        lines.extend([
+            "",
+            t("Full-code addons run with your normal user permissions. Only approve addons you trust."),
+            "",
+            t("Approve and activate this addon?"),
+        ])
         choice = QMessageBox.question(
             self._addons_dialog,
-            t("Approve Addon Dependencies"),
+            t("Review Addon Access"),
             "\n".join(lines),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
         if choice == QMessageBox.StandardButton.Yes:
-            self.emit("ui.addons.repair_environment", {"addon_id": addon_id})
+            self.emit("ui.addons.approve", {"addon_id": addon_id})
 
     @staticmethod
     def _addon_runtime_action_label(runtime: dict[str, Any]) -> str:
         """Return the dependency action label for an addon."""
-        if runtime.get("needs_approval"):
-            return t("Approve env")
         return t("Repair env") if runtime.get("ready") else t("Install env")
 
     @staticmethod
     def _addon_runtime_summary(runtime: dict[str, Any]) -> str:
         """Return a short dependency status summary for an addon."""
-        if runtime.get("needs_approval"):
-            return t("Dependency env: needs approval")
         return t("Dependency env: ready") if runtime.get("ready") else t("Dependency env: needs install")
 
     def _show_addon_settings_dialog(self, addon_id: str, display_name: str, settings: list):

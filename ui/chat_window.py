@@ -3567,43 +3567,65 @@ class ChatWindow(QWidget):
         )
         return lbl
 
-    def _message_context_hint(self, context: object) -> QLabel | None:
-        """Small transcript chip for context attached to one user message."""
+    def _message_context_hint(self, context: object) -> QWidget | None:
+        """One-click disclosure for the full context attached to a user turn."""
         text = _message_context_text(context)
         if not text:
             return None
         lines = text.splitlines()
         title = t("Attached")
-        preview_text = text
         if lines:
             first = lines[0].strip()
             if first.startswith("[") and first.endswith("]"):
                 title = first[1:-1].strip() or title
-                preview_text = "\n".join(lines[1:]).strip() or text
-        preview = " ".join(preview_text.split())
-        if len(preview) > 140:
-            preview = preview[:140].rstrip() + "…"
         truncated = "truncated]" in text
-        body = f"{html.escape(title)} · {_token_label(text)}"
-        if preview:
-            body += f" · {html.escape(preview)}"
+        show_label = f"{t('Show context')} · {title} · {_token_label(text)}"
         if truncated:
-            body += f" <span style='color:#d6a04a;'>· {t('truncated')}</span>"
-        lbl = QLabel(body)
-        lbl.setObjectName("messageAttachmentContextHint")
-        lbl.setTextFormat(Qt.TextFormat.RichText)
-        lbl.setWordWrap(True)
-        tooltip = _truncate_for_display(text, _CONTEXT_TOOLTIP_CHAR_LIMIT, "attached context tooltip")
-        lbl.setToolTip(
-            tooltip + f"\n\n[{t('context was truncated to fit the limit')}]" if truncated else tooltip
-        )
-        lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        lbl.setStyleSheet(
-            f"QLabel {{ background: {_ACCENT_BG_10}; color: {_HINT};"
+            show_label += f" · {t('truncated')}"
+
+        wrapper = QWidget()
+        wrapper.setObjectName("messageContextDisclosure")
+        wrapper.setStyleSheet("background: transparent;")
+        disclosure_layout = QVBoxLayout(wrapper)
+        disclosure_layout.setContentsMargins(4, 0, 4, 0)
+        disclosure_layout.setSpacing(7)
+
+        toggle = QPushButton(show_label)
+        toggle.setObjectName("messageContextToggle")
+        toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        toggle.setAccessibleName(t("Show context"))
+        toggle.setToolTip(t("Show the full context attached to this message."))
+        toggle.setStyleSheet(
+            f"QPushButton {{ background: {_ACCENT_BG_10}; color: {_HINT};"
             f" font-size: 8pt; border: 1px solid {_BORDER}; border-radius: 6px;"
-            f" padding: 4px 8px; margin-left: 4px; margin-right: 4px; }}"
+            " padding: 6px 9px; text-align: left; }}"
+            f"QPushButton:hover {{ background: {_WHITE_BG_10}; color: {_TEXT}; }}"
         )
-        return lbl
+        disclosure_layout.addWidget(toggle)
+
+        presentation = "assistant" if self._formatted_replies_ui_enabled else "legacy"
+        body = _MessageTextView(_AI_BG, self._font_scale, presentation=presentation)
+        body.setObjectName("messageContextBody")
+        body.setHtml(_assistant_text_to_html(text))
+        body.hide()
+        disclosure_layout.addWidget(body)
+
+        def toggle_context(_checked: bool = False) -> None:
+            show = body.isHidden()
+            body.setVisible(show)
+            toggle.setText(t("Hide context") if show else show_label)
+            toggle.setAccessibleName(t("Hide context") if show else t("Show context"))
+            toggle.setToolTip(
+                t("Hide the attached context.")
+                if show
+                else t("Show the full context attached to this message.")
+            )
+            if show:
+                QTimer.singleShot(0, body._sync_height)
+            wrapper.updateGeometry()
+
+        toggle.clicked.connect(toggle_context)
+        return wrapper
 
     def _context_snippets_widget(self, snippets: object) -> QLabel | None:
         """Display-only, per-source context snippets shown under a user turn.

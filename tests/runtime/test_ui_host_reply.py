@@ -1197,6 +1197,7 @@ def test_chat_begin_conversation_persists_user_then_final_appends_assistant() ->
     assert idx == 0
     assert [message["role"] for message in host._all_conversations[0]["messages"]] == ["user"]
     assert host._all_conversations[0]["messages"][0]["content"] == "edit notes"
+    assert host._all_conversations[0]["messages"][0]["context"] == "ctx"
 
     host._chat_add_conversation(
         user="edit notes",
@@ -1209,7 +1210,65 @@ def test_chat_begin_conversation_persists_user_then_final_appends_assistant() ->
     messages = host._all_conversations[0]["messages"]
     assert [message["role"] for message in messages] == ["user", "assistant"]
     assert messages[1]["content"] == "done"
+    assert host._external_reply_stream is None
     assert len(persisted) == 2
+
+
+def test_overlay_reply_chunks_restore_when_chat_opens_mid_reply() -> None:
+    """Chunks produced before Chat exists must reconstruct the ongoing answer."""
+    from runtime.workers.ui_host import QtProtocolHost
+
+    class Chat:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def begin_external_reply_stream(self, idx: int) -> None:
+            self.calls.append(("begin", idx))
+
+        def external_reply_chunk(self, idx: int, chunk: dict) -> None:
+            self.calls.append(("chunk", idx, dict(chunk)))
+
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host._active_conversation_idx = 0
+    host._all_conversations = [{"messages": [{"role": "user", "content": "please sum this up"}]}]
+    host._chat = None
+    host._chat_streams = {}
+    import threading
+
+    host._chat_streams_lock = threading.Lock()
+    host._external_reply_stream = {
+        "conversation_index": 0,
+        "chunks": [],
+        "attached_chat_id": None,
+        "done": False,
+    }
+
+    assert host._chat_chunk(conversation_index=0, text="Working", is_progress=True)["queued"] is True
+    assert host._chat_chunk(conversation_index=0, text="Summary text")["queued"] is True
+
+    chat = Chat()
+    host._chat = chat
+    assert host._restore_external_reply_stream() is True
+    assert chat.calls == [
+        ("begin", 0),
+        (
+            "chunk",
+            0,
+            {"text": "Working", "is_progress": True, "is_thought": False, "local_work": {}},
+        ),
+        (
+            "chunk",
+            0,
+            {"text": "Summary text", "is_progress": False, "is_thought": False, "local_work": {}},
+        ),
+    ]
+
+    assert host._chat_chunk(conversation_index=0, text=" continues")["queued"] is True
+    assert chat.calls[-1] == (
+        "chunk",
+        0,
+        {"text": " continues", "is_progress": False, "is_thought": False, "local_work": {}},
+    )
 
 
 def test_chat_request_reuses_active_conversation_tool_context() -> None:

@@ -545,7 +545,16 @@ def test_slow_addon_bootstrap_returns_early_then_pushes_real_ipc_snapshot(tmp_pa
         encoding="utf-8",
     )
     (tmp_path / "addons.json").write_text(
-        json.dumps({"addons": {"slow-menu": {"enabled": True}}}),
+        json.dumps(
+            {
+                "addons": {
+                    "slow-menu": {
+                        "enabled": True,
+                        "approved_access_ids": ["full_code", "ui:tray"],
+                    }
+                }
+            }
+        ),
         encoding="utf-8",
     )
     worker = _worker(
@@ -665,6 +674,10 @@ def test_real_addon_tools_flow_from_addon_host_through_brain_policy(tmp_path):
         json.dumps(
             {
                 "addons": {
+                    "contract-tools": {
+                        "enabled": True,
+                        "approved_access_ids": ["full_code", "tools"],
+                    },
                     "mcp-bridge": {"enabled": False},
                     "ui-lab": {"enabled": False},
                 }

@@ -164,6 +164,26 @@ def set_approved_dependency_hash(addon_id: str, dependency_hash: str) -> None:
     _write(data)
 
 
+def approved_access_ids(addon_id: str) -> set[str]:
+    """Return the access claims previously accepted for an addon."""
+    item = _read().get("addons", {}).get(addon_id, {})
+    if not isinstance(item, dict):
+        return set()
+    values = item.get("approved_access_ids") or []
+    if not isinstance(values, list):
+        return set()
+    return {str(value).strip() for value in values if str(value).strip()}
+
+
+def set_approved_access(addon_id: str, access_ids: list[str], *, author: str = "") -> None:
+    """Persist the addon access claims reviewed by the user."""
+    data = _read()
+    item = _addon(data, addon_id)
+    item["approved_access_ids"] = sorted({str(value).strip() for value in access_ids if str(value).strip()})
+    item["approved_author"] = str(author or "").strip()
+    _write(data)
+
+
 def record_llm_call(addon_id: str, *, limit: int = 5, window_seconds: int = 3600) -> tuple[bool, int]:
     """Record llm call."""
     now = time.time()

@@ -364,7 +364,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 238
+      "node_count": 240
     },
     {
       "path": "tests/runtime/test_flows_live_voice.py",
@@ -514,7 +514,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 59
+      "node_count": 60
     },
     {
       "path": "tests/runtime/test_ui_host_runtime_status.py",
@@ -889,7 +889,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 24
+      "node_count": 26
     },
     {
       "path": "tests/test_addon_manager_ui.py",
@@ -904,7 +904,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 24
+      "node_count": 25
     },
     {
       "path": "tests/test_addon_runtime.py",
@@ -1144,7 +1144,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 50
+      "node_count": 51
     },
     {
       "path": "tests/test_builtin_model_tools.py",
@@ -1779,7 +1779,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 59
+      "node_count": 61
     },
     {
       "path": "tests/test_intent_overlay_keyboard_hook.py",

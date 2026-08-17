@@ -32,6 +32,8 @@ other addons.
 id = "my-addon"
 name = "My Addon"
 version = "1.0.0"
+author = "Your name or organization"
+homepage = "https://example.com/my-addon"
 description = "Adds one small behavior to OpenWand."
 entry = "__init__.py"
 api_version = "1"
@@ -68,19 +70,29 @@ hotkey = "ctrl+alt+z"
 prompt = "Summarize the current context using this addon's workflow."
 ```
 
-Missing permissions are denied. For example, an addon without `tools = true`
+`author` is displayed as a self-declared identity; it is not verified or signed
+by OpenWand. Missing OpenWand API permissions are denied. For example, an addon without `tools = true`
 will not register model-callable tools, and an addon without `ui = ["tray"]`
 will not expose tray actions. `response = "read"` allows observation through
 `after_response`; `response = "modify"` is required to replace assistant text
 through `transform_response_text`.
 
+Before first activation, Addon Manager shows the author, requested OpenWand
+access, and current disk use. An update asks again only if its requested access
+expands. The approval applies to the addon as a whole; users are not asked to
+judge individual Python packages.
+
 `[dependencies]` is optional. Addons without it run from OpenWand's own Python
 runtime. Addons that declare dependencies get a dedicated virtual environment
-under `addon_envs/<addon-id>/`; the Addon Manager shows the required packages
-and provides an Install/Repair action. OpenWand records approval for the exact
-dependency hash, so an addon update that changes packages must be approved
-again before it runs. OpenWand uses `uv` when available, falling back to
-`python -m venv` in source checkouts.
+under `addon_envs/<addon-id>/`. OpenWand installs the publisher-declared
+packages after addon approval and provides an Install/Repair action when the
+environment is missing or outdated. It uses `uv` when available, falling back
+to `python -m venv` in source checkouts.
+
+The separate process and virtual environment isolate crashes and dependencies;
+they are not a security sandbox. Full-code addons run with the normal user's OS
+permissions and can do more than an honest manifest claims. Install addons only
+from creators you trust.
 
 ## Action catalogue
 

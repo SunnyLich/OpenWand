@@ -3,6 +3,8 @@
 id = "ui-lab"
 name = "UI Lab"
 version = "1.0.0"
+author = "OpenWand"
+homepage = "https://sunnylich.github.io/OpenWand/"
 description = "Developer addon for creating saved hover labels and inline styles on selected chat/bubble text."
 entry = "__init__.py"
 api_version = "1"

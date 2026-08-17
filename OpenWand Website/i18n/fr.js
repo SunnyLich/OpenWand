@@ -243,9 +243,6 @@ I18N.register('fr', {
     'Portable build': 'Version portable',
     'You want a self-contained folder you can move or remove later': 'Vous voulez un dossier autonome que vous pourrez déplacer ou supprimer plus tard',
     'Unzip the portable package, keep the folder together, and run OpenWand from inside it': 'Décompressez le paquet portable, gardez le dossier complet, puis lancez OpenWand depuis ce dossier',
-    'No repo required': 'Aucun dépôt requis',
-    'Packaged builds are separate from the source checkout path below. They should not require cloning the repository or manually creating a Python virtual environment.':
-      'Les builds empaquetés sont distincts du chemin de checkout source ci-dessous. Ils ne devraient pas nécessiter de cloner le dépôt ni de créer manuellement un environnement virtuel Python.',
     'Repo / source checkout': 'Dépôt / checkout source',
     'If you want to run the repo version, download or clone the source and use the platform launcher. The first run provisions a virtual environment and installs dependencies; later runs just launch.':
       'Si vous voulez exécuter la version du dépôt, téléchargez ou clonez le code source et utilisez le lanceur de votre plateforme. Le premier lancement crée un environnement virtuel et installe les dépendances ; les suivants se contentent de démarrer.',
@@ -278,11 +275,6 @@ I18N.register('fr', {
     'Same thing, scripted': 'La même chose, scriptée',
     'The platform launcher does all of this for you: bash "Start OpenWand.command" on macOS, bash "Start OpenWand.sh" on Linux, or double-click Start OpenWand.bat on Windows — each provisions dependencies and starts the same pure-Python worker supervisor.':
       "Le lanceur de la plateforme fait tout cela pour vous : <code>bash \"Start OpenWand.command\"</code> sur macOS, <code>bash \"Start OpenWand.sh\"</code> sur Linux, ou double-clic sur <code>Start OpenWand.bat</code> sous Windows — chacun installe les dépendances et démarre le même superviseur de workers en Python pur.",
-    'Dependency footprint': 'Empreinte des dépendances',
-    'The source checkout installs from exact platform locks: requirements/requirements-windows.lock, requirements/requirements-macos.lock, or requirements/requirements-linux.lock. requirements/requirements.txt remains the human-edited runtime manifest used to regenerate those locks.':
-      "Le checkout source installe depuis les locks exacts de plateforme : <code>requirements/requirements-windows.lock</code>, <code>requirements/requirements-macos.lock</code> ou <code>requirements/requirements-linux.lock</code>. <code>requirements/requirements.txt</code> reste le manifeste d'exécution édité manuellement qui sert à régénérer ces locks.",
-    'Optional capabilities stay inactive until configured: local STT needs an STT_MODEL, cloud TTS needs a provider and voice settings, GitHub Copilot needs sign-in, and document readers are only used when document context is enabled.':
-      "Les capacités optionnelles restent inactives tant qu'elles ne sont pas configurées : le STT local nécessite <code>STT_MODEL</code>, le TTS cloud nécessite un fournisseur et des réglages de voix, GitHub Copilot nécessite une connexion, et les lecteurs de documents ne sont utilisés que lorsque le contexte documentaire est activé.",
     'Full vs Lite install': 'Installation complète vs allégée',
     'The full requirements/requirements.txt includes local Whisper STT, document readers, and TTS SDKs. If you only need the core overlay + LLM replies, a lighter install works:':
       "Le <code>requirements/requirements.txt</code> complet inclut le STT Whisper local, les lecteurs de documents et les SDK TTS. Si vous ne voulez que la surimpression de base + les réponses LLM, une installation plus légère suffit :",
@@ -312,6 +304,24 @@ I18N.register('fr', {
       "Pour la version du dépôt, le premier lancement installe tout ce dont OpenWand a besoin puis démarre l'application. Nécessite Python 3.12 (voir <a href=\"#\" onclick=\"navigate('installation')\">Installation</a>).",
     'The OpenWand icon appears in the corner of your screen. If it does not, check the launcher window for errors.':
       "L'icône OpenWand apparaît dans un coin de l'écran. Sinon, vérifiez les erreurs dans la fenêtre du lanceur.",
+    '2. Complete the first-run setup': '2. Terminez la configuration initiale',
+    'On a new installation, the setup wizard opens shortly after the floating icon appears. Use Continue to move forward and Back to revisit an earlier choice. You can change every choice later in Settings.':
+      "Lors d'une nouvelle installation, l'assistant de configuration s'ouvre peu après l'apparition de l'icône flottante. Utilisez <strong>Continuer</strong> pour avancer et <strong>Retour</strong> pour revoir un choix précédent. Vous pourrez modifier tous ces choix plus tard dans les Réglages.",
+    'Screen': 'Écran',
+    'What to do': 'Que faire',
+    'Language and theme': 'Langue et thème',
+    'Choose OpenWand’s interface language, the assistant’s response language, and a theme.': "Choisissez la langue de l'interface d'OpenWand, la langue des réponses de l'assistant et un thème.",
+    'Setup style': 'Type de configuration',
+    'Choose Simple to keep the initial setup minimal. Choose Advanced to select a provider and optionally add an API key now.': "Choisissez <strong>Simple</strong> pour limiter la configuration initiale au minimum. Choisissez <strong>Avancée</strong> pour sélectionner un fournisseur et, si besoin, ajouter une clé API dès maintenant.",
+    'Your profile': 'Votre profil',
+    'Enter a name to create your local profile. This is the only required field.': 'Saisissez un nom pour créer votre profil local. C’est le seul champ obligatoire.',
+    'Provider and sign-in': 'Fournisseur et connexion',
+    'If you chose Advanced, select a provider and model, or leave it for later. The next screen also lets you sign in with a ChatGPT Plus or Pro subscription.': "Si vous avez choisi <strong>Avancée</strong>, sélectionnez un fournisseur et un modèle, ou laissez ce choix pour plus tard. L'écran suivant vous permet également de vous connecter avec un abonnement ChatGPT Plus ou Pro.",
+    'Voice preferences': 'Préférences vocales',
+    'Choose local or cloud voice features, or select Not now. Choosing a local option opens its installer after setup.': "Choisissez des fonctions vocales locales ou cloud, ou sélectionnez <strong>Pas maintenant</strong>. Une option locale ouvrira son installateur après la configuration.",
+    'Finish': 'Terminer',
+    'Review the getting-started tips, optionally select Open a new chat after setup, then choose Finish setup.': "Consultez les conseils de démarrage, sélectionnez éventuellement <strong>Ouvrir une nouvelle discussion après la configuration</strong>, puis choisissez <strong>Terminer la configuration</strong>.",
+    'To finish with a model route, either select a provider in Advanced setup or sign in with ChatGPT on the next screen. If you skip both, you can add a provider later in Settings.': "Pour terminer avec une route de modèle, sélectionnez un fournisseur dans la configuration <strong>Avancée</strong> ou connectez-vous à ChatGPT sur l'écran suivant. Si vous ignorez les deux, vous pourrez ajouter un fournisseur plus tard dans les Réglages.",
     '2. Set a model provider': '2. Définir un fournisseur de modèle',
     'Once OpenWand is running, open Settings → LLM, choose the provider and model you want to use, then add the provider key there. If you need a no-cost option, start with Free API sources. Secrets are stored in the OS keychain, not in the config file.':
       "Une fois OpenWand lancé, ouvrez <strong>Réglages → LLM</strong>, choisissez le fournisseur et le modèle à utiliser, puis ajoutez-y la clé du fournisseur. Si vous cherchez une option sans frais, commencez par les <a href=\"#\" onclick=\"navigate('free-apis')\">sources d'API gratuites</a>. Les secrets sont stockés dans le trousseau du système, pas dans le fichier de configuration.",

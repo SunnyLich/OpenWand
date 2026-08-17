@@ -23,7 +23,7 @@ const DOCS_PAGES = {
 <div class="sec-pillars">
   <div class="sec-pillar"><span class="sec-pillar-k">Any app</span><div class="sec-pillar-t">Ask from anywhere</div><p>OpenWand listens for your custom hotkey across apps, opens with minimal prompt delay, and sends the selected context without a mouse or window switch.</p></div>
   <div class="sec-pillar"><span class="sec-pillar-k">Speaks &amp; listens</span><div class="sec-pillar-t">Hear it, talk back</div><p>Hold a hotkey to talk instead of type, and opt into spoken replies when answers stream in.</p></div>
-  <div class="sec-pillar"><span class="sec-pillar-k">Sees your work</span><div class="sec-pillar-t">Context, no copy-paste</div><p>OpenWand reads your selection, clipboard, focused app, open documents, browser tab, memory, local files, Git/GitHub context, or a region you draw.</p></div>
+  <div class="sec-pillar"><span class="sec-pillar-k">Sees your work</span><div class="sec-pillar-t">Context, no copy-paste</div><p>OpenWand can read your selection, clipboard, focused app, open documents, browser tab, memory, local files, Git/GitHub context, or a region you draw.</p></div>
   <div class="sec-pillar"><span class="sec-pillar-k">Yours</span><div class="sec-pillar-t">Any model, cloud/local</div><p>Choose your provider, keep data on your machine, and remap every hotkey. Your setup stays portable.</p></div>
 </div>
 <p>Click the icon any time to open a full chat window that remembers past conversations and can continue from context captured in the overlay. With project writes enabled, the chat model can delegate substantial coding work to the background and return the result to that conversation. Separately, <a onclick="navigate('team-mode')">Agent Team</a> lets you configure the project, goal, team, models, and permissions yourself.</p>
@@ -135,20 +135,9 @@ const DOCS_PAGES = {
     <tr><td>Portable build</td><td>You want a self-contained folder you can move or remove later</td><td>Unzip the portable package, keep the folder together, and run OpenWand from inside it</td></tr>
   </tbody>
 </table>
-<div class="callout note"><div class="callout-label">No repo required</div><p>Packaged builds are separate from the source checkout path below. They should not require cloning the repository or manually creating a Python virtual environment.</p></div>
-
 <hr />
 <h2 id="updates">Packaged updates</h2>
-<p>Packaged builds include an update flow in <strong>Settings</strong>. OpenWand checks GitHub Releases for the newest release manifest, chooses the artifact for your platform, verifies the SHA256 hash after download, and lets you apply the update when you are ready to restart.</p>
-<table>
-  <thead><tr><th>Button state</th><th>What happens</th></tr></thead>
-  <tbody>
-    <tr><td>Check for updates</td><td>Reads <code>openwand-release-manifest.json</code> from the latest GitHub Release and compares versions.</td></tr>
-    <tr><td>Download update</td><td>Downloads the matching Windows, macOS, or Linux artifact into OpenWand's user data update folder and verifies the hash.</td></tr>
-    <tr><td>Apply update</td><td>Starts a small helper, closes OpenWand, replaces the packaged app folder, and restarts OpenWand.</td></tr>
-  </tbody>
-</table>
-<div class="callout note"><div class="callout-label">Source checkouts</div><p>The in-app updater is for packaged builds. If you run from the repository, update with Git and rerun the platform launcher.</p></div>
+<p>OpenWand includes an in-app updater for packaged installations. Open <strong>Settings</strong> to check for and install the latest version.</p>
 
 <hr />
 <h2 id="source-launch">Repo / source checkout</h2>
@@ -197,11 +186,6 @@ copy .env.example .env
 python -m runtime.supervisor.app</code></pre>
 <div class="callout tip"><div class="callout-label">Same source path, scripted</div><p>The source launchers do all of this for you: <code>bash "Start OpenWand.command"</code> on macOS, <code>bash "Start OpenWand.sh"</code> on Linux, or double-click <code>Start OpenWand.bat</code> on Windows — each provisions dependencies and starts the same pure-Python worker supervisor.</p></div>
 
-
-<hr />
-<h2 id="lite-vs-full">Dependency footprint</h2>
-<p>The source checkout installs from exact platform locks: <code>requirements/requirements-windows.lock</code>, <code>requirements/requirements-macos.lock</code>, or <code>requirements/requirements-linux.lock</code>. <code>requirements/requirements.txt</code> remains the human-edited runtime manifest used to regenerate those locks.</p>
-<p>Optional capabilities stay inactive until configured: local STT needs an <code>STT_MODEL</code>, cloud TTS needs a provider and voice settings, GitHub Copilot needs sign-in, and document readers are only used when document context is enabled.</p>
 
 <hr />
 <h2 id="running">Key dependencies at a glance</h2>
@@ -254,9 +238,20 @@ python -m runtime.supervisor.app</code></pre>
 <p>The OpenWand icon appears in the corner of your screen. If it does not, check the launcher window for errors.</p>
 
 <hr />
-<h2 id="step-2">2. Set a model provider</h2>
-<p>Once OpenWand is running, add provider credentials in <strong>Settings → Connections</strong>, then choose the model route in <strong>Settings → LLM</strong>. If you need a no-cost option, start with <a href="#" onclick="navigate('free-apis')">Free API sources</a>. Secrets are stored in the OS keychain, not in the config file.</p>
-<div class="callout note"><div class="callout-label">Using a ChatGPT / Codex subscription</div><p>If you already pay for ChatGPT, you can route queries through that subscription (set <code>LLM_PROVIDER=chatgpt</code>) instead of a pay-as-you-go API key. Bear in mind it's metered as a coding agent — usage counts toward a shared agentic limit on a rolling window — so heavy general-purpose use can exhaust your allowance fast. A standard API key is more predictable for non-coding work.</p></div>
+<h2 id="step-2">2. Complete the first-run setup</h2>
+<p>On a new installation, the setup wizard opens shortly after the floating icon appears. Use <strong>Continue</strong> to move forward and <strong>Back</strong> to revisit an earlier choice. You can change every choice later in Settings.</p>
+<table>
+  <thead><tr><th>Screen</th><th>What to do</th></tr></thead>
+  <tbody>
+    <tr><td>Language and theme</td><td>Choose OpenWand’s interface language, the assistant’s response language, and a theme.</td></tr>
+    <tr><td>Setup style</td><td>Choose <strong>Simple</strong> to keep the initial setup minimal. Choose <strong>Advanced</strong> to select a provider and optionally add an API key now.</td></tr>
+    <tr><td>Your profile</td><td>Enter a name to create your local profile. This is the only required field.</td></tr>
+    <tr><td>Provider and sign-in</td><td>If you chose Advanced, select a provider and model, or leave it for later. The next screen also lets you sign in with a ChatGPT Plus or Pro subscription.</td></tr>
+    <tr><td>Voice preferences</td><td>Choose local or cloud voice features, or select Not now. Choosing a local option opens its installer after setup.</td></tr>
+    <tr><td>Finish</td><td>Review the getting-started tips, optionally select Open a new chat after setup, then choose <strong>Finish setup</strong>.</td></tr>
+  </tbody>
+</table>
+<p>To finish with a model route, either select a provider in Advanced setup or sign in with ChatGPT on the next screen. If you skip both, you can add a provider later in Settings.</p>
 
 <hr />
 <h2 id="step-3">3. Try the app</h2>

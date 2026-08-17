@@ -432,6 +432,7 @@ class FlowController:
         self.ui.on_event("ui.addons.set_enabled", self._on_addons_set_enabled)
         self.ui.on_event("ui.addons.set_action_enabled", self._on_addons_set_action_enabled)
         self.ui.on_event("ui.addons.set_setting", self._on_addons_set_setting)
+        self.ui.on_event("ui.addons.approve", self._on_addons_approve)
         self.ui.on_event("ui.addons.repair_environment", self._on_addons_repair_environment)
         self.ui.on_event("ui.addons.install_archive", self._on_addons_install_archive)
         self.ui.on_event("ui.addons.install_folder", self._on_addons_install_folder)
@@ -852,6 +853,10 @@ class FlowController:
     def _on_addons_repair_environment(self, data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle addons repair environment events."""
         self._schedule(self.addon_repair_environment, data or {})
+
+    def _on_addons_approve(self, data: dict[str, Any], _req_id: Any = None) -> None:
+        """Handle addon trust and access approval events."""
+        self._schedule(self.addon_approve, data or {})
 
     def _on_addons_install_archive(self, data: dict[str, Any], _req_id: Any = None) -> None:
         """Handle addons install archive events."""
@@ -2941,15 +2946,6 @@ class FlowController:
             caller["paste_back"] = False
             pending.caller = caller
             self._query(prompt, pending)
-        elif routing.get("mode") == "auto" and pending.action_provider_context:
-            self._run_app_prompt_disposition(
-                pending,
-                prompt,
-                active_app=active_app,
-                browser_app=browser_app,
-                app_selection=app_selection,
-                selected_text=selected_text,
-            )
         elif self._is_calc_chart_action(prompt, app_selection):
             self._run_calc_chart_action(pending, app_selection)
         elif self._is_browser_form_action(prompt, browser_app):
@@ -2985,10 +2981,14 @@ class FlowController:
         mode = str(raw.get("mode") or "legacy").strip().lower()
         if mode == "legacy":
             return {"mode": "legacy"}
-        if mode == "auto":
-            return {"mode": "auto", "source": str(raw.get("source") or "custom")}
-        if mode == "answer" and str(raw.get("source") or "") == "configured":
-            return {"mode": "answer", "source": "configured"}
+        source = str(raw.get("source") or "")
+        # Older UI workers labeled the freeform row "auto". Treat that legacy
+        # payload as a direct answer too: a custom prompt never opts into an app
+        # mutation merely because OpenWand detected a supported application.
+        if mode == "auto" and source == "custom":
+            return {"mode": "answer", "source": "custom"}
+        if mode == "answer" and source in {"configured", "custom"}:
+            return {"mode": "answer", "source": source}
         if mode == "file" and str(raw.get("source") or "") == "configured":
             action_name = str(raw.get("action_name") or "")
             caller_folder = str(raw.get("caller_folder") or "")
@@ -3620,203 +3620,6 @@ class FlowController:
             self._safe_call(self.ui, "ui.reply.done", timeout=30.0)
         else:
             self._status_notice(f"{action.label} completed.")
-        self._set_idle()
-
-    def _run_app_prompt_disposition(
-        self,
-        pending: PendingInvocation,
-        prompt: str,
-        *,
-        active_app: dict[str, Any],
-        browser_app: dict[str, Any],
-        app_selection: dict[str, Any],
-        selected_text: str,
-    ) -> None:
-        """Force a supported-app custom prompt through OpenWand's typed intent boundary."""
-        provider = pending.action_provider_context
-        suggestions = provider.get("suggested_intents") if isinstance(provider, dict) else []
-        action_suggestions = [
-            dict(item)
-            for item in suggestions if isinstance(item, dict) and item.get("mode") == "action"
-        ] if isinstance(suggestions, list) else []
-        capabilities = list(dict.fromkeys(
-            str(item.get("capability_type") or "")
-            for item in action_suggestions
-            if str(item.get("capability_type") or "")
-        ))
-        if not capabilities:
-            caller = dict(pending.caller)
-            caller["paste_back"] = False
-            pending.caller = caller
-            self._query(prompt, pending)
-            return
-
-        gen = self._new_generation()
-        self._safe_call(self.audio, "audio.stop", timeout=5.0)
-        self._safe_call(self.ui, "ui.overlay.state", {"state": "thinking"}, timeout=30.0)
-        self._safe_call(self.ui, "ui.reply.reset", timeout=30.0)
-        self._safe_call(self.ui, "ui.reply.thinking", timeout=30.0)
-        finished = threading.Event()
-
-        def show_heads_up() -> None:
-            if finished.is_set() or not self._is_current(gen):
-                return
-            self._on_reply_chunk(
-                {
-                    "text": "OpenWand is still deciding whether this request needs an app action; this may take a few more seconds.",
-                    "is_progress": True,
-                },
-                thought_parser=None,
-            )
-
-        heads_up = threading.Timer(_ACTION_PROGRESS_HEADS_UP_SECONDS, show_heads_up)
-        heads_up.daemon = True
-        heads_up.start()
-
-        def on_event(event: str, payload: Any, _req_id: Any = None) -> None:
-            if event == "privacy.review.request":
-                self._handle_privacy_review_request(payload)
-
-        capability_rows = [
-            {
-                "capability_type": str(item.get("capability_type") or ""),
-                "title": str(item.get("label") or ""),
-                "description": str(item.get("hint") or ""),
-            }
-            for item in action_suggestions
-        ]
-        decision_schema = {
-            "type": "object",
-            "properties": {
-                "disposition": {
-                    "type": "string",
-                    "enum": ["answer", "action", "clarification", "unsupported"],
-                    "description": "Whether to answer, plan a supported app action, ask one question, or refuse an unsupported app mutation.",
-                },
-                "capability_type": {
-                    "type": "string",
-                    "enum": [""] + capabilities,
-                    "description": "Use an exact available capability only when disposition is action; otherwise use an empty string.",
-                },
-                "action_instruction": {
-                    "type": "string",
-                    "description": "A precise instruction for the selected action planner, or an empty string when no action is needed.",
-                },
-                "response_text": {
-                    "type": "string",
-                    "description": "The complete user-facing answer, clarification question, or unsupported-action explanation. Empty for an action.",
-                },
-            },
-            "required": ["disposition", "capability_type", "action_instruction", "response_text"],
-            "additionalProperties": False,
-        }
-        app_context = {
-            "provider": {
-                "id": str(provider.get("id") or ""),
-                "app": str(provider.get("app") or ""),
-                "display_name": str(provider.get("display_name") or ""),
-            },
-            "active_target": {
-                "name": str(active_app.get("name") or "")[:500],
-                "process_name": str(active_app.get("process_name") or "")[:160],
-                "browser_url": (
-                    str(browser_app.get("browser_url") or "")[:2_000]
-                    if str(pending.caller.get("context_browser_mode") or "off") != "off"
-                    else ""
-                ),
-            },
-            "selected_text": (
-                str(selected_text or "")[:8_000]
-                if pending.caller.get("_context_selection_enabled", True)
-                else ""
-            ),
-            "selection": {
-                key: value
-                for key, value in app_selection.items()
-                if key in {"app", "document_name", "sheet_name", "selection_address", "row_count", "column_count"}
-            },
-            "available_capabilities": capability_rows,
-        }
-        try:
-            result = self._brain_reply_call_with_events(
-                "brain.action.plan",
-                {
-                    "planning_tool_name": "openwand_choose_app_response",
-                    "planning_tool_description": (
-                        "Classify the user's prompt for the detected app. Choose action only when the user clearly "
-                        "requests a mutation covered by one available capability. Answer informational requests "
-                        "directly, ask one concise question when required, and mark unsupported mutations honestly."
-                    ),
-                    "input_schema": decision_schema,
-                    "user_prompt": prompt,
-                    "app_context": app_context,
-                },
-                timeout=_INTERACTIVE_LLM_TIMEOUT_SECONDS,
-                on_event=on_event,
-                generation=gen,
-            )
-        except Exception as exc:  # noqa: BLE001 - no application mutation has occurred
-            if self._is_current(gen):
-                self._notice(f"OpenWand couldn't interpret this app request: {self._friendly_error(exc)}", severity="error")
-                self._set_idle()
-            return
-        finally:
-            finished.set()
-            heads_up.cancel()
-        if not self._is_current(gen):
-            return
-
-        if not isinstance(result, dict) or str(result.get("tool_name") or "") != "openwand_choose_app_response":
-            self._notice("The model did not use OpenWand's required app-response tool. Nothing was changed.", severity="warning")
-            self._set_idle()
-            return
-        arguments = result.get("arguments") if isinstance(result, dict) else {}
-        arguments = arguments if isinstance(arguments, dict) else {}
-        disposition = str(arguments.get("disposition") or "").strip().lower()
-        capability_type = str(arguments.get("capability_type") or "").strip()
-        response_text = str(arguments.get("response_text") or "").strip()
-        if disposition == "action":
-            chosen = next(
-                (
-                    item for item in action_suggestions
-                    if str(item.get("capability_type") or "") == capability_type
-                ),
-                None,
-            )
-            if not isinstance(chosen, dict):
-                self._notice("The model selected an unavailable app action. Nothing was changed.", severity="warning")
-                self._set_idle()
-                return
-            action_prompt = str(arguments.get("action_instruction") or "").strip() or prompt
-            self._dispatch_provider_action(
-                pending,
-                action_prompt,
-                {
-                    "mode": "action",
-                    "provider_id": str(provider.get("id") or ""),
-                    "app": str(provider.get("app") or ""),
-                    "suggestion_id": str(chosen.get("id") or ""),
-                    "capability_type": capability_type,
-                    "planning_tool": str(chosen.get("planning_tool") or ""),
-                },
-                active_app=active_app,
-                browser_app=browser_app,
-                app_selection=app_selection,
-                selected_text=selected_text,
-            )
-            return
-
-        if disposition not in {"answer", "clarification", "unsupported"} or not response_text:
-            self._notice("The model did not return a usable app response. Nothing was changed.", severity="warning")
-            self._set_idle()
-            return
-        self._safe_call(
-            self.ui,
-            "ui.reply.chunk",
-            {"text": response_text, "is_thought": False, "is_progress": False},
-            timeout=30.0,
-        )
-        self._safe_call(self.ui, "ui.reply.done", timeout=30.0)
         self._set_idle()
 
     @staticmethod
@@ -6256,6 +6059,25 @@ class FlowController:
         self.refresh_addon_tray_actions()
         self.open_addons()
 
+    def addon_approve(self, data: dict[str, Any]) -> None:
+        """Approve an addon's current access and refresh exposed surfaces."""
+        addon_id = str(data.get("addon_id") or "")
+        if not addon_id:
+            return
+        result = self._safe_call(
+            self.brain,
+            "brain.addons.approve",
+            {"addon_id": addon_id},
+            timeout=600.0,
+        )
+        message = "Addon approved and ready."
+        if isinstance(result, dict) and str(result.get("status") or "") != "loaded":
+            message = str(result.get("error") or "Addon approved, but it is not ready yet.")
+        self._notice(message)
+        self.chat_message_actions()
+        self.refresh_addon_tray_actions()
+        self.open_addons()
+
     def addon_install_archive(self, data: dict[str, Any]) -> None:
         """Handle addon install archive for flow controller."""
         path = str(data.get("path") or "")
@@ -6687,7 +6509,20 @@ class FlowController:
             bool(params.get("use_tools")),
         )
         summary = params.pop("_ui_context_summary", [])
-        chat_context = str(params.get("ambient_text") or "")
+        # Persist the exact context that accompanied this user turn.  Selected
+        # text is sent to the model in its own payload field, so folding only
+        # ambient_text into Chat made the most important source invisible in
+        # the transcript even though the model had received it.
+        selected_context = str(params.get("selected") or "").strip()
+        ambient_context = str(params.get("ambient_text") or "").strip()
+        chat_context = "\n\n".join(
+            part
+            for part in (
+                f"[Selected text]\n{selected_context}" if selected_context else "",
+                ambient_context,
+            )
+            if part
+        )
         if summary:
             self._safe_call(self.ui, "ui.context.summary", {"items": summary}, timeout=30.0)
 
@@ -9052,6 +8887,11 @@ class FlowController:
         return flow_estimates.image_token_label(data)
 
     @classmethod
+    def _image_token_count(cls, data: str | None) -> int | None:
+        """Return a rough token count for image input."""
+        return flow_estimates.image_token_count(data)
+
+    @classmethod
     def _screen_token_label(cls, context: dict[str, Any]) -> str:
         """Return screenshot token estimate from screen metadata."""
         return flow_estimates.screen_token_label(context)
@@ -9362,10 +9202,17 @@ class FlowController:
         screenshot_state = "on" if (screenshot_mode == "auto" or (pending and pending.screenshot_b64)) else (
             "auto" if screenshot_mode == "model" else "off"
         )
+        # A screenshot chip now represents a user-selected snip. Before the
+        # crop exists its dimensions—and therefore its cost—are unknown. Using
+        # the monitor dimensions here made an off chip look like a full-screen
+        # capture and was wrong for region snips.
         screenshot_tokens = (
             self._image_token_label(screenshot_preview)
             if has_screenshot
-            else self._screen_token_label(context)
+            else self._deferred_token_label()
+        )
+        screenshot_token_count = (
+            self._image_token_count(screenshot_preview) if has_screenshot else None
         )
 
         attachment_sources: list[dict[str, str]] = []
@@ -9393,14 +9240,19 @@ class FlowController:
             )
 
         attachment_tokens = ""
+        attachment_token_count: int | None = None
         if attachment_images:
             attachment_tokens = (
                 self._image_token_label(attachment_images[0])
                 if len(attachment_sources) == 1
                 else self._deferred_token_label()
             )
+            if len(attachment_sources) == 1:
+                attachment_token_count = self._image_token_count(attachment_images[0])
         elif attachment_text:
-            attachment_tokens = self._token_label("\n\n".join(attachment_text))
+            joined_attachment_text = "\n\n".join(attachment_text)
+            attachment_tokens = self._token_label(joined_attachment_text)
+            attachment_token_count = self._estimate_context_tokens(joined_attachment_text)
 
         context_items = [
             {
@@ -9409,6 +9261,7 @@ class FlowController:
                 "label": "App",
                 "state": app_state,
                 "tokens": self._token_label(active_text),
+                "token_count": self._estimate_context_tokens(active_text),
                 "preview": app_preview,
                 "sources": app_source_previews,
                 "privacy_count": app_redactions,
@@ -9432,6 +9285,7 @@ class FlowController:
                     if browser_deferred and not browser_text
                     else self._token_label(browser_text)
                 ),
+                "token_count": browser_tokens if browser_text else None,
                 "preview": browser_preview,
                 "sources": browser_sources,
                 "privacy_count": browser_redactions,
@@ -9458,6 +9312,9 @@ class FlowController:
                     if (selected_context_text or stale_selected_text)
                     else ""
                 ),
+                "token_count": self._estimate_context_tokens(
+                    selected_context_text or stale_selected_text
+                ),
                 "preview": selected_preview,
                 "privacy_count": selected_redactions,
                 "warning": self._with_privacy_warning(
@@ -9471,6 +9328,7 @@ class FlowController:
                 "label": "Clipboard",
                 "state": "on" if caller.get("context_clipboard") and clipboard_text else "off",
                 "tokens": self._token_label(clipboard_text),
+                "token_count": self._estimate_context_tokens(clipboard_text),
                 "preview": clipboard_preview,
                 "privacy_count": clipboard_redactions,
                 "warning": self._with_privacy_warning(
@@ -9487,6 +9345,7 @@ class FlowController:
                 "label": "Screenshot",
                 "state": screenshot_state,
                 "tokens": screenshot_tokens,
+                "token_count": screenshot_token_count,
                 "warning": "",
             },
             {
@@ -9525,6 +9384,7 @@ class FlowController:
                     "default_state": "on",
                     "locked": True,
                     "tokens": attachment_tokens,
+                    "token_count": attachment_token_count,
                     "preview": attachment_sources[0]["preview"],
                     "sources": attachment_sources,
                     "privacy_count": attachment_privacy_count,

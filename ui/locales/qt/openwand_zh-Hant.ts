@@ -4182,6 +4182,46 @@ Write automatically — apply edits without asking.</source><translation>本機�
     <message><source>GitHub sign-in check returned no account. Sign in again.</source><translation>GitHub 登入檢查未傳回帳號。請重新登入。</translation></message>
     <message><source>Could not reach {provider} to verify sign-in: {error}</source><translation>無法連線至 {provider} 以驗證登入：{error}</translation></message>
     <message><source>{provider} sign-in check failed (HTTP {status}).</source><translation>{provider} 登入檢查失敗（HTTP {status}）。</translation></message>
+    <message><source>Review access</source><translation>查看存取權限</translation></message>
+    <message><source>Review the addon author and requested access before activation</source><translation>啟用前查看附加元件作者及要求的存取權限</translation></message>
+    <message><source>Author:</source><translation>作者：</translation></message>
+    <message><source>Unknown author</source><translation>未知作者</translation></message>
+    <message><source>Declared access:</source><translation>宣告的存取權限：</translation></message>
+    <message><source>Addon Approval</source><translation>附加元件核准</translation></message>
+    <message><source>Addon approved and ready.</source><translation>附加元件已核准並可使用。</translation></message>
+    <message><source>Addon approved, but it is not ready yet.</source><translation>附加元件已核准，但尚未就緒。</translation></message>
+    <message><source>self-declared</source><translation>自行宣告</translation></message>
+    <message><source>Requested access:</source><translation>要求的存取權限：</translation></message>
+    <message><source>Current disk use:</source><translation>目前磁碟用量：</translation></message>
+    <message><source>Additional components will use more disk space.</source><translation>其他元件將使用更多磁碟空間。</translation></message>
+    <message><source>Full-code addons run with your normal user permissions. Only approve addons you trust.</source><translation>完整程式碼附加元件會以你的普通使用者權限執行。請只核准你信任的附加元件。</translation></message>
+    <message><source>Approve and activate this addon?</source><translation>核准並啟用此附加元件？</translation></message>
+    <message><source>Review Addon Access</source><translation>查看附加元件存取權限</translation></message>
+    <message><source>Run addon code with your user account's access</source><translation>以你的使用者帳戶權限執行附加元件程式碼</translation></message>
+    <message><source>Read prompts and gathered context</source><translation>讀取提示和已收集的上下文</translation></message>
+    <message><source>Read and change prompts or gathered context</source><translation>讀取並修改提示或已收集的上下文</translation></message>
+    <message><source>Read AI responses</source><translation>讀取 AI 回覆</translation></message>
+    <message><source>Read and change AI responses</source><translation>讀取並修改 AI 回覆</translation></message>
+    <message><source>Add tools the AI can call</source><translation>新增 AI 可呼叫的工具</translation></message>
+    <message><source>Send requests through your configured AI services</source><translation>透過你設定的 AI 服務傳送要求</translation></message>
+    <message><source>Register global hotkeys</source><translation>註冊全域快速鍵</translation></message>
+    <message><source>Add controls to the system tray</source><translation>在系統匣新增控制項</translation></message>
+    <message><source>Add settings to OpenWand</source><translation>在 OpenWand 新增設定</translation></message>
+    <message><source>Add commands to the prompt menu</source><translation>在提示選單新增命令</translation></message>
+    <message><source>Show notifications</source><translation>顯示通知</translation></message>
+    <message><source>Add labels to displayed text</source><translation>為顯示的文字新增標籤</translation></message>
+    <message><source>Add actions to text menus</source><translation>在文字選單新增動作</translation></message>
+    <message><source>Add actions to AI messages</source><translation>在 AI 訊息新增動作</translation></message>
+    <message><source>Change how AI messages are presented</source><translation>變更 AI 訊息的呈現方式</translation></message>
+    <message><source>Use text supplied to an addon action</source><translation>使用提供給附加元件動作的文字</translation></message>
+    <message><source>Access files through an addon action</source><translation>透過附加元件動作存取檔案</translation></message>
+    <message><source>Access the internet through an addon action</source><translation>透過附加元件動作存取網際網路</translation></message>
+    <message><source>Control programs through an addon action</source><translation>透過附加元件動作控制程式</translation></message>
+    <message><source>Unknown</source><translation>未知</translation></message>
+    <message><source>Show context</source><translation>顯示上下文</translation></message>
+    <message><source>Show the full context attached to this message.</source><translation>顯示此訊息附帶的完整上下文。</translation></message>
+    <message><source>Hide context</source><translation>隱藏上下文</translation></message>
+    <message><source>Hide the attached context.</source><translation>隱藏附帶的上下文。</translation></message>
   </context>
   <context>
     <name>OpenWand</name>

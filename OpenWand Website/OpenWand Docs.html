@@ -515,7 +515,11 @@
     }
     .search-result:hover, .search-result.selected { background: var(--accent-soft); }
     .search-result-title { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
-    .search-result-sub   { font-size: 12.5px; color: var(--dim); font-weight: 500; }
+    .search-result-sub   { font-size: 12.5px; line-height: 1.5; color: var(--dim); font-weight: 500; }
+    .search-result-sub mark {
+      color: var(--text); background: rgba(123, 97, 255, 0.28);
+      border-radius: 3px; padding: 0 2px;
+    }
     .search-empty { padding: 28px 20px; color: var(--dim); font-size: 13.5px; text-align: center; }
 
     @media (max-width: 1180px) and (hover: hover) { .toc { display: none; } }
@@ -668,8 +672,13 @@ function navigate(pageId, options = {}) {
   if (!page) return;
 
   const scrollAnchor = options.preserveScroll ? captureScrollAnchor() : null;
+  const targetAnchor = String(options.anchor || '');
   currentPage = pageId;
-  history.replaceState(null, '', '#' + pageId);
+  history.replaceState(
+    null,
+    '',
+    '#' + pageId + (targetAnchor ? '/' + encodeURIComponent(targetAnchor) : '')
+  );
 
   const meta = findNavMeta(pageId);
 
@@ -702,8 +711,14 @@ function navigate(pageId, options = {}) {
   addCopyButtons();
 
   // Scroll to top for page changes, but keep the reader's place for language changes.
-  if (options.preserveScroll) restoreScrollAnchor(scrollAnchor);
-  else document.getElementById('main').scrollTop = 0;
+  if (options.preserveScroll) {
+    restoreScrollAnchor(scrollAnchor);
+  } else if (targetAnchor) {
+    const target = document.getElementById(targetAnchor);
+    document.getElementById('main').scrollTop = target ? Math.max(0, target.offsetTop - 60) : 0;
+  } else {
+    document.getElementById('main').scrollTop = 0;
+  }
 
   // Update active nav item
   document.querySelectorAll('.nav-item').forEach(el => {
@@ -867,6 +882,88 @@ function closeSearch(e) {
   }
 }
 
+function searchText(value) {
+  const holder = document.createElement('div');
+  holder.innerHTML = String(value || '');
+  return (holder.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+function searchPageBlocks(pageId, page) {
+  const title = trMeta(pageId, 'title', page.title);
+  const sub = trMeta(pageId, 'sub', page.sub);
+  const blocks = [
+    { text: title, fallback: page.title, anchor: '', weight: 4 },
+    { text: sub, fallback: page.sub, anchor: '', weight: 2 },
+  ];
+  const article = document.createElement('div');
+  article.innerHTML = page.html;
+  let anchor = '';
+  const selectors = [
+    'h2', 'h3', 'p', 'li', 'td', 'th', 'pre code',
+    '.callout-label', '.sec-pillar-k', '.sec-pillar-t',
+    '.ch-issue', '.ch-sol', '.c-issue', '.c-sol',
+  ].join(',');
+
+  article.querySelectorAll(selectors).forEach(el => {
+    if (el.matches('h2, h3') && el.id) anchor = el.id;
+    const fallback = searchText(el.textContent);
+    if (!fallback) return;
+    const translated = el.closest('pre') ? fallback : searchText(trText(fallback));
+    blocks.push({
+      text: translated || fallback,
+      fallback,
+      anchor,
+      weight: el.matches('h2, h3') ? 3 : 1,
+    });
+  });
+  return blocks;
+}
+
+function searchBlockMatch(block, query) {
+  for (const text of [block.text, block.fallback]) {
+    const clean = searchText(text);
+    const index = clean.toLocaleLowerCase().indexOf(query);
+    if (index >= 0) return { text: clean, index };
+  }
+  return null;
+}
+
+function highlightSearchMatch(text, query) {
+  const lower = text.toLocaleLowerCase();
+  let html = '';
+  let cursor = 0;
+  let match = lower.indexOf(query, cursor);
+  while (match >= 0) {
+    html += _escapeHtml(text.slice(cursor, match));
+    html += '<mark>' + _escapeHtml(text.slice(match, match + query.length)) + '</mark>';
+    cursor = match + query.length;
+    match = lower.indexOf(query, cursor);
+  }
+  return html + _escapeHtml(text.slice(cursor));
+}
+
+function searchExcerpt(text, matchIndex, query) {
+  const radiusBefore = 58;
+  const radiusAfter = 105;
+  let start = Math.max(0, matchIndex - radiusBefore);
+  let end = Math.min(text.length, matchIndex + query.length + radiusAfter);
+  if (start > 0) {
+    const nextSpace = text.indexOf(' ', start);
+    if (nextSpace >= 0 && nextSpace < matchIndex) start = nextSpace + 1;
+  }
+  if (end < text.length) {
+    const previousSpace = text.lastIndexOf(' ', end);
+    if (previousSpace > matchIndex + query.length) end = previousSpace;
+  }
+  return (start > 0 ? '…' : '') +
+    highlightSearchMatch(text.slice(start, end), query) +
+    (end < text.length ? '…' : '');
+}
+
+function openSearchResult(result) {
+  navigate(result.dataset.page, { anchor: result.dataset.anchor || '' });
+}
+
 function openDemoLightbox(src, alt) {
   const modal = document.getElementById('demoLightbox');
   const img = document.getElementById('demoLightboxImage');
@@ -891,19 +988,27 @@ function closeDemoLightbox(e) {
 }
 
 function onSearch() {
-  const q = document.getElementById('searchInput').value.toLowerCase().trim();
+  const q = document.getElementById('searchInput').value.toLocaleLowerCase().trim();
   if (!q) { renderSearchResults([]); return; }
   const results = [];
   for (const [id, page] of Object.entries(DOCS_PAGES)) {
-    const tTitle = trMeta(id, 'title', page.title);
-    const tSub = trMeta(id, 'sub', page.sub);
-    const score =
-      (page.title.toLowerCase().includes(q) ? 3 : 0) +
-      (tTitle.toLowerCase().includes(q) ? 3 : 0) +
-      (page.sub.toLowerCase().includes(q) ? 2 : 0) +
-      (tSub.toLowerCase().includes(q) ? 2 : 0) +
-      (page.html.toLowerCase().includes(q) ? 1 : 0);
-    if (score > 0) results.push({ id, title: tTitle, sub: tSub, score });
+    let best = null;
+    for (const block of searchPageBlocks(id, page)) {
+      const match = searchBlockMatch(block, q);
+      if (!match) continue;
+      const exactBonus = match.text.toLocaleLowerCase() === q ? 2 : 0;
+      const score = block.weight + exactBonus;
+      if (!best || score > best.score) {
+        best = {
+          id,
+          anchor: block.anchor,
+          title: trMeta(id, 'title', page.title),
+          preview: searchExcerpt(match.text, match.index, q),
+          score,
+        };
+      }
+    }
+    if (best) results.push(best);
   }
   results.sort((a, b) => b.score - a.score);
   renderSearchResults(results.slice(0, 8));
@@ -915,14 +1020,15 @@ function renderSearchResults(results) {
   if (results.length === 0) {
     const q = document.getElementById('searchInput').value;
     el.innerHTML = q
-      ? '<div class="search-empty">' + trUI('noResults', 'No results for') + ' "' + q + '"</div>'
+      ? '<div class="search-empty">' + trUI('noResults', 'No results for') + ' "' + _escapeHtml(q) + '"</div>'
       : '<div class="search-empty">' + trUI('searchHint', 'Start typing to search…') + '</div>';
     return;
   }
-  el.innerHTML = results.map((r, i) =>
-    '<div class="search-result" data-page="' + r.id + '" onclick="navigate(\'' + r.id + '\')">' +
-    '<div class="search-result-title">' + r.title + '</div>' +
-    '<div class="search-result-sub">' + r.sub + '</div>' +
+  el.innerHTML = results.map(r =>
+    '<div class="search-result" data-page="' + _escapeHtml(r.id) + '" data-anchor="' +
+      _escapeHtml(r.anchor || '') + '" onclick="openSearchResult(this)">' +
+    '<div class="search-result-title">' + _escapeHtml(r.title) + '</div>' +
+    '<div class="search-result-sub">' + r.preview + '</div>' +
     '</div>'
   ).join('');
 }
@@ -946,7 +1052,7 @@ function onSearchKey(e) {
     const sel = searchSelectedIdx >= 0
       ? results[searchSelectedIdx]
       : results[0];
-    if (sel) navigate(sel.dataset.page);
+    if (sel) openSearchResult(sel);
     return;
   }
 }
@@ -965,8 +1071,13 @@ document.addEventListener('keydown', e => {
 /* ── INIT ─────────────────────────────────────────────── */
 initI18n();
 buildSidebar();
-const startPage = location.hash.replace('#', '') || 'overview';
-navigate(DOCS_PAGES[startPage] ? startPage : 'overview');
+const startHash = location.hash.replace('#', '');
+const hashSeparator = startHash.indexOf('/');
+const startPage = (hashSeparator >= 0 ? startHash.slice(0, hashSeparator) : startHash) || 'overview';
+const startAnchor = hashSeparator >= 0
+  ? decodeURIComponent(startHash.slice(hashSeparator + 1))
+  : '';
+navigate(DOCS_PAGES[startPage] ? startPage : 'overview', { anchor: startAnchor });
 </script>
 </body>
 </html>

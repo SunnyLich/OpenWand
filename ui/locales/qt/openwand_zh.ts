@@ -4216,6 +4216,46 @@ Write automatically — apply edits without asking.</source><translation>本地�
     <message><source>GitHub sign-in check returned no account. Sign in again.</source><translation>GitHub 登录检查未返回账号。请重新登录。</translation></message>
     <message><source>Could not reach {provider} to verify sign-in: {error}</source><translation>无法连接到 {provider} 以验证登录：{error}</translation></message>
     <message><source>{provider} sign-in check failed (HTTP {status}).</source><translation>{provider} 登录检查失败（HTTP {status}）。</translation></message>
+    <message><source>Review access</source><translation>查看访问权限</translation></message>
+    <message><source>Review the addon author and requested access before activation</source><translation>启用前查看插件作者及请求的访问权限</translation></message>
+    <message><source>Author:</source><translation>作者：</translation></message>
+    <message><source>Unknown author</source><translation>未知作者</translation></message>
+    <message><source>Declared access:</source><translation>声明的访问权限：</translation></message>
+    <message><source>Addon Approval</source><translation>插件批准</translation></message>
+    <message><source>Addon approved and ready.</source><translation>插件已批准并可使用。</translation></message>
+    <message><source>Addon approved, but it is not ready yet.</source><translation>插件已批准，但尚未就绪。</translation></message>
+    <message><source>self-declared</source><translation>自行声明</translation></message>
+    <message><source>Requested access:</source><translation>请求的访问权限：</translation></message>
+    <message><source>Current disk use:</source><translation>当前磁盘占用：</translation></message>
+    <message><source>Additional components will use more disk space.</source><translation>其他组件将占用更多磁盘空间。</translation></message>
+    <message><source>Full-code addons run with your normal user permissions. Only approve addons you trust.</source><translation>完整代码插件会以你的普通用户权限运行。请只批准你信任的插件。</translation></message>
+    <message><source>Approve and activate this addon?</source><translation>批准并启用此插件？</translation></message>
+    <message><source>Review Addon Access</source><translation>查看插件访问权限</translation></message>
+    <message><source>Run addon code with your user account's access</source><translation>以你的用户账户权限运行插件代码</translation></message>
+    <message><source>Read prompts and gathered context</source><translation>读取提示词和已收集的上下文</translation></message>
+    <message><source>Read and change prompts or gathered context</source><translation>读取并修改提示词或已收集的上下文</translation></message>
+    <message><source>Read AI responses</source><translation>读取 AI 回复</translation></message>
+    <message><source>Read and change AI responses</source><translation>读取并修改 AI 回复</translation></message>
+    <message><source>Add tools the AI can call</source><translation>添加 AI 可调用的工具</translation></message>
+    <message><source>Send requests through your configured AI services</source><translation>通过你配置的 AI 服务发送请求</translation></message>
+    <message><source>Register global hotkeys</source><translation>注册全局快捷键</translation></message>
+    <message><source>Add controls to the system tray</source><translation>向系统托盘添加控件</translation></message>
+    <message><source>Add settings to OpenWand</source><translation>向 OpenWand 添加设置</translation></message>
+    <message><source>Add commands to the prompt menu</source><translation>向提示词菜单添加命令</translation></message>
+    <message><source>Show notifications</source><translation>显示通知</translation></message>
+    <message><source>Add labels to displayed text</source><translation>为显示的文本添加标签</translation></message>
+    <message><source>Add actions to text menus</source><translation>向文本菜单添加操作</translation></message>
+    <message><source>Add actions to AI messages</source><translation>向 AI 消息添加操作</translation></message>
+    <message><source>Change how AI messages are presented</source><translation>更改 AI 消息的呈现方式</translation></message>
+    <message><source>Use text supplied to an addon action</source><translation>使用提供给插件操作的文本</translation></message>
+    <message><source>Access files through an addon action</source><translation>通过插件操作访问文件</translation></message>
+    <message><source>Access the internet through an addon action</source><translation>通过插件操作访问互联网</translation></message>
+    <message><source>Control programs through an addon action</source><translation>通过插件操作控制程序</translation></message>
+    <message><source>Unknown</source><translation>未知</translation></message>
+    <message><source>Show context</source><translation>显示上下文</translation></message>
+    <message><source>Show the full context attached to this message.</source><translation>显示此消息附带的完整上下文。</translation></message>
+    <message><source>Hide context</source><translation>隐藏上下文</translation></message>
+    <message><source>Hide the attached context.</source><translation>隐藏附带的上下文。</translation></message>
   </context>
   <context>
     <name>OpenWand</name>

@@ -973,9 +973,10 @@ class LlmFallbackTests(unittest.TestCase):
             def __init__(self, **kwargs):
                 self.kwargs = kwargs
 
-        with patch.object(llm.config, "GOOGLE_API_KEY", "google-key"), patch(
-            "openai.OpenAI",
-            FakeOpenAI,
+        with patch.object(llm.config, "GOOGLE_API_KEY", "google-key"), patch.object(
+            llm.sdk_clients,
+            "openai_client",
+            side_effect=FakeOpenAI,
         ):
             client = llm._dynamic_openai_client("google")
 
@@ -1144,7 +1145,11 @@ class LlmFallbackTests(unittest.TestCase):
             """Client for fake client communication."""
             chat = FakeChat()
 
-        with patch("core.llm_clients.client._check_route_config_with_credentials"), patch("openai.OpenAI", return_value=FakeClient()):
+        with patch("core.llm_clients.client._check_route_config_with_credentials"), patch.object(
+            llm.sdk_clients,
+            "openai_client",
+            return_value=FakeClient(),
+        ):
             ok, message = llm.test_route_connection(
                 "google",
                 "gemini-2.5-flash",
@@ -1178,7 +1183,11 @@ class LlmFallbackTests(unittest.TestCase):
             """Client for fake client communication."""
             chat = FakeChat()
 
-        with patch("core.llm_clients.client._check_route_config_with_credentials"), patch("openai.OpenAI", return_value=FakeClient()):
+        with patch("core.llm_clients.client._check_route_config_with_credentials"), patch.object(
+            llm.sdk_clients,
+            "openai_client",
+            return_value=FakeClient(),
+        ):
             ok, message = llm.test_route_connection(
                 "google",
                 "gemini-2.5-flash",

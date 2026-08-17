@@ -56,7 +56,10 @@ _CLOSE_MARGIN  = 6
 _FAST_FORWARD_W = _CLOSE_SIZE
 _FAST_FORWARD_H = _CLOSE_SIZE
 _FAST_FORWARD_MARGIN = _CLOSE_MARGIN
-_CONTROL_GUTTER_W = _CLOSE_SIZE
+_EXPAND_SIZE = _CLOSE_SIZE
+_EXPAND_MARGIN = _CLOSE_MARGIN
+_CONTROL_GAP = 4
+_CONTROL_GUTTER_W = _FAST_FORWARD_W + _CONTROL_GAP + _EXPAND_SIZE
 _ACTION_H      = 26
 _ACTION_GAP    = 8
 _ACTION_ROW_H  = 36
@@ -385,6 +388,8 @@ class SpeechBubble(QWidget):
         self._close_pressed = False
         self._fast_forward_hover = False
         self._fast_forward_pressed = False
+        self._expand_hover = False
+        self._expand_pressed = False
         self._companion_callback = None   # called with new QPoint after each drag move
         self._hide_callback = None        # called when this widget hides (for icon sync)
         self._speed_callback = None       # called with True while fast-forward is held
@@ -542,6 +547,11 @@ class SpeechBubble(QWidget):
                 event.accept()
                 self.update()
                 return
+            if self._expand_enabled() and self._expand_rect().contains(event.position().toPoint()):
+                self._expand_pressed = True
+                event.accept()
+                self.update()
+                return
             self._press_pos = event.globalPosition().toPoint()
             self._press_timer.restart()
             self._dragged = False
@@ -566,7 +576,11 @@ class SpeechBubble(QWidget):
         if hovering_fast_forward != self._fast_forward_hover:
             self._fast_forward_hover = hovering_fast_forward
             self.update()
-        if self._close_pressed or self._fast_forward_pressed:
+        hovering_expand = self._expand_enabled() and self._expand_rect().contains(event.position().toPoint())
+        if hovering_expand != self._expand_hover:
+            self._expand_hover = hovering_expand
+            self.update()
+        if self._close_pressed or self._fast_forward_pressed or self._expand_pressed:
             event.accept()
             return
         if self._drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
@@ -611,6 +625,14 @@ class SpeechBubble(QWidget):
                 event.accept()
                 self.update()
                 return
+            if self._expand_pressed:
+                should_open = self._expand_enabled() and self._expand_rect().contains(event.position().toPoint())
+                self._expand_pressed = False
+                if should_open:
+                    self._invoke_runtime_callback("expand", self._click_callback)
+                event.accept()
+                self.update()
+                return
             # A click = pressed, didn't drag, and released quickly. A longer press
             # is an intentional hold and must not open the chat window.
             if (
@@ -650,6 +672,7 @@ class SpeechBubble(QWidget):
         """Clear hover state when the pointer leaves the bubble."""
         self._close_hover = False
         self._fast_forward_hover = False
+        self._expand_hover = False
         self._action_hover = -1
         self.update()
         self._resume_auto_hide()
@@ -1061,6 +1084,8 @@ class SpeechBubble(QWidget):
         self._speed_boosting = False
         self._fast_forward_hover = False
         self._fast_forward_pressed = False
+        self._expand_hover = False
+        self._expand_pressed = False
         self._highlight_generation += 1
         self._pending_words = []
         self._revealed_count = 0
@@ -1325,10 +1350,30 @@ class SpeechBubble(QWidget):
     def _fast_forward_rect(self) -> QRect:
         """Return the bottom-right speed-boost hit target inside the bubble body."""
         return QRect(
-            self._bubble_w - _FAST_FORWARD_MARGIN - _FAST_FORWARD_W,
+            self._bubble_w - _FAST_FORWARD_MARGIN - _EXPAND_SIZE - _CONTROL_GAP - _FAST_FORWARD_W,
             self._bubble_h - _FAST_FORWARD_MARGIN - _FAST_FORWARD_H,
             _FAST_FORWARD_W,
             _FAST_FORWARD_H,
+        )
+
+    def _expand_rect(self) -> QRect:
+        """Return the bottom-right full-chat hit target inside the bubble body."""
+        return QRect(
+            self._bubble_w - _EXPAND_MARGIN - _EXPAND_SIZE,
+            self._bubble_h - _EXPAND_MARGIN - _EXPAND_SIZE,
+            _EXPAND_SIZE,
+            _EXPAND_SIZE,
+        )
+
+    def _expand_enabled(self) -> bool:
+        """Show full-chat access throughout a pending or visible answer."""
+        if self._click_callback is None or self._listening:
+            return False
+        return bool(
+            self._thinking
+            or self._reply_chunk_count > 0
+            or not self._image_pixmap.isNull()
+            or (self._close_cancels and self._transcript_preview)
         )
 
     def _fast_forward_enabled(self) -> bool:
@@ -2441,6 +2486,29 @@ class SpeechBubble(QWidget):
             p.setFont(self._bold_font)
             p.setPen(QPen(text))
             p.drawText(rect, Qt.AlignmentFlag.AlignCenter, ">>")
+
+        if self._expand_enabled():
+            rect = self._expand_rect()
+            bg, border, icon = self._fast_forward_colors(
+                pressed=self._expand_pressed,
+                hovered=self._expand_hover,
+            )
+            p.setBrush(QBrush(bg))
+            p.setPen(QPen(border, 1))
+            p.drawRoundedRect(rect, 6, 6)
+            p.setPen(QPen(icon, 1.5))
+            inset = 4
+            arm = 4
+            left, top = rect.left() + inset, rect.top() + inset
+            right, bottom = rect.right() - inset, rect.bottom() - inset
+            p.drawLine(left, top + arm, left, top)
+            p.drawLine(left, top, left + arm, top)
+            p.drawLine(right - arm, top, right, top)
+            p.drawLine(right, top, right, top + arm)
+            p.drawLine(left, bottom - arm, left, bottom)
+            p.drawLine(left, bottom, left + arm, bottom)
+            p.drawLine(right - arm, bottom, right, bottom)
+            p.drawLine(right, bottom - arm, right, bottom)
 
         # Content
         p.setFont(self._font)

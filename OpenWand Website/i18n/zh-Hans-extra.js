@@ -126,8 +126,6 @@ Object.assign(I18N.reg['zh-Hans'].tr, {
     '回复会同时流入气泡并大声朗读。按住一个键即可用说话代替打字。',
   'Sees your screen': '看得见你的屏幕',
   'Context, no copy-paste': '获取上下文，无需复制粘贴',
-  'OpenWand reads your selection, open documents, clipboard, and browser tab — or a region you draw — automatically.':
-    'OpenWand 会自动读取你的选区、打开的文档、剪贴板和浏览器标签页——或你框选的区域。',
   'Yours': '完全归你所有',
   'Any model, cloud/local': '任意模型，云端/本地',
   'Choose your provider, keep data on your machine, and remap every hotkey. Your setup stays portable.':

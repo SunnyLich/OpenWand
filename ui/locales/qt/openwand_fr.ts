@@ -4273,6 +4273,46 @@ Demander avant d’écrire — afficher les différences avant toute modificatio
     <message><source>GitHub sign-in check returned no account. Sign in again.</source><translation>La vérification GitHub n’a renvoyé aucun compte. Reconnectez-vous.</translation></message>
     <message><source>Could not reach {provider} to verify sign-in: {error}</source><translation>Impossible de joindre {provider} pour vérifier la connexion : {error}</translation></message>
     <message><source>{provider} sign-in check failed (HTTP {status}).</source><translation>La vérification de connexion {provider} a échoué (HTTP {status}).</translation></message>
+    <message><source>Review access</source><translation>Examiner les accès</translation></message>
+    <message><source>Review the addon author and requested access before activation</source><translation>Examinez l’auteur de l’add-on et les accès demandés avant l’activation</translation></message>
+    <message><source>Author:</source><translation>Auteur :</translation></message>
+    <message><source>Unknown author</source><translation>Auteur inconnu</translation></message>
+    <message><source>Declared access:</source><translation>Accès déclarés :</translation></message>
+    <message><source>Addon Approval</source><translation>Approbation de l’add-on</translation></message>
+    <message><source>Addon approved and ready.</source><translation>Add-on approuvé et prêt.</translation></message>
+    <message><source>Addon approved, but it is not ready yet.</source><translation>Add-on approuvé, mais pas encore prêt.</translation></message>
+    <message><source>self-declared</source><translation>déclaré par l’auteur</translation></message>
+    <message><source>Requested access:</source><translation>Accès demandés :</translation></message>
+    <message><source>Current disk use:</source><translation>Utilisation actuelle du disque :</translation></message>
+    <message><source>Additional components will use more disk space.</source><translation>Les composants supplémentaires utiliseront davantage d’espace disque.</translation></message>
+    <message><source>Full-code addons run with your normal user permissions. Only approve addons you trust.</source><translation>Les add-ons contenant du code complet s’exécutent avec les permissions normales de votre compte. N’approuvez que les add-ons auxquels vous faites confiance.</translation></message>
+    <message><source>Approve and activate this addon?</source><translation>Approuver et activer cet add-on ?</translation></message>
+    <message><source>Review Addon Access</source><translation>Examiner les accès de l’add-on</translation></message>
+    <message><source>Run addon code with your user account's access</source><translation>Exécuter le code de l’add-on avec les accès de votre compte utilisateur</translation></message>
+    <message><source>Read prompts and gathered context</source><translation>Lire les invites et le contexte collecté</translation></message>
+    <message><source>Read and change prompts or gathered context</source><translation>Lire et modifier les invites ou le contexte collecté</translation></message>
+    <message><source>Read AI responses</source><translation>Lire les réponses de l’IA</translation></message>
+    <message><source>Read and change AI responses</source><translation>Lire et modifier les réponses de l’IA</translation></message>
+    <message><source>Add tools the AI can call</source><translation>Ajouter des outils que l’IA peut appeler</translation></message>
+    <message><source>Send requests through your configured AI services</source><translation>Envoyer des requêtes via vos services d’IA configurés</translation></message>
+    <message><source>Register global hotkeys</source><translation>Enregistrer des raccourcis globaux</translation></message>
+    <message><source>Add controls to the system tray</source><translation>Ajouter des commandes à la zone de notification</translation></message>
+    <message><source>Add settings to OpenWand</source><translation>Ajouter des paramètres à OpenWand</translation></message>
+    <message><source>Add commands to the prompt menu</source><translation>Ajouter des commandes au menu des invites</translation></message>
+    <message><source>Show notifications</source><translation>Afficher des notifications</translation></message>
+    <message><source>Add labels to displayed text</source><translation>Ajouter des libellés au texte affiché</translation></message>
+    <message><source>Add actions to text menus</source><translation>Ajouter des actions aux menus de texte</translation></message>
+    <message><source>Add actions to AI messages</source><translation>Ajouter des actions aux messages de l’IA</translation></message>
+    <message><source>Change how AI messages are presented</source><translation>Modifier la présentation des messages de l’IA</translation></message>
+    <message><source>Use text supplied to an addon action</source><translation>Utiliser le texte fourni à une action d’add-on</translation></message>
+    <message><source>Access files through an addon action</source><translation>Accéder aux fichiers via une action d’add-on</translation></message>
+    <message><source>Access the internet through an addon action</source><translation>Accéder à Internet via une action d’add-on</translation></message>
+    <message><source>Control programs through an addon action</source><translation>Contrôler des programmes via une action d’add-on</translation></message>
+    <message><source>Unknown</source><translation>Inconnu</translation></message>
+    <message><source>Show context</source><translation>Afficher le contexte</translation></message>
+    <message><source>Show the full context attached to this message.</source><translation>Afficher tout le contexte joint à ce message.</translation></message>
+    <message><source>Hide context</source><translation>Masquer le contexte</translation></message>
+    <message><source>Hide the attached context.</source><translation>Masquer le contexte joint.</translation></message>
   </context>
   <context>
     <name>OpenWand</name>

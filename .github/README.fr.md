@@ -4,343 +4,339 @@
 
 # OpenWand
 
-**De nombreuses tâches sont mieux traitées avec l'assistance de l'IA qu'avec une délégation complète. OpenWand rend cette collaboration plus rapide, plus conviviale et plus personnalisable en tant que plateforme ouverte de co-travail.**
+**OpenWand ambitionne de devenir l'application de référence pour travailler avec l'IA. Plus besoin de changer de fenêtre ni de copier-coller. Il suffit de formuler votre demande.**
 
-OpenWand vous offre une IA pilotée par raccourcis clavier qui peut lire votre sélection, presse-papiers, application, navigateur, documents ou capture d'écran pendant que vous restez là où vous êtes. Appuyez sur un raccourci, choisissez une action, et diffusez la réponse dans une petite superposition ou au niveau de votre curseur de saisie. Il est entièrement open-source, multiplateforme, extensible, sous licence permissive et principalement écrit en Python, afin de rester facile à modifier : le type d'ouverture que même des produits valant des milliards comme Microsoft Copilot n'offrent toujours pas.
+OpenWand garde l'IA à vos côtés pendant que vous travaillez. Utilisez automatiquement le contexte disponible ou ajoutez une source en un clic. OpenWand est entièrement gratuit, multiplateforme, extensible, distribué sous une licence permissive et conçu d'abord en Python : vous choisissez son fonctionnement et le modèle qui l'alimente.
 
-[![Plateforme](https://img.shields.io/badge/plateforme-Windows%20%7C%20macOS%20%7C%20Linux-333333?style=flat-square)](#état-des-plateformes)
-[![Python](https://img.shields.io/badge/python-3.12-3572A5?style=flat-square)](#démarrage-rapide)
-[![Local d'abord](https://img.shields.io/badge/local--first-contexte%20et%20mémoire-4B8F8C?style=flat-square)](#confidentialité-et-contrôle)
-[![Licence](https://img.shields.io/badge/licence-MIT-7C3AED?style=flat-square)](#licence)
+[![Plateformes](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-333333?style=flat-square)](#platform-status)
+[![Python](https://img.shields.io/badge/python-3.12-3572A5?style=flat-square)](#quick-start)
+[![Local d'abord](https://img.shields.io/badge/local--first-context%20and%20memory-4B8F8C?style=flat-square)](#privacy-and-control)
+[![Licence](https://img.shields.io/badge/license-MIT-7C3AED?style=flat-square)](#license)
 
 **Langues :** [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | Français | [Español](README.es.md)
 
-**Site web :** [Documentation OpenWand](https://sunnylich.github.io/OpenWand/)
+**Site :** [Documentation OpenWand](https://sunnylich.github.io/OpenWand/)
 
-[Démarrage rapide](#démarrage-rapide) | [Fonctionnalités](#ce-que-fait-openwand) | [Démos](#démos) | [Configuration](#configuration) | [APIs gratuites](#sources-dapi-de-modèles-gratuites) | [Confidentialité](#confidentialité-et-contrôle)
+[Démarrage rapide](#quick-start) | [Fonctionnement](#how-openwand-works) | [Démonstrations](#demos) | [Configuration](#configuration) | [API gratuites](#free-model-api-sources) | [Confidentialité](#privacy-and-control)
 
-![Démo d’invite OpenWand](readme-assets/openwand-prompt-demo.gif)
+![Démonstration des invites OpenWand](readme-assets/openwand-prompt-demo.gif)
 
-**Une invite depuis n’importe où :** Sélectionnez du contenu dans n’importe quelle application, invoquez OpenWand et exécutez une invite enregistrée ou personnalisée sans quitter votre travail.
 </div>
 
 ---
 
-## Ce que fait OpenWand
+## Pourquoi OpenWand
 
-OpenWand est conçu pour les moments où ouvrir une application de chat briserait votre flux de travail.
+OpenWand vous aide à rester productif en intégrant les demandes à l'IA de façon naturelle et fluide dans votre travail.
 
-Sélectionnez du texte, appuyez sur le raccourci général, appuyez sur une touche d'action, et OpenWand interroge votre modèle configuré avec uniquement les sources de contexte que vous avez activées. Les réponses s'affichent en flux dans une bulle compacte à côté de l'icône flottante. Si le TTS est activé, la réponse est prononcée à mesure qu'elle arrive.
+### Comparaison des étapes
 
-| Au lieu de... | OpenWand vous permet de... |
+| Chat IA classique — **8 étapes** | OpenWand — **seulement 2 étapes** |
 | --- | --- |
-| Copier du texte dans une fenêtre de chat séparée | Demander depuis l'application que vous utilisez déjà |
-| Retaper les instructions pour des tâches récurrentes à chaque fois | Enregistrer des actions réutilisables avec les sources de contexte voulues |
-| Transformer chaque pensée en invite tapée | Maintenir un raccourci vocal, parler et envoyer la demande transcrite |
-| Vous épuiser à lire des murs de texte | Diffuser les réponses dans la superposition ou les écouter avec le TTS |
-| Expliquer manuellement ce qui est à l'écran | Capturer la sélection, le presse-papiers, des documents, des pages de navigateur et des captures d'écran |
-| Confier vos invites, votre contexte et votre mémoire à une plateforme d'assistant fermée | Garder les données sur votre machine et envoyer uniquement les informations et requêtes que vous choisissez à votre fournisseur de modèle |
+| 1. Trouver et copier le premier élément de contexte.<br>2. Passer à une fenêtre de chat IA.<br>3. Coller le contexte.<br>4. Recommencer jusqu'à ce que le modèle ait tout ce dont il a besoin.<br>5. Saisir votre demande.<br>6. Envoyer la requête.<br>7. Attendre la réponse.<br>8. La lire, puis revenir à votre travail. | 1. Appuyer sur un raccourci pour ouvrir OpenWand.<br>2. Lancer une invite prédéfinie. |
+
+Le texte sélectionné et les sources de contexte activées dans les paramètres sont réunis automatiquement. Si nécessaire, une source supplémentaire s'active en un clic. Choisissez ensuite une invite prédéfinie ou saisissez la vôtre.
+
+<a id="how-openwand-works"></a>
+## Fonctionnement d'OpenWand
+
+OpenWand vous donne accès à l'IA depuis n'importe quel endroit du bureau. Vos invites réutilisables restent à portée de main, le contexte est recueilli automatiquement et les sources supplémentaires sont accessibles en un clic : chaque requête demande moins d'étapes.
+
+### Interroger l'IA
+
+**Vous :** Appuyez sur un raccourci → `(Ajouter du contexte)` → Choisissez une invite réutilisable ou personnalisée
+
+**OpenWand :** Recueille et prévisualise le contexte → `(Vérifie la confidentialité et les injections d'invite)` → Interroge le modèle choisi → Affiche la réponse
+
+### Demander une reformulation sur place
+
+**Vous :** Sélectionnez le texte → Appuyez sur le raccourci de reformulation → `(Ajoutez du contexte)` → Choisissez une reformulation → Acceptez
+
+**OpenWand :** Capture la sélection → `(Vérifie la confidentialité et les injections d'invite)` → Rédige la réponse → Affiche un aperçu → La recolle à sa place
+
+*Les actions entre parenthèses sont facultatives.*
 
 ## Points forts
 
-- **Superposition d'abord** — une icône flottante, un sélecteur d'action et une bulle de réponse restent au premier plan sans envahir votre bureau.
-- **Fenêtre de chat complète** — cliquez sur l’icône flottante pour ouvrir un chat persistant et consultable, organisé par projets, avec le contexte capturé, un rendu Markdown natif et sûr, et l’importation des conversations locales ChatGPT/Codex et Claude. La molette, le défilement automatique au bouton central et une barre de défilement élargie facilitent les longues réponses.
-- **Présentation des réponses** — les réponses ordinaires affichent titres, listes, tableaux, code, citations et texte multilingue sans appel de modèle supplémentaire. L’extension facultative Formatted Replies (expérimentale) conserve l’original, affiche le modèle de mise en forme avant exécution et vérifie que le contenu source visible est préservé.
-- **Actions d’application avec aperçu préalable** — sous Windows, utilisez trois actions PowerPoint de bureau vérifiées (créer une diapositive, restyler la diapositive sélectionnée ou mettre à jour les notes du présentateur), des actions LibreOffice Calc ciblées pour les graphiques, le nettoyage de tableaux, le tri et l’analyse, ainsi que des actions VS Code ciblées de correction et de refactorisation. OpenWand affiche un aperçu, demande confirmation avant application et vérifie ensuite le résultat.
-- **Agents ChatGPT/Codex et Claude en direct** — choisissez OpenWand, ChatGPT ou Claude Agent en haut des Paramètres, puis décidez si la continuité reste gérée par OpenWand ou est transférée à l’agent. L’app-server de la CLI Codex et le SDK Claude Agent s’exécutent derrière OpenWand avec résumés de raisonnement, réponses, progression des outils, approbations et sessions reprenables facultatives. L’importation locale, la synchronisation facultative à partir de son activation et l’exportation comme nouvelle conversation restent disponibles sans contacter les fournisseurs.
-- **Confidentialité par défaut** — OpenWand n'a pas de couche de stockage hébergée ; les données restent sur votre machine, et le mode confidentialité peut avertir ou masquer avant que le contexte sensible ne parte.
-- **Hautement personnalisable** — chaque raccourci, touche d'action, invite, source de contexte, comportement de collage, route de modèle, paramètre vocal et dimension de bulle peut être modifié.
-- **Interface graphique accessible** — les paramètres, les vérifications de configuration, les rapports de confidentialité, les outils de mémoire et les avertissements de modèle expliquent ce qui se passe sans nécessiter de lire le code.
-- **Capture de contexte** — OpenWand peut lire le texte sélectionné, le texte du presse-papiers, l'interface utilisateur ciblée, les documents ouverts, le contenu du navigateur, les fichiers récents et des captures d'écran optionnelles.
-- **Voix entrée et sortie** — STT local via faster-whisper, plus TTS neuronal local sur l'appareil (Kokoro et clonage vocal GPT-SoVITS) ou voix cloud/compatibles (Cartesia, ElevenLabs, OpenAI, tout serveur compatible OpenAI), avec TTS désactivé par défaut.
-- **Captures visuelles** — tracez une région avec `Ctrl+Alt+Q` et envoyez la capture d'écran à un modèle de vision.
-- **Réécriture et collage** — utilisez le raccourci de réécriture pour réécrire le texte sélectionné avec le contexte capturé et coller le résultat dans le champ actif.
-- **Apportez votre propre fournisseur** — Groq, Anthropic, OpenAI, Google, DeepSeek, OpenRouter, Mistral, XAI, Together, Cerebras, serveurs compatibles OpenAI personnalisés, GitHub Copilot, et plus.
-- **Mémoire locale** — une mémoire à court et long terme optionnelle est stockée localement, avec un visualiseur pour modifier ou supprimer des faits.
-- **Extensions** — étendez OpenWand avec des hooks, des actions de barre d'état, des paramètres, des outils appelables par le modèle, des actions configurables et des raccourcis.
-- **Tâches d’arrière-plan depuis le chat** — lorsque l’écriture locale est autorisée, le modèle du chat peut déléguer un travail de programmation conséquent, répondre immédiatement, puis ajouter le rapport final à la même conversation.
-- **Équipe d’agents** — configurez directement le projet, l’objectif, les agents, les modèles et les autorisations pour une exécution visible avec progression en direct et artefacts vérifiables.
+- **Ignorez la préparation. Demandez, tout simplement.** — Interrogez l'IA où que vous soyez sans vous soucier du contexte.
+- **Des réponses mieux présentées** — Chaque réponse devient localement un rendu HTML et CSS soigné, sans appel de modèle ni coût supplémentaire.
+- **Intégration de Codex et Claude** — Exécutez l'un ou l'autre agent directement depuis OpenWand.
+- **Mode privé** — Alertes et masquage facultatifs pour le contexte sensible.
+- **Hautement personnalisable** — Personnalisez les raccourcis, les invites, le contexte, les modèles, la voix, le recollage et l'interface.
+- **Puissant, mais accessible** — OpenWand simplifie le contrôle des modèles, de la confidentialité, de la mémoire et du contexte.
+- **Le contexte sous contrôle en un clic** — OpenWand le gère automatiquement ou vous laisse l'ajouter d'un seul clic.
+- **La saisie est facultative** — Dictez votre demande et écoutez la réponse.
+- **Interrogez tout ce qui apparaît à l'écran** — Tracez une zone et transformez-la instantanément en contexte visuel.
+- **Reformulation sur place** — Reformulez le texte sélectionné, vérifiez le résultat et recollez-le au même endroit.
+- **Utilisez le modèle de votre choix** — De nombreux fournisseurs cloud, des modèles locaux ou tout serveur compatible avec OpenAI sont pris en charge.
+- **Une mémoire sous votre contrôle** — Conservez facultativement une mémoire à court et long terme en local, avec la possibilité de la consulter ou de la supprimer.
+- **Étendez chaque aspect** — Ajoutez des invites, actions, raccourcis, hooks et outils de modèle grâce aux add-ons et à MCP.
+- **Le travail multi-agents simplifié** — Constituez votre équipe dans une interface visuelle guidée en langage clair, puis suivez sa progression et examinez ses résultats.
 
-## Démos
+<a id="demos"></a>
+## Démonstrations
 
-![Démo de contexte inter-applications OpenWand](readme-assets/openwand-context-demo.gif)
+![Démonstration du contexte inter-applications OpenWand](readme-assets/openwand-context-demo.gif)
 
-**Contexte inter-applications :** Combinez la sélection active avec le contexte activé du navigateur et de l’application afin de fournir au modèle les éléments nécessaires sans copier-coller manuel.
+**Contexte inter-applications :** Combinez la sélection active avec le contexte activé du navigateur et de l'application afin de fournir au modèle les éléments nécessaires sans copier-coller manuellement.
 
-![Démo de capture d'écran OpenWand Ctrl+Alt+Q](readme-assets/openwand-screen-snip-demo.gif)
+![Démonstration de la capture d'écran Ctrl+Alt+Q d'OpenWand](readme-assets/openwand-screen-snip-demo.gif)
 
-**Capture visuelle :** Le flux de capture est destiné aux cas où le contexte visuel est important. `Ctrl+Alt+Q` vous permet de tracer une région, d'envoyer uniquement ce recadrage à un modèle de vision, et de garder la réponse dans la superposition au lieu de changer d'application.
+**Capture visuelle :** Lorsque le contexte visuel compte, `Ctrl+Alt+Q` vous permet de tracer une zone, d'envoyer uniquement cette capture à un modèle de vision et de garder la réponse dans la superposition sans changer d'application.
 
-![Démo de réécriture OpenWand](readme-assets/openwand-rewrite-demo.gif)
+![Démonstration de la reformulation OpenWand](readme-assets/openwand-rewrite-demo.gif)
 
-**Réécriture sur place :** Réécrivez uniquement le texte sélectionné, examinez la proposition et recollez le résultat accepté dans le champ actif au moment où vous avez invoqué OpenWand.
+**Reformulation sur place :** Reformulez uniquement le texte sélectionné, examinez la proposition, puis recollez le résultat accepté dans le champ qui était actif à l'ouverture d'OpenWand.
 
-![Démo d’action adaptée à l’application OpenWand](readme-assets/openwand-app-aware-action-demo.gif)
+![Démonstration d'une action sensible à l'application dans OpenWand](readme-assets/openwand-app-aware-action-demo.gif)
 
-**Action adaptée à l’application :** Utilisez le contexte ciblé de l’application pour analyser le travail en cours ou agir dessus, avec un résultat clair et une confirmation lorsqu’aucune cellule n’a été modifiée.
+**Action sensible à l'application :** Utilisez le contexte de l'application active pour analyser ou traiter le travail en cours, avec un résultat clair et une confirmation lorsqu'aucune cellule du document n'a été modifiée.
 
-![Démo de l’équipe d’agents OpenWand](readme-assets/openwand-agent-task-demo.gif)
+![Démonstration de l'équipe d'agents OpenWand](readme-assets/openwand-agent-task-demo.gif)
 
-**Équipe d’agents :** Déléguez un travail plus long aux rôles de coordinateur, constructeur et réviseur. L’équipe peut inspecter les fichiers du projet, effectuer une modification ciblée, lancer des vérifications et laisser un rapport final et des artefacts vérifiables pendant que vous continuez à utiliser OpenWand.
+**Équipe d'agents :** Déléguez une tâche plus longue dans l'espace de travail à des rôles de coordination, de réalisation et de révision. Pendant que vous continuez à utiliser OpenWand, l'équipe peut examiner les fichiers du projet, apporter une modification ciblée, exécuter des vérifications et fournir un rapport final ainsi que des livrables révisables.
 
 ## Flux de travail
 
 | De votre côté | Ce que fait OpenWand |
 | --- | --- |
-| Sélectionnez du texte, choisissez du contexte ou tracez une capture | Capture uniquement le contexte sélectionné ou activé |
-| Appuyez sur le raccourci d'appel et choisissez une action ou une invite personnalisée | Construit la requête du modèle à partir de votre invite et du contexte choisi |
-| Envoyez la requête | L'envoie directement à votre fournisseur de modèle configuré |
-| Attendez la réponse | Diffuse la réponse dans une bulle, avec TTS automatique optionnel |
-| Gardez des informations utiles pour plus tard | Stocke la mémoire localement seulement lorsque la mémoire est activée |
+| Surligner du texte, choisir du contexte ou tracer une capture | Capture uniquement le contexte sélectionné ou activé |
+| Appuyer sur le raccourci d'appel et choisir une action ou une invite personnalisée | Construit la requête au modèle à partir de votre invite et du contexte choisi |
+| Envoyer la requête | L'envoie directement au fournisseur de modèle configuré |
+| Attendre la réponse | Diffuse la réponse dans une bulle, avec lecture TTS automatique facultative |
+| Conserver une information utile pour plus tard | La stocke localement uniquement si la mémoire est activée |
 
-Exemples de flux :
+### Raccourcis courants
 
-| Ce que vous voulez | Ce que fait OpenWand |
+| Lorsque vous souhaitez… | Avec OpenWand |
 | --- | --- |
-| Vous voulez une explication du texte sélectionné | Lit la sélection après que vous appuyez sur le raccourci général et choisissez `W` (Qu'est-ce que c'est ?) ou `A` (Expliquer simplement), puis l'explique dans la superposition |
-| Vous voulez réécrire une phrase | Lit la phrase sélectionnée, applique l'action de réécriture choisie et peut recoller le résultat |
-| Vous devez poser votre propre question | Envoie votre invite personnalisée avec le contexte activé pour cet appelant |
-| Un élément d'interface ou une image est déroutant | Envoie la capture `Ctrl+Alt+Q` à un modèle de vision |
-| Vous voulez interroger le modèle par voix | Transcrit votre demande vocale `F9` et l'envoie comme requête au modèle |
-| Vous voulez dicter dans une autre application | Transcrit votre voix `F8` directement dans le champ de texte ciblé |
+| **Comprendre le texte sélectionné** | Sélectionnez-le, ouvrez OpenWand et choisissez `What is this?` ou `Explain simply`. |
+| **Reformuler sans copier-coller** | Sélectionnez le texte, choisissez une reformulation, vérifiez-la, puis recollez la version acceptée à sa place. |
+| **Poser votre propre question** | Saisissez une invite personnalisée. Le contexte activé est déjà joint ; les autres sources sont accessibles en un clic. |
+| **Interroger tout ce qui apparaît à l'écran** | Appuyez sur `Ctrl+Alt+Q`, tracez une zone autour de l'élément concerné et envoyez-la à votre modèle de vision. |
+| **Interroger sans saisir de texte** | Maintenez `F9` et parlez. OpenWand transcrit votre demande et l'envoie au modèle. |
+| **Dicter dans n'importe quelle application** | Maintenez `F8` et parlez. Vos mots apparaissent directement dans le champ de texte actif. |
+
+<a id="quick-start"></a>
 ## Démarrage rapide
 
-Il y a deux façons supportées de démarrer OpenWand.
+### Télécharger l'application
 
-### Option 1 : Application packagée
+1. Téléchargez la dernière version depuis les [versions GitHub](https://github.com/SunnyLich/OpenWand/releases).
+2. Extrayez l'archive et lancez OpenWand.
+3. Ouvrez les paramètres et connectez votre modèle.
 
-Utilisez ceci si vous voulez l'application sans cloner le dépôt ou gérer les dépendances Python.
+Vous pouvez installer OpenWand avant de choisir une connexion à un modèle. Si vous n'en avez pas encore, commencez par l'une des [plus de 20 sources d'API gratuites ou d'essai](https://sunnylich.github.io/OpenWand/#free-apis), ou connectez un modèle local.
 
-1. Téléchargez le dernier artefact pour votre plateforme depuis [GitHub Releases](https://github.com/SunnyLich/OpenWand/releases).
-2. Décompressez l'archive et démarrez l'application packagée.
-3. Ouvrez les Paramètres pour ajouter vos clés de fournisseur de modèle, paramètres vocaux et raccourcis préférés.
-
-| OS | Artefact de version | Démarrer avec |
+| Windows | macOS | Linux |
 | --- | --- | --- |
-| Windows | `OpenWand-<tag>-windows-x64.zip` | `OpenWand.exe` |
-| macOS | `OpenWand-<tag>-macos-<arch>.zip` | `OpenWand.app` |
-| Linux | `OpenWand-<tag>-linux-x64.tar.gz` | `OpenWand` |
+| `OpenWand.exe` | `OpenWand.app` | `OpenWand` |
 
-### Option 2 : Lanceur de dépôt
+### Exécuter depuis les sources
 
-Utilisez ceci si vous voulez exécuter depuis la source, développer OpenWand, ou tester la dernière extraction.
-
-Clonez le dépôt :
+OpenWand nécessite Python 3.12.
 
 ```bash
 git clone https://github.com/SunnyLich/OpenWand.git
 cd OpenWand
 ```
 
-Puis démarrez OpenWand avec le lanceur de dépôt pour votre plateforme :
+Exécutez le lanceur correspondant à votre plateforme :
 
-| OS | Démarrer avec | Source des dépendances |
+| Windows | macOS | Linux |
 | --- | --- | --- |
-| Windows | `Start OpenWand.bat` | `requirements/requirements-windows.lock` |
-| macOS | `Start OpenWand.command` | `requirements/requirements-macos.lock` |
-| Linux | `Start OpenWand.sh` | `requirements/requirements-linux.lock` |
+| `Start OpenWand.bat` | `Start OpenWand.command` | `Start OpenWand.sh` |
 
-Le premier lancement provisionne l'environnement Python et installe les dépendances. Les lancements ultérieurs vont directement dans l'application.
+Au premier lancement, l'environnement Python est préparé et les dépendances sont installées. Les lancements suivants ouvrent directement l'application.
 
-Pour construire votre propre copie packagée, voir [Construire un EXE](../docs/BUILDING_EXE.md) pour les commandes de construction locale et le flux de travail de version taguée.
+Pour empaqueter OpenWand vous-même, consultez [Créer un EXE](../docs/BUILDING_EXE.md).
 
-Prérequis :
+## Configuration requise
 
-- Python `3.12`, épinglé dans `.python-version`
-- Windows 10/11, macOS 13+, ou Linux avec X11 pour le chemin complet raccourcis/capture d'écran
-- Au moins une clé de fournisseur LLM configurée ou un serveur compatible local
+| Niveau | Configuration | Idéal pour |
+| --- | --- | --- |
+| **Minimum** | Windows 10+, macOS 13+ ou Linux X11 ; 4 Go de RAM ; 2 Go d'espace libre | Fonctions principales de la superposition avec une API cloud ou gratuite |
+| **Recommandé** | 8 Go de RAM ou plus ; 6 Go d'espace libre ou plus ; microphone pour les fonctions vocales | Reconnaissance vocale locale, filtre de confidentialité avancé facultatif de 2,8 Go et davantage de marge |
 
-Pour les journaux d'exécution complets, utilisez le lanceur de débogage correspondant :
+Les modèles d'IA locaux peuvent nécessiter beaucoup plus de RAM, de VRAM et de stockage selon le modèle. La capture d'écran, les raccourcis globaux, le recollage et la voix peuvent demander les autorisations correspondantes du système d'exploitation lorsque vous les utilisez.
 
-```text
-Start OpenWand Debug.bat
-Start OpenWand Debug.command
-Start OpenWand Debug.sh
-```
-
+<a id="configuration"></a>
 ## Configuration
 
-Utilisez la fenêtre Paramètres pour la configuration normale. Elle peut stocker les clés de fournisseur, choisir les routes de modèle, configurer la voix, exécuter une vérification de configuration, expliquer les fonctionnalités optionnelles manquantes, et afficher des avertissements pour les capacités de modèle non supportées. Les clés fournisseur et les tokens OAuth sont enregistrés dans le **trousseau du système** : Gestionnaire d'identifiants Windows, Trousseau macOS ou Secret Service/KWallet sous Linux, **pas dans un fichier de configuration en clair**.
+Utilisez la fenêtre Paramètres pour la configuration habituelle. `.env.example` sert uniquement de référence pour la configuration avancée depuis les sources.
 
-### ChatGPT / Codex et Claude CLI
+1. Ouvrez les **Paramètres**.
+2. Choisissez un moteur de conversation.
+3. Connectez votre fournisseur ou votre compte.
+4. Personnalisez le contexte, les raccourcis, la voix, la confidentialité et la mémoire.
+5. Exécutez la **Vérification de la configuration**.
 
-Le premier réglage de l’application, **Exécuter les conversations avec**, choisit le moteur pour les requêtes de la superposition comme pour la fenêtre de chat complète :
+### Choisir votre moteur
 
 | Moteur | Comportement |
 | --- | --- |
 | **OpenWand** | Utilise le fournisseur LLM et le modèle configurés dans OpenWand. |
-| **ChatGPT** | Exécute la CLI Codex installée en mode app-server et utilise votre compte ChatGPT/Codex. |
-| **Claude Agent** | Exécute le SDK Claude Agent avec l’authentification de la CLI Claude Code et utilise votre compte Claude. |
+| **ChatGPT** | Utilise le Codex CLI installé et votre compte ChatGPT/Codex. |
+| **Claude Agent** | Utilise Claude Agent avec votre compte Claude Code. |
 
-Sélectionnez ChatGPT ou Claude Agent pour afficher son état de connexion et les actions **Se connecter**, **Se déconnecter** et **Actualiser**. Le mode ChatGPT nécessite la CLI Codex ; OpenWand enregistre sa connexion Codex et ses sessions reprenables dans un profil local isolé afin qu’elles n’apparaissent pas dans votre historique Codex personnel. Claude Agent utilise le SDK inclus lorsqu’il est disponible et s’authentifie via la CLI Claude Code.
+### Contrôles des agents
 
-**Conversation envoyée à** contrôle la continuité. Choisissez **OpenWand** pour envoyer tout l’historique OpenWand local à chaque requête sans conserver de lien de continuation avec le fournisseur. Choisissez **ChatGPT** ou **Claude Agent** pour transférer l’historique une fois, enregistrer l’identifiant de session renvoyé et reprendre cette session fournisseur pour les prompts suivants. OpenWand conserve toujours une copie locale visible et sépare les historiques OpenWand, ChatGPT/Codex et Claude afin qu’un changement de moteur ne puisse pas ajouter un message à la mauvaise conversation.
+- **Continuité** — Poursuivez la conversation dans OpenWand ou reprenez-la avec ChatGPT ou Claude.
+- **Progression en direct** — Suivez les réponses, les plans, l'activité des outils, l'état des fichiers et les demandes d'autorisation.
+- **Autorisations** — Demandez confirmation avant les changements, autorisez les modifications du projet ou utilisez le mode de planification en lecture seule.
+- **Périmètre du projet** — Les écritures de l'agent restent dans le projet sélectionné ; changer de projet démarre une nouvelle session.
+- **Historique** — Importez, synchronisez facultativement ou exportez les conversations ChatGPT/Codex et Claude.
 
-Pendant le travail d’un agent, OpenWand diffuse sa réponse ainsi que chaque résumé de raisonnement visible, plan, lancement d’outil, état de commande ou de fichier et demande d’approbation exposés par le fournisseur. La chaîne de pensée privée et masquée n’est pas disponible. Un badge du fournisseur sous l’icône flottante ouvre les contrôles en direct du prochain tour : modèle, projet, mode rapide, effort de raisonnement, résumés visibles et l’un des trois modes d’autorisation — demander, autoriser les modifications dans le projet ou planification uniquement en lecture seule.
+### Bon à savoir
 
-Le projet est soit sélectionné explicitement, soit déduit de la session reprise, des pièces jointes et du contexte de fichiers, puis utilise en dernier recours le répertoire courant de OpenWand. Changer de projet démarre une nouvelle session fournisseur. L’accès en écriture de l’agent reste limité à ce projet ; Codex s’exécute également sans accès réseau dans le bac à sable de son espace de travail.
-
-Les sessions d’agent en direct constituent le parcours pris en charge. OpenWand peut aussi importer des conversations locales ChatGPT/Codex et Claude sélectionnées sans contacter les fournisseurs, synchroniser facultativement les changements à partir de l’activation de la synchronisation automatique et exporter un chat OpenWand comme nouvelle conversation fournisseur sans écraser l’historique existant. Consultez le [guide complet des agents en direct](../OpenWand%20Website/OpenWand%20Docs.html#live-agents).
-
-Pour les builds de source et les configurations avancées, `.env.example` documente les clés de configuration disponibles. Vous n'avez généralement pas besoin de les modifier manuellement.
-
-Pour les options de modèles sans coût et avec offres gratuites, voir [Sources d'API de modèles gratuites](#sources-dapi-de-modèles-gratuites).
+- Les clés des fournisseurs et les jetons OAuth sont stockés dans le trousseau du système d'exploitation, pas dans un fichier de configuration en texte brut.
+- Les réglages avancés des sources sont documentés dans `.env.example`.
+- Pour en savoir plus, consultez le [guide des agents en direct](https://sunnylich.github.io/OpenWand/#live-agents) ou parcourez les [sources d'API de modèles gratuites](https://sunnylich.github.io/OpenWand/#free-apis).
 
 ## Raccourcis par défaut
 
 | Raccourci | Action |
 | --- | --- |
-| `Ctrl+Q` sous Windows, `Ctrl+Alt+Space` sous macOS/Linux | Ouvrir le sélecteur d'action général |
-| `Ctrl+Shift+Q` sous Windows, `Ctrl+Alt+Shift+Space` sous macOS/Linux | Ouvrir le sélecteur d'action de réécriture/collage |
+| `Ctrl+Q` sous Windows, `Ctrl+Alt+Space` sous macOS/Linux | Ouvrir le sélecteur d'actions général |
+| `Ctrl+Shift+Q` sous Windows, `Ctrl+Alt+Shift+Space` sous macOS/Linux | Ouvrir le sélecteur de reformulation/recollage |
 | `Ctrl+Alt+Q` | Tracer une capture d'écran pour la vision |
 | `Alt+Q` | Ajouter la sélection actuelle au tampon de contexte |
-| `Alt+W` | Vider le tampon de contexte |
-| Maintenir `F9` | Enregistrer la voix, transcrire et interroger |
-| Maintenir `F8` | Dictée directe dans le champ de texte ciblé |
+| `Alt+W` | Effacer le tampon de contexte |
 | `F7` | Lire le texte sélectionné à voix haute |
-| `W` / `A` / `D` | Déclencher les lignes d'action intégrées |
+| Maintenir `F9` | Enregistrer la voix, transcrire et interroger |
+| Maintenir `F8` | Dicter directement dans le champ de texte actif |
+| `W` / `A` / `D` | Déclencher les actions intégrées |
 | `S` | Mode d'invite personnalisée |
-| `Échap` | Annuler le sélecteur |
+| `Esc` | Annuler le sélecteur |
 
-Chaque appelant, raccourci, étiquette, invite, source de contexte, paramètre de recoller et dimension d'interface est configurable depuis les Paramètres.
+Chaque appelant, raccourci, libellé, invite, source de contexte, réglage de recollage et dimension de l'interface est configurable depuis les Paramètres.
 
-## Extensions
+## Add-ons
 
-Profondément extensible, OpenWand se transforme avec les extensions : nouvelles fonctionnalités, nouveaux flux de travail, nouvelles possibilités. Chaque extension vit dans son propre dossier sous `addons/` avec un manifeste `addon.toml`, et s'exécute dans son propre **processus hôte Python isolé**, donc un crash, un hook lent, ou une mauvaise dépendance dans une extension ne peut pas faire tomber le worker cerveau ou toute autre extension. **Les capacités sont opt-in :** une extension ne reçoit que ce que son manifeste déclare, et les permissions manquantes sont refusées. Les extensions qui ont besoin de packages tiers obtiennent un environnement virtuel dédié que vous approuvez avant qu'il s'exécute.
+Profondément extensible, OpenWand se transforme grâce aux add-ons : nouvelles fonctionnalités, nouveaux flux de travail, nouvelles possibilités. Avant son activation, chaque add-on déclare son auteur et les accès OpenWand demandés ; une mise à jour ne redemande votre accord que si ces accès s'élargissent. Les add-ons s'exécutent dans des processus Python séparés, et les paquets déclarés par l'éditeur restent dans des environnements virtuels dédiés. Un add-on contenant du code complet conserve toutefois les permissions normales de votre compte utilisateur : n'installez que des add-ons auxquels vous faites confiance.
 
-Une extension peut s'accrocher à OpenWand à plusieurs points :
+Dans les versions portables, OpenWand crée un dossier `addons` à côté de `OpenWand.exe` si cet emplacement est accessible en écriture. Si l'application est installée dans un emplacement en lecture seule, utilisez **Gestionnaire d'add-ons -> Ouvrir le dossier des add-ons** pour ouvrir le dossier de secours accessible en écriture par l'utilisateur.
 
-- **Contexte** — lire ou réécrire l'invite et le contexte avant l'envoi d'une requête.
-- **Outils** — enregistrer des outils appelables par le modèle que le modèle peut invoquer en cours de réponse.
-- **Réponses** — observer les réponses complétées pour les journaliser, les sauvegarder ou les transmettre.
-- **Actions et raccourcis** — ajouter ses propres lignes d'action et raccourcis globaux avec des invites personnalisées.
-- **Interface** — contribuer des actions de barre d'état, des champs de paramètres et des notifications.
-- **Actions LLM** — exécuter ses propres appels de modèle limités depuis un hook ou un raccourci.
+Un add-on peut intervenir à plusieurs endroits dans OpenWand :
 
-**Ce que les extensions peuvent faire :** parce qu'une extension peut injecter du contexte, exposer des outils et réagir aux réponses, la surface est large. Quelques exemples, et le hook que chacun utilise :
+- **Contexte** - lire ou réécrire l'invite et le contexte avant l'envoi d'une requête.
+- **Outils** - enregistrer des outils que le modèle peut appeler en cours de réponse.
+- **Réponses** - observer les réponses terminées afin de les journaliser, de les enregistrer ou de les transférer.
+- **Actions et raccourcis** - ajouter ses propres actions et raccourcis globaux avec des invites personnalisées.
+- **Interface** - ajouter des actions dans la zone de notification, des champs de réglage et des notifications.
+- **Actions LLM** - exécuter ses propres appels de modèle plafonnés depuis un hook ou un raccourci.
 
-| Vous voulez... | Hook | Le manifeste a besoin de |
+**Ce que les add-ons peuvent faire :** puisqu'un add-on peut injecter du contexte, exposer des outils et réagir aux réponses, les possibilités sont nombreuses. Voici quelques exemples et le hook utilisé par chacun :
+
+| Vous souhaitez… | Hook | Besoins du manifeste |
 | --- | --- | --- |
-| Tirer votre git diff, calendrier, ou un ticket ouvert dans l'invite automatiquement | Contexte (`before_query`) | `query = "modify"` |
-| Donner au modèle un outil pour rechercher un wiki interne, interroger une base de données, appeler une API météo ou boursière, ou basculer un appareil domotique | Outils (`get_tools`) | `tools = true` (plus `[dependencies]` pour les packages) |
-| Masquer ou taguer le contexte sensible sortant pour la conformité | Contexte (`before_query`) | `query = "modify"` |
-| Ajouter chaque réponse à un journal quotidien, ou la pousser vers Notion ou Slack | Réponses (`after_response`) | `response = "read"` |
-| Ajouter une action "réécrire dans notre style maison" à une touche soutenue par sa propre invite | Actions et raccourcis | `[[intents]]` / `[[hotkeys]]`, `hotkeys = true` |
+| Ajouter automatiquement votre diff git, votre calendrier ou un ticket ouvert à l'invite | Contexte (`before_query`) | `query = "modify"` |
+| Donner au modèle un outil pour chercher dans un wiki interne, interroger une base de données, appeler une API météo ou boursière, ou contrôler un appareil domotique | Outils (`get_tools`) | `tools = true` (plus `[dependencies]` pour les paquets nécessaires) |
+| Masquer ou étiqueter le contexte sensible avant son envoi à des fins de conformité | Contexte (`before_query`) | `query = "modify"` |
+| Ajouter chaque réponse à un journal quotidien ou l'envoyer vers Notion ou Slack | Réponses (`after_response`) | `response = "read"` |
+| Ajouter une action en une touche « reformuler selon notre style » fondée sur sa propre invite | Actions et raccourcis | `[[intents]]` / `[[hotkeys]]`, `hotkeys = true` |
 
-Si vous pouvez l'écrire en Python et qu'il s'adapte à l'un des points de hook ci-dessus, vous pouvez le connecter à la même superposition pilotée par raccourcis que vous utilisez déjà.
+Si vous pouvez l'écrire en Python et que la fonctionnalité correspond à l'un des hooks ci-dessus, vous pouvez l'intégrer à la même superposition pilotée par raccourcis que vous utilisez déjà.
 
 ## Client et serveur MCP
 
 ### Client MCP : utiliser des serveurs externes dans OpenWand
 
-OpenWand est fourni avec une extension **pont MCP** (`addons/mcp_bridge`) qui agit comme client MCP : indiquez n'importe quels serveurs [Model Context Protocol](https://modelcontextprotocol.io) dans son `servers.json` et OpenWand expose toute leur boîte à outils à son modèle en tant qu'outils OpenWand. La superposition peut ainsi utiliser des capacités MCP externes sans quitter le flux de travail du bureau. Voir le [Guide des extensions](../addons/README.md) pour le contrat complet de manifeste et de hook, ou la page **Extensions** sur le [site de documentation OpenWand](../OpenWand%20Website/OpenWand%20Docs.html).
+OpenWand inclut un add-on **MCP bridge** (`addons/mcp_bridge`) qui joue le rôle de client MCP : répertoriez des serveurs [Model Context Protocol](https://modelcontextprotocol.io) dans son fichier `servers.json`, et OpenWand expose l'ensemble de leurs outils à son modèle sous forme d'outils OpenWand. La superposition peut ainsi employer des fonctions MCP externes sans quitter le bureau. Consultez le [guide des add-ons](../addons/README.md) pour le contrat complet des manifestes et hooks, ou la [documentation des Add-ons](https://sunnylich.github.io/OpenWand/#addons).
 
-### Serveur MCP : serveur de contexte OpenWand
+### Serveur MCP : OpenWand Context Server
 
-OpenWand inclut également un **serveur MCP stdio local** nommé **OpenWand Context Server**. Des clients MCP de confiance tels que Claude Desktop, Cursor et Codex peuvent le lancer pour lire le contexte actif du bureau ; l'application OpenWand n'a pas besoin de rester ouverte.
+OpenWand fournit également un **serveur MCP stdio** local nommé **OpenWand Context Server**. Les clients MCP de confiance, tels que Claude Desktop, Cursor et Codex, peuvent le lancer pour lire le contexte actif du bureau ; l'application OpenWand n'a pas besoin de rester ouverte.
 
-Il fournit cinq outils en lecture seule :
+#### Outils
 
-- `get_selected_text` : le texte actuellement sélectionné sur le bureau.
-- `get_clipboard` : le texte du presse-papiers.
-- `get_active_window` : l'application active, le titre de la fenêtre et, lorsqu'elle est disponible, l'URL du navigateur.
-- `read_browser_page` : le texte de la page visible dans le navigateur.
-- `take_screen_snip` : une capture de l'écran principal.
+OpenWand Context Server propose cinq outils en lecture seule :
 
-### Connecter un client
+- `get_selected_text` — le texte actuellement sélectionné sur le bureau.
+- `get_clipboard` — le texte du presse-papiers.
+- `get_active_window` — l'application active, le titre de la fenêtre et, s'il est disponible, l'URL du navigateur.
+- `read_browser_page` — le texte de la page visible dans le navigateur.
+- `take_screen_snip` — une capture d'écran du moniteur principal.
 
-Démarrez OpenWand une fois, puis copiez l'entrée `mcpServers` de `addons/mcp_bridge/claude_config_snippet.json` dans la configuration de votre client MCP. OpenWand génère cet extrait avec le chemin local correct vers son propre interpréteur Python et `addons/mcp_bridge/context_server.py` ; ne le remplacez pas par le Python du système. Consultez le [guide de configuration du serveur MCP Bridge](../addons/mcp_bridge/README.md) pour les notes propres à chaque plateforme et le dépannage.
+#### Connecter un client
 
-N'enregistrez le serveur qu'auprès de clients de confiance : les résultats des outils peuvent contenir du texte sélectionné, le contenu du presse-papiers, le contenu du navigateur et des captures de votre bureau.
+Lancez OpenWand une fois, puis copiez l'entrée `mcpServers` de `addons/mcp_bridge/claude_config_snippet.json` dans la configuration de votre client MCP. OpenWand génère cet extrait avec le chemin local correct vers son propre interpréteur Python et `addons/mcp_bridge/context_server.py` ; ne le remplacez pas par le Python du système. Consultez le [guide de configuration du serveur MCP Bridge](../addons/mcp_bridge/README.md) pour les remarques propres aux plateformes et le dépannage.
 
+Enregistrez le serveur uniquement auprès de clients de confiance : les résultats des outils peuvent contenir le texte sélectionné, le contenu du presse-papiers, le contenu du navigateur et des captures d'écran de votre bureau.
+
+<a id="privacy-and-control"></a>
 ## Confidentialité et contrôle
 
-OpenWand est conçu comme un assistant de bureau local. **Le stockage reste sur votre machine**, et les requêtes vont directement au fournisseur de modèle ou au serveur local que vous configurez.
+OpenWand ne possède aucune couche de stockage hébergée.
 
-- **Les données locales restent locales :** les paramètres, les chats, la mémoire, les rapports de confidentialité et la configuration sont stockés sur votre machine.
-- **Clés dans le trousseau du système :** les clés fournisseur et les tokens OAuth sont stockés dans le stockage sécurisé de mots de passe intégré à Windows, macOS ou votre bureau Linux.
-- **Requêtes directes :** les requêtes de modèle vont directement de votre machine au fournisseur ou serveur local que vous avez configuré.
-- **Vous choisissez ce qui est envoyé :** votre fournisseur de modèle configuré reçoit uniquement l'invite que vous envoyez et les sources de contexte sélectionnées ou activées pour cet appelant.
-- **Les aperçus restent locaux :** OpenWand peut inspecter le contexte disponible localement pour afficher des estimations de tokens, la disponibilité et les comptes de suppression de confidentialité avant que vous envoyiez. Prévisualiser une source ne l'envoie pas au fournisseur de modèle ni ne la sauvegarde en tant que chat/mémoire.
-- **Les outils de conversation externe restent locaux :** l’importation et la synchronisation ultérieure lisent les historiques locaux sans contacter les services des fournisseurs. L’exportation crée une nouvelle conversation fournisseur sans écraser l’historique existant.
-- **Contexte contrôlé par raccourci :** le contexte d'application ambiant, le presse-papiers, les documents, les pages de navigateur, le contexte GitHub, la mémoire, les outils et les captures d'écran peuvent chacun être activés, désactivés ou routés à la demande.
-- **Inactif tant que non configuré :** la voix optionnelle, la lecture de documents, le contenu du navigateur, les captures d'écran, GitHub Copilot et les extensions restent inactifs jusqu'à leur configuration.
-- **Pas de connexions surprises :** le TTS cloud, les fournisseurs de modèle, les serveurs compatibles, ou GitHub Copilot ne sont contactés que lorsque vous configurez et utilisez ces fonctionnalités.
-- **Extensions isolées :** les extensions s'exécutent dans des processus hôtes Python isolés et doivent déclarer les capacités dont elles ont besoin.
-- **Vérifications de configuration légères :** les piles de fournisseur, d'audio ou de STT lourdes ne sont importées que si la fonctionnalité est activée.
+| Domaine | Ce qui se passe |
+| --- | --- |
+| Données locales | Les paramètres, chats, mémoires, rapports de confidentialité et configurations restent sur votre machine. |
+| Requêtes au modèle | Votre invite et le contexte activé sont envoyés directement au fournisseur ou au serveur local choisi. |
+| Identifiants | Les clés des fournisseurs et les jetons OAuth sont stockés dans le trousseau de votre système d'exploitation. |
+| Aperçus du contexte | Les sources et estimations de jetons sont examinées localement sans être envoyées ni enregistrées. |
+| Autorisations | Les sources de contexte et les outils du modèle sont contrôlés séparément ; les fonctions facultatives restent désactivées tant qu'elles ne sont pas configurées. |
+| Add-ons | Chaque add-on s'exécute dans un processus isolé et déclare les accès dont il a besoin. |
 
-### Mode de confidentialité
+### Modes de confidentialité
 
-Les vérifications de configuration axées sur la confidentialité et les avertissements restent activés, y compris l’état de l’expurgation avant l’envoi de contexte sensible. Dans **Paramètres → Application → Mode de confidentialité**, choisissez l'un des trois modes mutuellement exclusifs : **Désactivé**, **Intégré** (par défaut) ou **Avancé**. Le mode intégré utilise des règles locales pour détecter les identifiants, les jetons, les données de paiement et d'autres secrets structurés. Le mode avancé conserve ces règles et ajoute le modèle facultatif [OpenAI Privacy Filter](https://openai.com/index/introducing-openai-privacy-filter/), exécuté entièrement sur votre ordinateur pour détecter en fonction du contexte les noms, adresses, adresses e-mail, numéros de téléphone, URL et dates privées, numéros de compte et secrets.
+| Mode | Protection |
+| --- | --- |
+| **Désactivé** | Envoie le contexte choisi sans masquage de confidentialité. |
+| **Intégré** | Détecte localement les secrets structurés, tels que les identifiants, jetons et informations de paiement. |
+| **Avancé** | Ajoute le modèle local facultatif [OpenAI Privacy Filter](https://openai.com/index/introducing-openai-privacy-filter/) pour les noms, adresses, URL privées, informations de compte et autres données sensibles. |
 
-Le modèle avancé représente un téléchargement facultatif d'environ 2,8 Go, auquel s'ajoute son environnement d'exécution local dédié. OpenWand le charge en mémoire et le préchauffe en arrière-plan au démarrage ou après l'activation du mode avancé. Le préchauffage peut prendre plusieurs dizaines de secondes sur un processeur. Si vous envoyez une requête avant la fin, elle attend ; les analyses suivantes réutilisent le modèle chargé et sont plus rapides. OpenWand remplace les passages détectés par des espaces réservés stables comme `[PERSON_1]`, peut afficher une vérification avant l'envoi, puis contrôle à nouveau le texte expurgé. Si le modèle avancé est indisponible, si la détection échoue ou s'il reste du texte sensible, OpenWand bloque l'envoi vers le cloud.
+Le mode avancé nécessite un téléchargement facultatif d'environ 2,8 Go et peut demander un temps de préchauffage. Il peut réduire les divulgations accidentelles, mais ne peut pas garantir que chaque information sensible sera détectée.
 
-### Protection contre l’injection de prompt
+### Protection contre l'injection d'invite
 
-OpenWand vérifie aussi le texte capturé pour repérer de simples tentatives de remplacer les instructions du modèle. Dans les Paramètres, vous pouvez activer la détection et choisir si OpenWand vous avertit avant l’envoi afin de continuer ou d’annuler.
+Lorsqu'elle est activée, OpenWand recherche dans le texte capturé les tentatives de remplacement des instructions du modèle et vous permet de continuer ou d'annuler avant l'envoi.
 
-Le filtrage de confidentialité réduit les divulgations accidentelles ; il ne garantit ni l'anonymisation ni la conformité réglementaire.
+Pour signaler une vulnérabilité, consultez la [Politique de sécurité](../SECURITY.md). N'incluez pas de détails sur la vulnérabilité, d'identifiants, de contexte capturé ou de journaux privés dans une issue publique.
 
-## Problèmes connus
-
-[Problèmes connus](https://sunnylich.github.io/OpenWand/#known-issues)
-
+<a id="platform-status"></a>
 ## État des plateformes
 
 | Plateforme | État |
 | --- | --- |
-| Windows 10+ | Supporté |
-| macOS 13+ | Supporté* |
-| Linux X11 | Supporté |
-| Linux Wayland | En cours - nous travaillons sur la prise en charge de Wayland |
+| Windows 10+ | Pris en charge |
+| macOS 13+ | Pris en charge* |
+| Linux X11 | Pris en charge |
+| Linux Wayland | En cours — la prise en charge de Wayland est en développement |
 
-*Cette application n'a été testée sur macOS que pendant deux semaines de développement principal, et je ne peux plus la tester ensuite en raison d'un accès matériel limité. Si vous trouvez des bugs sur macOS, veuillez créer une issue dans ce dépôt et je ferai de mon mieux pour les corriger. Mieux encore, si vous pouvez fournir une solution, veuillez créer une pull request.
+*Cette application n'a été testée sous macOS que pendant deux semaines de développement majeur. Mon accès limité au matériel ne me permet plus de la tester. Si vous trouvez des bugs sous macOS, ouvrez une issue dans ce dépôt et je ferai de mon mieux pour les corriger. Mieux encore, si vous pouvez proposer une solution, ouvrez une pull request.
 
-## Retours et aide aux plateformes
+## Aide et retours
 
-Les rapports de bugs sont bienvenus, en particulier pour les comportements de bureau qui dépendent des permissions OS, des gestionnaires de fenêtres, des périphériques audio ou des serveurs d'affichage. Si vous rencontrez un crash, une permission manquante, un raccourci cassé, un problème de capture, un échec de collage, ou un avertissement de vérification de configuration qui semble incorrect, veuillez ouvrir un problème avec votre version d'OS, lanceur, journaux, et l'action qui l'a déclenché.
+- [Résoudre les problèmes courants](https://sunnylich.github.io/OpenWand/#common-issues)
+- [Signaler un bug](https://github.com/SunnyLich/OpenWand/issues/new?template=bug_report.yml)
+- [Poser une question de configuration ou d'utilisation](https://github.com/SunnyLich/OpenWand/discussions/categories/q-a)
+- [Suggérer une fonctionnalité](https://github.com/SunnyLich/OpenWand/discussions/categories/ideas)
 
-Les journaux se trouvent dans le dossier `build_logs/`.
+Pour signaler un bug, indiquez la version du système, le lanceur, les journaux et l'action qui l'a déclenché. Les journaux peuvent contenir du texte capturé ; supprimez les identifiants et les informations personnelles avant de les partager.
 
-Nous travaillons actuellement sur la prise en charge de Linux Wayland, et l'aide pour la tester ou l'améliorer est particulièrement utile. Les tests de la prise en charge macOS sont aussi bienvenus ; ces plateformes ont le plus de cas limites d'intégration native, donc les rapports réels de différentes machines, environnements de bureau et états de permission rendent OpenWand meilleur pour tout le monde.
+Nous travaillons actuellement à la prise en charge de Linux Wayland ; toute aide pour la tester ou l'améliorer est particulièrement utile. Les tests sous macOS sont également les bienvenus. Ces plateformes présentent le plus de cas limites liés aux intégrations natives : les retours réels provenant de machines, d'environnements de bureau et d'états d'autorisation différents rendent OpenWand meilleur pour tout le monde.
 
-Si vous voulez soutenir ce projet et sa mission plus large, vous pouvez contribuer directement au développement ou faire un don [ici](https://buymeacoffee.com/sunnylich).
+Pour soutenir ce projet et sa mission plus large, vous pouvez contribuer directement au développement ou faire un don [ici](https://buymeacoffee.com/sunnylich).
 
 <details>
-<summary>Documentation des contributeurs</summary>
+<summary>Documentation destinée aux contributeurs</summary>
 
-- [README développeur](../docs/DEVELOPER_README.md) — configuration, points d'entrée d'exécution, vérifications et notes de débogage.
-- [Vue d'ensemble du code](../docs/OVERVIEW.md) — propriété des sous-systèmes et limites d'exécution.
-- [Guide des extensions](../addons/README.md) — manifeste d'extension, permissions, hooks, outils, raccourcis et empaquetage.
-- [Construire un EXE](../docs/BUILDING_EXE.md) — notes d'empaquetage Windows.
+- [README développeur](../docs/DEVELOPER_README.md) - configuration, points d'entrée d'exécution, vérifications et notes de débogage.
+- [Vue d'ensemble du code](../docs/OVERVIEW.md) - responsabilités des sous-systèmes et limites d'exécution.
+- [Guide des add-ons](../addons/README.md) - manifeste, autorisations, hooks, outils, raccourcis et empaquetage des add-ons.
+- [Créer un EXE](../docs/BUILDING_EXE.md) - remarques sur l'empaquetage Windows.
 
 </details>
 
-
-
+<a id="free-model-api-sources"></a>
 ## Sources d'API de modèles gratuites
 
-OpenWand est gratuit, et vous pouvez aussi maintenir vos coûts de modèle à zéro. Plusieurs fournisseurs offrent un niveau vraiment gratuit, des crédits mensuels gratuits, ou un accès limité en débit sans coût. OpenWand atteint la plupart d'entre eux via son client compatible OpenAI — quelques-uns ont une valeur `LLM_PROVIDER` dédiée, et le reste fonctionne via le point de terminaison `custom` en pointant `CUSTOM_BASE_URL` vers l'URL compatible OpenAI du fournisseur. Ajoutez la clé elle-même dans **Paramètres → LLM**.
+Commencez à utiliser OpenWand sans frais grâce à une API gratuite ou à un modèle hébergé localement. Notre guide répertorie plus de 20 sources d'API gratuites ou d'essai, ainsi que des options locales.
 
-| Fournisseur | Ce qui est gratuit | Bon pour |
-| --- | --- | --- |
-| OpenRouter | Modèles `:free` — ~20 req/min et 50/jour sans crédits, 1 000/jour après un rechargement unique de 10 $ ; plus un routeur `openrouter/free` | Option la plus simple "une API, plusieurs modèles" |
-| Google AI Studio | Niveau gratuit de l'API Gemini dans les régions supportées, avec limites de débit | Travail multimodal et à long contexte, y compris la vision |
-| Mistral | Niveau expérimental gratuit sur La Plateforme, limité en débit | Modèles européens conformes RGPD et appel de fonctions |
-| NVIDIA | Accès API gratuit à de nombreux modèles ouverts via le catalogue NVIDIA API | Essayer de nombreux modèles à poids ouvert sur des points de terminaison hébergés rapides |
-| GroqCloud | Niveau gratuit avec limites de débit | Inférence très rapide pour les modèles ouverts comme Llama et Qwen |
-| Cerebras Inference | Niveau API gratuit pour les modèles hébergés par Cerebras | Inférence de texte extrêmement rapide et prototypage |
-| GitHub Models | Accès sans coût limité en débit pour chaque compte GitHub | Prototypage, expériences, flux de travail intégrés GitHub |
-| Hugging Face Inference Providers | Crédits mensuels gratuits (actuellement ~0,10 $/mois pour les utilisateurs gratuits) | Essayer de nombreux modèles ouverts via un écosystème |
-| Cloudflare Workers AI | Plan gratuit Workers avec une allocation quotidienne gratuite | Applications déjà sur Cloudflare ; points de terminaison AI sans serveur |
-| Vercel AI Gateway | Niveau gratuit avec 5 $/mois de crédit de passerelle pour les modèles éligibles | Projets Next.js/Vercel ; accès compatible OpenAI unifié |
-| SambaNova Cloud | 5 $ de crédit API gratuit, sans carte de crédit requise | Inférence rapide de modèles ouverts hébergés |
-| Puter.js | Accès JS front-end à de nombreux modèles sans votre propre clé API | Applications navigateur et démos ; pas un fournisseur backend OpenWand |
-| [OmniRoute](https://github.com/diegosouzapw/OmniRoute) (passerelle locale) | Routeur open source que vous exécutez localement ; regroupe plusieurs comptes fournisseurs et offres gratuites derrière un point de terminaison compatible OpenAI, avec routage, bascule et compression optionnelle | Routez OpenWand via OmniRoute avec le point de terminaison personnalisé : `LLM_PROVIDER=custom`, `CUSTOM_BASE_URL=http://localhost:20128/v1`, un modèle comme `auto`, et la clé API du tableau de bord OmniRoute |
-| Local — Ollama / LM Studio / vLLM | Gratuit quand vous exécutez le modèle vous-même | Confidentialité, pas de facturation par token, points de terminaison locaux compatibles OpenAI |
+[Parcourir le guide des modèles gratuits →](https://sunnylich.github.io/OpenWand/#free-apis)
 
-Les niveaux gratuits sont limités en débit et changent souvent, donc ajoutez au moins une route de secours, et évitez d'envoyer du contexte sensible à des fournisseurs qui pourraient s'entraîner sur vos invites (la suppression de OpenWand s'applique toujours). Pour le guide complet de connexion et les mises en garde, voir la page **Sources d'API gratuites** sur le [site de documentation OpenWand](../OpenWand%20Website/OpenWand%20Docs.html).
-
+<a id="license"></a>
 ## Licence
 
 MIT

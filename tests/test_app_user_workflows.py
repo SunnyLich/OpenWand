@@ -2999,7 +2999,7 @@ def test_context_disabled_sources_preview_and_os_native_contract_workflow(
     ui.emit("ui.chat.context_preview", {"preview_id": "preview-all-off", "context_policy": all_off_policy})
     chips = {item["id"]: item for item in ui.last_call("ui.chat.context_preview")["params"]["context_items"]}
     assert chips["screenshot"]["state"] == "off"
-    assert chips["screenshot"]["tokens"] == "~1.1k tok"
+    assert chips["screenshot"]["tokens"] == "? tok"
     assert chips["selection"]["tokens"].startswith("~")
     assert chips["clipboard"]["tokens"].startswith("~")
     assert not native.calls_for("native.capture.fullscreen")

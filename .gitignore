@@ -39,6 +39,10 @@ secrets.*
 /reports/
 /assets/brand-concepts/
 
+# Local README drafts and duplicate capture exports
+/docs/copy-mockups/
+/OpenWand * Demo.gif
+
 # Machine-specific MCP client config snippet (regenerated at addon startup)
 addons/mcp_bridge/claude_config_snippet.json
 

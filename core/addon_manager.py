@@ -54,6 +54,8 @@ class AddonManifest:
     name: str
     version: str = "0.0.0"
     description: str = ""
+    author: str = ""
+    homepage: str = ""
     entry: str = "__init__.py"
     api_version: str = "1"
     priority: int = 100
@@ -240,10 +242,19 @@ class AddonHostProcess:
 
 class AddonManager:
     """Coordinate addon manager behavior."""
-    def __init__(self, addons_dir: Path | None = None, bundled_addons_dir: Path | None = None):
+    def __init__(
+        self,
+        addons_dir: Path | None = None,
+        bundled_addons_dir: Path | None = None,
+        *,
+        require_approval: bool | None = None,
+    ):
         """Initialize the addon manager instance."""
         self._dir = addons_dir or ADDONS_DIR
         self._bundled_addons_dir = bundled_addons_dir or BUNDLED_ADDONS_DIR
+        self._require_approval = (
+            _same_path(self._dir, ADDONS_DIR) if require_approval is None else bool(require_approval)
+        )
         self._seed_bundled_defaults = bundled_addons_dir is not None or (
             not str(os.environ.get("OPENWAND_ADDONS_DIR") or "").strip()
             and _same_path(self._dir, ADDONS_DIR)
@@ -314,6 +325,24 @@ class AddonManager:
             )
             log.error("[addons] Failed to load addon at %s:\n%s", folder, traceback.format_exc())
             _terminal(f"failed to load {folder.name}")
+
+    def _is_bundled_addon(self, folder: Path) -> bool:
+        """Return true only when a default addon's shipped code matches the bundle."""
+        if folder.name not in _DEFAULT_BUNDLED_ADDONS:
+            return False
+        source = self._bundled_addons_dir / folder.name
+        if not source.is_dir():
+            return False
+        try:
+            if source.resolve() == folder.resolve():
+                return True
+        except OSError:
+            return False
+        source_files = _bundled_code_files(source)
+        target_files = _bundled_code_files(folder)
+        if source_files.keys() != target_files.keys():
+            return False
+        return all(source_files[name] == target_files[name] for name in source_files)
 
     def on_startup(self, app_context: AppContext) -> None:
         """Handle startup events."""
@@ -668,6 +697,8 @@ class AddonManager:
         addon = self._find(name)
         if addon is None:
             raise ValueError(f"Addon not loaded: {name}")
+        if self._access_status(addon).get("needs_approval"):
+            raise PermissionError(f"Review this addon's access before installing its components: {name}")
         if addon.host is not None:
             addon.host.stop()
             addon.host = None
@@ -676,10 +707,6 @@ class AddonManager:
                 addon.id,
                 addon.manifest.dependencies,
                 force=True,
-            )
-            addon_store.set_approved_dependency_hash(
-                addon.id,
-                addon_runtime.dependency_hash(addon.manifest.dependencies),
             )
             addon.runtime_status = self._runtime_status(addon)
             addon.error = ""
@@ -697,6 +724,43 @@ class AddonManager:
                     _call_host(addon, "on_startup", {"data_dir": str(_data_dir(addon.id))}, timeout=3.0)
                 self._register_tools(addon)
         return addon.runtime_status
+
+    def approve_addon(self, name: str) -> dict[str, Any]:
+        """Accept the addon's current access claims and activate it."""
+        addon = self._find(name)
+        if addon is None:
+            raise ValueError(f"Addon not loaded: {name}")
+        claims = addon_access_claims(addon.manifest)
+        addon_store.set_approved_access(
+            addon.id,
+            [claim["id"] for claim in claims],
+            author=addon.manifest.author,
+        )
+        if addon.enabled and addon.manifest.dependencies.has_dependencies:
+            status = addon_runtime.environment_status(addon.id, addon.manifest.dependencies)
+            if not status.get("ready"):
+                try:
+                    addon.runtime_status = addon_runtime.provision_environment(
+                        addon.id,
+                        addon.manifest.dependencies,
+                    )
+                except Exception as exc:
+                    addon.runtime_status = addon_runtime.environment_status(
+                        addon.id,
+                        addon.manifest.dependencies,
+                    )
+                    addon.runtime_status["error"] = str(exc)
+                    addon.error = f"Addon components failed to install: {exc}"
+                    addon.status = "needs_dependencies"
+                    return self.payload(addon, refresh_host=False, resolve_dynamic_options=False)
+        if addon.enabled:
+            self._activate_addon(addon)
+            if self._tool_registry is not None:
+                self._tool_registry.unregister_source(f"addon:{addon.id}")
+                if addon.host is not None:
+                    _call_host(addon, "on_startup", {"data_dir": str(_data_dir(addon.id))}, timeout=3.0)
+                self._register_tools(addon)
+        return self.payload(addon, refresh_host=False, resolve_dynamic_options=False)
 
     def get_settings(
         self,
@@ -827,6 +891,8 @@ class AddonManager:
         return {
             "id": addon.id,
             "name": addon.name,
+            "author": addon.manifest.author,
+            "homepage": addon.manifest.homepage,
             "path": str(addon.path),
             "status": addon.status,
             "enabled": bool(addon.enabled),
@@ -849,6 +915,8 @@ class AddonManager:
                 "packages": list(addon.manifest.dependencies.packages),
             },
             "runtime": dict(addon.runtime_status or self._runtime_status(addon)),
+            "approval": self._access_status(addon),
+            "disk": _addon_disk_usage(addon),
             "description": addon.manifest.description,
             "error": addon.error,
             "logs": addon.host.log_text() if addon.host is not None else "",
@@ -894,19 +962,20 @@ class AddonManager:
             addon.host = None
         addon.runtime_status = self._runtime_status(addon)
         addon.runtime_python = None
+        access_status = self._access_status(addon)
+        if access_status.get("needs_approval"):
+            addon.status = "needs_approval"
+            addon.error = "Review this addon's author and requested access before activation."
+            addon.host = None
+            addon.hooks = []
+            addon.tray_actions = []
+            addon.tools = []
+            addon.intents = []
+            addon.notifications = []
+            addon.hotkeys = []
+            addon.settings = []
+            return False
         if addon.manifest.dependencies.has_dependencies:
-            if addon.runtime_status.get("needs_approval"):
-                addon.status = "needs_approval"
-                addon.error = str(addon.runtime_status.get("error") or "Dependency package list needs approval.")
-                addon.host = None
-                addon.hooks = []
-                addon.tray_actions = []
-                addon.tools = []
-                addon.intents = []
-                addon.notifications = []
-                addon.hotkeys = []
-                addon.settings = []
-                return False
             if not addon.runtime_status.get("ready"):
                 addon.status = "needs_dependencies"
                 addon.error = str(addon.runtime_status.get("error") or "Dependency environment is not ready.")
@@ -961,19 +1030,145 @@ class AddonManager:
 
     def _runtime_status(self, addon: LoadedAddon) -> dict[str, Any]:
         """Handle runtime status for addon manager."""
-        status = addon_runtime.environment_status(addon.id, addon.manifest.dependencies)
-        if not addon.manifest.dependencies.has_dependencies:
-            status["approved"] = True
-            status["needs_approval"] = False
-            return status
-        expected = addon_runtime.dependency_hash(addon.manifest.dependencies)
-        approved = addon_store.approved_dependency_hash(addon.id) == expected
-        status["approved"] = approved
-        status["needs_approval"] = not approved
-        if not approved:
-            status["ready"] = False
-            status["error"] = "Dependency package list needs approval."
-        return status
+        return addon_runtime.environment_status(addon.id, addon.manifest.dependencies)
+
+    def _access_status(self, addon: LoadedAddon) -> dict[str, Any]:
+        """Return current and newly requested access without importing addon code."""
+        claims = addon_access_claims(addon.manifest)
+        approved = addon_store.approved_access_ids(addon.id)
+        current_ids = {claim["id"] for claim in claims}
+        needs_review = self._require_approval and not self._is_bundled_addon(addon.path)
+        new_ids = current_ids - approved if needs_review else set()
+        return {
+            "approved": not new_ids,
+            "needs_approval": bool(new_ids),
+            "access": claims,
+            "new_access": [claim for claim in claims if claim["id"] in new_ids],
+            "full_trust": True,
+        }
+
+
+_PERMISSION_LABELS = {
+    "query:read": "Read prompts and gathered context",
+    "query:modify": "Read and change prompts or gathered context",
+    "response:read": "Read AI responses",
+    "response:modify": "Read and change AI responses",
+    "tools": "Add tools the AI can call",
+    "llm": "Send requests through your configured AI services",
+    "hotkeys": "Register global hotkeys",
+    "ui:tray": "Add controls to the system tray",
+    "ui:settings": "Add settings to OpenWand",
+    "ui:intents": "Add commands to the prompt menu",
+    "ui:notifications": "Show notifications",
+    "ui:text_annotations": "Add labels to displayed text",
+    "ui:text_context_menu": "Add actions to text menus",
+    "ui:message_actions": "Add actions to AI messages",
+    "ui:message_presentations": "Change how AI messages are presented",
+    "action:text": "Use text supplied to an addon action",
+    "action:files": "Access files through an addon action",
+    "action:internet": "Access the internet through an addon action",
+    "action:programs": "Control programs through an addon action",
+}
+
+
+def addon_access_claims(manifest: AddonManifest) -> list[dict[str, str]]:
+    """Build stable, human-readable access claims from manifest-only data."""
+    claim_ids: set[str] = {"full_code"}
+    permissions = manifest.permissions
+    for key, value in permissions.items():
+        permission = str(key).strip().casefold()
+        if not permission or value is False or value is None or str(value).strip().casefold() in {"", "none", "false"}:
+            continue
+        if permission in {"query", "response"}:
+            mode = str(value).strip().casefold()
+            if mode in {"read", "modify"}:
+                claim_ids.add(f"{permission}:{mode}")
+            continue
+        if permission == "ui":
+            if isinstance(value, list):
+                claim_ids.update(f"ui:{str(item).strip().casefold()}" for item in value if str(item).strip())
+            elif bool(value):
+                claim_ids.add("ui:all")
+            continue
+        if bool(value):
+            claim_ids.add(permission)
+    for action in manifest.actions:
+        claim_ids.update(f"action:{item.value}" for item in action.access)
+
+    claims: list[dict[str, str]] = []
+    for claim_id in sorted(claim_ids):
+        if claim_id == "full_code":
+            label = "Run addon code with your user account's access"
+        else:
+            label = _PERMISSION_LABELS.get(claim_id, _humanize_access_id(claim_id))
+        claims.append({"id": claim_id, "label": label})
+    return claims
+
+
+def _humanize_access_id(claim_id: str) -> str:
+    """Turn an uncommon manifest claim into a readable fallback label."""
+    return claim_id.replace(":", " ").replace("_", " ").strip().capitalize()
+
+
+def _addon_disk_usage(addon: LoadedAddon) -> dict[str, Any]:
+    """Return current on-disk size, including the private environment when present."""
+    addon_bytes = _directory_size(addon.path)
+    environment = addon_runtime.env_path(addon.id)
+    environment_bytes = _directory_size(environment) if environment.exists() else 0
+    total = addon_bytes + environment_bytes
+    dependencies_pending = bool(
+        addon.manifest.dependencies.has_dependencies
+        and not addon_runtime.environment_status(addon.id, addon.manifest.dependencies).get("ready")
+    )
+    return {
+        "addon_bytes": addon_bytes,
+        "environment_bytes": environment_bytes,
+        "total_bytes": total,
+        "label": _format_bytes(total),
+        "dependencies_pending": dependencies_pending,
+    }
+
+
+def _directory_size(path: Path) -> int:
+    """Best-effort recursive directory size without following symlinks."""
+    total = 0
+    try:
+        for root, dirs, files in os.walk(path, followlinks=False):
+            dirs[:] = [name for name in dirs if not (Path(root) / name).is_symlink()]
+            for name in files:
+                target = Path(root) / name
+                if target.is_symlink():
+                    continue
+                try:
+                    total += target.stat().st_size
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return total
+
+
+def _bundled_code_files(path: Path) -> dict[str, bytes]:
+    """Read the Python/TOML surface used to identify an untouched bundled addon."""
+    files: dict[str, bytes] = {}
+    try:
+        for target in sorted(path.rglob("*")):
+            if not target.is_file() or target.is_symlink() or target.suffix.casefold() not in {".py", ".toml"}:
+                continue
+            files[target.relative_to(path).as_posix()] = target.read_bytes()
+    except OSError:
+        return {}
+    return files
+
+
+def _format_bytes(value: int) -> str:
+    """Format byte counts for the addon review UI."""
+    size = float(max(0, value))
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024.0 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} GB"
 
 
 def load_manifest(folder: Path) -> AddonManifest:
@@ -1004,6 +1199,8 @@ def load_manifest(folder: Path) -> AddonManifest:
         name=str(plugin.get("name") or folder.name),
         version=str(plugin.get("version") or "0.0.0"),
         description=str(plugin.get("description") or ""),
+        author=str(plugin.get("author") or plugin.get("publisher") or "").strip(),
+        homepage=str(plugin.get("homepage") or plugin.get("website") or "").strip(),
         entry=str(plugin.get("entry") or "__init__.py"),
         api_version=str(plugin.get("api_version") or "1"),
         priority=_safe_int(plugin.get("priority"), 100),

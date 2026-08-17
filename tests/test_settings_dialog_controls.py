@@ -5756,12 +5756,15 @@ def test_settings_preset_marks_reviewable_changes_without_saving(isolated_defaul
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
-def test_low_setup_preset_uses_chatgpt_oauth_routes():
+def test_low_setup_preset_uses_chatgpt_oauth_routes(tmp_path, monkeypatch):
     """Verify low setup preset only needs ChatGPT OAuth for model routes."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
-    from ui.settings_panel.dialog import SettingsDialog
+    from ui.settings_panel import dialog as settings_dialog
+
+    monkeypatch.setattr(settings_dialog, "ENV_PATH", tmp_path / ".env")
+    SettingsDialog = settings_dialog.SettingsDialog
 
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = SettingsDialog()

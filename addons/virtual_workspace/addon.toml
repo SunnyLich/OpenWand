@@ -2,6 +2,8 @@
 id = "virtual-workspace"
 name = "Virtual Workspace (Experimental)"
 version = "0.1.0"
+author = "OpenWand"
+homepage = "https://sunnylich.github.io/OpenWand/"
 description = "Gives OpenWand an isolated file workspace with a local live viewer, audit trail, and user control handoff."
 entry = "__init__.py"
 api_version = "1"

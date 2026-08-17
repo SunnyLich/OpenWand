@@ -930,6 +930,20 @@ def brain_addons_repair_environment(addon_id: str = "") -> dict[str, Any]:
     return result if isinstance(result, dict) else {"ready": False, "error": "environment repair failed"}
 
 
+@handler("brain.addons.approve")
+def brain_addons_approve(addon_id: str = "") -> dict[str, Any]:
+    """Accept the current addon access claims and activate the addon."""
+    addon_id = addon_id.strip()
+    if not addon_id:
+        raise ValueError("addon_id is required")
+    from core.system.paths import ADDONS_DIR
+
+    manager = _loaded_addon_manager(Path(ADDONS_DIR))
+    result = manager.approve_addon(addon_id)
+    _publish_addon_change("approved", addon_id)
+    return result if isinstance(result, dict) else {"status": "error", "error": "addon approval failed"}
+
+
 @handler("brain.addons.install_archive")
 def brain_addons_install_archive(path: str = "") -> dict[str, Any]:
     """Install a current or legacy addon archive and reload the shared manager."""

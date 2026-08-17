@@ -1620,7 +1620,7 @@
       "production_entry_point": "context snapshot/screen metadata -> FlowController token estimates -> IntentOverlay context chips",
       "test_node_ids": [
         "tests/runtime/test_flows.py::test_intent_context_estimates_known_text_and_marks_unknown_deferred_sources",
-        "tests/runtime/test_flows.py::test_intent_screenshot_estimates_from_screen_size_without_capture",
+        "tests/runtime/test_flows.py::test_intent_screenshot_cost_is_unknown_until_snip_exists",
         "tests/test_app_user_workflows.py::test_intent_overlay_project_conversation_and_context_chip_workflow"
       ],
       "success_assertions": [
@@ -6819,21 +6819,21 @@
       "function_id": "F366",
       "function": "Install, rebuild, or repair an add-on's isolated dependencies after approval.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "Visible Install/Repair/Approve env button -> exact dependency confirmation -> isolated environment provision/rebuild -> add-on reactivation",
+      "production_entry_point": "Visible Review access button -> author/access/disk confirmation -> stored access claims -> optional private environment provision -> add-on activation",
       "test_node_ids": [
-        "tests/test_addon_manager_ui.py::test_repair_environment_requires_approval",
-        "tests/test_addon_manager.py::test_repair_environment_approves_current_dependency_hash",
-        "tests/test_addon_runtime.py::AddonRuntimeProvisionTests::test_force_provision_restores_existing_environment_when_rebuild_fails",
-        "tests/test_addon_runtime.py::AddonRuntimeProvisionTests::test_force_provision_discards_backup_after_successful_rebuild"
+        "tests/test_addon_manager_ui.py::test_addon_review_shows_author_access_and_disk_without_package_judgment",
+        "tests/test_addon_manager.py::test_addon_access_review_uses_author_and_blocks_code_until_approved",
+        "tests/test_addon_manager.py::test_addon_update_only_reprompts_when_access_expands",
+        "tests/test_addon_runtime.py::AddonRuntimeProvisionTests::test_force_provision_restores_existing_environment_when_rebuild_fails"
       ],
       "success_assertions": [
-        "Decline performs no install; confirmation names packages/Python/env and approves the exact dependency hash; rebuild failure restores the prior environment while success activates the replacement."
+        "The review names the self-declared author, requested access, disk use, and full-code trust boundary without asking the user to judge packages; unchanged access stays approved, expanded access asks again, and environment repair failures remain controlled."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
         "I161"
       ],
-      "audit_note": "Package installation is a deterministic provision boundary; visible approval, hash/state, atomic backup, and manager reactivation are real."
+      "audit_note": "Addon trust/access approval is distinct from deterministic dependency provisioning; access state, host activation, and atomic environment repair are real."
     },
     {
       "function_id": "F367",

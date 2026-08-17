@@ -4218,6 +4218,46 @@ Escribir automáticamente — aplicar las ediciones sin preguntar.</translation>
     <message><source>GitHub sign-in check returned no account. Sign in again.</source><translation>La comprobación de GitHub no devolvió ninguna cuenta. Vuelve a iniciar sesión.</translation></message>
     <message><source>Could not reach {provider} to verify sign-in: {error}</source><translation>No se pudo contactar con {provider} para verificar la sesión: {error}</translation></message>
     <message><source>{provider} sign-in check failed (HTTP {status}).</source><translation>La comprobación de inicio de sesión de {provider} falló (HTTP {status}).</translation></message>
+    <message><source>Review access</source><translation>Revisar acceso</translation></message>
+    <message><source>Review the addon author and requested access before activation</source><translation>Revisa el autor del addon y el acceso solicitado antes de activarlo</translation></message>
+    <message><source>Author:</source><translation>Autor:</translation></message>
+    <message><source>Unknown author</source><translation>Autor desconocido</translation></message>
+    <message><source>Declared access:</source><translation>Acceso declarado:</translation></message>
+    <message><source>Addon Approval</source><translation>Aprobación del addon</translation></message>
+    <message><source>Addon approved and ready.</source><translation>Addon aprobado y listo.</translation></message>
+    <message><source>Addon approved, but it is not ready yet.</source><translation>Addon aprobado, pero aún no está listo.</translation></message>
+    <message><source>self-declared</source><translation>declarado por el autor</translation></message>
+    <message><source>Requested access:</source><translation>Acceso solicitado:</translation></message>
+    <message><source>Current disk use:</source><translation>Uso actual del disco:</translation></message>
+    <message><source>Additional components will use more disk space.</source><translation>Los componentes adicionales utilizarán más espacio en disco.</translation></message>
+    <message><source>Full-code addons run with your normal user permissions. Only approve addons you trust.</source><translation>Los addons con código completo se ejecutan con los permisos normales de tu usuario. Aprueba solo addons de confianza.</translation></message>
+    <message><source>Approve and activate this addon?</source><translation>¿Aprobar y activar este addon?</translation></message>
+    <message><source>Review Addon Access</source><translation>Revisar acceso del addon</translation></message>
+    <message><source>Run addon code with your user account's access</source><translation>Ejecutar código del addon con el acceso de tu cuenta de usuario</translation></message>
+    <message><source>Read prompts and gathered context</source><translation>Leer peticiones y contexto recopilado</translation></message>
+    <message><source>Read and change prompts or gathered context</source><translation>Leer y cambiar peticiones o contexto recopilado</translation></message>
+    <message><source>Read AI responses</source><translation>Leer respuestas de la IA</translation></message>
+    <message><source>Read and change AI responses</source><translation>Leer y cambiar respuestas de la IA</translation></message>
+    <message><source>Add tools the AI can call</source><translation>Añadir herramientas que la IA puede utilizar</translation></message>
+    <message><source>Send requests through your configured AI services</source><translation>Enviar solicitudes mediante tus servicios de IA configurados</translation></message>
+    <message><source>Register global hotkeys</source><translation>Registrar atajos globales</translation></message>
+    <message><source>Add controls to the system tray</source><translation>Añadir controles a la bandeja del sistema</translation></message>
+    <message><source>Add settings to OpenWand</source><translation>Añadir ajustes a OpenWand</translation></message>
+    <message><source>Add commands to the prompt menu</source><translation>Añadir comandos al menú de peticiones</translation></message>
+    <message><source>Show notifications</source><translation>Mostrar notificaciones</translation></message>
+    <message><source>Add labels to displayed text</source><translation>Añadir etiquetas al texto mostrado</translation></message>
+    <message><source>Add actions to text menus</source><translation>Añadir acciones a los menús de texto</translation></message>
+    <message><source>Add actions to AI messages</source><translation>Añadir acciones a los mensajes de la IA</translation></message>
+    <message><source>Change how AI messages are presented</source><translation>Cambiar cómo se presentan los mensajes de la IA</translation></message>
+    <message><source>Use text supplied to an addon action</source><translation>Usar texto proporcionado a una acción del addon</translation></message>
+    <message><source>Access files through an addon action</source><translation>Acceder a archivos mediante una acción del addon</translation></message>
+    <message><source>Access the internet through an addon action</source><translation>Acceder a Internet mediante una acción del addon</translation></message>
+    <message><source>Control programs through an addon action</source><translation>Controlar programas mediante una acción del addon</translation></message>
+    <message><source>Unknown</source><translation>Desconocido</translation></message>
+    <message><source>Show context</source><translation>Mostrar contexto</translation></message>
+    <message><source>Show the full context attached to this message.</source><translation>Mostrar todo el contexto adjunto a este mensaje.</translation></message>
+    <message><source>Hide context</source><translation>Ocultar contexto</translation></message>
+    <message><source>Hide the attached context.</source><translation>Ocultar el contexto adjunto.</translation></message>
   </context>
   <context>
     <name>OpenWand</name>

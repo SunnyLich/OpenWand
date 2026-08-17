@@ -5,6 +5,8 @@
 id = "mcp-bridge"
 name = "MCP Bridge"
 version = "1.1.0"
+author = "OpenWand"
+homepage = "https://sunnylich.github.io/OpenWand/"
 description = "MCP both ways: connects to MCP servers in servers.json as a client, and serves OpenWand's desktop context (selection, clipboard, browser, screen) to external MCP clients via context_server.py."
 entry = "__init__.py"
 api_version = "1"

@@ -33,15 +33,11 @@ _TRUE = {"1", "true", "yes", "on"}
 
 def _runtime_action_label(runtime: dict) -> str:
     """Return the dependency action label for an addon."""
-    if runtime.get("needs_approval"):
-        return t("Approve env")
     return t("Repair env") if runtime.get("ready") else t("Install env")
 
 
 def _runtime_summary(runtime: dict) -> str:
     """Return a short dependency status summary for an addon."""
-    if runtime.get("needs_approval"):
-        return t("Dependency env: needs approval")
     return t("Dependency env: ready") if runtime.get("ready") else t("Dependency env: needs install")
 
 
@@ -163,8 +159,18 @@ class AddonManagerDialog(QDialog):
         settings = addon.get("settings") or []
         logs = str(addon.get("logs") or "")
         runtime = addon.get("runtime") if isinstance(addon.get("runtime"), dict) else {}
-        packages = [str(p) for p in (runtime.get("packages") or [])]
+        approval = addon.get("approval") if isinstance(addon.get("approval"), dict) else {}
         has_dependencies = str(runtime.get("tier") or "1") == "2"
+
+        if approval.get("needs_approval"):
+            approve_btn = QPushButton(t("Review access"))
+            approve_btn.setToolTip(t("Review the addon author and requested access before activation"))
+
+            def _review_addon(_checked=False, _addon=addon):
+                self._approve_addon(_addon)
+
+            approve_btn.clicked.connect(_review_addon)
+            name_row.addWidget(approve_btn)
 
         settings_btn = QPushButton(t("Settings"))
         settings_btn.setToolTip(t("Open this addon's settings"))
@@ -186,7 +192,7 @@ class AddonManagerDialog(QDialog):
         logs_btn.clicked.connect(_open_addon_logs)
         name_row.addWidget(logs_btn)
 
-        if has_dependencies:
+        if has_dependencies and not approval.get("needs_approval"):
             repair_btn = QPushButton(_runtime_action_label(runtime))
             repair_btn.setToolTip(t("Install or rebuild this addon's dependency environment"))
 
@@ -205,6 +211,11 @@ class AddonManagerDialog(QDialog):
             desc_lbl.setWordWrap(True)
             desc_lbl.setStyleSheet("font-size: 8pt; opacity: 0.65;")
             layout.addWidget(desc_lbl)
+
+        author = str(addon.get("author") or "").strip() or t("Unknown author")
+        author_lbl = QLabel(f"{t('Author:')} {author}")
+        author_lbl.setStyleSheet("font-size: 8pt; opacity: 0.65;")
+        layout.addWidget(author_lbl)
 
         path = str(addon.get("path") or "")
         if path:
@@ -247,16 +258,15 @@ class AddonManagerDialog(QDialog):
             action_row.addWidget(toggle)
             layout.addLayout(action_row)
 
-        permissions = addon.get("permissions") or {}
-        if permissions:
-            perms_lbl = QLabel(t("Permissions: ") + ", ".join(sorted(str(k) for k in permissions.keys())))
+        access = [t(str(item.get("label") or "")) for item in (approval.get("access") or []) if isinstance(item, dict)]
+        if access:
+            perms_lbl = QLabel(t("Declared access:") + " " + "; ".join(access))
+            perms_lbl.setWordWrap(True)
             perms_lbl.setStyleSheet("font-size: 8pt; opacity: 0.55;")
             layout.addWidget(perms_lbl)
 
         if has_dependencies:
             dep_parts = [_runtime_summary(runtime)]
-            if packages:
-                dep_parts.append(t("Packages: ") + ", ".join(packages))
             runtime_error = str(runtime.get("error") or "")
             if runtime_error:
                 dep_parts.append(runtime_error)
@@ -307,8 +317,6 @@ class AddonManagerDialog(QDialog):
         """Install or rebuild an addon dependency environment."""
         if self._manager is None:
             return
-        if not self._confirm_environment_install(addon_name, runtime):
-            return
         try:
             status = self._manager.repair_environment(addon_id)
         except Exception as exc:
@@ -322,6 +330,28 @@ class AddonManagerDialog(QDialog):
                 t("Addon Environment"),
                 str(status.get("error") or t("Dependency environment is not ready.")),
             )
+
+    def _approve_addon(self, addon: dict) -> None:
+        """Review an addon's declared identity and access, then activate it."""
+        if self._manager is None:
+            return
+        if not self._confirm_addon_access(addon):
+            return
+        addon_id = str(addon.get("id") or "")
+        try:
+            result = self._manager.approve_addon(addon_id)
+        except Exception as exc:
+            QMessageBox.warning(self, t("Addon Approval"), str(exc))
+            return
+        if str(result.get("status") or "") == "loaded":
+            QMessageBox.information(self, t("Addon Approval"), t("Addon approved and ready."))
+        else:
+            QMessageBox.warning(
+                self,
+                t("Addon Approval"),
+                str(result.get("error") or t("Addon approved, but it is not ready yet.")),
+            )
+        self._refresh()
 
     def _install_archive(self) -> None:
         """Install archive."""
@@ -370,25 +400,36 @@ class AddonManagerDialog(QDialog):
         AddonSettingsDialog._clear_layout(layout)
         self._build_ui()
 
-    def _confirm_environment_install(self, addon_name: str, runtime: dict) -> bool:
-        """Ask before installing an addon's declared dependency environment."""
-        packages = [str(p) for p in (runtime.get("packages") or [])]
-        lines = [
-            f"{addon_name} {t('declares Python/package dependencies.')}",
-            "",
-            f"{t('Python: ')}{runtime.get('python_requirement') or t('current runtime')}",
-            t("Packages:"),
+    def _confirm_addon_access(self, addon: dict) -> bool:
+        """Ask the user to trust the addon, not its individual dependencies."""
+        addon_name = str(addon.get("name") or addon.get("id") or t("Addon"))
+        author = str(addon.get("author") or "").strip() or t("Unknown author")
+        approval = addon.get("approval") if isinstance(addon.get("approval"), dict) else {}
+        access = [
+            t(str(item.get("label") or "").strip())
+            for item in (approval.get("new_access") or approval.get("access") or [])
+            if isinstance(item, dict) and str(item.get("label") or "").strip()
         ]
-        lines.extend(f"  {package}" for package in packages)
-        if not packages:
-            lines.append(f"  {t('No packages declared')}")
-        env_path = str(runtime.get("env_path") or "")
-        if env_path:
-            lines.extend(["", f"{t('Environment: ')}{env_path}"])
-        lines.extend(["", t("Install or rebuild this environment now?")])
+        disk = addon.get("disk") if isinstance(addon.get("disk"), dict) else {}
+        lines = [
+            addon_name,
+            f"{t('Author:')} {author} ({t('self-declared')})",
+            "",
+            t("Requested access:"),
+        ]
+        lines.extend(f"  • {label}" for label in access)
+        lines.extend(["", f"{t('Current disk use:')} {disk.get('label') or t('Unknown')}"])
+        if disk.get("dependencies_pending"):
+            lines.append(t("Additional components will use more disk space."))
+        lines.extend([
+            "",
+            t("Full-code addons run with your normal user permissions. Only approve addons you trust."),
+            "",
+            t("Approve and activate this addon?"),
+        ])
         return QMessageBox.question(
             self,
-            t("Approve Addon Dependencies"),
+            t("Review Addon Access"),
             "\n".join(lines),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,

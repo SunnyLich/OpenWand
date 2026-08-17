@@ -51,6 +51,7 @@ class FakeAddonManager:
         self.action_enabled_calls: list[tuple[str, str, bool]] = []
         self.setting_calls: list[tuple[str, str, object]] = []
         self.repair_calls: list[str] = []
+        self.approve_calls: list[str] = []
         self.repair_result: dict = {"ready": True}
         self.repair_error: Exception | None = None
         self.load_all_calls = 0
@@ -77,6 +78,10 @@ class FakeAddonManager:
         if self.repair_error is not None:
             raise self.repair_error
         return dict(self.repair_result)
+
+    def approve_addon(self, addon_id: str) -> dict:
+        self.approve_calls.append(addon_id)
+        return {"id": addon_id, "status": "loaded", "error": ""}
 
     def load_all(self) -> None:
         self.load_all_calls += 1
@@ -125,6 +130,17 @@ def _addon(**overrides) -> dict:
         "hooks": ["on_query"],
         "tools": ["demo_lookup"],
         "permissions": {"clipboard": True, "network": False},
+        "author": "Example Publisher",
+        "approval": {
+            "approved": True,
+            "needs_approval": False,
+            "access": [
+                {"id": "full_code", "label": "Run addon code with your user account's access"},
+                {"id": "clipboard", "label": "Clipboard"},
+            ],
+            "new_access": [],
+        },
+        "disk": {"label": "2.0 MB", "dependencies_pending": False},
         "settings": [],
         "logs": "",
     }
@@ -178,9 +194,11 @@ def test_dialog_lists_addon_metadata_on_cards(qapp, fake_manager):
         assert "Adds demo helpers." in text
         assert "Hooks: on_query" in text
         assert "Model tools: demo_lookup" in text
-        assert "Permissions: clipboard, network" in text
+        assert "Author: Example Publisher" in text
+        assert "Declared access:" in text
+        assert "Clipboard" in text
         assert "Dependency env: needs install" in text
-        assert "Packages: numpy, pillow" in text
+        assert "Packages: numpy, pillow" not in text
         assert "env missing" in text
         # Only the last line of a multi-line addon error is shown.
         assert "final error line" in text
@@ -276,7 +294,6 @@ def test_protocol_addon_manager_action_toggle_emits_supervisor_event(qapp):
 @pytest.mark.parametrize(
     ("runtime", "action", "summary"),
     [
-        ({"needs_approval": True}, "Approve env", "Dependency env: needs approval"),
         ({"ready": True}, "Repair env", "Dependency env: ready"),
         ({"ready": False}, "Install env", "Dependency env: needs install"),
     ],
@@ -387,7 +404,7 @@ def test_log_window_prefers_latest_manager_logs_and_reloads(qapp, fake_manager):
         dialog.close()
 
 
-def test_repair_environment_requires_approval(qapp, fake_manager, monkeypatch):
+def test_repair_environment_is_an_install_action_not_a_package_approval(qapp, fake_manager, monkeypatch):
     runtime = {
         "tier": "2",
         "ready": False,
@@ -400,20 +417,15 @@ def test_repair_environment_requires_approval(qapp, fake_manager, monkeypatch):
     boxes = _FakeMessageBox()
     boxes.install(monkeypatch)
     try:
-        boxes.answer = QMessageBox.StandardButton.No
         _button(dialog, "Install env").click()
         qapp.processEvents()
-        assert fake_manager.repair_calls == []
-        prompt = boxes.questions[0]
-        assert "numpy" in prompt
-        assert ">=3.12" in prompt
-        assert "C:/envs/demo" in prompt
+        assert fake_manager.repair_calls == ["demo.tools"]
+        assert boxes.questions == []
 
-        boxes.answer = QMessageBox.StandardButton.Yes
         fake_manager.repair_result = {"ready": True}
         dialog._repair_environment("demo.tools", "Demo Tools", runtime)
-        assert fake_manager.repair_calls == ["demo.tools"]
-        assert boxes.infos == ["Dependency environment is ready."]
+        assert fake_manager.repair_calls == ["demo.tools", "demo.tools"]
+        assert boxes.infos == ["Dependency environment is ready.", "Dependency environment is ready."]
 
         fake_manager.repair_result = {"ready": False, "error": "pip exploded"}
         dialog._repair_environment("demo.tools", "Demo Tools", runtime)
@@ -424,6 +436,63 @@ def test_repair_environment_requires_approval(qapp, fake_manager, monkeypatch):
         assert boxes.warnings[-1] == "no network"
     finally:
         dialog.close()
+
+
+def test_addon_review_shows_author_access_and_disk_without_package_judgment(qapp, fake_manager, monkeypatch):
+    fake_manager.addons = [_addon(
+        runtime={"tier": "2", "ready": False, "packages": ["opaque-package-name"]},
+        approval={
+            "approved": False,
+            "needs_approval": True,
+            "access": [{"id": "full_code", "label": "Run addon code with your user account's access"}],
+            "new_access": [{"id": "internet", "label": "Access the internet"}],
+        },
+        disk={"label": "3.5 MB", "dependencies_pending": True},
+    )]
+    dialog = _dialog(fake_manager)
+    boxes = _FakeMessageBox()
+    boxes.install(monkeypatch)
+    boxes.answer = QMessageBox.StandardButton.Yes
+    try:
+        _button(dialog, "Review access").click()
+        qapp.processEvents()
+
+        prompt = boxes.questions[0]
+        assert "Example Publisher (self-declared)" in prompt
+        assert "Access the internet" in prompt
+        assert "3.5 MB" in prompt
+        assert "normal user permissions" in prompt
+        assert "opaque-package-name" not in prompt
+        assert fake_manager.approve_calls == ["demo.tools"]
+    finally:
+        dialog.close()
+
+
+def test_protocol_addon_review_emits_approval_event(qapp, monkeypatch):
+    from runtime.workers.ui_host import QtProtocolHost
+
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host._addons_dialog = None
+    host._addon_settings_dialogs = {}
+    host._addon_log_dialogs = {}
+    emitted = []
+    host.emit = lambda event, data=None, req_id=None: emitted.append((event, data or {}))  # type: ignore[method-assign]
+    boxes = _FakeMessageBox()
+    boxes.answer = QMessageBox.StandardButton.Yes
+    monkeypatch.setattr(QMessageBox, "question", lambda *_args, **_kwargs: boxes.answer)
+    addon = _addon(approval={
+        "approved": False,
+        "needs_approval": True,
+        "access": [{"id": "full_code", "label": "Run addon code"}],
+        "new_access": [{"id": "tools", "label": "Add tools the AI can call"}],
+    })
+    host._show_addons(addons=[addon])
+    try:
+        _button(host._addons_dialog, "Review access").click()
+        qapp.processEvents()
+        assert emitted[-1] == ("ui.addons.approve", {"addon_id": "demo.tools"})
+    finally:
+        host._addons_dialog.close()
 
 
 def test_install_archive_reloads_and_shows_new_addon(qapp, fake_manager, monkeypatch, tmp_path):
@@ -611,7 +680,7 @@ def test_addon_folder_install_failure_matrix_is_in_band(qapp, fake_manager, monk
 
 
 def test_addon_dependency_repair_failure_matrix_is_in_band(qapp, fake_manager, monkeypatch):
-    """Dependency repair approval and every provision fault remain controlled."""
+    """Every dependency provision fault remains controlled."""
     fake_manager.addons = [_addon()]
     dialog = _dialog(fake_manager)
     boxes = _FakeMessageBox()
@@ -624,11 +693,6 @@ def test_addon_dependency_repair_failure_matrix_is_in_band(qapp, fake_manager, m
         "env_path": "C:/envs/demo",
     }
     try:
-        boxes.answer = QMessageBox.StandardButton.No
-        dialog._repair_environment("demo.tools", "Demo Tools", runtime)
-        assert fake_manager.repair_calls == []
-
-        boxes.answer = QMessageBox.StandardButton.Yes
         faults = (
             ConnectionError("Network access is unavailable."),
             RuntimeError("The package source is unavailable."),

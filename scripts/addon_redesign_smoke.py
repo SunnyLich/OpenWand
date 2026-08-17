@@ -4,7 +4,7 @@ This script exercises the addon redesign without touching the real ``addons/``
 folder. It creates temporary addons, installs them into temporary addon
 directories, and runs the actual addon manager/distribution code.
 
-By default the dependency test verifies approval/hash behavior only. Pass
+By default the dependency test verifies trust/access and dependency-state behavior only. Pass
 ``--install-deps`` to create the per-addon virtualenv and install
 ``requests>=2.31`` as a real end-to-end dependency runtime test. Expected addon
 failure tracebacks are hidden unless ``--verbose`` is passed.
@@ -60,8 +60,6 @@ class Smoke:
 
     def _patch_runtime_paths(self) -> None:
         """Handle patch runtime paths for smoke."""
-        import core.plugin_manager as plugin_manager
-
         import core.addon_manager as addon_manager
         import core.system.paths as paths
         from core import addon_runtime, addon_store
@@ -70,7 +68,6 @@ class Smoke:
         addon_store._STORE_PATH = self.store_path
         addon_manager.addon_store._STORE_PATH = self.store_path
         addon_manager._manager = None
-        plugin_manager._manager = None
         paths.ADDONS_DIR = self.addons_dir
 
     def case_addons_dir(self, name: str) -> Path:
@@ -143,11 +140,11 @@ def make_addon(root: Path, folder_name: str, manifest: str, code: str) -> Path:
     return folder
 
 
-def manager_for(addons_dir: Path):
+def manager_for(addons_dir: Path, *, require_approval: bool = False):
     """Support command-line helper for scripts addon redesign smoke for manager for."""
     from core.addon_manager import AddonManager
 
-    manager = AddonManager(addons_dir)
+    manager = AddonManager(addons_dir, require_approval=require_approval)
     manager.load_all()
     return manager
 
@@ -203,8 +200,6 @@ def test_manifest_host_surfaces_and_distribution(smoke: Smoke) -> None:
         """
         import os
         import sys
-        from core.plugin_manager import plugin_setting
-
         def before_query(prompt, context):
             print("addon-smoke-core before_query", file=sys.stderr, flush=True)
             return prompt + "|addon:" + str(os.getpid()), context + "|context"
@@ -301,8 +296,9 @@ def test_manifest_host_surfaces_and_distribution(smoke: Smoke) -> None:
 
 def test_dependency_runtime(smoke: Smoke) -> None:
     """Verify dependency runtime behavior."""
-    from core import addon_runtime, addon_store
+    from core import addon_store
     from core.addon_distribution import install_addon_folder
+    from core.addon_manager import addon_access_claims
 
     addons_dir = smoke.case_addons_dir("dependency")
     source = make_addon(
@@ -328,30 +324,33 @@ def test_dependency_runtime(smoke: Smoke) -> None:
         """,
     )
     install_addon_folder(source, addons_dir)
-    manager = manager_for(addons_dir)
+    manager = manager_for(addons_dir, require_approval=True)
     try:
         summary = summary_by_id(manager, "addon-smoke-deps")
         assert summary["status"] == "needs_approval", summary
-        assert summary["runtime"]["needs_approval"] is True, summary["runtime"]
+        assert summary["approval"]["needs_approval"] is True, summary["approval"]
         assert summary["runtime"]["packages"] == ["requests>=2.31"], summary["runtime"]
         assert manager.before_query("hello", "") == ("hello", "")
 
         if smoke.install_deps:
-            repaired = manager.repair_environment("addon-smoke-deps")
-            assert repaired.get("ready") is True, repaired
+            approved = manager.approve_addon("addon-smoke-deps")
+            assert approved.get("status") == "loaded", approved
             prompt, _context = manager.before_query("hello", "")
             assert "[requests=" in prompt, prompt
         else:
-            deps = addon_runtime.dependencies_from_manifest({"packages": ["requests>=2.31"]})
-            addon_store.set_approved_dependency_hash("addon-smoke-deps", addon_runtime.dependency_hash(deps))
+            loaded = manager._mods[0]
+            addon_store.set_approved_access(
+                loaded.id,
+                [claim["id"] for claim in addon_access_claims(loaded.manifest)],
+            )
 
         manifest = addons_dir / "addon-smoke-deps" / "addon.toml"
         text = manifest.read_text(encoding="utf-8")
         manifest.write_text(text.replace('packages = ["requests>=2.31"]', 'packages = ["requests>=2.31", "packaging>=23"]'), encoding="utf-8")
         manager.load_all()
         changed = summary_by_id(manager, "addon-smoke-deps")
-        assert changed["status"] == "needs_approval", changed
-        assert changed["runtime"]["needs_approval"] is True, changed["runtime"]
+        assert changed["status"] == "needs_dependencies", changed
+        assert changed["approval"]["needs_approval"] is False, changed["approval"]
 
         if smoke.install_deps:
             repaired = manager.repair_environment("addon-smoke-deps")
@@ -494,9 +493,9 @@ def test_bad_addon_resilience(smoke: Smoke) -> None:
 
 def test_permission_gating(smoke: Smoke) -> None:
     """Verify permission gating behavior."""
-    import core.plugin_manager as plugin_manager
     from openwand_brain import handlers
 
+    import core.addon_manager as addon_manager
     import core.system.paths as paths
     from core.addon_distribution import install_addon_folder
 
@@ -554,10 +553,10 @@ def test_permission_gating(smoke: Smoke) -> None:
         assert "SHOULD_NOT_MODIFY" not in prompt, prompt
 
         paths.ADDONS_DIR = addons_dir
-        plugin_manager._manager = manager
+        addon_manager._manager = manager
         try:
-            handlers.HANDLERS["brain.plugins.llm_call"](
-                plugin_name="addon-smoke-permissions-locked",
+            handlers.HANDLERS["brain.addons.llm_call"](
+                addon_id="addon-smoke-permissions-locked",
                 prompt="hello",
             )
         except PermissionError as exc:
@@ -610,7 +609,7 @@ def main() -> int:
     smoke = Smoke(install_deps=args.install_deps, keep_temp=args.keep_temp, verbose=args.verbose)
     try:
         smoke.run_case("Manifest, host, settings, surfaces, and distribution", lambda: test_manifest_host_surfaces_and_distribution(smoke))
-        smoke.run_case("Dependency approval/hash behavior", lambda: test_dependency_runtime(smoke))
+        smoke.run_case("Addon trust and dependency-state behavior", lambda: test_dependency_runtime(smoke))
         if not args.install_deps:
             smoke.record(
                 "Real dependency env install",

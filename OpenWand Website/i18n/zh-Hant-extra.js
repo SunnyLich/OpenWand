@@ -126,8 +126,6 @@ Object.assign(I18N.reg['zh-Hant'].tr, {
     '回覆會同時串流進泡泡並大聲朗讀。按住一個鍵即可用說話代替打字。',
   'Sees your screen': '看得見你的螢幕',
   'Context, no copy-paste': '取得情境，無需複製貼上',
-  'OpenWand reads your selection, open documents, clipboard, and browser tab — or a region you draw — automatically.':
-    'OpenWand 會自動讀取你的選取範圍、開啟的文件、剪貼簿與瀏覽器分頁——或你框選的區域。',
   'Yours': '完全歸你所有',
   'Any model, cloud/local': '任意模型，雲端/本機',
   'Choose your provider, keep data on your machine, and remap every hotkey. Your setup stays portable.':

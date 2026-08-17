@@ -703,6 +703,38 @@ def test_fast_forward_button_controls_speed_boost():
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_expand_button_opens_chat_during_thinking_and_reply() -> None:
+    """The four-corner control is a reliable full-chat target mid-request."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from ui.bubble import SpeechBubble
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    bubble = SpeechBubble()
+    opened: list[bool] = []
+    bubble.set_click_callback(lambda: opened.append(True))
+
+    try:
+        bubble.start_thinking()
+        app.processEvents()
+        assert bubble._expand_enabled() is True
+        assert not bubble._text_view.geometry().intersects(bubble._expand_rect())
+        QTest.mouseClick(bubble, Qt.MouseButton.LeftButton, pos=bubble._expand_rect().center())
+        assert opened == [True]
+
+        bubble.append_chunk("Reply in progress")
+        app.processEvents()
+        QTest.mouseClick(bubble, Qt.MouseButton.LeftButton, pos=bubble._expand_rect().center())
+        assert opened == [True, True]
+    finally:
+        bubble.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_fast_forward_button_uses_bubble_colors():
     """The speed control should visually belong to the bubble, not use a blue badge."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -803,7 +835,7 @@ def test_document_view_keeps_legacy_bubble_text_width():
     from PySide6.QtWidgets import QApplication
 
     import config
-    from ui.bubble import _CLOSE_SIZE, _PAD, SpeechBubble
+    from ui.bubble import _CONTROL_GUTTER_W, _PAD, SpeechBubble
 
     app = QApplication.instance() or QApplication(sys.argv)
     old_width = getattr(config, "BUBBLE_WIDTH", 340)
@@ -811,13 +843,14 @@ def test_document_view_keeps_legacy_bubble_text_width():
     bubble = SpeechBubble()
 
     try:
-        assert bubble._text_w == config.BUBBLE_WIDTH - _PAD * 2 - _CLOSE_SIZE
+        assert bubble._text_w == config.BUBBLE_WIDTH - _PAD * 2 - _CONTROL_GUTTER_W
         bubble.append_chunk("style changes should not change the text model")
 
         assert bubble._full_text == "style changes should not change the text model"
         assert bubble._visible_plain_text() == "\n".join(bubble._lines).strip()
         assert not bubble._text_view.geometry().intersects(bubble._close_rect())
         assert not bubble._text_view.geometry().intersects(bubble._fast_forward_rect())
+        assert not bubble._text_view.geometry().intersects(bubble._expand_rect())
     finally:
         config.BUBBLE_WIDTH = old_width
         bubble.deleteLater()

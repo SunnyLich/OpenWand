@@ -135,8 +135,6 @@ Object.assign(I18N.reg['es'].tr, {
     "Las respuestas aparecen en una burbuja y se leen en voz alta al mismo tiempo. Mantén una tecla para hablar en lugar de escribir.",
   'Sees your screen': 'Ve tu pantalla',
   'Context, no copy-paste': 'Contexto, sin copiar y pegar',
-  'OpenWand reads your selection, open documents, clipboard, and browser tab — or a region you draw — automatically.':
-    "OpenWand lee tu selección, los documentos abiertos, el portapapeles y la pestaña del navegador — o una región que dibujes — automáticamente.",
   'Yours': 'Tuyo',
   'Any model, cloud/local': 'Cualquier modelo, nube/local',
   'Choose your provider, keep data on your machine, and remap every hotkey. Your setup stays portable.':
