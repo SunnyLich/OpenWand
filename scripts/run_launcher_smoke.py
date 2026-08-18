@@ -166,10 +166,11 @@ def _validate_ready(payload: dict[str, Any], *, frozen: bool) -> dict[str, tuple
     pids = [pid for pid, _create_time in identities.values()]
     if len(set([supervisor_pid, *pids])) != len(pids) + 1:
         raise RuntimeError(f"launcher did not create distinct processes: {payload!r}")
-    return {
-        "supervisor": (supervisor_pid, float(supervisor_create_time)),
-        **identities,
-    }
+    # communicate() already proved that the supervisor exited with code zero.
+    # On Windows its kernel process object can remain queryable until Popen's
+    # handle closes, so only the independently managed worker identities need
+    # the post-exit survivor audit.
+    return identities
 
 
 def _state_diagnostics(state: Path) -> str:
