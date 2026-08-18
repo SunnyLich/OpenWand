@@ -1391,17 +1391,22 @@ def _optional_package_artifact_paths(root: Path, package: str, dist_infos: list[
     return paths
 
 
-def _remove_optional_paths(paths: list[Path]) -> list[str]:
-    """Remove resolved paths scoped to ``OPTIONAL_PACKAGES_DIR``."""
+def _remove_optional_paths(
+    paths: list[Path],
+    *,
+    root: Path | None = None,
+) -> list[str]:
+    """Remove resolved paths scoped to one optional-package directory."""
+    selected_root = root or OPTIONAL_PACKAGES_DIR
     removed: list[str] = []
     try:
-        root = OPTIONAL_PACKAGES_DIR.resolve()
+        resolved_root = selected_root.resolve()
     except Exception:
-        root = OPTIONAL_PACKAGES_DIR
+        resolved_root = selected_root
     for path in paths:
         try:
             resolved = path.resolve()
-            if resolved == root or root not in resolved.parents:
+            if resolved == resolved_root or resolved_root not in resolved.parents:
                 continue
             if path.is_dir() and not path.is_symlink():
                 shutil.rmtree(path)
@@ -1442,7 +1447,11 @@ def _install_requirement_name_version(spec: str) -> tuple[str, str] | None:
     return None
 
 
-def remove_stale_optional_package_artifacts(packages: list[str]) -> list[str]:
+def remove_stale_optional_package_artifacts(
+    packages: list[str],
+    *,
+    target_dir: Path | str | None = None,
+) -> list[str]:
     """Remove target package artifacts that do not match pinned install specs."""
     requested = {
         name: version
@@ -1452,11 +1461,12 @@ def remove_stale_optional_package_artifacts(packages: list[str]) -> list[str]:
     }
     if not requested:
         return []
+    selected_root = Path(target_dir) if target_dir is not None else OPTIONAL_PACKAGES_DIR
     try:
-        root = OPTIONAL_PACKAGES_DIR.resolve()
+        root = selected_root.resolve()
     except Exception:
-        root = OPTIONAL_PACKAGES_DIR
-    groups = _optional_dist_info_groups()
+        root = selected_root
+    groups = _dist_info_groups_for_root(root)
     paths_to_remove: list[Path] = []
     for package, expected_version in requested.items():
         dist_infos = groups.get(package) or []
@@ -1465,29 +1475,33 @@ def remove_stale_optional_package_artifacts(packages: list[str]) -> list[str]:
         installed_versions = {_dist_info_metadata(path)[1] for path in dist_infos}
         if len(dist_infos) > 1 or installed_versions != {expected_version}:
             paths_to_remove.extend(_optional_package_artifact_paths(root, package, dist_infos))
-    return _remove_optional_paths(paths_to_remove)
+    return _remove_optional_paths(paths_to_remove, root=root)
 
 
-def remove_duplicate_optional_package_artifacts() -> list[str]:
+def remove_duplicate_optional_package_artifacts(
+    *,
+    target_dir: Path | str | None = None,
+) -> list[str]:
     """Remove package trees that have duplicate ``.dist-info`` metadata.
 
     ``pip install --target`` can leave old files behind during upgrades. When
     duplicate metadata already exists, remove the package tree and metadata so
     the next install recreates one coherent package version.
     """
+    selected_root = Path(target_dir) if target_dir is not None else OPTIONAL_PACKAGES_DIR
     try:
-        root = OPTIONAL_PACKAGES_DIR.resolve()
+        root = selected_root.resolve()
     except Exception:
-        root = OPTIONAL_PACKAGES_DIR
+        root = selected_root
     duplicates = {
         package: paths
-        for package, paths in _optional_dist_info_groups().items()
+        for package, paths in _dist_info_groups_for_root(root).items()
         if len(paths) > 1
     }
     paths_to_remove: list[Path] = []
     for package, paths in duplicates.items():
         paths_to_remove.extend(_optional_package_artifact_paths(root, package, paths))
-    return _remove_optional_paths(paths_to_remove)
+    return _remove_optional_paths(paths_to_remove, root=root)
 
 
 def subprocess_no_window_kwargs() -> dict[str, object]:
