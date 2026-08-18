@@ -76,25 +76,28 @@ OpenWand vous donne accès à l'IA depuis n'importe quel endroit du bureau. Vos 
 <a id="demos"></a>
 ## Démonstrations
 
-![Démonstration du contexte inter-applications OpenWand](readme-assets/openwand-context-demo.gif)
-
-**Contexte inter-applications :** Combinez la sélection active avec le contexte activé du navigateur et de l'application afin de fournir au modèle les éléments nécessaires sans copier-coller manuellement.
-
-![Démonstration de la capture d'écran Ctrl+Alt+Q d'OpenWand](readme-assets/openwand-screen-snip-demo.gif)
-
-**Capture visuelle :** Lorsque le contexte visuel compte, `Ctrl+Alt+Q` vous permet de tracer une zone, d'envoyer uniquement cette capture à un modèle de vision et de garder la réponse dans la superposition sans changer d'application.
-
-![Démonstration de la reformulation OpenWand](readme-assets/openwand-rewrite-demo.gif)
-
-**Reformulation sur place :** Reformulez uniquement le texte sélectionné, examinez la proposition, puis recollez le résultat accepté dans le champ qui était actif à l'ouverture d'OpenWand.
-
-![Démonstration d'une action sensible à l'application dans OpenWand](readme-assets/openwand-app-aware-action-demo.gif)
-
-**Action sensible à l'application :** Utilisez le contexte de l'application active pour analyser ou traiter le travail en cours, avec un résultat clair et une confirmation lorsqu'aucune cellule du document n'a été modifiée.
-
-![Démonstration de l'équipe d'agents OpenWand](readme-assets/openwand-agent-task-demo.gif)
-
-**Équipe d'agents :** Déléguez une tâche plus longue dans l'espace de travail à des rôles de coordination, de réalisation et de révision. Pendant que vous continuez à utiliser OpenWand, l'équipe peut examiner les fichiers du projet, apporter une modification ciblée, exécuter des vérifications et fournir un rapport final ainsi que des livrables révisables.
+<table>
+  <tr><td>
+    <img src="readme-assets/openwand-context-demo.gif" alt="Démonstration du contexte inter-applications OpenWand" />
+    <p><strong>Contexte inter-applications :</strong> Combinez la sélection active avec le contexte activé du navigateur et de l'application afin de fournir au modèle les éléments nécessaires sans copier-coller manuellement.</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-screen-snip-demo.gif" alt="Démonstration de la capture d'écran Ctrl+Alt+Q d'OpenWand" />
+    <p><strong>Capture visuelle :</strong> Lorsque le contexte visuel compte, <code>Ctrl+Alt+Q</code> vous permet de tracer une zone, d'envoyer uniquement cette capture à un modèle de vision et de garder la réponse dans la superposition sans changer d'application.</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-rewrite-demo.gif" alt="Démonstration de la reformulation OpenWand" />
+    <p><strong>Reformulation sur place :</strong> Reformulez uniquement le texte sélectionné, examinez la proposition, puis recollez le résultat accepté dans le champ qui était actif à l'ouverture d'OpenWand.</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-app-aware-action-demo.gif" alt="Démonstration d'une action sensible à l'application dans OpenWand" />
+    <p><strong>Action sensible à l'application :</strong> Utilisez le contexte de l'application active pour analyser ou traiter le travail en cours, avec un résultat clair et une confirmation lorsqu'aucune cellule du document n'a été modifiée.</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-agent-task-demo.gif" alt="Démonstration de l'équipe d'agents OpenWand" />
+    <p><strong>Équipe d'agents :</strong> Déléguez une tâche plus longue dans l'espace de travail à des rôles de coordination, de réalisation et de révision. Pendant que vous continuez à utiliser OpenWand, l'équipe peut examiner les fichiers du projet, apporter une modification ciblée, exécuter des vérifications et fournir un rapport final ainsi que des livrables révisables.</p>
+  </td></tr>
+</table>
 
 ## Flux de travail
 
@@ -171,9 +174,9 @@ Utilisez la fenêtre Paramètres pour la configuration habituelle. `.env.example
 4. Personnalisez le contexte, les raccourcis, la voix, la confidentialité et la mémoire.
 5. Exécutez la **Vérification de la configuration**.
 
-### Choisir votre moteur
+### Choisir votre harnais
 
-| Moteur | Comportement |
+| Harnais | Comportement |
 | --- | --- |
 | **OpenWand** | Utilise le fournisseur LLM et le modèle configurés dans OpenWand. |
 | **ChatGPT** | Utilise le Codex CLI installé et votre compte ChatGPT/Codex. |

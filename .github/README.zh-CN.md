@@ -76,25 +76,28 @@ OpenWand 让你可以从桌面上的任何位置使用 AI。常用提示词随�
 <a id="demos"></a>
 ## 演示
 
-![OpenWand 跨应用上下文演示](readme-assets/openwand-context-demo.gif)
-
-**跨应用上下文：** 将当前选中内容与已启用的浏览器和应用上下文组合起来，无需手动复制粘贴，就能把模型所需的信息交给它。
-
-![OpenWand Ctrl+Alt+Q 屏幕截图演示](readme-assets/openwand-screen-snip-demo.gif)
-
-**视觉截图：** 当视觉上下文很重要时，按 `Ctrl+Alt+Q` 框选区域，只把该部分发送给视觉模型，并直接在浮层中查看答案，无需切换应用。
-
-![OpenWand 改写演示](readme-assets/openwand-rewrite-demo.gif)
-
-**就地改写：** 仅改写选中的文字，检查建议内容，再将接受的结果粘贴回调用 OpenWand 时处于活动状态的输入框。
-
-![OpenWand 应用感知操作演示](readme-assets/openwand-app-aware-action-demo.gif)
-
-**应用感知操作：** 利用当前应用的上下文分析或处理正在进行的工作，并清楚显示结果；如果没有更改任何文档单元格，也会明确确认。
-
-![OpenWand 智能体团队演示](readme-assets/openwand-agent-task-demo.gif)
-
-**智能体团队：** 将较长的工作区任务交给协调者、构建者和审查者。你继续使用 OpenWand 时，团队可以检查项目文件、完成针对性修改、运行检查，并留下最终报告及可供审查的成果。
+<table>
+  <tr><td>
+    <img src="readme-assets/openwand-context-demo.gif" alt="OpenWand 跨应用上下文演示" />
+    <p><strong>跨应用上下文：</strong> 将当前选中内容与已启用的浏览器和应用上下文组合起来，无需手动复制粘贴，就能把模型所需的信息交给它。</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-screen-snip-demo.gif" alt="OpenWand Ctrl+Alt+Q 屏幕截图演示" />
+    <p><strong>视觉截图：</strong> 当视觉上下文很重要时，按 <code>Ctrl+Alt+Q</code> 框选区域，只把该部分发送给视觉模型，并直接在浮层中查看答案，无需切换应用。</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-rewrite-demo.gif" alt="OpenWand 改写演示" />
+    <p><strong>就地改写：</strong> 仅改写选中的文字，检查建议内容，再将接受的结果粘贴回调用 OpenWand 时处于活动状态的输入框。</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-app-aware-action-demo.gif" alt="OpenWand 应用感知操作演示" />
+    <p><strong>应用感知操作：</strong> 利用当前应用的上下文分析或处理正在进行的工作，并清楚显示结果；如果没有更改任何文档单元格，也会明确确认。</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-agent-task-demo.gif" alt="OpenWand 智能体团队演示" />
+    <p><strong>智能体团队：</strong> 将较长的工作区任务交给协调者、构建者和审查者。你继续使用 OpenWand 时，团队可以检查项目文件、完成针对性修改、运行检查，并留下最终报告及可供审查的成果。</p>
+  </td></tr>
+</table>
 
 ## 工作流程
 
@@ -171,9 +174,9 @@ cd OpenWand
 4. 自定义上下文、快捷键、语音、隐私和记忆。
 5. 运行**设置检查**。
 
-### 选择引擎
+### 选择你的执行框架
 
-| 引擎 | 行为 |
+| 执行框架 | 行为 |
 | --- | --- |
 | **OpenWand** | 使用 OpenWand 中配置的 LLM 提供商和模型。 |
 | **ChatGPT** | 使用已安装的 Codex CLI 和你的 ChatGPT/Codex 账户。 |

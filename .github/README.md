@@ -76,25 +76,28 @@ OpenWand gives you access to AI from anywhere on your desktop. With reusable pro
 
 ## Demos
 
-![OpenWand cross-app context demo](readme-assets/openwand-context-demo.gif)
-
-**Cross-app context:** Combine the active selection with enabled browser and app context, giving the model the material it needs without manual copy-paste.
-
-![OpenWand Ctrl+Alt+Q screen snip demo](readme-assets/openwand-screen-snip-demo.gif)
-
-**Vision snip:** The snip flow is for cases where visual context matters. `Ctrl+Alt+Q` lets you draw a region, send just that crop to a vision model, and keep the answer in the overlay instead of switching apps.
-
-![OpenWand rewrite demo](readme-assets/openwand-rewrite-demo.gif)
-
-**Rewrite in place:** Rewrite only the selected text, review the proposed wording, and paste the accepted result back into the field that was active when you invoked OpenWand.
-
-![OpenWand app-aware action demo](readme-assets/openwand-app-aware-action-demo.gif)
-
-**App-aware action:** Use focused application context to analyze or act on the current work, with a clear result and confirmation when no document cells were changed.
-
-![OpenWand Agent Team demo](readme-assets/openwand-agent-task-demo.gif)
-
-**Agent Team:** Delegate a longer workspace job to coordinator, builder, and reviewer roles. The team can inspect project files, make a focused change, run checks, and leave behind a final report and reviewable artifacts while you keep using OpenWand.
+<table>
+  <tr><td>
+    <img src="readme-assets/openwand-context-demo.gif" alt="OpenWand cross-app context demo" />
+    <p><strong>Cross-app context:</strong> Combine the active selection with enabled browser and app context, giving the model the material it needs without manual copy-paste.</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-screen-snip-demo.gif" alt="OpenWand Ctrl+Alt+Q screen snip demo" />
+    <p><strong>Vision snip:</strong> The snip flow is for cases where visual context matters. <code>Ctrl+Alt+Q</code> lets you draw a region, send just that crop to a vision model, and keep the answer in the overlay instead of switching apps.</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-rewrite-demo.gif" alt="OpenWand rewrite demo" />
+    <p><strong>Rewrite in place:</strong> Rewrite only the selected text, review the proposed wording, and paste the accepted result back into the field that was active when you invoked OpenWand.</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-app-aware-action-demo.gif" alt="OpenWand app-aware action demo" />
+    <p><strong>App-aware action:</strong> Use focused application context to analyze or act on the current work, with a clear result and confirmation when no document cells were changed.</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-agent-task-demo.gif" alt="OpenWand Agent Team demo" />
+    <p><strong>Agent Team:</strong> Delegate a longer workspace job to coordinator, builder, and reviewer roles. The team can inspect project files, make a focused change, run checks, and leave behind a final report and reviewable artifacts while you keep using OpenWand.</p>
+  </td></tr>
+</table>
 
 ## Workflow
 
@@ -169,9 +172,9 @@ Use the Settings window for normal setup. `.env.example` is only a reference for
 4. Customize context, hotkeys, voice, privacy, and memory.
 5. Run **Setup Check**.
 
-### Choose Your Engine
+### Choose Your Harness
 
-| Engine | Behavior |
+| Harness | Behavior |
 | --- | --- |
 | **OpenWand** | Uses the LLM provider and model configured in OpenWand. |
 | **ChatGPT** | Uses the installed Codex CLI and your ChatGPT/Codex account. |

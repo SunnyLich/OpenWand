@@ -76,25 +76,28 @@ OpenWand te da acceso a la IA desde cualquier lugar del escritorio. Con peticion
 <a id="demos"></a>
 ## Demostraciones
 
-![Demostración del contexto entre aplicaciones de OpenWand](readme-assets/openwand-context-demo.gif)
-
-**Contexto entre aplicaciones:** Combina la selección activa con el contexto habilitado del navegador y la aplicación, y proporciona al modelo el material necesario sin copiar y pegar manualmente.
-
-![Demostración del recorte de pantalla Ctrl+Alt+Q de OpenWand](readme-assets/openwand-screen-snip-demo.gif)
-
-**Recorte visual:** Cuando el contexto visual importa, `Ctrl+Alt+Q` te permite marcar una región, enviar solo ese recorte a un modelo de visión y mantener la respuesta en la superposición sin cambiar de aplicación.
-
-![Demostración de reescritura de OpenWand](readme-assets/openwand-rewrite-demo.gif)
-
-**Reescritura en el mismo sitio:** Reescribe únicamente el texto seleccionado, revisa la propuesta y pega el resultado aceptado en el campo que estaba activo cuando abriste OpenWand.
-
-![Demostración de una acción de OpenWand basada en la aplicación](readme-assets/openwand-app-aware-action-demo.gif)
-
-**Acción basada en la aplicación:** Usa el contexto de la aplicación activa para analizar o actuar sobre el trabajo actual, con un resultado claro y confirmación cuando no se haya cambiado ninguna celda del documento.
-
-![Demostración del equipo de agentes de OpenWand](readme-assets/openwand-agent-task-demo.gif)
-
-**Equipo de agentes:** Delega un trabajo más largo del espacio de trabajo a los roles de coordinación, construcción y revisión. Mientras sigues usando OpenWand, el equipo puede inspeccionar los archivos del proyecto, realizar un cambio específico, ejecutar comprobaciones y dejar un informe final junto con resultados revisables.
+<table>
+  <tr><td>
+    <img src="readme-assets/openwand-context-demo.gif" alt="Demostración del contexto entre aplicaciones de OpenWand" />
+    <p><strong>Contexto entre aplicaciones:</strong> Combina la selección activa con el contexto habilitado del navegador y la aplicación, y proporciona al modelo el material necesario sin copiar y pegar manualmente.</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-screen-snip-demo.gif" alt="Demostración del recorte de pantalla Ctrl+Alt+Q de OpenWand" />
+    <p><strong>Recorte visual:</strong> Cuando el contexto visual importa, <code>Ctrl+Alt+Q</code> te permite marcar una región, enviar solo ese recorte a un modelo de visión y mantener la respuesta en la superposición sin cambiar de aplicación.</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-rewrite-demo.gif" alt="Demostración de reescritura de OpenWand" />
+    <p><strong>Reescritura en el mismo sitio:</strong> Reescribe únicamente el texto seleccionado, revisa la propuesta y pega el resultado aceptado en el campo que estaba activo cuando abriste OpenWand.</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-app-aware-action-demo.gif" alt="Demostración de una acción de OpenWand basada en la aplicación" />
+    <p><strong>Acción basada en la aplicación:</strong> Usa el contexto de la aplicación activa para analizar o actuar sobre el trabajo actual, con un resultado claro y confirmación cuando no se haya cambiado ninguna celda del documento.</p>
+  </td></tr>
+  <tr><td>
+    <img src="readme-assets/openwand-agent-task-demo.gif" alt="Demostración del equipo de agentes de OpenWand" />
+    <p><strong>Equipo de agentes:</strong> Delega un trabajo más largo del espacio de trabajo a los roles de coordinación, construcción y revisión. Mientras sigues usando OpenWand, el equipo puede inspeccionar los archivos del proyecto, realizar un cambio específico, ejecutar comprobaciones y dejar un informe final junto con resultados revisables.</p>
+  </td></tr>
+</table>
 
 ## Flujo de trabajo
 
@@ -171,9 +174,9 @@ Usa la ventana de Ajustes para la configuración habitual. `.env.example` es sol
 4. Personaliza el contexto, los atajos, la voz, la privacidad y la memoria.
 5. Ejecuta la **Comprobación de configuración**.
 
-### Elige tu motor
+### Elige tu arnés
 
-| Motor | Comportamiento |
+| Arnés | Comportamiento |
 | --- | --- |
 | **OpenWand** | Usa el proveedor de LLM y el modelo configurados en OpenWand. |
 | **ChatGPT** | Usa Codex CLI instalado y tu cuenta de ChatGPT/Codex. |
