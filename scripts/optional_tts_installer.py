@@ -307,11 +307,16 @@ def _remove_artifacts(log, prefix: str, patterns: list[str]) -> None:
         _log(log, prefix, "No previous artifacts found.")
 
 
-def _remove_duplicate_dist_infos(log, prefix: str) -> None:
+def _remove_duplicate_dist_infos(
+    log,
+    prefix: str,
+    *,
+    target_dir: Path | None = None,
+) -> None:
     """Remove mixed optional-package trees before running a target install."""
     from core import optional_deps
 
-    removed = optional_deps.remove_duplicate_optional_package_artifacts()
+    removed = optional_deps.remove_duplicate_optional_package_artifacts(target_dir=target_dir)
     if removed:
         _log(
             log,
@@ -321,11 +326,20 @@ def _remove_duplicate_dist_infos(log, prefix: str) -> None:
         )
 
 
-def _remove_stale_install_artifacts(log, prefix: str, packages: list[str]) -> None:
+def _remove_stale_install_artifacts(
+    log,
+    prefix: str,
+    packages: list[str],
+    *,
+    target_dir: Path | None = None,
+) -> None:
     """Remove package trees that do not match exact install specs."""
     from core import optional_deps
 
-    removed = optional_deps.remove_stale_optional_package_artifacts(packages)
+    removed = optional_deps.remove_stale_optional_package_artifacts(
+        packages,
+        target_dir=target_dir,
+    )
     if removed:
         _log(
             log,
@@ -1151,6 +1165,21 @@ def _run_staged_restart_install(
                 extra=_status_extra(plan, progress_percent=40),
             )
         if packages:
+            if pre_install_packages:
+                # pip/uv --target installs do not reliably replace metadata
+                # written by the CUDA Torch pre-phase. Reconcile that phase
+                # against the complete locked closure before installing it.
+                _remove_stale_install_artifacts(
+                    log,
+                    prefix,
+                    packages,
+                    target_dir=staging_path,
+                )
+                _remove_duplicate_dist_infos(
+                    log,
+                    prefix,
+                    target_dir=staging_path,
+                )
             package_start_percent = 45 if pre_install_packages else 10
             _write_status(
                 status_path,
@@ -1296,6 +1325,12 @@ def main() -> int:
                 )
                 return returncode
         if packages:
+            if pre_install_packages:
+                # The CUDA Torch resolver can select a newer transitive
+                # dependency than the complete Kokoro lock. Clear that drift
+                # before pip installs the locked phase into the same target.
+                _remove_stale_install_artifacts(log, prefix, packages)
+                _remove_duplicate_dist_infos(log, prefix)
             returncode, failure_detail = _run_install_phase(log, prefix, packages, reinstall=reinstall)
             if returncode != 0:
                 _write_status(

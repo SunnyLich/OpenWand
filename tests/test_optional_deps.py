@@ -648,6 +648,42 @@ def test_remove_stale_optional_package_artifacts_removes_mismatched_pin(monkeypa
     assert keep_dist_info.exists()
 
 
+def test_remove_stale_optional_package_artifacts_can_target_staging(monkeypatch, tmp_path):
+    """Pre-install drift cleanup must stay inside the staged package folder."""
+    from core import optional_deps
+
+    active = tmp_path / "python_packages"
+    staging = tmp_path / "staging"
+    monkeypatch.setattr(optional_deps, "OPTIONAL_PACKAGES_DIR", active)
+    active_package = active / "cuda_pathfinder"
+    active_package.mkdir(parents=True)
+    active_dist_info = active / "cuda_pathfinder-1.6.1.dist-info"
+    active_dist_info.mkdir()
+    (active_dist_info / "METADATA").write_text(
+        "Name: cuda-pathfinder\nVersion: 1.6.1\n",
+        encoding="utf-8",
+    )
+    staged_package = staging / "cuda_pathfinder"
+    staged_package.mkdir(parents=True)
+    staged_dist_info = staging / "cuda_pathfinder-1.6.1.dist-info"
+    staged_dist_info.mkdir()
+    (staged_dist_info / "METADATA").write_text(
+        "Name: cuda-pathfinder\nVersion: 1.6.1\n",
+        encoding="utf-8",
+    )
+
+    removed = optional_deps.remove_stale_optional_package_artifacts(
+        ["cuda-pathfinder==1.6.0"],
+        target_dir=staging,
+    )
+
+    assert sorted(removed) == ["cuda_pathfinder", "cuda_pathfinder-1.6.1.dist-info"]
+    assert not staged_package.exists()
+    assert not staged_dist_info.exists()
+    assert active_package.exists()
+    assert active_dist_info.exists()
+
+
 def test_remove_stale_artifacts_keeps_other_namespace_members(monkeypatch, tmp_path):
     """Clearing stale protobuf must not delete google-genai from google/."""
     from core import optional_deps
@@ -857,6 +893,61 @@ def test_optional_tts_installer_allows_pre_install_only_plan(monkeypatch, tmp_pa
     )
     assert optional_tts_installer.main() == 0
     assert calls == [(["--index-url", "https://download.pytorch.org/whl/cu128", "torch==2.11.0+cu128"], True)]
+
+
+def test_optional_tts_installer_reconciles_cuda_preinstall_before_locked_phase(
+    monkeypatch,
+    tmp_path,
+):
+    """A newer CUDA pre-phase dependency must not survive beside its locked pin."""
+    from core import optional_deps
+    from scripts import optional_tts_installer
+
+    target = tmp_path / "python_packages"
+    plan_path = tmp_path / "plan.json"
+    log_path = tmp_path / "install.log"
+    pre_install_packages = ["torch==2.11.0+cu128"]
+    packages = ["cuda-pathfinder==1.6.0"]
+    plan_path.write_text(
+        json.dumps(
+            {
+                "display_name": "Kokoro",
+                "pre_install_packages": pre_install_packages,
+                "packages": packages,
+                "log_path": str(log_path),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(optional_deps, "OPTIONAL_PACKAGES_DIR", target)
+    monkeypatch.setattr(sys, "argv", ["optional_tts_installer.py", "--plan", str(plan_path)])
+    monkeypatch.setattr(optional_tts_installer, "_plan_contract_records", lambda _plan: [])
+    monkeypatch.setattr(
+        optional_tts_installer,
+        "_post_install_result",
+        lambda *_args: (True, "Kokoro installed successfully."),
+    )
+    phases: list[list[str]] = []
+
+    def fake_run_phase(_log, _prefix, selected_packages, **_kwargs):
+        phases.append(selected_packages)
+        if selected_packages == pre_install_packages:
+            (target / "cuda_pathfinder").mkdir(parents=True)
+            dist_info = target / "cuda_pathfinder-1.6.1.dist-info"
+            dist_info.mkdir()
+            (dist_info / "METADATA").write_text(
+                "Name: cuda-pathfinder\nVersion: 1.6.1\n",
+                encoding="utf-8",
+            )
+        else:
+            assert not (target / "cuda_pathfinder").exists()
+            assert not (target / "cuda_pathfinder-1.6.1.dist-info").exists()
+        return 0, ""
+
+    monkeypatch.setattr(optional_tts_installer, "_run_install_phase", fake_run_phase)
+
+    assert optional_tts_installer.main() == 0
+    assert phases == [pre_install_packages, packages]
 
 
 def test_optional_tts_installer_can_reinstall_packages(monkeypatch, tmp_path):
@@ -1465,6 +1556,65 @@ def test_optional_tts_installer_stages_restart_apply_plan(monkeypatch, tmp_path)
     status = json.loads(status_path.read_text(encoding="utf-8"))
     assert status["restart_apply"] is True
     assert status["ok"] is None
+
+
+def test_staged_kokoro_install_reconciles_cuda_preinstall_before_locked_phase(
+    monkeypatch,
+    tmp_path,
+):
+    """The packaged restart path must clean pre-phase drift inside staging."""
+    from core import optional_deps, updater
+    from scripts import optional_tts_installer
+
+    active = tmp_path / "python_packages"
+    log_path = tmp_path / "install.log"
+    status_path = tmp_path / "status.json"
+    pre_install_packages = ["torch==2.11.0+cu128"]
+    packages = ["cuda-pathfinder==1.6.0"]
+    launched: dict[str, object] = {}
+    phases: list[list[str]] = []
+
+    monkeypatch.setattr(optional_deps, "OPTIONAL_PACKAGES_DIR", active)
+    monkeypatch.setattr(updater, "openwand_wait_pid", lambda: 1111)
+    monkeypatch.setattr(optional_tts_installer, "_validate_staged_contracts", lambda *_args: [])
+    monkeypatch.setattr(
+        optional_tts_installer,
+        "_launch_staged_apply",
+        lambda plan_path: launched.update(plan_path=plan_path),
+    )
+
+    def fake_run_phase(_log, _prefix, selected_packages, *, target_dir=None, **_kwargs):
+        assert target_dir is not None
+        phases.append(selected_packages)
+        if selected_packages == pre_install_packages:
+            (target_dir / "cuda_pathfinder").mkdir(parents=True)
+            dist_info = target_dir / "cuda_pathfinder-1.6.1.dist-info"
+            dist_info.mkdir()
+            (dist_info / "METADATA").write_text(
+                "Name: cuda-pathfinder\nVersion: 1.6.1\n",
+                encoding="utf-8",
+            )
+        else:
+            assert not (target_dir / "cuda_pathfinder").exists()
+            assert not (target_dir / "cuda_pathfinder-1.6.1.dist-info").exists()
+        return 0, ""
+
+    monkeypatch.setattr(optional_tts_installer, "_run_install_phase", fake_run_phase)
+
+    result = optional_tts_installer._run_staged_restart_install(
+        plan={"display_name": "Kokoro", "wait_pid": 4321},
+        display_name="Kokoro",
+        log_path=log_path,
+        status_path=status_path,
+        prefix="[kokoro install]",
+        pre_install_packages=pre_install_packages,
+        packages=packages,
+        reinstall=False,
+    )
+
+    assert result == 0
+    assert phases == [pre_install_packages, packages]
+    assert launched["plan_path"].exists()
 
 
 def test_optional_install_apply_replaces_active_av_artifacts(tmp_path):
