@@ -95,11 +95,14 @@ def _source_command(root: Path) -> list[str]:
     return ["bash", str(launcher)]
 
 
-def _process_alive(pid: int) -> bool:
+def _process_identity_alive(pid: int, expected_create_time: float) -> bool:
+    """Return whether the exact process recorded at readiness is still alive."""
     try:
         import psutil
 
         process = psutil.Process(pid)
+        if abs(process.create_time() - expected_create_time) > 0.01:
+            return False
         return process.is_running() and process.status() != psutil.STATUS_ZOMBIE
     except ImportError:
         try:
@@ -132,7 +135,7 @@ def _stop_process_tree(process: subprocess.Popen[str]) -> None:
         pass
 
 
-def _validate_ready(payload: dict[str, Any], *, frozen: bool) -> list[int]:
+def _validate_ready(payload: dict[str, Any], *, frozen: bool) -> dict[str, tuple[int, float]]:
     if payload.get("schema_version") != 1 or payload.get("ready") is not True:
         raise RuntimeError(f"invalid readiness payload: {payload!r}")
     if payload.get("frozen") is not frozen:
@@ -142,7 +145,7 @@ def _validate_ready(payload: dict[str, Any], *, frozen: bool) -> list[int]:
     workers = payload.get("workers")
     if not isinstance(workers, dict) or set(workers) != EXPECTED_WORKERS:
         raise RuntimeError(f"expected all four workers, got: {workers!r}")
-    pids: list[int] = []
+    identities: dict[str, tuple[int, float]] = {}
     for name in sorted(EXPECTED_WORKERS):
         row = workers[name]
         if not isinstance(row, dict) or row.get("ping_ok") is not True:
@@ -150,13 +153,24 @@ def _validate_ready(payload: dict[str, Any], *, frozen: bool) -> list[int]:
         pid = row.get("pid")
         if not isinstance(pid, int) or pid <= 0:
             raise RuntimeError(f"worker {name} has no real process id: {row!r}")
-        pids.append(pid)
+        create_time = row.get("create_time")
+        if not isinstance(create_time, (int, float)) or create_time <= 0:
+            raise RuntimeError(f"worker {name} has no process identity timestamp: {row!r}")
+        identities[name] = (pid, float(create_time))
     supervisor_pid = payload.get("supervisor_pid")
     if not isinstance(supervisor_pid, int) or supervisor_pid <= 0:
         raise RuntimeError(f"supervisor has no real process id: {payload!r}")
+    supervisor_create_time = payload.get("supervisor_create_time")
+    if not isinstance(supervisor_create_time, (int, float)) or supervisor_create_time <= 0:
+        raise RuntimeError(f"supervisor has no process identity timestamp: {payload!r}")
+    pids = [pid for pid, _create_time in identities.values()]
     if len(set([supervisor_pid, *pids])) != len(pids) + 1:
         raise RuntimeError(f"launcher did not create distinct processes: {payload!r}")
-    return [supervisor_pid, *pids]
+    # communicate() already proved that the supervisor exited with code zero.
+    # On Windows its kernel process object can remain queryable until Popen's
+    # handle closes, so only the independently managed worker identities need
+    # the post-exit survivor audit.
+    return identities
 
 
 def _state_diagnostics(state: Path) -> str:
@@ -295,12 +309,20 @@ def run_launcher_smoke(
                     f"{kind} launcher exited without readiness evidence\n{output[-8000:]}{diagnostics}"
                 )
             payload = json.loads(ready_file.read_text(encoding="utf-8"))
-            pids = _validate_ready(payload, frozen=frozen)
+            identities = _validate_ready(payload, frozen=frozen)
             deadline = time.monotonic() + 10.0
-            survivors = [pid for pid in pids if _process_alive(pid)]
+            survivors = {
+                name: pid
+                for name, (pid, create_time) in identities.items()
+                if _process_identity_alive(pid, create_time)
+            }
             while survivors and time.monotonic() < deadline:
                 time.sleep(0.1)
-                survivors = [pid for pid in survivors if _process_alive(pid)]
+                survivors = {
+                    name: pid
+                    for name, (pid, create_time) in identities.items()
+                    if _process_identity_alive(pid, create_time)
+                }
             if survivors:
                 raise RuntimeError(f"{kind} launcher left managed processes running: {survivors}")
             payload["clean_shutdown"] = True

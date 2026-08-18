@@ -3963,7 +3963,7 @@ def test_launch_duplicate_crash_log_and_worker_lifecycle_workflow(
 
     monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
     monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
-    monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(supervisor_app, "data_root", lambda: tmp_path)
     monkeypatch.setattr(supervisor_app, "suppress_console_ctrl_c", lambda: None)
     monkeypatch.setattr(supervisor_app, "install_crash_diagnostics", lambda: None)
     monkeypatch.setattr(supervisor_app, "_resume_staged_optional_installs", lambda: None)

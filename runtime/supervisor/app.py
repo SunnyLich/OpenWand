@@ -14,10 +14,12 @@ import time
 import traceback
 from pathlib import Path
 
+import psutil
+
 from core.system import single_instance
 from runtime.bootstrap import (
+    data_root,
     install_crash_diagnostics,
-    repo_root,
     suppress_console_ctrl_c,
 )
 from runtime.supervisor.flows import FlowController
@@ -283,17 +285,20 @@ def _write_launch_smoke_ready(
     path = Path(configured).expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     settings_smoke = _run_real_settings_smoke(supervisor)
+    supervisor_process = psutil.Process(os.getpid())
     payload = {
         "schema_version": 1,
         "ready": True,
         "frozen": bool(getattr(sys, "frozen", False)),
         "supervisor_pid": os.getpid(),
+        "supervisor_create_time": supervisor_process.create_time(),
         "ui_overlay_shown": True,
         "flows_started": True,
         "hotkeys": hotkey_result,
         "workers": {
             name: {
                 "pid": worker.pid,
+                "create_time": psutil.Process(worker.pid).create_time(),
                 "ping_ok": bool(startup_results.get(name)),
             }
             for name, worker in supervisor.workers.items()
@@ -333,7 +338,7 @@ def _runtime_log_mode() -> str:
 
 def _prune_runtime_logs(log_root: Path | None = None, *, now: float | None = None) -> int:
     """Remove OpenWand runtime log artifacts older than the retention window."""
-    root = log_root if log_root is not None else repo_root() / "build_logs"
+    root = log_root if log_root is not None else data_root() / "build_logs"
     if not root.is_dir():
         return 0
     cutoff = (time.time() if now is None else now) - (RUNTIME_LOG_RETENTION_DAYS * 24 * 60 * 60)
@@ -389,7 +394,7 @@ def _prepare_run_log_dir(*, reason: str = "runtime", expose_to_workers: bool = T
     if configured:
         path = Path(configured)
     else:
-        root = repo_root()
+        root = data_root()
         _prune_runtime_logs(root / "build_logs")
         prefix = "openwand_runtime" if reason == "runtime" else "openwand_crash"
         path = root / "build_logs" / f"{prefix}_{time.strftime('%Y%m%d-%H%M%S')}"
