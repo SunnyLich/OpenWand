@@ -38,6 +38,8 @@ def test_source_development_launcher_starts_real_ui_workers_and_cleans_up() -> N
     assert payload["flows_started"] is True
     assert payload["clean_shutdown"] is True
     assert set(payload["workers"]) == {"native", "ui", "brain", "audio"}
+    assert payload["supervisor_create_time"] > 0
+    assert all(row["create_time"] > 0 for row in payload["workers"].values())
 
 
 def test_real_app_settings_profiles_save_reopen_and_fetch_ollama_models() -> None:

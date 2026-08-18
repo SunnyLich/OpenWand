@@ -148,7 +148,7 @@ jobs:
             /etc/apt/sources.list.d/packages-microsoft-prod.list \
             /etc/apt/sources.list.d/packages-microsoft-prod.sources
           sudo apt-get update
-          sudo apt-get install -y libportaudio2 libsndfile1
+          sudo apt-get install -y libegl1 libportaudio2 libsndfile1
 
       - name: Make build script executable
         run: chmod +x ./tools/build_exe.sh

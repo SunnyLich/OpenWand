@@ -106,7 +106,7 @@ def test_runtime_log_mode_explicit_crash_overrides_frozen_default(monkeypatch):
 
 def test_prepare_run_log_dir_sets_env_and_latest_pointer(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
-    monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(supervisor_app, "data_root", lambda: tmp_path)
 
     log_dir = supervisor_app._prepare_run_log_dir()
 
@@ -119,7 +119,7 @@ def test_prepare_run_log_dir_sets_env_and_latest_pointer(tmp_path, monkeypatch):
 def test_prepare_crash_log_dir_does_not_enable_worker_logs(tmp_path, monkeypatch):
     """Verify crash-only log dirs do not turn on worker stderr file logging."""
     monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
-    monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(supervisor_app, "data_root", lambda: tmp_path)
 
     log_dir = supervisor_app._prepare_run_log_dir(reason="crash", expose_to_workers=False)
 
@@ -171,7 +171,7 @@ def test_prune_runtime_logs_removes_openwand_logs_older_than_retention(tmp_path)
 def test_prepare_run_log_dir_prunes_expired_runtime_logs(tmp_path, monkeypatch):
     """Verify automatic run log setup prunes old OpenWand runtime logs."""
     monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
-    monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(supervisor_app, "data_root", lambda: tmp_path)
     old_runtime = tmp_path / "build_logs" / "openwand_runtime_20260101-010101"
     old_runtime.mkdir(parents=True)
     os.utime(old_runtime, (0, 0))
@@ -336,7 +336,7 @@ def test_main_shuts_down_after_nonzero_ui_exit(tmp_path, monkeypatch):
     """Verify an unexpected UI worker exit shuts down instead of restarting UI."""
     monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
     monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
-    monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(supervisor_app, "data_root", lambda: tmp_path)
     monkeypatch.setattr(supervisor_app.single_instance, "acquire", lambda: True)
     instances = []
 
@@ -418,7 +418,7 @@ def test_main_restarts_audio_worker_after_unexpected_exit(tmp_path, monkeypatch)
     """Verify an unexpected audio worker exit restarts without shutting down OpenWand."""
     monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
     monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
-    monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(supervisor_app, "data_root", lambda: tmp_path)
     monkeypatch.setattr(supervisor_app.single_instance, "acquire", lambda: True)
     instances = []
 
@@ -490,7 +490,7 @@ def test_main_does_not_restart_ui_after_user_quit_event(tmp_path, monkeypatch):
     """Verify a user-requested Qt quit is not treated as a UI crash."""
     monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
     monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
-    monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(supervisor_app, "data_root", lambda: tmp_path)
     monkeypatch.setattr(supervisor_app.single_instance, "acquire", lambda: True)
     instances = []
     flow_instances = []
@@ -588,7 +588,7 @@ def test_main_writes_crash_log_when_ui_worker_exits_nonzero(tmp_path, monkeypatc
     """Verify normal mode writes logs only after an abrupt UI worker exit."""
     monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
     monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
-    monkeypatch.setattr(supervisor_app, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(supervisor_app, "data_root", lambda: tmp_path)
     monkeypatch.setattr(supervisor_app.single_instance, "acquire", lambda: True)
 
     class FakeWorker:
