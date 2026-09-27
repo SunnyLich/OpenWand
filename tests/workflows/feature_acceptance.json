@@ -2910,14 +2910,14 @@
       "function_id": "F160",
       "function": "Show conversation and message timestamps.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "conversation/message metadata -> sidebar and bubble timestamp labels",
+      "production_entry_point": "stored conversation metadata -> compact history rows; assistant message metadata -> reply time and full-date tooltip",
       "test_node_ids": [
-        "tests/test_chat_window_render_limits.py::test_chat_sidebar_shows_conversation_timestamp",
-        "tests/test_chat_window_render_limits.py::test_chat_bubble_header_shows_message_timestamp",
+        "tests/test_chat_window_render_limits.py::test_chat_sidebar_compact_rows_preserve_timestamp_metadata",
+        "tests/test_chat_window_render_limits.py::test_chat_reply_shows_short_timestamp_with_full_date_tooltip",
         "tests/test_chat_window_render_limits.py::test_message_timestamp_formats_from_metadata"
       ],
       "success_assertions": [
-        "Stored ISO metadata is formatted and displayed on both conversation rows and message headers."
+        "Compact conversation rows preserve stored dates; assistant replies show local time with the full date in the tooltip and accessible name."
       ],
       "dependency_status": "audited",
       "interaction_ids": [

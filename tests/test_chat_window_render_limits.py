@@ -539,8 +539,8 @@ def test_empty_chat_hides_chat_scoped_buttons_but_keeps_import_and_sync() -> Non
 
 
 def test_formatted_sidebar_uses_window_title_and_collapsible_sources() -> None:
-    """The sidebar has no duplicate brand row and Sources acts as a disclosure."""
-    from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
+    """Import starts collapsed and exposes one provider's controls at a time."""
+    from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QTabBar, QWidget
 
     app = QApplication.instance() or QApplication(sys.argv)
     window = ChatWindow([], lambda _messages: iter(()))
@@ -554,19 +554,32 @@ def test_formatted_sidebar_uses_window_title_and_collapsible_sources() -> None:
         container = window.findChild(QWidget, "formattedSourcesContainer")
         assert toggle is not None
         assert container is not None
-        assert toggle.text() == "▾  Sources"
-        assert container.isHidden() is False
-
-        toggle.click()
-        app.processEvents()
-        assert toggle.text() == "▸  Sources"
+        assert toggle.text() == "Import conversations"
+        assert not toggle.icon().isNull()
+        assert not toggle.isChecked()
         assert container.isHidden() is True
-        assert window.findChild(QPushButton, "externalImportCodex").isVisible() is False
 
         toggle.click()
         app.processEvents()
-        assert toggle.text() == "▾  Sources"
-        assert container.isHidden() is False
+        assert toggle.isChecked()
+        assert container.isVisible()
+        tabs = window.findChild(QTabBar, "conversationImportTabs")
+        assert tabs is not None and tabs.count() == 2
+        codex_button = window.findChild(QPushButton, "externalImportCodex")
+        claude_button = window.findChild(QPushButton, "externalImportClaude")
+        assert codex_button.isVisible()
+        assert not claude_button.isVisible()
+        tabs.setCurrentIndex(1)
+        app.processEvents()
+        assert claude_button.isVisible()
+        assert not codex_button.isVisible()
+
+        toggle.click()
+        app.processEvents()
+        assert toggle.text() == "Import conversations"
+        assert not toggle.isChecked()
+        assert container.isHidden()
+        assert not claude_button.isVisible()
     finally:
         window.close()
         window.deleteLater()
@@ -936,8 +949,8 @@ def test_chat_sidebar_options_button_stays_visible_for_long_titles():
 
 
 @pytest.mark.skipif(not PYSIDE6_AVAILABLE, reason="PySide6 not installed")
-def test_chat_sidebar_shows_conversation_timestamp():
-    """Verify history rows include conversation date/time metadata."""
+def test_chat_sidebar_compact_rows_preserve_timestamp_metadata():
+    """Compact history keeps titles uncluttered without changing stored dates."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
@@ -952,8 +965,10 @@ def test_chat_sidebar_shows_conversation_timestamp():
     try:
         row, title_btn = window._make_sidebar_row(0, conversations[0])
 
-        assert title_btn._subtitle
-        assert title_btn._subtitle in title_btn.toolTip()
+        assert title_btn._subtitle == ""
+        assert title_btn.toolTip() == "hello"
+        assert conversations[0]["updated_at"] == "2026-06-19T15:52:16+00:00"
+        assert "2026" in window._conversation_timestamp(conversations[0])
     finally:
         row.deleteLater()
         window.close()
@@ -1032,8 +1047,8 @@ def test_chat_sidebar_separates_project_chats_from_unheaded_general_history(monk
 
 
 @pytest.mark.skipif(not PYSIDE6_AVAILABLE, reason="PySide6 not installed")
-def test_chat_bubble_header_shows_message_timestamp():
-    """Verify each chat turn displays its own date/time metadata."""
+def test_chat_reply_shows_short_timestamp_with_full_date_tooltip():
+    """Replies show local time, with the full date available on hover/accessibility."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QLabel
 
@@ -1042,7 +1057,7 @@ def test_chat_bubble_header_shows_message_timestamp():
         {
             "messages": [
                 {
-                    "role": "user",
+                    "role": "assistant",
                     "content": "hello",
                     "created_at": "2026-06-19T15:52:16+00:00",
                 }
@@ -1051,9 +1066,16 @@ def test_chat_bubble_header_shows_message_timestamp():
     ]
     window = ChatWindow(conversations, lambda _messages: iter(()))
     try:
-        labels = [label.text() for label in window.findChildren(QLabel)]
+        from datetime import datetime
 
-        assert any("2026" in text for text in labels)
+        label = window.findChild(QLabel, "chatMessageTimestamp")
+        assert label is not None
+        timestamp = conversations[0]["messages"][0]["created_at"]
+        expected_time = datetime.fromisoformat(timestamp).astimezone().strftime("%I:%M %p").lstrip("0")
+        assert label.text() == expected_time
+        assert label.toolTip() == _format_conversation_datetime(timestamp)
+        assert "2026" in label.toolTip()
+        assert label.accessibleName() == label.toolTip()
     finally:
         window.close()
         app.processEvents()
@@ -1324,7 +1346,7 @@ def test_chat_message_menu_can_copy_selected_text(monkeypatch):
 
 @pytest.mark.skipif(not PYSIDE6_AVAILABLE, reason="PySide6 not installed")
 def test_chat_window_selection_notice_names_continued_chat():
-    """Verify switching chats shows which conversation will continue."""
+    """The conversation header identifies the selected chat without a second banner."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
@@ -1337,8 +1359,11 @@ def test_chat_window_selection_notice_names_continued_chat():
     try:
         window._switch(1)
 
-        assert window._past_notice.isHidden() is False
-        assert "new topic" in window._past_notice.text()
+        assert window._active_idx == 1
+        assert window._conversation_header_label.text() == "new topic"
+        assert window._past_notice.isHidden() is True
+        window._switch(0)
+        assert window._conversation_header_label.text() == "old topic"
     finally:
         window.close()
         app.processEvents()
@@ -1596,7 +1621,7 @@ def test_late_chunk_for_other_conversation_does_not_contaminate_active_stream():
 
 @pytest.mark.skipif(not PYSIDE6_AVAILABLE, reason="PySide6 not installed")
 def test_chat_followup_injects_hidden_file_context():
-    """Verify file metadata is sent as hidden system context, not message turns."""
+    """File context accompanies the latest user turn and leaves the system prefix stable."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
@@ -1629,7 +1654,16 @@ def test_chat_followup_injects_hidden_file_context():
                 break
 
         assert captured
-        assert r"C:\repo\model_files\hello_world.py" in captured[0][0]["content"]
+        messages = captured[0]
+        path = r"C:\repo\model_files\hello_world.py"
+        assert [message["role"] for message in messages] == ["system", "user", "user"]
+        assert path not in messages[0]["content"]
+        assert messages[1]["content"] == "add a comment"
+        assert path in messages[-1]["content"]
+        assert "<captured_context>" in messages[-1]["content"]
+        assert "<request>\nedit that file\n</request>" in messages[-1]["content"]
+        stored_user_messages = [message for message in conversations[0]["messages"] if message["role"] == "user"]
+        assert stored_user_messages[-1]["content"] == "edit that file"
         assert all("file_context" not in message for message in captured[0])
     finally:
         window.close()
@@ -1948,10 +1982,10 @@ def test_assistant_image_only_bubble_renders_a_thumbnail(tmp_path):
 
 
 @pytest.mark.skipif(not PYSIDE6_AVAILABLE, reason="PySide6 not installed")
-def test_chat_attachment_button_path_feeds_next_message_context(tmp_path):
+def test_chat_attachment_button_path_feeds_next_message_context(tmp_path, monkeypatch):
     """Verify file-picker attachments use the same context path as drag/drop."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication, QPushButton
+    from PySide6.QtWidgets import QApplication, QFileDialog, QPushButton
 
     app = QApplication.instance() or QApplication(sys.argv)
     captured = []
@@ -1965,11 +1999,21 @@ def test_chat_attachment_button_path_feeds_next_message_context(tmp_path):
 
     window = ChatWindow(conversations, send_fn)
     try:
-        attach_btn = window.findChild(QPushButton, "chatAttachButton")
+        picker_calls = []
+
+        def choose_files(*args):
+            picker_calls.append(args)
+            return [str(note)], ""
+
+        monkeypatch.setattr(QFileDialog, "getOpenFileNames", choose_files)
+        attach_btn = window.findChild(QPushButton, "formattedAttachButton")
         assert attach_btn is not None
         assert attach_btn.text() == "+"
 
-        assert window._add_attachment_paths([str(note)]) is True
+        attach_btn.click()
+        assert len(picker_calls) == 1
+        assert picker_calls[0][0] is window
+        assert "note.txt" in window._attachment_label.text()
         window._send("use the picked file")
         for _ in range(20):
             app.processEvents()

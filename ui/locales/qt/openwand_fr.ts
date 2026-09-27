@@ -3,6 +3,18 @@
   <context>
     <name>OpenWand</name>
     <message>
+      <source>Import conversations</source>
+      <translation>Importer des conversations</translation>
+    </message>
+    <message>
+      <source>Choose conversations…</source>
+      <translation>Choisir des conversations…</translation>
+    </message>
+    <message>
+      <source>Import new chats automatically</source>
+      <translation>Importer automatiquement les nouveaux chats</translation>
+    </message>
+    <message>
       <source>Advanced</source>
       <translation>Avancé</translation>
     </message>

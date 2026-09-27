@@ -364,7 +364,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 242
+      "node_count": 243
     },
     {
       "path": "tests/runtime/test_flows_live_voice.py",
@@ -514,7 +514,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 61
+      "node_count": 63
     },
     {
       "path": "tests/runtime/test_ui_host_runtime_status.py",
@@ -2577,7 +2577,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 178
+      "node_count": 179
     },
     {
       "path": "tests/test_settings_env.py",

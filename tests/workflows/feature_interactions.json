@@ -2154,16 +2154,16 @@
         {"source_state": "delete_confirm", "target_state": "history_result", "expected_result": "The confirmed conversation is removed from durable history."},
         {"source_state": "delete_cancel", "target_state": "history_result", "expected_result": "Cancellation preserves the exact conversation and messages."},
         {"source_state": "browse", "target_state": "history_result", "expected_result": "The conversation record is persisted before its associated path is revealed."},
-        {"source_state": "conversation_timestamp", "target_state": "history_result", "expected_result": "Conversation metadata formats into the sidebar timestamp."},
-        {"source_state": "message_timestamp", "target_state": "history_result", "expected_result": "Message metadata formats into the bubble header timestamp."}
+        {"source_state": "conversation_timestamp", "target_state": "history_result", "expected_result": "Compact sidebar rows preserve conversation timestamps without displaying a date subtitle."},
+        {"source_state": "message_timestamp", "target_state": "history_result", "expected_result": "Assistant message metadata formats into a short reply time with a full-date tooltip and accessible name."}
       ],
       "test_node_ids": [
         "tests/test_app_user_workflows.py::test_chat_real_project_and_conversation_options_workflow",
         "tests/test_chat_window_render_limits.py::test_conversation_rename_failure_matrix_rejects_or_rolls_back",
         "tests/test_chat_window_render_limits.py::test_conversation_delete_failure_matrix_preserves_history",
         "tests/test_chat_window_render_limits.py::test_chat_browse_conversation_files_persists_then_reveals_record",
-        "tests/test_chat_window_render_limits.py::test_chat_sidebar_shows_conversation_timestamp",
-        "tests/test_chat_window_render_limits.py::test_chat_bubble_header_shows_message_timestamp"
+        "tests/test_chat_window_render_limits.py::test_chat_sidebar_compact_rows_preserve_timestamp_metadata",
+        "tests/test_chat_window_render_limits.py::test_chat_reply_shows_short_timestamp_with_full_date_tooltip"
       ],
       "status": "accepted"
     },

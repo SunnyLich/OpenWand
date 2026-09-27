@@ -3,6 +3,18 @@
   <context>
     <name>OpenWand</name>
     <message>
+      <source>Import conversations</source>
+      <translation>匯入對話</translation>
+    </message>
+    <message>
+      <source>Choose conversations…</source>
+      <translation>選擇要匯入的對話…</translation>
+    </message>
+    <message>
+      <source>Import new chats automatically</source>
+      <translation>自動匯入新對話</translation>
+    </message>
+    <message>
       <source>Advanced</source>
       <translation>進階</translation>
     </message>

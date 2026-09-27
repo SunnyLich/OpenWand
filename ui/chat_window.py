@@ -55,6 +55,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QStackedWidget,
+    QTabBar,
     QTextBrowser,
     QTextEdit,
     QToolTip,
@@ -79,7 +80,7 @@ from core.conversation_store.external_sync import (
 )
 from core.conversation_store.store import GENERAL_PROJECT_ID as _GENERAL_PROJECT_ID
 from core.system import file_browser as _file_browser
-from core.system.paths import CHATS_DIR
+from core.system.paths import ASSETS_DIR, CHATS_DIR
 from runtime.supervisor import tool_modes
 from ui.chat_rendering import (
     _assistant_segments_to_html,
@@ -2438,10 +2439,10 @@ class ChatWindow(QWidget):
             f" border-right: 1px solid {_BORDER}; }}"
         )
         outer = QVBoxLayout(sidebar)
-        outer.setContentsMargins(8, 8, 8, 8)
-        outer.setSpacing(4)
+        outer.setContentsMargins(12, 10, 12, 10)
+        outer.setSpacing(7)
 
-        new_chat = QPushButton(f"＋  {t('New chat')}")
+        new_chat = QPushButton(f"+  {t('New chat')}")
         new_chat.setObjectName("formattedNewChat")
         new_chat.setFixedHeight(36)
         new_chat.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -2457,35 +2458,90 @@ class ChatWindow(QWidget):
         outer.addWidget(new_chat)
 
         project_selector = self._make_project_selector()
-        project_selector.setFixedHeight(34)
+        project_selector.setFixedHeight(38)
         project_selector.setToolTip(t("Project for new chats"))
+        project_selector.setCursor(Qt.CursorShape.PointingHandCursor)
+        chevron = (ASSETS_DIR / "ui" / "chevron-down.svg").as_posix()
+        project_selector.setStyleSheet(
+            f"QComboBox {{ background: transparent; color: {_TEXT}; border: 1px solid transparent;"
+            " border-radius: 9px; padding: 5px 36px 5px 12px; font-size: 10pt; }"
+            f"QComboBox:hover {{ background: {_WHITE_BG_10}; }}"
+            "QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right;"
+            " width: 30px; border: none; background: transparent; }"
+            f'QComboBox::down-arrow {{ image: url("{chevron}"); width: 16px; height: 16px; }}'
+            f"QComboBox QAbstractItemView {{ background: {_TITLE_BG}; color: {_TEXT}; padding: 6px;"
+            f" border: 1px solid {_BORDER}; selection-background-color: {_SEL_BG}; outline: none; }}"
+        )
         outer.addWidget(project_selector)
 
         sources_toggle = QPushButton()
         sources_toggle.setObjectName("formattedSourcesToggle")
         sources_toggle.setCheckable(True)
-        sources_toggle.setChecked(bool(getattr(self, "_sources_expanded", True)))
-        sources_toggle.setFixedHeight(30)
+        sources_toggle.setChecked(bool(getattr(self, "_sources_expanded", False)))
+        sources_toggle.setFixedHeight(38)
         sources_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        sources_toggle.setAccessibleName(t("Show or hide conversation sources"))
+        sources_toggle.setAccessibleName(t("Import conversations"))
         sources_toggle.setStyleSheet(
-            f"QPushButton {{ color: {_HINT}; background: transparent; border: none;"
-            " border-radius: 7px; text-align: left; padding: 0 10px; font-size: 8pt; }}"
+            f"QPushButton {{ color: {_TEXT}; background: transparent; border: none;"
+            " border-radius: 8px; text-align: left; padding: 0 10px; font-size: 10pt; }}"
             f"QPushButton:hover {{ color: {_TEXT}; background: {_WHITE_BG_10}; }}"
         )
-        outer.addWidget(sources_toggle)
+        outer.insertWidget(0, sources_toggle)
 
         sources_container = QWidget()
         sources_container.setObjectName("formattedSourcesContainer")
         sources_layout = QVBoxLayout(sources_container)
-        sources_layout.setContentsMargins(2, 0, 2, 2)
-        sources_layout.setSpacing(4)
+        sources_layout.setContentsMargins(12, 4, 6, 10)
+        sources_layout.setSpacing(10)
+        sources_container.setStyleSheet("background: transparent;")
+        source_tabs = QTabBar()
+        source_tabs.setObjectName("conversationImportTabs")
+        source_tabs.setExpanding(True)
+        source_tabs.setDrawBase(False)
+        source_tabs.setAccessibleName(t("Import conversations"))
+        source_tabs.setStyleSheet(
+            "QTabBar { background: transparent; }"
+            f"QTabBar::tab {{ color: {_HINT}; background: transparent; border: none;"
+            f" border-bottom: 2px solid {_BORDER}; padding: 9px 10px; font-size: 10pt; }}"
+            f"QTabBar::tab:selected {{ color: {_TEXT}; border-bottom: 2px solid {_ACCENT}; }}"
+            f"QTabBar::tab:hover {{ background: {_WHITE_BG_10}; }}"
+        )
+        sources_layout.addWidget(source_tabs)
+        source_pages = QStackedWidget()
+        source_pages.setObjectName("conversationImportPages")
         for provider in ("codex", "claude"):
+            source_tabs.addTab(_external_provider_display_name(provider))
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(0, 0, 0, 4)
+            page_layout.setSpacing(8)
             import_button = self._make_external_sync_button(provider)
-            import_button.setFixedHeight(32)
-            sources_layout.addWidget(import_button)
-            sources_layout.addWidget(self._make_external_auto_sync_checkbox(provider))
-        outer.addWidget(sources_container)
+            import_button.setText(t("Choose conversations…"))
+            import_button.setAccessibleName(
+                t("Import local {provider} history…").format(
+                    provider=_external_provider_display_name(provider)
+                )
+            )
+            import_button.setFixedHeight(36)
+            import_button.setStyleSheet(
+                f"QPushButton {{ color: {_TEXT}; background: {_WHITE_BG_10}; border: 1px solid {_BORDER};"
+                " border-radius: 8px; text-align: left; padding: 0 12px; font-size: 10pt; }"
+                f"QPushButton:hover {{ background: {_WHITE_BG_12}; }}"
+            )
+            page_layout.addWidget(import_button)
+            auto_import = self._make_external_auto_sync_checkbox(provider)
+            auto_import.setText(t("Import new chats automatically"))
+            auto_import.setMinimumHeight(25)
+            auto_import.setStyleSheet(
+                f"QCheckBox {{ color: {_HINT}; background: transparent; border: none;"
+                " padding: 0; spacing: 8px; font-size: 9pt; }"
+                f"QCheckBox:hover {{ color: {_TEXT}; }}"
+            )
+            page_layout.addWidget(auto_import)
+            source_pages.addWidget(page)
+        source_tabs.currentChanged.connect(source_pages.setCurrentIndex)
+        sources_layout.addWidget(source_pages)
+        outer.insertWidget(1, sources_container)
         self._sources_toggle = sources_toggle
         self._sources_container = sources_container
         sources_toggle.toggled.connect(self._set_sources_expanded)
@@ -2539,8 +2595,9 @@ class ChatWindow(QWidget):
         container = getattr(self, "_sources_container", None)
         if toggle is not None:
             toggle.setChecked(self._sources_expanded)
-            arrow = "▾" if self._sources_expanded else "▸"
-            toggle.setText(f"{arrow}  {t('Sources')}")
+            arrow = "chevron-down.svg" if self._sources_expanded else "chevron-right.svg"
+            toggle.setIcon(QIcon(str(ASSETS_DIR / "ui" / arrow)))
+            toggle.setText(t("Import conversations"))
             toggle.setToolTip(
                 t("Collapse conversation sources")
                 if self._sources_expanded
@@ -2852,7 +2909,9 @@ class ChatWindow(QWidget):
             self._external_sync_inflight.discard(provider)
             if not automatic and button is not None:
                 button.setText(
-                    t("Import local {provider} history…").format(provider=provider_name)
+                    t("Choose conversations…")
+                    if self._formatted_replies_ui_enabled
+                    else t("Import local {provider} history…").format(provider=provider_name)
                 )
                 button.setEnabled(True)
 
@@ -4402,19 +4461,20 @@ class ChatWindow(QWidget):
         wrapper.setObjectName("messageContextDisclosure")
         wrapper.setStyleSheet("background: transparent;")
         disclosure_layout = QVBoxLayout(wrapper)
-        disclosure_layout.setContentsMargins(4, 0, 4, 0)
+        disclosure_layout.setContentsMargins(0, 0, 0, 0)
         disclosure_layout.setSpacing(7)
 
         toggle = QPushButton(show_label)
         toggle.setObjectName("messageContextToggle")
+        toggle.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         toggle.setCursor(Qt.CursorShape.PointingHandCursor)
         toggle.setAccessibleName(t("Show context"))
         toggle.setToolTip(t("Show the full context attached to this message."))
         toggle.setStyleSheet(
-            f"QPushButton {{ background: {_ACCENT_BG_10}; color: {_HINT};"
-            f" font-size: 8pt; border: 1px solid {_BORDER}; border-radius: 6px;"
-            " padding: 6px 9px; text-align: left; }}"
-            f"QPushButton:hover {{ background: {_WHITE_BG_10}; color: {_TEXT}; }}"
+            f"QPushButton {{ background: {_WHITE_BG_10}; color: {_TEXT};"
+            f" font-size: 9pt; border: 1px solid {_BORDER}; border-radius: 7px;"
+            " padding: 7px 10px; text-align: left; }}"
+            f"QPushButton:hover {{ background: {_WHITE_BG_12}; color: {_TEXT}; }}"
         )
         disclosure_layout.addWidget(toggle)
 
@@ -4440,7 +4500,7 @@ class ChatWindow(QWidget):
             wrapper.updateGeometry()
 
         toggle.clicked.connect(toggle_context)
-        return wrapper
+        return self._wrap_message_column(wrapper, "assistant", "messageContextColumnRow")
 
     def _context_snippets_widget(self, snippets: object) -> QLabel | None:
         """Display-only, per-source context snippets shown under a user turn.
@@ -5683,6 +5743,20 @@ class ChatWindow(QWidget):
                     lambda _checked=False, value=display_text: QApplication.clipboard().setText(value)
                 )
                 actions_layout.addWidget(copy_button)
+                message_time = _parse_iso_datetime(created_at or message.get("created_at"))
+                if message_time is not None:
+                    time_label = QLabel(message_time.strftime("%I:%M %p").lstrip("0"))
+                    time_label.setObjectName("chatMessageTimestamp")
+                    full_timestamp = _format_conversation_datetime(
+                        created_at or message.get("created_at")
+                    )
+                    time_label.setToolTip(full_timestamp)
+                    time_label.setAccessibleName(full_timestamp)
+                    time_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+                    time_label.setStyleSheet(
+                        f"color: {_HINT}; background: transparent; border: none; font-size: 8pt;"
+                    )
+                    actions_layout.addWidget(time_label)
             if presentation_view is not None:
                 toggle = QPushButton(t("Show original"))
                 toggle.setFlat(True)
@@ -5778,12 +5852,19 @@ class ChatWindow(QWidget):
             if self._formatted_replies_ui_enabled and menu_btn is not None:
                 actions_layout.addWidget(menu_btn)
             wl.addWidget(action_row)
+        column_row = self._wrap_message_column(wrapper, role)
+        layout.insertWidget(layout.count() - 1, column_row)
+        return lbl
+
+    @staticmethod
+    def _wrap_message_column(content: QWidget, role: str, name: str = "") -> QWidget:
+        """Give context disclosures and replies identical responsive columns."""
         # Both columns scale with the live conversation pane instead of using a
         # fixed pixel width. Assistant replies are centered; user prompts stay
         # flush right. The 3:14:3 and 3:7 ratios cap each column at 70%.
         column_row = QWidget()
         column_row.setObjectName(
-            "assistantMessageColumnRow" if role == "assistant" else "userMessageColumnRow"
+            name or ("assistantMessageColumnRow" if role == "assistant" else "userMessageColumnRow")
         )
         column_row.setStyleSheet("background: transparent;")
         column_row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -5792,13 +5873,12 @@ class ChatWindow(QWidget):
         column_layout.setSpacing(0)
         if role == "assistant":
             column_layout.addStretch(3)
-            column_layout.addWidget(wrapper, 14, Qt.AlignmentFlag.AlignTop)
+            column_layout.addWidget(content, 14, Qt.AlignmentFlag.AlignTop)
             column_layout.addStretch(3)
         else:
             column_layout.addStretch(3)
-            column_layout.addWidget(wrapper, 7, Qt.AlignmentFlag.AlignTop)
-        layout.insertWidget(layout.count() - 1, column_row)
-        return lbl
+            column_layout.addWidget(content, 7, Qt.AlignmentFlag.AlignTop)
+        return column_row
 
     @staticmethod
     def _image_thumbnail_label(image_b64: str | None, role: str) -> QLabel | None:
