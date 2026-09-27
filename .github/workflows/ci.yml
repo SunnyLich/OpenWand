@@ -1,8 +1,9 @@
-# Runs the cross-platform CI checks for OpenWand pull requests and branch pushes.
+# Runs cross-platform CI for pull requests and main branch pushes.
 name: CI
 
 on:
   push:
+    branches: [main]
     paths:
       - "core/**"
       - "ui/**"

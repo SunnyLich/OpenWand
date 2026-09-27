@@ -2,6 +2,7 @@ name: Optional dependency contracts
 
 on:
   push:
+    branches: [main]
     paths:
       - "core/optional_deps.py"
       - "scripts/optional_tts_installer.py"

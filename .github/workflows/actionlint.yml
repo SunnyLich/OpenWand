@@ -3,6 +3,7 @@ name: Actionlint
 
 on:
   push:
+    branches: [main]
     paths:
       - ".github/actionlint.yaml"
       - ".github/workflows/**"
