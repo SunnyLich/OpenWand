@@ -98,6 +98,7 @@ def test_codex_text_uses_context_wrapper():
 
 
 def test_ollama_prefix_request_contains_only_static_openwand_content(monkeypatch):
+    monkeypatch.setattr(client.macos_safety, "openai_compat_tools_enabled", lambda: True)
     monkeypatch.setattr(config, "get_system_prompt", lambda: "OPENWAND SYSTEM")
 
     built = client._build_ollama_prefix_request(
@@ -127,6 +128,7 @@ def test_ollama_prefix_request_contains_only_static_openwand_content(monkeypatch
 
 
 def test_ollama_prefix_identity_rebuilds_only_for_static_inputs(monkeypatch):
+    monkeypatch.setattr(client.macos_safety, "openai_compat_tools_enabled", lambda: True)
     monkeypatch.setattr(config, "get_system_prompt", lambda: "SYSTEM ONE")
 
     def identity(**kwargs):
