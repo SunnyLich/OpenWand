@@ -166,6 +166,8 @@ class WorkerClient:
         self._stderr_log_path: Path | None = None
         self._restart_count = 0
         self._shutting_down = False
+        self.unavailable_reason = ""
+        self._stderr_thread: threading.Thread | None = None
         atexit.register(self.shutdown)
 
     def alive(self) -> bool:
@@ -192,6 +194,8 @@ class WorkerClient:
 
     def _ensure_started(self) -> None:
         """Ensure started."""
+        if self.unavailable_reason:
+            raise WorkerError(self.unavailable_reason)
         if self.alive():
             return
         with self._spawn_lock:
@@ -226,8 +230,9 @@ class WorkerClient:
             env=env,
             bufsize=0,
         )
+        self._stderr_thread = threading.Thread(target=self._stderr_loop, args=(self._proc,), daemon=True)
+        self._stderr_thread.start()
         threading.Thread(target=self._read_loop, args=(self._proc,), daemon=True).start()
-        threading.Thread(target=self._stderr_loop, args=(self._proc,), daemon=True).start()
 
     def _read_loop(self, proc: subprocess.Popen) -> None:
         """Read loop."""
@@ -391,6 +396,8 @@ class WorkerClient:
     ) -> Any:
         """Send a request to the worker; await and return the response unless wait=False."""
         self._ensure_started()
+        request_proc = self._proc
+        request_stderr_thread = self._stderr_thread
         rid = next(self._ids)
         req = protocol.make_request(rid, method, params or {})
         if not wait:
@@ -418,7 +425,22 @@ class WorkerClient:
             raise WorkerError(detail)
         resp = slot["resp"] or {"ok": False, "error": "missing response"}
         if not resp.get("ok"):
-            raise WorkerError(str(resp.get("error") or f"{method!r} failed"))
+            error = str(resp.get("error") or f"{method!r} failed")
+            if error == "worker exited":
+                proc = request_proc
+                code = proc.poll() if proc is not None else None
+                if proc is not None and code is None:
+                    try:
+                        code = proc.wait(timeout=1.0)
+                    except subprocess.TimeoutExpired:
+                        pass
+                if request_stderr_thread is not None:
+                    request_stderr_thread.join(timeout=1.0)
+                error = f"{self.spec.name} worker exited during {method!r} (exit code: {code if code is not None else 'unavailable'})."
+                tail = self.stderr_tail()
+                if tail:
+                    error += f"\nRecent {self.spec.name} stderr:\n{tail}"
+            raise WorkerError(error)
         return resp.get("result")
 
     def call_with_events(
@@ -530,6 +552,8 @@ class WorkerClient:
 
     def restart(self) -> None:
         """Handle restart for worker client."""
+        if self.unavailable_reason:
+            raise WorkerError(self.unavailable_reason)
         with self._spawn_lock:
             if self._shutting_down:
                 raise WorkerError(f"{self.spec.name} is shutting down")
@@ -659,11 +683,20 @@ class OpenWandSupervisor:
         results: dict[str, Any] = {}
         try:
             for name, worker in self.workers.items():
-                results[name] = worker.call(
-                    f"{name}.ping",
-                    {"value": name},
-                    timeout=startup_timeouts.get(name, 30.0),
-                )
+                try:
+                    results[name] = worker.call(
+                        f"{name}.ping",
+                        {"value": name},
+                        timeout=startup_timeouts.get(name, 30.0),
+                    )
+                except Exception as exc:
+                    if name != "audio":
+                        exc.add_note(f"OpenWand could not start the {name} worker.")
+                        raise
+                    worker.unavailable_reason = f"Audio is disabled for this session because startup failed: {exc}"
+                    worker.shutdown()
+                    results[name] = {"available": False, "error": worker.unavailable_reason}
+                    log.error("%s", worker.unavailable_reason)
         except Exception:
             # A later worker may fail after earlier workers have spawned.  The
             # caller cannot safely use a partial process set, so contain the

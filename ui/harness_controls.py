@@ -119,7 +119,7 @@ class HarnessControlsDialog(QDialog):
         form = QFormLayout()
         self.model = QComboBox()
         self.model.setEditable(True)
-        self.model.addItem(t("Provider default"), "")
+        self.model.addItem(t("{provider} default model").format(provider=provider_name), "")
         for model in (_CLAUDE_MODELS if self.provider == "claude" else _CODEX_MODELS):
             label = (
                 f"{model} — {t('usage credits required')}"

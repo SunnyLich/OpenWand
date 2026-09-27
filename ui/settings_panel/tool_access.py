@@ -10,7 +10,7 @@ means offer the schema and let the model decide whether to call it.
                      (Settings → Tools); tools without keywords are always
                      offered, same as On
 
-Context-fetch tools (web search, document/page fetch, git/GitHub, memory
+Context-fetch tools (open document/browser context, git/GitHub, memory
 search, screenshot) are intentionally not listed here. They are controlled by
 the context dropdowns: Off, attach now, or let the model fetch if needed.
 """
@@ -210,6 +210,9 @@ class ToolAccessDialog(QDialog):
         extra_hdr = QLabel(t("OTHER INSTALLED + ADD-ON TOOLS"))
         extra_hdr.setObjectName("sectionHeader")
         layout.addWidget(extra_hdr)
+        web_note = QLabel(t("Public web search and URL retrieval are enabled by default. You can turn them off here without changing access to your open browser pages."))
+        web_note.setWordWrap(True)
+        layout.addWidget(web_note)
 
         extra = list_extra_tools(extra_tools)
         if not extra:

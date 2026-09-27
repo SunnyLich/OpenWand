@@ -521,6 +521,7 @@ def main() -> int:
     flows: FlowController | None = None
     stop = threading.Event()
     ui_quit_requested = threading.Event()
+    startup_complete = threading.Event()
     abrupt_reason = ""
 
     def _close_worker_spawn_gate() -> None:
@@ -567,9 +568,11 @@ def main() -> int:
 
     def _restart_audio_on_exit(returncode=None) -> None:
         """Restart the isolated audio worker after an unexpected exit."""
-        if stop.is_set():
+        if stop.is_set() or not startup_complete.is_set():
             return
         audio_worker = supervisor.workers.get("audio")
+        if getattr(audio_worker, "unavailable_reason", ""):
+            return
         logging.warning("Audio worker exited with code %s; restarting it", returncode)
         if audio_worker is None or not hasattr(audio_worker, "restart"):
             return
@@ -586,6 +589,7 @@ def main() -> int:
 
     try:
         startup_results = supervisor.start_all()
+        startup_complete.set()
         flows = FlowController(
             native=supervisor.workers["native"],
             ui=supervisor.workers["ui"],

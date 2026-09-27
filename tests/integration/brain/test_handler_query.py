@@ -87,9 +87,13 @@ def test_query_scans_captured_context_but_not_typed_prompt(record_ctx, monkeypat
     assert "phrase I want explained" not in inspected[0]["context"]
 
 
+@pytest.mark.parametrize("provider", ["codex", "claude"])
+@pytest.mark.parametrize("model", ["", "provider-specific-model"])
 def test_external_query_does_not_paste_openwand_system_prompt_into_user_message(
     record_ctx,
     monkeypatch,
+    provider,
+    model,
 ):
     """ChatGPT and Claude receive their prompts through their native harness settings."""
     from core import harness_clients
@@ -97,14 +101,17 @@ def test_external_query_does_not_paste_openwand_system_prompt_into_user_message(
 
     captured = {}
 
-    def fake_run(provider, prompt, **_kwargs):
+    def fake_run(provider, prompt, **kwargs):
         captured["provider"] = provider
         captured["prompt"] = prompt
+        captured["model"] = kwargs["model"]
         return HarnessResult(provider, "Done", "thread-1", "/repo")
 
     monkeypatch.setattr(harness_clients, "run_harness", fake_run)
     monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", False)
     monkeypatch.setattr(config, "SYSTEM_PROMPT_UTILITY", "DO NOT PASTE THIS OPENWAND PROMPT")
+    monkeypatch.setattr(config, "CHAT_LLM_MODEL", "general-model", raising=False)
+    monkeypatch.setattr(config, f"OPENWAND_{provider.upper()}_MODEL", model, raising=False)
     _events, ctx = record_ctx()
 
     handlers.HANDLERS["brain.query"](
@@ -115,11 +122,12 @@ def test_external_query_does_not_paste_openwand_system_prompt_into_user_message(
             {"role": "assistant", "content": "test received"},
         ],
         memory_enabled=False,
-        harness_provider="codex",
+        harness_provider=provider,
         conversation_owner="agent",
     )
 
-    assert captured["provider"] == "codex"
+    assert captured["provider"] == provider
+    assert captured["model"] == model
     assert "DO NOT PASTE THIS OPENWAND PROMPT" not in captured["prompt"]
     assert "testing 123" in captured["prompt"]
     assert captured["prompt"].endswith("how are you")

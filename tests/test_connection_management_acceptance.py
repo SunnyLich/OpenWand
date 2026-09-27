@@ -90,9 +90,15 @@ def _new_dialog(monkeypatch: pytest.MonkeyPatch, *, env: dict[str, str] | None =
 
 
 def _close(dialog, app) -> None:
+    import shiboken6
+    from PySide6.QtCore import QCoreApplication, QEvent
+
     dialog.close()
-    dialog.deleteLater()
     app.processEvents()
+    if shiboken6.isValid(dialog):
+        dialog.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert not shiboken6.isValid(dialog)
 
 
 def _remove_loaded_rows(dialog) -> None:

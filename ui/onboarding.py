@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QRadioButton,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -544,16 +545,28 @@ class OnboardingWizard(QDialog):
 
         page, layout = self._page(
             "Let’s set up OpenWand",
-            "You can change every choice later in Settings. Start simple, or choose advanced if you already know your preferred AI provider.",
+            "You can change these choices in Settings.",
         )
         self._mode_group = QButtonGroup(self)
-        self._simple_mode = QRadioButton("Simple setup — get a working assistant quickly")
-        self._advanced_mode = QRadioButton("Advanced setup — choose provider and optional API key")
+        self._simple_mode = QRadioButton("Simple setup")
+        self._advanced_mode = QRadioButton("Advanced setup")
         self._simple_mode.setChecked(True)
         self._mode_group.addButton(self._simple_mode)
         self._mode_group.addButton(self._advanced_mode)
-        layout.addWidget(self._simple_mode)
-        layout.addWidget(self._advanced_mode)
+        for button, description in (
+            (self._simple_mode, "Use ChatGPT login"),
+            (self._advanced_mode, "Use API keys"),
+        ):
+            button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            choice = QVBoxLayout()
+            choice.setSpacing(4)
+            choice.addWidget(button)
+            hint = QLabel(description)
+            hint.setWordWrap(True)
+            hint.setContentsMargins(24, 0, 0, 0)
+            hint.setStyleSheet("color: palette(placeholder-text);")
+            choice.addWidget(hint)
+            layout.addLayout(choice)
         layout.addStretch()
         self._pages.addWidget(page)
 
@@ -571,14 +584,14 @@ class OnboardingWizard(QDialog):
 
         page, layout = self._page(
             "Choose your provider",
-            "Optional. Choose any provider OpenWand supports, enter a model yourself, and add a key now or later. Keys are saved in your operating system’s secure keychain, never in your profile file.",
+            "Choose a provider and model from the Settings options, and add a key now or later. Keys are saved in your operating system’s secure keychain, never in your profile file.",
         )
         self._provider = QComboBox()
-        self._provider.addItem("I’ll choose later", "")
         from ui.settings_panel.dialog import _PROVIDER_LABELS
 
-        for provider in _PROVIDER_DEFAULTS:
-            self._provider.addItem(_PROVIDER_LABELS.get(provider, provider), provider)
+        for provider, label in _PROVIDER_LABELS.items():
+            if provider in _PROVIDER_DEFAULTS:
+                self._provider.addItem(label, provider)
         self._provider.currentIndexChanged.connect(self._update_provider_hint)
         self._provider_model = QComboBox()
         self._provider_model.setEditable(True)
@@ -602,7 +615,7 @@ class OnboardingWizard(QDialog):
         self._pages.addWidget(page)
 
         page, layout = self._page(
-            "Try a sign-in instead",
+            "Try a sign-in instead (optional)",
             "A ChatGPT Plus or Pro subscription can be connected without pasting an API key. This is optional — you can also finish setup and configure a provider later.",
         )
         self._oauth_status = QLabel("Not connected")
@@ -738,11 +751,10 @@ class OnboardingWizard(QDialog):
         provider = str(self._provider.currentData() or "")
         from ui.settings_panel.dialog import _MODEL_HINTS, _PROVIDER_MODELS
 
-        previous_model = self._provider_model.currentText().strip()
         self._provider_model.blockSignals(True)
         self._provider_model.clear()
         self._provider_model.addItems(_PROVIDER_MODELS.get(provider, []))
-        self._provider_model.setCurrentText(previous_model or _PROVIDER_DEFAULTS.get(provider, ""))
+        self._provider_model.setCurrentText(_PROVIDER_DEFAULTS.get(provider, ""))
         self._provider_model.setPlaceholderText(t(_MODEL_HINTS.get(provider, "Enter a model name")))
         self._provider_model.blockSignals(False)
         self._provider_model.setEnabled(bool(provider))

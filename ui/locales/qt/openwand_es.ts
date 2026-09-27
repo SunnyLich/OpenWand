@@ -3,6 +3,18 @@
   <context>
     <name>OpenWand</name>
     <message>
+      <source>Import conversations</source>
+      <translation>Importar conversaciones</translation>
+    </message>
+    <message>
+      <source>Choose conversations…</source>
+      <translation>Elegir conversaciones…</translation>
+    </message>
+    <message>
+      <source>Import new chats automatically</source>
+      <translation>Importar chats nuevos automáticamente</translation>
+    </message>
+    <message>
       <source>Advanced</source>
       <translation>Avanzado</translation>
     </message>
@@ -4258,7 +4270,19 @@ Escribir automáticamente — aplicar las ediciones sin preguntar.</translation>
     <message><source>Show the full context attached to this message.</source><translation>Mostrar todo el contexto adjunto a este mensaje.</translation></message>
     <message><source>Hide context</source><translation>Ocultar contexto</translation></message>
     <message><source>Hide the attached context.</source><translation>Ocultar el contexto adjunto.</translation></message>
-  </context>
+      <message><source>Use ChatGPT login</source><translation>Inicia sesión con ChatGPT</translation></message>
+    <message><source>Use API keys</source><translation>Usa claves API</translation></message>
+    <message><source>Speech is unavailable. You can keep using OpenWand. Open Settings &gt; Voice to repair speech, then restart the app.</source><translation>La voz no está disponible. Puedes seguir usando OpenWand. Abre Configuración &gt; Voz para reparar la función de voz y reinicia la aplicación.</translation></message>
+    <message><source>Public web search and URL retrieval are enabled by default. You can turn them off here without changing access to your open browser pages.</source><translation>La búsqueda web pública y la lectura de URL están activadas por defecto. Puedes desactivarlas aquí sin cambiar el acceso a las páginas abiertas en tu navegador.</translation></message>
+    <message><source>Browser/Web:
+Off — do not read your open browser pages.
+On — read the current browser page before sending the prompt.
+Let model decide — expose browser context tools. Public web search is controlled separately in Allowed tools.</source><translation>Navegador/Web:
+Desactivado — no leer las páginas abiertas del navegador.
+Activado — leer la página actual antes de enviar el mensaje.
+Dejar que el modelo decida — ofrecer herramientas de contexto del navegador. La búsqueda web pública se controla por separado en Herramientas permitidas.</translation></message>
+    <message><source>{provider}/{model}: the provider reported a rate limit. Retry in {seconds} seconds. Original error: {error}</source><translation>{provider}/{model}: el proveedor ha indicado un límite de solicitudes. Reintenta en {seconds} segundos. Error original: {error}</translation></message>
+</context>
   <context>
     <name>OpenWand</name>
     <message>
@@ -4808,6 +4832,22 @@ Escribir automáticamente — aplicar las ediciones sin preguntar.</translation>
     <message>
       <source>Launch OpenWand automatically after you sign in to this computer.</source>
       <translation>Inicia OpenWand automáticamente después de iniciar sesión en este equipo.</translation>
+    </message>
+    <message>
+      <source>Open Chat automatically when I submit a prompt</source>
+      <translation>Abrir Chat automáticamente al enviar una solicitud</translation>
+    </message>
+    <message>
+      <source>Open and focus the full Chat window as soon as an overlay prompt is submitted.</source>
+      <translation>Abrir y enfocar la ventana completa de Chat en cuanto se envíe una solicitud desde la superposición.</translation>
+    </message>
+    <message>
+      <source>Hide the floating reply bubble when Chat opens automatically</source>
+      <translation>Ocultar la burbuja flotante de respuesta cuando Chat se abra automáticamente</translation>
+    </message>
+    <message>
+      <source>Stream the reply only in Chat for automatically opened prompts. Other bubble notices remain available.</source>
+      <translation>Mostrar la respuesta en streaming solo en Chat para las solicitudes que lo abran automáticamente. Los demás avisos en burbujas seguirán disponibles.</translation>
     </message>
     <message>
       <source>Use caller context defaults only for new conversations</source>
@@ -5812,19 +5852,19 @@ A continuación, el instalador cargará el modelo Whisper seleccionado en un pro
     <message><source>OpenWand interface language</source><translation>Idioma de la interfaz de OpenWand</translation></message>
     <message><source>Assistant response language</source><translation>Idioma de respuesta del asistente</translation></message>
     <message><source>Let’s set up OpenWand</source><translation>Configuremos OpenWand</translation></message>
-    <message><source>You can change every choice later in Settings. Start simple, or choose advanced if you already know your preferred AI provider.</source><translation>Puedes cambiar cada opción más tarde en Configuración. Empieza con lo básico o elige la opción avanzada si ya conoces tu proveedor de IA preferido.</translation></message>
-    <message><source>Simple setup — get a working assistant quickly</source><translation>Configuración sencilla: obtén un asistente funcional rápidamente</translation></message>
-    <message><source>Advanced setup — choose provider and optional API key</source><translation>Configuración avanzada: elige proveedor y clave API opcional</translation></message>
+    <message><source>You can change these choices in Settings.</source><translation>Puedes cambiar estas opciones en Configuración.</translation></message>
+    <message><source>Simple setup</source><translation>Configuración sencilla</translation></message>
+    <message><source>Advanced setup</source><translation>Configuración avanzada</translation></message>
     <message><source>What should OpenWand call you?</source><translation>¿Cómo debería llamarte OpenWand?</translation></message>
     <message><source>This creates your local profile. Your name stays on this device and helps OpenWand make conversations feel a little more natural.</source><translation>Esto crea tu perfil local. Tu nombre permanece en este dispositivo y ayuda a que las conversaciones con OpenWand resulten más naturales.</translation></message>
     <message><source>Your name</source><translation>Tu nombre</translation></message>
     <message><source>Choose your provider</source><translation>Elige tu proveedor</translation></message>
-    <message><source>Optional. Choose any provider OpenWand supports, enter a model yourself, and add a key now or later. Keys are saved in your operating system’s secure keychain, never in your profile file.</source><translation>Opcional. Elige cualquier proveedor compatible con OpenWand, escribe un modelo y añade una clave ahora o más tarde. Las claves se guardan en el llavero seguro de tu sistema operativo, nunca en tu archivo de perfil.</translation></message>
+    <message><source>Choose a provider and model from the Settings options, and add a key now or later. Keys are saved in your operating system’s secure keychain, never in your profile file.</source><translation>Elige un proveedor y un modelo de las opciones de Ajustes y añade una clave ahora o más tarde. Las claves se guardan en el llavero seguro de tu sistema operativo, nunca en tu archivo de perfil.</translation></message>
     <message><source>I’ll choose later</source><translation>Lo elegiré más tarde</translation></message>
     <message><source>Model name</source><translation>Nombre del modelo</translation></message>
     <message><source>Custom OpenAI-compatible endpoint URL, e.g. http://localhost:1234/v1</source><translation>URL de endpoint personalizado compatible con OpenAI; por ejemplo, http://localhost:1234/v1</translation></message>
     <message><source>API key (optional)</source><translation>Clave API (opcional)</translation></message>
-    <message><source>Try a sign-in instead</source><translation>Prueba a iniciar sesión</translation></message>
+    <message><source>Try a sign-in instead (optional)</source><translation>Prueba a iniciar sesión (opcional)</translation></message>
     <message><source>A ChatGPT Plus or Pro subscription can be connected without pasting an API key. This is optional — you can also finish setup and configure a provider later.</source><translation>Puedes conectar una suscripción ChatGPT Plus o Pro sin pegar una clave API. Es opcional: también puedes terminar la configuración y elegir un proveedor más tarde.</translation></message>
     <message><source>Not connected</source><translation>No conectado</translation></message>
     <message><source>Sign in with ChatGPT</source><translation>Iniciar sesión con ChatGPT</translation></message>
@@ -6616,5 +6656,85 @@ Esta acción no se puede deshacer. Los archivos de origen importados de ChatGPT 
     <message><source>Delete conversations</source><translation>Eliminar conversaciones</translation></message>
     <message><source>Delete conversations failed</source><translation>Error al eliminar las conversaciones</translation></message>
     <message><source>OpenWand could not delete the conversation(s): {error}</source><translation>OpenWand no pudo eliminar las conversaciones: {error}</translation></message>
+    <message><source>This is a local transcript relationship, not a ChatGPT or Claude web conversation. OpenWand can pull later transcript changes, but new OpenWand turns are not written back automatically.</source><translation>Este vínculo corresponde a una transcripción local, no a una conversación web de ChatGPT o Claude. OpenWand puede importar cambios posteriores de la transcripción, pero los nuevos mensajes de OpenWand no se guardan automáticamente en el origen.</translation></message>
+    <message><source>external history</source><translation>historial externo</translation></message>
+    <message><source>Select a chat</source><translation>Seleccionar un chat</translation></message>
+    <message><source>Local OpenWand</source><translation>OpenWand local</translation></message>
+    <message><source>Stored locally by OpenWand. It is not linked to an external chat thread.</source><translation>Guardado localmente por OpenWand. No está vinculado a una conversación externa.</translation></message>
+    <message><source>Sort conversations by</source><translation>Ordenar conversaciones por</translation></message>
+    <message><source>Last activity</source><translation>Última actividad</translation></message>
+    <message><source>Date created</source><translation>Fecha de creación</translation></message>
+    <message><source>Discovery order</source><translation>Orden de detección</translation></message>
+    <message><source>Sort order</source><translation>Orden de clasificación</translation></message>
+    <message><source>OpenWand Chat</source><translation>Chat de OpenWand</translation></message>
+    <message><source>Project for new chats</source><translation>Proyecto para chats nuevos</translation></message>
+    <message><source>↓  Jump to latest</source><translation>↓  Ir a lo más reciente</translation></message>
+    <message><source>Jump to latest reply</source><translation>Ir a la última respuesta</translation></message>
+    <message><source>A reply is continuing below. Jump to the newest content.</source><translation>La respuesta continúa más abajo. Ir al contenido más reciente.</translation></message>
+    <message><source>Agent activity</source><translation>Actividad de agentes</translation></message>
+    <message><source>Show subagents and their current work</source><translation>Mostrar subagentes y su trabajo actual</translation></message>
+    <message><source>Remove pending attachments</source><translation>Quitar archivos adjuntos pendientes</translation></message>
+    <message><source>Chat options</source><translation>Opciones del chat</translation></message>
+    <message><source>Enter sends message</source><translation>Enter envía el mensaje</translation></message>
+    <message><source>Context controls</source><translation>Controles de contexto</translation></message>
+    <message><source>Import from Codex…</source><translation>Importar desde Codex…</translation></message>
+    <message><source>Import from Claude Code…</source><translation>Importar desde Claude Code…</translation></message>
+    <message><source>Delete all chats…</source><translation>Eliminar todos los chats…</translation></message>
+    <message><source>Exported to {provider} · pull-only</source><translation>Exportado a {provider} · solo recibir actualizaciones</translation></message>
+    <message><source>Imported from {provider} · pull-only</source><translation>Importado desde {provider} · solo recibir actualizaciones</translation></message>
+    <message><source>Import selected</source><translation>Importar selección</translation></message>
+    <message><source>Delete all {count} OpenWand conversations?
+
+This cannot be undone. Imported Codex and Claude Code source files will not be deleted.</source><translation>¿Eliminar las {count} conversaciones de OpenWand?
+
+Esta acción no se puede deshacer. No se eliminarán los archivos de origen de Codex y Claude Code importados.</translation></message>
+    <message><source>No subagents in this turn.</source><translation>No hay subagentes en este turno.</translation></message>
+    <message><source>Choose a skill to add its Codex $name marker to your message.</source><translation>Elige una habilidad para añadir su marcador $name de Codex al mensaje.</translation></message>
+    <message><source>Nothing discovered.</source><translation>No se encontró nada.</translation></message>
+    <message><source>Skills…</source><translation>Habilidades…</translation></message>
+    <message><source>Message… (Enter sends; Shift+Enter adds a line)</source><translation>Mensaje… (Enter envía; Shift+Enter añade una línea)</translation></message>
+    <message><source>Message… (Ctrl+Enter sends; Enter adds a line)</source><translation>Mensaje… (Ctrl+Enter envía; Enter añade una línea)</translation></message>
+    <message><source>Newest first</source><translation>Más recientes primero</translation></message>
+    <message><source>Oldest first</source><translation>Más antiguos primero</translation></message>
+    <message><source>Scan stopped: {error} Found {found} conversation(s); {selected} selected can still be imported.</source><translation>Exploración detenida: {error} Se encontraron {found} conversaciones; aún se pueden importar las {selected} seleccionadas.</translation></message>
+    <message><source>Collapse conversation sources</source><translation>Contraer fuentes de conversaciones</translation></message>
+    <message><source>Expand conversation sources</source><translation>Expandir fuentes de conversaciones</translation></message>
+    <message><source>Import local {provider} history…</source><translation>Importar historial local de {provider}…</translation></message>
+    <message><source>Scan and choose which local {provider} transcript sessions to import.</source><translation>Buscar y elegir qué sesiones locales de {provider} importar.</translation></message>
+    <message><source>Auto-import {provider}</source><translation>Importar automáticamente desde {provider}</translation></message>
+    <message><source>Import new or updated local {provider} conversations while chat is open. This is pull-only local transcript import, not two-way web-chat synchronization. Older conversations are not imported automatically.</source><translation>Importar conversaciones locales nuevas o actualizadas de {provider} mientras el chat está abierto. Solo se reciben transcripciones locales; no es una sincronización bidireccional con el chat web. Las conversaciones antiguas no se importan automáticamente.</translation></message>
+    <message><source>Automatically import local {provider} history</source><translation>Importar automáticamente el historial local de {provider}</translation></message>
+    <message><source>Assigned work</source><translation>Trabajo asignado</translation></message>
+    <message><source>Latest activity</source><translation>Actividad más reciente</translation></message>
+    <message><source>Unnamed</source><translation>Sin nombre</translation></message>
+    <message><source>Model selection for this chat: {model}</source><translation>Modelo seleccionado para este chat: {model}</translation></message>
+    <message><source>Scan failed: {error}</source><translation>Error de exploración: {error}</translation></message>
+    <message><source>Working</source><translation>En curso</translation></message>
+    <message><source>Status</source><translation>Estado</translation></message>
+    <message><source>Thread</source><translation>Hilo</translation></message>
+    <message><source> · {count} tools</source><translation> · {count} herramientas</translation></message>
+    <message><source>Codex skills</source><translation>Habilidades de Codex</translation></message>
+    <message><source>Choose from {count} Codex skills</source><translation>Elegir entre {count} habilidades de Codex</translation></message>
+    <message><source>Keep {provider} imports updated</source><translation>Mantener actualizadas las importaciones de {provider}</translation></message>
+    <message><source>{provider} default model</source><translation>Modelo predeterminado de {provider}</translation></message>
+    <message><source>Z–A</source><translation>Z–A</translation></message>
+    <message><source>A–Z</source><translation>A–Z</translation></message>
+    <message><source>Last found</source><translation>Últimos encontrados</translation></message>
+    <message><source>First found</source><translation>Primeros encontrados</translation></message>
+    <message><source>Scanning {provider}… Found {found} conversation(s); {selected} selected.</source><translation>Explorando {provider}… Se encontraron {found} conversaciones; {selected} seleccionadas.</translation></message>
+    <message><source>OpenWand could not import local {provider} conversations: {error}</source><translation>OpenWand no pudo importar las conversaciones locales de {provider}: {error}</translation></message>
+    <message><source>Agents {count}</source><translation>Agentes {count}</translation></message>
+    <message><source>Subagent {agent}</source><translation>Subagente {agent}</translation></message>
+    <message><source>No tools are offered for this prompt.</source><translation>No hay herramientas disponibles para esta solicitud.</translation></message>
+    <message><source>UNAVAILABLE</source><translation>NO DISPONIBLE</translation></message>
+    <message><source>LOCKED</source><translation>BLOQUEADO</translation></message>
+    <message><source>OFF</source><translation>DESACTIVADO</translation></message>
+    <message><source>ASK</source><translation>PREGUNTAR</translation></message>
+    <message><source>ON</source><translation>ACTIVADO</translation></message>
+    <message><source>Rewrite</source><translation>Reescribir</translation></message>
+    <message><source>MCP server request</source><translation>Solicitud del servidor MCP</translation></message>
+    <message><source>ChatGPT needs your input</source><translation>ChatGPT necesita tu respuesta</translation></message>
+    <message><source>Open in browser</source><translation>Abrir en el navegador</translation></message>
+    <message><source>{server} needs your input</source><translation>{server} necesita tu respuesta</translation></message>
   </context>
 </TS>

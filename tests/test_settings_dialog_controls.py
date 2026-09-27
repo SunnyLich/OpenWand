@@ -84,6 +84,31 @@ def test_settings_combo_ignores_wheel_when_popup_closed():
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
+def test_general_setting_reveals_optional_auto_open_bubble_choice():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ui.settings_panel.dialog import SettingsDialog
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    dialog = SettingsDialog()
+    try:
+        auto_open = dialog._fields["CHAT_OPEN_ON_PROMPT"]
+        hide_bubble = dialog._fields["CHAT_OPEN_ON_PROMPT_HIDE_BUBBLE"]
+
+        auto_open.setChecked(False)
+        assert hide_bubble.isHidden()
+        assert not hide_bubble.isEnabled()
+
+        auto_open.setChecked(True)
+        assert not hide_bubble.isHidden()
+        assert hide_bubble.isEnabled()
+    finally:
+        dialog.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_settings_memory_tab_does_not_show_stored_facts():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QLabel
@@ -659,6 +684,8 @@ def test_optional_tts_install_launches_external_terminal(monkeypatch, tmp_path):
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_optional_tts_install_launches_external_terminal_in_frozen_build(monkeypatch, tmp_path):
     """Portable builds should launch the bundled installer worker in the OpenWand dialog."""
+    import shutil
+
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
@@ -691,9 +718,13 @@ def test_optional_tts_install_launches_external_terminal_in_frozen_build(monkeyp
 
     fake_exe = tmp_path / "OpenWand.exe"
     fake_exe.write_text("", encoding="utf-8")
+    bundle_root = tmp_path / "_internal"
+    contract_dir = Path("requirements/optional/release/windows-x64")
+    shutil.copytree(Path(__file__).resolve().parents[1] / contract_dir, bundle_root / contract_dir)
     monkeypatch.setattr(optional_deps, "OPTIONAL_PACKAGES_DIR", tmp_path / "python_packages")
     monkeypatch.setattr(dialog_mod, "OptionalInstallDialog", FakeInstallDialog)
     monkeypatch.setattr(dialog_mod.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(dialog_mod.sys, "_MEIPASS", str(bundle_root), raising=False)
     monkeypatch.setattr(dialog_mod.sys, "platform", "win32")
     monkeypatch.setattr(dialog_mod.sys, "executable", str(fake_exe))
 
@@ -7214,9 +7245,11 @@ def test_tool_access_dialog_round_trips_overrides():
             "mcp_server.example", "mcp_example_echo",
         } <= set(combos)
         assert {
-            "web_search", "get_context", "retrieve_website", "git_status", "git_diff",
+            "get_context", "git_status", "git_diff",
             "github_repo", "github_issue", "memory_search", "capture_screen",
         }.isdisjoint(combos)
+        assert combos["web_search"].currentData() == "on"
+        assert combos["retrieve_website"].currentData() == "on"
         assert combos["read_file"].currentData() == "on"
         assert combos["create_file"].currentData() == "off"
         assert combos["mcp_server.example"].currentData() == "on"
@@ -7227,7 +7260,9 @@ def test_tool_access_dialog_round_trips_overrides():
         combos["edit_file"].setCurrentIndex(combos["edit_file"].findData("on"))
         combos["mcp_server.example"].setCurrentIndex(combos["mcp_server.example"].findData("off"))
         combos["mcp_example_echo"].setCurrentIndex(combos["mcp_example_echo"].findData("on"))
+        combos["web_search"].setCurrentIndex(combos["web_search"].findData("off"))
         result = dlg.selected_overrides()
+        assert result["web_search"] == "off"
         assert result["edit_file"] == "on"
         assert result["mcp_server.example"] == "off"
         assert result["mcp_example_echo"] == "on"

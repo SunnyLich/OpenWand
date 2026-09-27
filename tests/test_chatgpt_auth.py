@@ -103,6 +103,9 @@ def test_expired_codex_login_falls_back_to_openwand_oauth(tmp_path, monkeypatch)
 
 def test_validate_login_checks_authenticated_catalog_without_model_call(monkeypatch):
     """The green status requires a successful authenticated server request."""
+    import runtime
+
+    monkeypatch.setattr(runtime, "VERSION", "0.11")
     seen: dict[str, object] = {}
 
     class Response:

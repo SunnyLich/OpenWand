@@ -8,11 +8,14 @@ swatches per mode in Settings → App.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QToolTip
 
 import config
+from core.system.paths import ASSETS_DIR
 
 # Per-mode template defaults. Editable via THEME_<MODE>_<ROLE> config keys.
 _TEMPLATE_DEFAULTS = {
@@ -185,7 +188,9 @@ def _apply_color_scheme_hint(app: QApplication) -> None:
 
 
 def _app_stylesheet(c: dict[str, str]) -> str:
-    """Handle app stylesheet for UI shared theme."""
+    """Build themed controls with a contrasting tick inside selected boxes."""
+    tick_color = "dark" if QColor(c["accent_fill"]).lightnessF() > 0.5 else "light"
+    tick = (Path(ASSETS_DIR) / "ui" / f"check-{tick_color}.svg").as_posix()
     return f"""
         QWidget {{
             background-color: {c["bg"]};
@@ -255,11 +260,12 @@ def _app_stylesheet(c: dict[str, str]) -> str:
             border: 1px solid {c["border"]};
         }}
         QRadioButton::indicator {{
-            border-radius: 8px;
+            border-radius: 3px;
         }}
         QRadioButton::indicator:checked {{
-            background: {c["on_accent"]};
-            border: 5px solid {c["accent"]};
+            background: {c["accent_fill"]};
+            border-color: {c["accent_fill"]};
+            image: url("{tick}");
         }}
         QCheckBox::indicator {{
             border-radius: 3px;
@@ -267,6 +273,7 @@ def _app_stylesheet(c: dict[str, str]) -> str:
         QCheckBox::indicator:checked {{
             background: {c["accent_fill"]};
             border-color: {c["accent_fill"]};
+            image: url("{tick}");
         }}
         QGroupBox {{
             border: 1px solid {c["border"]};

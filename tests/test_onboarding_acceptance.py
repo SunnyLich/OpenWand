@@ -357,6 +357,8 @@ def test_onboarding_every_provider_model_endpoint_and_key_matrix(onboarding_harn
         harness.secrets.clear()
         wizard = harness.new_wizard()
         try:
+            assert wizard._provider.findData("") == -1
+            assert wizard._provider.currentData() in providers
             _open_profile_page(
                 harness,
                 wizard,
@@ -364,6 +366,7 @@ def test_onboarding_every_provider_model_endpoint_and_key_matrix(onboarding_harn
                 name=f"Provider {index}",
             )
             _select(wizard._provider, provider, harness.driver)
+            assert wizard._provider_model.currentText() == harness.onboarding._PROVIDER_DEFAULTS[provider]
             model = f"acceptance-{provider}-model"
             harness.driver.replace_text(wizard._provider_model, model)
             if provider == "custom":

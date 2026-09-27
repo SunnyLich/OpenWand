@@ -12,6 +12,8 @@ from openwand_brain import handlers
 def test_config_reload_handler_registered():
     """Verify config reload handler registered behavior."""
     assert "brain.config.reload" in handlers.HANDLERS
+    assert "brain.llm.prefix.prewarm" in handlers.HANDLERS
+    assert "brain.llm.prefix.invalidate" in handlers.HANDLERS
     assert "brain.privacy.prewarm" in handlers.HANDLERS
     assert "brain.harness.prewarm" in handlers.HANDLERS
 
@@ -65,10 +67,19 @@ def test_config_reload_calls_config_reload(monkeypatch):
 
     fake_config.reload = reload
     monkeypatch.setitem(sys.modules, "config", fake_config)
+    # Reload imports these dependencies lazily. Keep real modules from caching
+    # the temporary config object and leaking it into later tests.
+    fake_tts = types.ModuleType("core.tts")
+    fake_tts.reset_connections = lambda: calls.append("reset_tts")
+    fake_llm = types.ModuleType("core.llm_clients.client")
+    fake_llm.reset_clients = lambda: calls.append("reset_llm")
+    fake_llm.invalidate_ollama_prefix_cache = lambda: calls.append("invalidate_prefix")
+    monkeypatch.setitem(sys.modules, "core.tts", fake_tts)
+    monkeypatch.setitem(sys.modules, "core.llm_clients.client", fake_llm)
 
     result = handlers.HANDLERS["brain.config.reload"]()
 
-    assert calls == ["reload"]
+    assert calls == ["reload", "reset_tts", "reset_llm", "invalidate_prefix"]
     assert result == {
         "ok": True,
         "llm_provider": "anthropic",
@@ -136,6 +147,38 @@ def test_harness_prewarm_starts_reusable_codex_server(monkeypatch):
         "ready": True,
         "cached": False,
         "backend": "codex-test",
+    }
+
+
+def test_llm_prefix_prewarm_forwards_static_policy_without_dynamic_context(monkeypatch):
+    import config
+    from core.llm_clients import client as llm_client
+
+    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "openwand", raising=False)
+    captured: dict = {}
+
+    def schedule(**kwargs):
+        captured.update(kwargs)
+        return {"scheduled": True, "identity": "prefix-id"}
+
+    monkeypatch.setattr(llm_client, "schedule_ollama_prefix_prewarm", schedule)
+
+    result = handlers.HANDLERS["brain.llm.prefix.prewarm"](
+        route_kind="chat",
+        allowed_tools=["web_search"],
+        pinned_tools=["web_search"],
+        file_access_mode="off",
+        browser_retrieval=True,
+    )
+
+    assert result == {"scheduled": True, "identity": "prefix-id"}
+    assert captured == {
+        "route_kind": "chat",
+        "allowed_tools": ["web_search"],
+        "pinned_tools": ["web_search"],
+        "file_access_mode": "off",
+        "allow_screenshot_tool": False,
+        "browser_retrieval": True,
     }
 
 
