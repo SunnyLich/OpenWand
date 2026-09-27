@@ -3052,3 +3052,43 @@ def test_broken_source_stt_never_hides_an_installed_managed_layer(monkeypatch):
     assert status["installed"] is True
     assert status["valid"] is False
     assert status["environment"]["message"] == "missing import av.about"
+
+
+@pytest.mark.parametrize("key,device", [("kokoro", "cpu"), ("kokoro", "cuda"), ("stt", "auto")])
+def test_release_contracts_use_bundle_instead_of_user_data(monkeypatch, tmp_path, key, device):
+    import shutil
+
+    from core import optional_deps as deps
+
+    bundle = tmp_path / "_internal"
+    shutil.copytree(Path(__file__).resolve().parents[1] / "requirements" / "optional",
+                    bundle / "requirements" / "optional")
+    monkeypatch.setattr(deps.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(deps.sys, "_MEIPASS", str(bundle), raising=False)
+    monkeypatch.setattr(deps.sys, "platform", "win32")
+    monkeypatch.setattr(deps.platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(deps, "REPO_ROOT", tmp_path / "user-data")
+    contracts = deps.optional_dependency_contracts(key, device=device)
+    assert [contract.kind for contract in contracts] == ["source", "release"]
+    target = tmp_path / "packages"
+    for name, version in deps._expected_package_versions(contracts[-1].packages).items():
+        info = target / f"{name.replace('-', '_')}-{version}.dist-info"
+        info.mkdir(parents=True)
+        (info / "METADATA").write_text(f"Name: {name}\nVersion: {version}\n", encoding="utf-8")
+    status = deps.optional_package_spec_status(key, device=device, target_dir=target)
+    assert status["valid"] is True, status["message"]
+
+
+def test_missing_release_checklists_do_not_claim_missing_packages(monkeypatch, tmp_path):
+    from core import optional_deps as deps
+
+    monkeypatch.setattr(deps.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(deps.sys, "_MEIPASS", str(tmp_path / "empty-bundle"), raising=False)
+    monkeypatch.setattr(deps.sys, "platform", "win32")
+    monkeypatch.setattr(deps.platform, "machine", lambda: "AMD64")
+    status = deps.optional_package_spec_status("kokoro", device="cpu", target_dir=tmp_path)
+    assert status["valid"] is False
+    assert status["supported_target"] is True
+    assert status["missing"] == []
+    assert "checklist files are missing or unreadable" in status["message"]
+    assert "unsupported" not in status["message"]

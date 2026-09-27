@@ -4,6 +4,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
+from core.llm_clients import client, routing
 from core.llm_clients import client as llm
 
 
@@ -388,16 +391,16 @@ class LlmFallbackTests(unittest.TestCase):
         self.assertTrue(llm._is_route_cooling("google", "primary"))
         self.assertTrue(llm._is_route_cooling("google", "fallback"))
 
-    def test_stream_with_fallbacks_fails_fast_when_all_routes_are_cooling(self):
+    def test_stream_with_fallbacks_waits_when_all_routes_are_rate_limited(self):
         llm._route_cooldowns.clear()
-        llm._mark_route_cooling("google", "primary")
-        llm._mark_route_cooling("google", "fallback")
+        llm._mark_route_cooling("google", "primary", hard=True, reason="HTTP 429")
+        llm._mark_route_cooling("google", "fallback", hard=True, reason="HTTP 429")
 
         def factory(provider, model):
             raise AssertionError(f"should not call {provider}/{model}")
             yield "unreachable"
 
-        with self.assertRaisesRegex(RuntimeError, "temporarily cooling down"):
+        with self.assertRaisesRegex(RuntimeError, "provider reported a rate limit"):
             list(
                 llm._stream_with_fallbacks(
                     "query",
@@ -1841,3 +1844,79 @@ class LlmFallbackTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@pytest.fixture
+def route_state(monkeypatch):
+    routing._route_cooldowns.clear()
+    routing._route_cooldown_details.clear()
+    monkeypatch.setattr(client, "log_event", lambda *_args, **_kwargs: None)
+    yield
+    routing._route_cooldowns.clear()
+    routing._route_cooldown_details.clear()
+
+
+@pytest.mark.parametrize("failure", [None, RuntimeError("HTTP 503: service unavailable")])
+def test_single_google_model_can_retry_after_one_failure(route_state, failure):
+    calls = []
+
+    def factory(*route):
+        calls.append(route)
+        if len(calls) == 1:
+            if failure is not None:
+                raise failure
+            return
+        yield "Hello!"
+
+    with pytest.raises(RuntimeError, match="All chat model routes failed"):
+        list(client._stream_with_fallbacks("chat", [("google", "gemini")], factory))
+    assert list(client._stream_with_fallbacks("chat", [("google", "gemini")], factory)) == ["Hello!"]
+    assert len(calls) == 2
+    assert not routing._is_route_cooling("google", "gemini")
+
+
+def test_rate_limit_honors_retry_after_and_preserves_original_error(route_state, monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(routing._time, "time", lambda: now[0])
+    calls = []
+
+    def factory(*route):
+        calls.append(route)
+        if len(calls) == 1:
+            error = RuntimeError("Google: request rate exceeded")
+            error.status_code = 429
+            error.response = SimpleNamespace(headers={"Retry-After": "12"})
+            raise error
+        yield "Recovered"
+
+    with pytest.raises(RuntimeError, match="request rate exceeded"):
+        list(client._stream_with_fallbacks("chat", [("google", "gemini")], factory))
+    with pytest.raises(RuntimeError, match="Retry in 12 seconds.*Original error: Google"):
+        list(client._stream_with_fallbacks("chat", [("google", "gemini")], factory))
+    assert len(calls) == 1
+    now[0] += 13
+    assert list(client._stream_with_fallbacks("chat", [("google", "gemini")], factory)) == ["Recovered"]
+
+
+@pytest.mark.parametrize("text", ["Input exceeds 500 characters", "Model 503 does not exist", "Document 429 is missing", "credential unavailable"])
+def test_unrelated_error_text_does_not_trigger_cooldown(route_state, text):
+    assert not routing._is_transient_route_error(ValueError(text))
+
+
+def test_explicit_client_error_is_not_classified_by_message(route_state):
+    error = RuntimeError("Model temporarily unavailable")
+    error.status_code = 404
+    assert not routing._is_transient_route_error(error)
+
+
+def test_wrapped_http_error_retains_status_and_retry_header(route_state):
+    error = RuntimeError("request failed")
+    error.__cause__ = RuntimeError("HTTP error")
+    error.__cause__.code = 429
+    error.__cause__.headers = {"Retry-After": "9"}
+    assert routing._is_quota_error(error)
+    assert routing._provider_retry_seconds(error) == 9
+
+
+def test_google_retry_delay_is_respected(route_state):
+    assert routing._provider_retry_seconds(RuntimeError('{"retryDelay": "4.5s"}')) == 4.5

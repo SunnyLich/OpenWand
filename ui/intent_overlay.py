@@ -1333,11 +1333,12 @@ class IntentOverlay(QWidget):
 
         # The custom prompt is always visible as the fourth path through the picker.
         input_rect = self._prompt_input_rect(self._prompt_input_h)
-        p.fillRect(input_rect, QBrush(palette["surface"]))
-        p.fillRect(
-            QRect(input_rect.x(), input_rect.y(), _INPUT_BAR_W, input_rect.height()),
-            QBrush(palette["key"]),
-        )
+        if self._custom_mode:
+            p.fillRect(input_rect, QBrush(palette["surface"]))
+            p.fillRect(
+                QRect(input_rect.x(), input_rect.y(), _INPUT_BAR_W, input_rect.height()),
+                QBrush(palette["key"]),
+            )
         custom_idx = next(
             (idx for idx, row in enumerate(self._rows) if row.get("is_custom")),
             None,

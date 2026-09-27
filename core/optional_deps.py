@@ -332,7 +332,8 @@ def optional_contract_lock_path(
     if not target or normalized_kind not in {"source", "release"}:
         return None
     variant = _optional_contract_variant(key, device, selected_platform)
-    return REPO_ROOT / "requirements" / "optional" / normalized_kind / target / f"{variant}.lock"
+    root = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else REPO_ROOT
+    return root / "requirements" / "optional" / normalized_kind / target / f"{variant}.lock"
 
 
 def _optional_contract_lock_packages(
@@ -966,7 +967,7 @@ def optional_package_spec_status(
         "contract_kind": "",
         "contract_fingerprint": "",
         "contract_results": [],
-        "supported_target": bool(contracts),
+        "supported_target": optional_contract_target_supported(),
         "provenance": {},
         "message": "",
     }
@@ -1010,7 +1011,7 @@ def optional_package_spec_status(
             (result for result in results if result["kind"] == "release"),
             results[0] if results else None,
         )
-        missing = list(preferred_result["missing"]) if preferred_result else list(expected)
+        missing = list(preferred_result["missing"]) if preferred_result else []
         mismatched = dict(preferred_result["mismatched"]) if preferred_result else {}
         duplicates = dict(preferred_result["duplicates"]) if preferred_result else {}
         status["missing"] = missing
@@ -1018,7 +1019,10 @@ def optional_package_spec_status(
         status["duplicates"] = duplicates
         parts: list[str] = []
         if not contracts:
-            parts.append("unsupported operating-system or architecture target")
+            if status["supported_target"]:
+                parts.append("dependency checklist files are missing or unreadable; repair the OpenWand installation")
+            else:
+                parts.append("unsupported operating-system or architecture target")
         if missing:
             parts.append(f"missing {', '.join(missing)}")
         if mismatched:

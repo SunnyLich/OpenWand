@@ -4897,7 +4897,14 @@ class ChatWindow(QWidget):
 
     @staticmethod
     def _configured_chat_model() -> str:
-        """Return the visible Chat model route used for ordinary chat turns."""
+        """Return the selected engine's model, including its native default."""
+        mode = str(getattr(config, "CHAT_EXECUTION_MODE", "openwand") or "openwand").strip().lower()
+        if mode in {"claude", "codex"}:
+            prefix = "OPENWAND_CLAUDE" if mode == "claude" else "OPENWAND_CODEX"
+            model = str(getattr(config, f"{prefix}_MODEL", "") or "").strip()
+            return model or t("{provider} default model").format(
+                provider="Claude" if mode == "claude" else "ChatGPT"
+            )
         return str(getattr(config, "CHAT_LLM_MODEL", "") or t("Default")).strip()
 
     def refresh_model_label(self) -> None:
@@ -4908,7 +4915,7 @@ class ChatWindow(QWidget):
         exact_model = self._configured_chat_model()
         label.setText(exact_model)
         label.setToolTip(
-            t("Exact model used for this chat: {model}").format(model=exact_model)
+            t("Model selection for this chat: {model}").format(model=exact_model)
         )
 
     def _make_context_policy_controls(self) -> QWidget:

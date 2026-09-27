@@ -372,6 +372,12 @@ def _translate_speech_notice_line(line: str) -> str | None:
 def _translate_notice_line(line: str) -> str:
     """Translate one bubble/notice line: fixed prefix, dynamic error template, or
     a plain catalog lookup."""
+    rate_limit = re.match(
+        r"^(?P<provider>[^/]+)/(?P<model>.+?): the provider reported a rate limit\. Retry in (?P<seconds>\d+) seconds\. Original error: (?P<error>.*)$",
+        line,
+    )
+    if rate_limit:
+        return t("{provider}/{model}: the provider reported a rate limit. Retry in {seconds} seconds. Original error: {error}").format(**rate_limit.groupdict())
     speech_line = _translate_speech_notice_line(line)
     if speech_line is not None:
         return speech_line
@@ -4550,7 +4556,7 @@ class QtProtocolHost:
         log.warning("chat error (request %s): %s", request_id or "?", error)
         stream = self._chat_stream(request_id)
         if stream is not None:
-            stream.put(("error", error))
+            stream.put(("error", _translate_notice_text(error)))
         return {"queued": stream is not None}
 
     def _chat_background_result(
@@ -5561,6 +5567,17 @@ class QtProtocolHost:
             log.warning("Could not persist auto-elaborate marker: %s", exc)
         return prompt
 
+    def _open_chat_model_settings(self) -> None:
+        """Open model controls for the engine that will handle the next turn."""
+        import config
+
+        mode = str(getattr(config, "CHAT_EXECUTION_MODE", "openwand") or "openwand").strip().lower()
+        if mode in {"claude", "codex"}:
+            self._ensure_overlay()
+            self._overlay._open_harness_controls()
+            return
+        self.emit("ui.settings.open_requested", {"initial_page": "LLM"})
+
     def _show_chat(self, force_new: bool = False) -> dict[str, Any]:
         """Show chat."""
         from ui.chat_window import ChatWindow
@@ -5626,10 +5643,7 @@ class QtProtocolHost:
                     "ui.addons.set_setting",
                     dict(payload or {}),
                 ),
-                on_model_settings=lambda: self.emit(
-                    "ui.settings.open_requested",
-                    {"initial_page": "LLM"},
-                ),
+                on_model_settings=self._open_chat_model_settings,
                 addon_message_actions=list(
                     getattr(self, "_chat_message_actions_cache", []) or []
                 ),

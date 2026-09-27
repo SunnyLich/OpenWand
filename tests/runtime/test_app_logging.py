@@ -414,7 +414,8 @@ def test_main_shuts_down_after_nonzero_ui_exit(tmp_path, monkeypatch):
     assert "UI worker exited with code 9" in crash_logs[0].read_text(encoding="utf-8")
 
 
-def test_main_restarts_audio_worker_after_unexpected_exit(tmp_path, monkeypatch):
+@pytest.mark.parametrize("failure_stage", ["runtime", "startup", "disabled"])
+def test_main_restarts_audio_worker_after_unexpected_exit(tmp_path, monkeypatch, failure_stage):
     """Verify an unexpected audio worker exit restarts without shutting down OpenWand."""
     monkeypatch.delenv("OPENWAND_RUN_LOG_DIR", raising=False)
     monkeypatch.delenv("OPENWAND_RUNTIME_LOG_MODE", raising=False)
@@ -456,6 +457,10 @@ def test_main_restarts_audio_worker_after_unexpected_exit(tmp_path, monkeypatch)
             instances.append(self)
 
         def start_all(self):
+            if failure_stage in {"startup", "disabled"}:
+                for handler in list(self.workers["audio"].exit_handlers):
+                    handler(9)
+                self.workers["audio"].unavailable_reason = "Speech import failed during startup"
             return {}
 
         def shutdown(self):
@@ -468,8 +473,9 @@ def test_main_restarts_audio_worker_after_unexpected_exit(tmp_path, monkeypatch)
             self.audio = audio
 
         def start(self):
-            for handler in list(self.audio.exit_handlers):
-                handler(9)
+            if failure_stage != "startup":
+                for handler in list(self.audio.exit_handlers):
+                    handler(9)
             for handler in list(self.ui.exit_handlers):
                 handler(0)
 
@@ -481,8 +487,8 @@ def test_main_restarts_audio_worker_after_unexpected_exit(tmp_path, monkeypatch)
 
     assert supervisor_app.main() == 0
     audio = instances[0].workers["audio"]
-    assert audio.restart_calls == 1
-    assert [call["method"] for call in audio.calls] == ["audio.ping"]
+    assert audio.restart_calls == (1 if failure_stage == "runtime" else 0)
+    assert [call["method"] for call in audio.calls] == (["audio.ping"] if failure_stage == "runtime" else [])
     assert instances[0].shutdown_called is True
 
 

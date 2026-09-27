@@ -3729,19 +3729,19 @@ Continue?</source>
     <message><source>OpenWand interface language</source><translation>OpenWand 界面语言</translation></message>
     <message><source>Assistant response language</source><translation>助手回复语言</translation></message>
     <message><source>Let’s set up OpenWand</source><translation>开始设置 OpenWand</translation></message>
-    <message><source>You can change every choice later in Settings. Start simple, or choose advanced if you already know your preferred AI provider.</source><translation>之后可在“设置”中更改所有选项。可先使用简单设置；若已有偏好的 AI 提供商，也可选择高级设置。</translation></message>
-    <message><source>Simple setup — get a working assistant quickly</source><translation>简单设置 — 快速开始使用助手</translation></message>
-    <message><source>Advanced setup — choose provider and optional API key</source><translation>高级设置 — 选择提供商和可选的 API 密钥</translation></message>
+    <message><source>You can change these choices in Settings.</source><translation>你可以在“设置”中更改这些选项。</translation></message>
+    <message><source>Simple setup</source><translation>简单设置</translation></message>
+    <message><source>Advanced setup</source><translation>高级设置</translation></message>
     <message><source>What should OpenWand call you?</source><translation>OpenWand 应该如何称呼你？</translation></message>
     <message><source>This creates your local profile. Your name stays on this device and helps OpenWand make conversations feel a little more natural.</source><translation>这会创建你的本地个人资料。姓名只保留在此设备上，可让 OpenWand 的对话更自然。</translation></message>
     <message><source>Your name</source><translation>你的姓名</translation></message>
     <message><source>Choose your provider</source><translation>选择你的提供商</translation></message>
-    <message><source>Optional. Choose any provider OpenWand supports, enter a model yourself, and add a key now or later. Keys are saved in your operating system’s secure keychain, never in your profile file.</source><translation>可选。选择 OpenWand 支持的任一提供商，自行输入模型，并可现在或稍后添加密钥。密钥保存在操作系统的安全钥匙串中，绝不会写入个人资料文件。</translation></message>
+    <message><source>Choose a provider and model from the Settings options, and add a key now or later. Keys are saved in your operating system’s secure keychain, never in your profile file.</source><translation>从设置选项中选择提供商和模型，并可现在或稍后添加密钥。密钥保存在操作系统的安全钥匙串中，绝不会写入个人资料文件。</translation></message>
     <message><source>I’ll choose later</source><translation>稍后选择</translation></message>
     <message><source>Model name</source><translation>模型名称</translation></message>
     <message><source>Custom OpenAI-compatible endpoint URL, e.g. http://localhost:1234/v1</source><translation>自定义的 OpenAI 兼容端点 URL，例如 http://localhost:1234/v1</translation></message>
     <message><source>API key (optional)</source><translation>API 密钥（可选）</translation></message>
-    <message><source>Try a sign-in instead</source><translation>或者登录</translation></message>
+    <message><source>Try a sign-in instead (optional)</source><translation>或者登录（可选）</translation></message>
     <message><source>A ChatGPT Plus or Pro subscription can be connected without pasting an API key. This is optional — you can also finish setup and configure a provider later.</source><translation>可连接 ChatGPT Plus 或 Pro 订阅，无需粘贴 API 密钥。这是可选操作；也可完成设置后再配置提供商。</translation></message>
     <message><source>Not connected</source><translation>未连接</translation></message>
     <message><source>Sign in with ChatGPT</source><translation>使用 ChatGPT 登录</translation></message>
@@ -4268,7 +4268,19 @@ Write automatically — apply edits without asking.</source><translation>本地�
     <message><source>Show the full context attached to this message.</source><translation>显示此消息附带的完整上下文。</translation></message>
     <message><source>Hide context</source><translation>隐藏上下文</translation></message>
     <message><source>Hide the attached context.</source><translation>隐藏附带的上下文。</translation></message>
-  </context>
+      <message><source>Use ChatGPT login</source><translation>使用 ChatGPT 登录</translation></message>
+    <message><source>Use API keys</source><translation>使用 API 密钥</translation></message>
+    <message><source>Speech is unavailable. You can keep using OpenWand. Open Settings &gt; Voice to repair speech, then restart the app.</source><translation>语音功能暂不可用，你仍可继续使用 OpenWand。请打开“设置 &gt; 语音”修复语音功能，然后重启应用。</translation></message>
+    <message><source>Public web search and URL retrieval are enabled by default. You can turn them off here without changing access to your open browser pages.</source><translation>默认启用公开网页搜索和网址内容读取。你可以在这里关闭它们，而不更改对已打开浏览器页面的访问权限。</translation></message>
+    <message><source>Browser/Web:
+Off — do not read your open browser pages.
+On — read the current browser page before sending the prompt.
+Let model decide — expose browser context tools. Public web search is controlled separately in Allowed tools.</source><translation>浏览器/网页：
+关闭 — 不读取已打开的浏览器页面。
+开启 — 发送提示前读取当前浏览器页面。
+让模型决定 — 提供浏览器上下文工具。公开网页搜索在“允许的工具”中单独控制。</translation></message>
+    <message><source>{provider}/{model}: the provider reported a rate limit. Retry in {seconds} seconds. Original error: {error}</source><translation>{provider}/{model}：提供商报告请求频率限制。请在 {seconds} 秒后重试。原始错误：{error}</translation></message>
+</context>
   <context>
     <name>OpenWand</name>
     <message>
@@ -6644,5 +6656,85 @@ This cannot be undone. Imported ChatGPT and Claude source files will not be dele
     <message><source>Delete conversations</source><translation>删除对话</translation></message>
     <message><source>Delete conversations failed</source><translation>删除对话失败</translation></message>
     <message><source>OpenWand could not delete the conversation(s): {error}</source><translation>OpenWand 无法删除对话：{error}</translation></message>
+    <message><source>This is a local transcript relationship, not a ChatGPT or Claude web conversation. OpenWand can pull later transcript changes, but new OpenWand turns are not written back automatically.</source><translation>这是本地对话记录的关联，并非 ChatGPT 或 Claude 网页对话。OpenWand 可以拉取后续记录更新，但不会自动将 OpenWand 中的新对话写回来源。</translation></message>
+    <message><source>external history</source><translation>外部历史记录</translation></message>
+    <message><source>Select a chat</source><translation>选择聊天</translation></message>
+    <message><source>Local OpenWand</source><translation>本地 OpenWand</translation></message>
+    <message><source>Stored locally by OpenWand. It is not linked to an external chat thread.</source><translation>由 OpenWand 保存在本地，未关联外部聊天会话。</translation></message>
+    <message><source>Sort conversations by</source><translation>对话排序依据</translation></message>
+    <message><source>Last activity</source><translation>上次活动</translation></message>
+    <message><source>Date created</source><translation>创建日期</translation></message>
+    <message><source>Discovery order</source><translation>发现顺序</translation></message>
+    <message><source>Sort order</source><translation>排序顺序</translation></message>
+    <message><source>OpenWand Chat</source><translation>OpenWand 聊天</translation></message>
+    <message><source>Project for new chats</source><translation>新聊天所属项目</translation></message>
+    <message><source>↓  Jump to latest</source><translation>↓  跳到最新内容</translation></message>
+    <message><source>Jump to latest reply</source><translation>跳到最新回复</translation></message>
+    <message><source>A reply is continuing below. Jump to the newest content.</source><translation>回复正在下方继续生成。跳到最新内容。</translation></message>
+    <message><source>Agent activity</source><translation>智能体活动</translation></message>
+    <message><source>Show subagents and their current work</source><translation>显示子智能体及其当前工作</translation></message>
+    <message><source>Remove pending attachments</source><translation>移除待发送附件</translation></message>
+    <message><source>Chat options</source><translation>聊天选项</translation></message>
+    <message><source>Enter sends message</source><translation>按 Enter 发送消息</translation></message>
+    <message><source>Context controls</source><translation>上下文控制</translation></message>
+    <message><source>Import from Codex…</source><translation>从 Codex 导入…</translation></message>
+    <message><source>Import from Claude Code…</source><translation>从 Claude Code 导入…</translation></message>
+    <message><source>Delete all chats…</source><translation>删除所有聊天…</translation></message>
+    <message><source>Exported to {provider} · pull-only</source><translation>已导出到 {provider} · 仅拉取更新</translation></message>
+    <message><source>Imported from {provider} · pull-only</source><translation>已从 {provider} 导入 · 仅拉取更新</translation></message>
+    <message><source>Import selected</source><translation>导入所选项</translation></message>
+    <message><source>Delete all {count} OpenWand conversations?
+
+This cannot be undone. Imported Codex and Claude Code source files will not be deleted.</source><translation>删除全部 {count} 个 OpenWand 对话？
+
+此操作无法撤销。不会删除已导入的 Codex 和 Claude Code 源文件。</translation></message>
+    <message><source>No subagents in this turn.</source><translation>本轮没有子智能体。</translation></message>
+    <message><source>Choose a skill to add its Codex $name marker to your message.</source><translation>选择一项技能，将其 Codex $name 标记添加到消息中。</translation></message>
+    <message><source>Nothing discovered.</source><translation>未发现任何内容。</translation></message>
+    <message><source>Skills…</source><translation>技能…</translation></message>
+    <message><source>Message… (Enter sends; Shift+Enter adds a line)</source><translation>消息…（Enter 发送；Shift+Enter 换行）</translation></message>
+    <message><source>Message… (Ctrl+Enter sends; Enter adds a line)</source><translation>消息…（Ctrl+Enter 发送；Enter 换行）</translation></message>
+    <message><source>Newest first</source><translation>最新在前</translation></message>
+    <message><source>Oldest first</source><translation>最早在前</translation></message>
+    <message><source>Scan stopped: {error} Found {found} conversation(s); {selected} selected can still be imported.</source><translation>扫描已停止：{error} 已找到 {found} 个对话；仍可导入已选择的 {selected} 个。</translation></message>
+    <message><source>Collapse conversation sources</source><translation>折叠对话来源</translation></message>
+    <message><source>Expand conversation sources</source><translation>展开对话来源</translation></message>
+    <message><source>Import local {provider} history…</source><translation>导入本地 {provider} 历史记录…</translation></message>
+    <message><source>Scan and choose which local {provider} transcript sessions to import.</source><translation>扫描并选择要导入的本地 {provider} 对话记录。</translation></message>
+    <message><source>Auto-import {provider}</source><translation>自动导入 {provider}</translation></message>
+    <message><source>Import new or updated local {provider} conversations while chat is open. This is pull-only local transcript import, not two-way web-chat synchronization. Older conversations are not imported automatically.</source><translation>聊天窗口打开时，导入新增或更新的本地 {provider} 对话。这仅拉取本地对话记录，并非与网页聊天双向同步。不会自动导入旧对话。</translation></message>
+    <message><source>Automatically import local {provider} history</source><translation>自动导入本地 {provider} 历史记录</translation></message>
+    <message><source>Assigned work</source><translation>分配的工作</translation></message>
+    <message><source>Latest activity</source><translation>最新活动</translation></message>
+    <message><source>Unnamed</source><translation>未命名</translation></message>
+    <message><source>Model selection for this chat: {model}</source><translation>此聊天所选模型：{model}</translation></message>
+    <message><source>Scan failed: {error}</source><translation>扫描失败：{error}</translation></message>
+    <message><source>Working</source><translation>工作中</translation></message>
+    <message><source>Status</source><translation>状态</translation></message>
+    <message><source>Thread</source><translation>会话</translation></message>
+    <message><source> · {count} tools</source><translation> · {count} 个工具</translation></message>
+    <message><source>Codex skills</source><translation>Codex 技能</translation></message>
+    <message><source>Choose from {count} Codex skills</source><translation>从 {count} 项 Codex 技能中选择</translation></message>
+    <message><source>Keep {provider} imports updated</source><translation>保持 {provider} 导入内容更新</translation></message>
+    <message><source>{provider} default model</source><translation>{provider} 默认模型</translation></message>
+    <message><source>Z–A</source><translation>Z–A</translation></message>
+    <message><source>A–Z</source><translation>A–Z</translation></message>
+    <message><source>Last found</source><translation>最后发现的在前</translation></message>
+    <message><source>First found</source><translation>最先发现的在前</translation></message>
+    <message><source>Scanning {provider}… Found {found} conversation(s); {selected} selected.</source><translation>正在扫描 {provider}… 已找到 {found} 个对话；已选择 {selected} 个。</translation></message>
+    <message><source>OpenWand could not import local {provider} conversations: {error}</source><translation>OpenWand 无法导入本地 {provider} 对话：{error}</translation></message>
+    <message><source>Agents {count}</source><translation>智能体 {count}</translation></message>
+    <message><source>Subagent {agent}</source><translation>子智能体 {agent}</translation></message>
+    <message><source>No tools are offered for this prompt.</source><translation>此提示未提供任何工具。</translation></message>
+    <message><source>UNAVAILABLE</source><translation>不可用</translation></message>
+    <message><source>LOCKED</source><translation>已锁定</translation></message>
+    <message><source>OFF</source><translation>关闭</translation></message>
+    <message><source>ASK</source><translation>询问</translation></message>
+    <message><source>ON</source><translation>开启</translation></message>
+    <message><source>Rewrite</source><translation>改写</translation></message>
+    <message><source>MCP server request</source><translation>MCP 服务器请求</translation></message>
+    <message><source>ChatGPT needs your input</source><translation>ChatGPT 需要您的输入</translation></message>
+    <message><source>Open in browser</source><translation>在浏览器中打开</translation></message>
+    <message><source>{server} needs your input</source><translation>{server} 需要您的输入</translation></message>
   </context>
 </TS>

@@ -4910,10 +4910,10 @@
       "test_node_ids": [
         "tests/test_llm_fallbacks.py::LlmFallbackTests::test_stream_response_fails_over_skips_cooling_route_then_retries_after_expiry",
         "tests/test_llm_fallbacks.py::LlmFallbackTests::test_stream_with_fallbacks_cools_down_transient_503_and_summarizes_failures",
-        "tests/test_llm_fallbacks.py::LlmFallbackTests::test_stream_with_fallbacks_fails_fast_when_all_routes_are_cooling"
+        "tests/test_llm_fallbacks.py::LlmFallbackTests::test_stream_with_fallbacks_waits_when_all_routes_are_rate_limited"
       ],
       "success_assertions": [
-        "A transient primary failure starts the cooldown, the next real stream_response turn skips that route, expiry makes it eligible again, and an all-cooling chain fails clearly without provider I/O."
+        "A transient primary failure starts the cooldown, the next real stream_response turn skips that route, expiry makes it eligible again, and an entirely rate-limited chain fails clearly without provider I/O."
       ],
       "dependency_status": "audited",
       "interaction_ids": [

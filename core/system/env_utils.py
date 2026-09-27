@@ -73,14 +73,13 @@ def env_file_access_mode(name: str, default: str = "off") -> str:
 # Local files dropdown for file tools).
 TOOL_OVERRIDE_MODES = ("on", "model", "off")
 MCP_SERVER_OVERRIDE_PREFIX = "mcp_server."
+PUBLIC_WEB_TOOL_NAMES = ("web_search", "retrieve_website")
 CONTEXT_GOVERNED_TOOL_NAMES = {
     "background_task_status",
     "delegate_background_task",
-    "web_search",
     "get_context",
     "get_context.browser",
     "get_context.documents",
-    "retrieve_website",
     "git_status",
     "git_diff",
     "github_repo",

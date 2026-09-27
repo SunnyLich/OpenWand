@@ -1,6 +1,16 @@
 from runtime.supervisor import tool_modes
 
 
+def test_public_web_is_available_without_personal_context_access():
+    caller = {"context_browser_mode": "off", "context_documents_mode": "off",
+              "context_memory_mode": "off", "file_access": "off"}
+    assert tool_modes.allowed_model_tools(caller) == ["web_search", "retrieve_website"]
+    assert tool_modes.pinned_model_tools(caller) == ["web_search", "retrieve_website"]
+    caller["tools"] = {"web_search": "off", "retrieve_website": "off"}
+    assert tool_modes.allowed_model_tools(caller) == []
+    assert tool_modes.pinned_model_tools(caller) == []
+
+
 def test_local_file_access_mode_expands_to_model_tools():
     caller = {"file_access": "ask", "tools": {}}
 

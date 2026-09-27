@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -120,10 +121,16 @@ def _make_surface(name: str):
     if name == "chat":
         from ui.chat_window import ChatWindow
 
+        config.CHAT_EXECUTION_MODE = "openwand"
+        config.CHAT_LLM_MODEL = "gpt-5.5"
+        # Preserve the displayed wall-clock time across runner time zones.
+        sample_timestamp = datetime(2026, 8, 14, 10, 28).astimezone().isoformat()
         conversations = [
             {
                 "title": "Launch checklist",
                 "context": "",
+                "created_at": sample_timestamp,
+                "updated_at": sample_timestamp,
                 "messages": [
                     {"role": "user", "content": "Can you review the launch checklist?"},
                     {

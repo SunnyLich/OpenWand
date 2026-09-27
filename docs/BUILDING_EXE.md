@@ -33,6 +33,27 @@ The built app lands at:
 dist\OpenWand\OpenWand.exe
 ```
 
+Local builds are unsigned. The Windows release workflow uses Azure Artifact
+Signing for every unsigned EXE, DLL, Python extension (`.pyd`), and PowerShell
+script in the bundle. Valid RSA vendor signatures are preserved. Invalid or
+unsupported signatures fail the build instead of being overwritten. Before
+creating the release ZIP, a second check requires all these files to have valid
+RSA signatures; signing only `OpenWand.exe` does not cover its dependencies.
+
+To inspect an extracted release without running it (PowerShell 7):
+
+```powershell
+./tools/check_windows_signatures.ps1 -BundlePath C:\path\to\OpenWand -Mode Audit -ReportPath signatures.csv
+```
+
+Use `-Mode Verify` to fail on unsigned or invalid code. This is a signing gate,
+not a guarantee of Smart App Control acceptance: reputation checks, downloaded
+optional packages, and the optional unsigned `Uninstall OpenWand.bat` are outside
+its scope. The batch uninstaller is not used to launch the packaged app.
+For a remaining launch block, inspect the affected PC's Event Viewer under
+Applications and Services Logs > Microsoft > Windows > CodeIntegrity > Operational
+to identify the specific blocked binary.
+
 Use `-SkipInstall` if dependencies are already installed:
 
 ```powershell
@@ -108,8 +129,8 @@ Create a `v`-prefixed release tag that matches the current
 `pyproject.toml` version:
 
 ```powershell
-git tag v0.11
-git push origin v0.11
+git tag v0.11.1
+git push origin v0.11.1
 ```
 
 Tags without the `v` prefix do not trigger release builds.

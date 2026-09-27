@@ -735,8 +735,8 @@ def test_real_addon_tools_flow_from_addon_host_through_brain_policy(tmp_path):
         params = flow._brain_query_params("Use the permitted addon tool.", pending)
 
         assert params["use_tools"] is True
-        assert params["allowed_tools"] == ["mcp_contractserver_add"]
-        assert params["pinned_tools"] == ["mcp_contractserver_add"]
+        assert params["allowed_tools"] == ["web_search", "retrieve_website", "mcp_contractserver_add"]
+        assert params["pinned_tools"] == ["web_search", "retrieve_website", "mcp_contractserver_add"]
     finally:
         worker.shutdown()
 
@@ -2044,5 +2044,73 @@ def test_ui_worker_bubble_clear_does_not_import_audio_or_freeze(tmp_path):
         assert not list(tmp_path.glob("ui_freeze_*.log"))
         assert "core.audio" not in worker.stderr_tail(80)
         assert "numpy" not in worker.stderr_tail(80).lower()
+    finally:
+        worker.shutdown()
+
+
+def test_audio_startup_failure_keeps_other_workers_and_disables_relaunch(monkeypatch):
+    from unittest.mock import Mock
+
+    supervisor = object.__new__(OpenWandSupervisor)
+    audio = WorkerClient(WorkerSpec("openwand-audio", "unused", "audio"))
+    monkeypatch.setattr(audio, "_write", Mock(side_effect=WorkerError("broken speech import")))
+    monkeypatch.setattr(audio, "_spawn", Mock())
+    healthy = {name: Mock() for name in ("native", "ui", "brain")}
+    for worker in healthy.values():
+        worker.call.return_value = {"pong": True}
+    supervisor.workers = {**healthy, "audio": audio}
+    try:
+        result = supervisor.start_all()
+        assert result["audio"]["available"] is False
+        assert "broken speech import" in result["audio"]["error"]
+        for name, worker in healthy.items():
+            assert result[name]["pong"] is True
+            worker.shutdown.assert_not_called()
+        for action in (lambda: audio.call("audio.record"), audio.restart):
+            with pytest.raises(WorkerError, match="Audio is disabled"):
+                action()
+        assert audio._spawn.call_count == 1
+    finally:
+        audio.shutdown()
+
+
+def test_worker_exit_error_includes_name_code_and_stderr(monkeypatch):
+    from unittest.mock import Mock
+
+    worker = WorkerClient(WorkerSpec("openwand-audio", "unused", "audio"))
+    monkeypatch.setattr(worker, "_ensure_started", lambda: None)
+    worker._proc = Mock()
+    worker._proc.poll.return_value = 7
+    worker._stderr_tail.append("ImportError: speech dependency could not load")
+    monkeypatch.setattr(worker, "_write", lambda _request: worker._fail_pending("worker exited"))
+    try:
+        with pytest.raises(WorkerError) as error:
+            worker.call("audio.ping")
+        message = str(error.value)
+        assert "openwand-audio" in message
+        assert "audio.ping" in message
+        assert "exit code: 7" in message
+        assert "ImportError: speech dependency could not load" in message
+    finally:
+        worker._proc = None
+
+
+def test_real_worker_startup_crash_reports_exit_code_and_import_error(tmp_path):
+    module = tmp_path / "crashing_speech_worker.py"
+    module.write_text(
+        "import sys\nsys.stdin.readline()\nsys.stderr.write('ImportError: speech DLL failed to load\\n')\nsys.stderr.flush()\nsys.exit(7)\n",
+        encoding="utf-8",
+    )
+    worker = WorkerClient(WorkerSpec(
+        "openwand-audio", "crashing_speech_worker", "audio", cwd=tmp_path,
+        env={"OPENWAND_DATA_ROOT": str(tmp_path / "data")},
+    ))
+    try:
+        with pytest.raises(WorkerError) as error:
+            worker.call("audio.ping", timeout=10)
+        message = str(error.value)
+        assert "openwand-audio" in message
+        assert "exit code: 7" in message
+        assert "ImportError: speech DLL failed to load" in message
     finally:
         worker.shutdown()

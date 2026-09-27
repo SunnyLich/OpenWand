@@ -67,10 +67,19 @@ def test_config_reload_calls_config_reload(monkeypatch):
 
     fake_config.reload = reload
     monkeypatch.setitem(sys.modules, "config", fake_config)
+    # Reload imports these dependencies lazily. Keep real modules from caching
+    # the temporary config object and leaking it into later tests.
+    fake_tts = types.ModuleType("core.tts")
+    fake_tts.reset_connections = lambda: calls.append("reset_tts")
+    fake_llm = types.ModuleType("core.llm_clients.client")
+    fake_llm.reset_clients = lambda: calls.append("reset_llm")
+    fake_llm.invalidate_ollama_prefix_cache = lambda: calls.append("invalidate_prefix")
+    monkeypatch.setitem(sys.modules, "core.tts", fake_tts)
+    monkeypatch.setitem(sys.modules, "core.llm_clients.client", fake_llm)
 
     result = handlers.HANDLERS["brain.config.reload"]()
 
-    assert calls == ["reload"]
+    assert calls == ["reload", "reset_tts", "reset_llm", "invalidate_prefix"]
     assert result == {
         "ok": True,
         "llm_provider": "anthropic",

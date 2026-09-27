@@ -2276,7 +2276,7 @@ def brain_query(
         route_model = str(
             getattr(
                 config,
-                "VISION_LLM_MODEL" if harness_images else "CHAT_LLM_MODEL",
+                "OPENWAND_CLAUDE_MODEL" if harness_mode == "claude" else "OPENWAND_CODEX_MODEL",
                 "",
             )
             or ""
@@ -2986,7 +2986,7 @@ def brain_chat(
         route_model = str(
             getattr(
                 config,
-                "VISION_LLM_MODEL" if harness_images else "CHAT_LLM_MODEL",
+                "OPENWAND_CLAUDE_MODEL" if harness_mode == "claude" else "OPENWAND_CODEX_MODEL",
                 "",
             )
             or ""

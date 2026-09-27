@@ -3348,8 +3348,8 @@ def test_context_modes_map_to_auto_documents_and_allowed_tools():
     assert query["include_active_document"] is False
     assert query["use_tools"] is True
     # memory defaults to "off", so memory_save is not offered.
-    assert query["allowed_tools"] == ["get_context.documents", "git_status", "git_diff", "github_repo", "github_issue"]
-    assert query["pinned_tools"] == ["get_context", "git_status", "git_diff", "github_repo", "github_issue"]
+    assert query["allowed_tools"] == ['web_search', 'retrieve_website', 'get_context.documents', 'git_status', 'git_diff', 'github_repo', 'github_issue']
+    assert query["pinned_tools"] == ['web_search', 'retrieve_website', 'get_context', 'git_status', 'git_diff', 'github_repo', 'github_issue']
     assert query["frontload_tools"] == []
 
 
@@ -3410,7 +3410,7 @@ def test_context_policy_failure_contract_fails_closed_at_runtime_boundary():
         "tools": {},
     }
     flow, native, _ui, _brain, _audio = make_flow()
-    assert flow._allowed_model_tools(disabled) == []
+    assert flow._allowed_model_tools(disabled) == ["web_search", "retrieve_website"]
     assert flow._screenshot_tool_allowed(disabled) is False
     assert not native.calls_for("native.context.snapshot")
 
@@ -3467,7 +3467,7 @@ def test_context_policy_failure_contract_fails_closed_at_runtime_boundary():
     assert tool_modes.context_mode(invalid_policy, "browser") == "off"
     assert tool_modes.context_mode(invalid_policy, "github") == "off"
     assert tool_modes.tool_overrides(invalid_policy) == {}
-    assert tool_modes.allowed_model_tools(invalid_policy) == []
+    assert tool_modes.allowed_model_tools(invalid_policy) == ["web_search", "retrieve_website"]
 
     built = build_context(
         ContextInputs(
@@ -3510,7 +3510,7 @@ def test_document_model_mode_preview_does_not_inject_active_document():
     assert brain.calls_for("brain.context.active_document")
     assert query["active_document_text"] == ""
     assert query["include_active_document"] is False
-    assert query["allowed_tools"] == ["get_context.documents"]
+    assert query["allowed_tools"] == ['web_search', 'retrieve_website', 'get_context.documents']
     summary_labels = [item["label"] for item in ui.last_call("ui.context.summary")["params"]["items"]]
     assert "App" in summary_labels
     assert "Active document" not in summary_labels
@@ -3537,9 +3537,9 @@ def test_context_modes_map_on_browser_and_git_to_frontloaded_context():
 
     query = brain.last_call("brain.query")["params"]
     # memory defaults to "off" and browser/git context is frontloaded rather than
-    # offered as tools, so no model tools are offered here.
-    assert query["use_tools"] is False
-    assert query["allowed_tools"] == []
+    # offered as tools. Public web tools remain available independently.
+    assert query["use_tools"] is True
+    assert query["allowed_tools"] == ['web_search', 'retrieve_website']
     assert query["frontload_tools"] == ["git_status", "git_diff"]
     assert "[Browser/Web]" in query["ambient_text"]
     assert "https://example.test/page" in query["ambient_text"]
@@ -7111,7 +7111,7 @@ def test_voice_flow_uses_voice_caller_config():
     query = brain.last_call("brain.query")["params"]
     assert query["use_tools"] is True
     assert set(query["allowed_tools"]) == {"web_search", "get_context.browser", "retrieve_website", "alpha", "beta"}
-    assert query["pinned_tools"] == ["web_search", "get_context", "retrieve_website", "alpha"]
+    assert query["pinned_tools"] == ['web_search', 'retrieve_website', 'get_context', 'alpha']
     assert query["memory_enabled"] is False
     # The record-start path must not wait on the slow browser page fetch.
     snapshot = native.calls_for("native.context.snapshot")[0]["params"]
@@ -7308,8 +7308,8 @@ def test_caller_tool_overrides_reach_brain_query():
         ui.emit("ui.intent.chosen", {"custom": "run it"})
 
     query = brain.last_call("brain.query")["params"]
-    assert set(query["allowed_tools"]) == {"my_tool", "other_tool"}
-    assert query["pinned_tools"] == ["my_tool"]
+    assert set(query["allowed_tools"]) == {"web_search", "retrieve_website", "my_tool", "other_tool"}
+    assert query["pinned_tools"] == ['web_search', 'retrieve_website', 'my_tool']
     assert query["use_tools"] is True
 
 
@@ -8130,8 +8130,8 @@ def test_chat_request_context_policy_is_absolute_over_legacy_tool_context():
         )
 
     params = brain.last_call("brain.chat")["params"]
-    assert params["allowed_tools"] == []
-    assert params["pinned_tools"] == []
+    assert params["allowed_tools"] == ['web_search', 'retrieve_website']
+    assert params["pinned_tools"] == ['web_search', 'retrieve_website']
     assert params["file_access_mode"] == "off"
 
 
@@ -8244,9 +8244,9 @@ def test_chat_request_keeps_file_tools_off_when_caller_files_are_off():
         ui.emit("ui.chat.request", {"request_id": "chat-1", "messages": [{"role": "user", "content": "create a file"}]})
 
     params = brain.last_call("brain.chat")["params"]
-    assert params["use_tools"] is False
+    assert params["use_tools"] is True
     assert params["file_access_mode"] == "off"
-    assert brain.last_call("brain.chat")["timeout"] == 120.0
+    assert brain.last_call("brain.chat")["timeout"] == 300.0
     assert not ({"list_files", "read_file", "create_file", "edit_file", "write_file"} & set(params["allowed_tools"]))
 
 
@@ -8436,8 +8436,8 @@ def test_hotkey_followup_injects_active_chat_file_context():
     assert "Original ambient context" in query["ambient_text"]
     assert "Conversation Context" in query["ambient_text"]
     assert "Conversation File Context" in query["ambient_text"]
-    assert query["allowed_tools"] == []
-    assert query["pinned_tools"] == []
+    assert query["allowed_tools"] == ['web_search', 'retrieve_website']
+    assert query["pinned_tools"] == ['web_search', 'retrieve_website']
     assert query["file_access_mode"] == "off"
 
 
@@ -8478,8 +8478,8 @@ def test_hotkey_followup_keeps_current_tools_separate_from_active_chat_tools():
         ui.emit("ui.intent.chosen", {"custom": "Use page and edit that file"})
 
     query = brain.last_call("brain.query")["params"]
-    assert query["allowed_tools"] == ["get_context.documents", "web_search", "get_context.browser", "retrieve_website"]
-    assert query["pinned_tools"] == ["get_context", "web_search", "retrieve_website"]
+    assert query["allowed_tools"] == ['web_search', 'retrieve_website', 'get_context.documents', 'get_context.browser']
+    assert query["pinned_tools"] == ['web_search', 'retrieve_website', 'get_context']
     assert query["file_access_mode"] == "off"
     assert query["use_tools"] is True
 
@@ -8963,3 +8963,17 @@ def test_model_background_task_completion_returns_to_originating_chat(tmp_path, 
             break
         time.sleep(0.02)
     assert persisted["delivered_at"]
+
+
+def test_start_without_audio_shows_repair_guidance_and_keeps_ui():
+    ui, audio = FakeWorker(), FakeWorker()
+    audio.unavailable_reason = "Audio startup failed: import error"
+    flow = FlowController(native=FakeWorker(), ui=ui, brain=FakeWorker(), audio=audio, run_async=False)
+    try:
+        flow.start(prewarm=False)
+        assert ui.calls_for("ui.show_overlay")
+        notices = ui.calls_for("ui.reply.notice")
+        assert any("Settings > Voice" in call["params"]["text"] for call in notices)
+        assert not audio.calls_for("audio.prewarm")
+    finally:
+        flow.stop()

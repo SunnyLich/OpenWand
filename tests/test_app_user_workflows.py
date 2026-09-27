@@ -3095,7 +3095,7 @@ def test_context_disabled_sources_preview_and_os_native_contract_workflow(
     assert not native.calls_for("native.context.snapshot")
     assert "selected chat bubble" not in repr(chat_params["messages"])
     assert chat_params["memory_enabled"] is False
-    assert chat_params["allowed_tools"] == []
+    assert chat_params["allowed_tools"] == ["web_search", "retrieve_website"]
 
     native = FakeWorker(
         {

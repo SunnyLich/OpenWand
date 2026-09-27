@@ -681,8 +681,18 @@ def test_formatted_chat_composer_shows_exact_chat_model_and_settings_shortcut(
         monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "codex", raising=False)
         monkeypatch.setattr(config, "OPENWAND_CODEX_MODEL", "gpt-5.6-luna", raising=False)
         window.refresh_model_label()
-        assert label.text() == "gpt-5.6-sol"
-        assert "gpt-5.6-sol" in label.toolTip()
+        assert label.text() == "gpt-5.6-luna"
+        assert "gpt-5.6-luna" in label.toolTip()
+        monkeypatch.setattr(config, "OPENWAND_CODEX_MODEL", "", raising=False)
+        window.refresh_model_label()
+        assert label.text() == "ChatGPT default model"
+        monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "claude", raising=False)
+        monkeypatch.setattr(config, "OPENWAND_CLAUDE_MODEL", "claude-test", raising=False)
+        window.refresh_model_label()
+        assert label.text() == "claude-test"
+        monkeypatch.setattr(config, "OPENWAND_CLAUDE_MODEL", "", raising=False)
+        window.refresh_model_label()
+        assert label.text() == "Claude default model"
     finally:
         window.close()
 

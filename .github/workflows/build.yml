@@ -81,18 +81,32 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Sign OpenWand executable
+      - name: Inventory Windows bundle signatures
+        id: windows-signatures
+        shell: pwsh
+        run: >-
+          ./tools/check_windows_signatures.ps1 -BundlePath dist/OpenWand
+          -Mode Prepare -CatalogPath dist/windows-signing-catalog.txt
+
+      - name: Sign unsigned Windows bundle code
+        if: steps.windows-signatures.outputs.unsigned-count != '0'
         uses: azure/artifact-signing-action@v2
         with:
           endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
           signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\dist\OpenWand\OpenWand.exe
+          files-catalog: ${{ github.workspace }}\dist\windows-signing-catalog.txt
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
           description: OpenWand
           description-url: https://github.com/SunnyLich/OpenWand
+
+      - name: Verify Windows bundle signatures
+        shell: pwsh
+        run: >-
+          ./tools/check_windows_signatures.ps1 -BundlePath dist/OpenWand
+          -Mode Verify -ReportPath dist/windows-signatures.csv
 
       - name: Package Windows artifact
         shell: pwsh

@@ -196,9 +196,9 @@ def build_context_controls(
     )
     browser_tip = t(
         "Browser/Web:\n"
-        "Off — no web/browser tools.\n"
+        "Off — do not read your open browser pages.\n"
         "On — read the current browser page before sending the prompt.\n"
-        "Let model decide — expose web search and browser page fetch tools."
+        "Let model decide — expose browser context tools. Public web search is controlled separately in Allowed tools."
     )
     github_tip = t(
         "Git/GitHub:\n"

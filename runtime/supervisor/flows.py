@@ -515,10 +515,17 @@ class FlowController:
             default_caller = self._caller(0) or _all_context_off_policy()
             self._prewarm_llm_prefix(default_caller, route_kind="query")
             self._prewarm_llm_prefix(default_caller, route_kind="chat")
-            try:
-                self.audio.call("audio.prewarm", timeout=30.0, wait=False)
-            except Exception:
-                log.exception("audio prewarm did not start")
+            if not getattr(self.audio, "unavailable_reason", ""):
+                try:
+                    self.audio.call("audio.prewarm", timeout=30.0, wait=False)
+                except Exception:
+                    log.exception("audio prewarm did not start")
+        if getattr(self.audio, "unavailable_reason", ""):
+            self._notice(
+                t("Speech is unavailable. You can keep using OpenWand. Open Settings > Voice to repair speech, then restart the app."),
+                severity="warning",
+                technical_detail=self.audio.unavailable_reason,
+            )
         # Surface results that detached installers (staged applies, model
         # downloads) wrote while OpenWand was closed, right at startup.
         try:

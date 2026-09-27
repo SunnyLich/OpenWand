@@ -3,6 +3,25 @@ from __future__ import annotations
 import logging
 
 
+def test_rate_limit_notice_is_translated_and_keeps_provider_error(qapp, monkeypatch):
+    import config
+    from runtime.workers.ui_host import _translate_notice_text
+    from ui import i18n
+
+    source = "google/gemini: the provider reported a rate limit. Retry in 12 seconds. Original error: HTTP 429 request rate exceeded"
+    try:
+        for lang in ("zh", "zh-Hant", "es", "fr"):
+            monkeypatch.setattr(config, "APP_LANGUAGE", lang)
+            i18n.set_language(lang, app=qapp)
+            translated = _translate_notice_text(source)
+            assert translated != source
+            assert "google/gemini" in translated
+            assert "12" in translated
+            assert "HTTP 429 request rate exceeded" in translated
+    finally:
+        i18n.set_language("en", app=qapp)
+
+
 def test_overlay_amplitude_is_clamped_and_emitted() -> None:
     from runtime.workers.ui_host import QtProtocolHost
 

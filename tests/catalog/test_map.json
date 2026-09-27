@@ -229,7 +229,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 41
+      "node_count": 44
     },
     {
       "path": "tests/integration/brain/test_handler_transcribe.py",
@@ -289,7 +289,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 20
+      "node_count": 22
     },
     {
       "path": "tests/runtime/test_architecture_boundaries.py",
@@ -364,7 +364,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 243
+      "node_count": 244
     },
     {
       "path": "tests/runtime/test_flows_live_voice.py",
@@ -484,7 +484,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 43
+      "node_count": 46
     },
     {
       "path": "tests/runtime/test_ui_host_agent_meeting.py",
@@ -514,7 +514,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 63
+      "node_count": 64
     },
     {
       "path": "tests/runtime/test_ui_host_runtime_status.py",
@@ -1867,7 +1867,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 52
+      "node_count": 62
     },
     {
       "path": "tests/test_llm_history.py",
@@ -2084,7 +2084,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 107
+      "node_count": 111
     },
     {
       "path": "tests/test_optional_install_acceptance.py",
@@ -2830,7 +2830,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 3
+      "node_count": 4
     },
     {
       "path": "tests/test_tool_registry.py",

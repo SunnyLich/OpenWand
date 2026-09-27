@@ -151,11 +151,15 @@ from core.llm_clients.routes import (
 )
 from core.llm_clients.routing import (
     _ROUTE_COOLDOWN_SECONDS,
+    _clear_route_cooling,
+    _is_quota_error,
     _is_route_cooling,
     _is_transient_route_error,
     _mark_route_cooling,
+    _provider_retry_seconds,
     _route_cooldowns,
     _route_failure_summary,
+    _route_rate_limit_message,
 )
 from core.ollama_manager import ensure_ollama_running as _ensure_ollama_running
 from core.system import macos_safety, sdk_clients
@@ -4529,21 +4533,19 @@ def _stream_with_fallbacks(
 ) -> Generator[str, None, None]:
     """Stream with fallbacks."""
     import time
-    # Try routes not in quota cooldown first; keep cooling ones as last resort so
-    # a fully-throttled chain still attempts something rather than failing cold.
-    ready = [c for c in candidates if not _is_route_cooling(*c)]
-    cooling = [c for c in candidates if _is_route_cooling(*c)]
-    if cooling and not ready:
-        tried = "; ".join(f"{provider}/{model}" for provider, model in cooling)
-        raise RuntimeError(
-            f"All {kind} model routes are temporarily cooling down after recent "
-            f"provider failures. Routes: {tried}"
-        )
+    # Temporary failures only change preference. If no healthy route remains,
+    # a new user request may retry them. Explicit provider rate limits still wait.
+    blocked = {c: _route_rate_limit_message(*c) for c in candidates}
+    eligible = [c for c in candidates if not blocked[c]]
+    ready = [c for c in eligible if not _is_route_cooling(*c)]
+    cooling = [c for c in eligible if _is_route_cooling(*c)]
+    if candidates and not eligible:
+        raise RuntimeError("\n".join(dict.fromkeys(blocked.values())))
     ordered = ready + cooling
-    if not ordered:
-        ordered = candidates
     last_exc: Exception | None = None
-    attempts: list[tuple[str, str, Exception | str]] = []
+    attempts: list[tuple[str, str, Exception | str]] = [
+        (provider, model, message) for (provider, model), message in blocked.items() if message
+    ]
     for idx, (provider, model) in enumerate(ordered):
         emitted = False
         route_started = time.monotonic()
@@ -4552,6 +4554,7 @@ def _stream_with_fallbacks(
                 emitted = True
                 yield chunk
             if emitted:
+                _clear_route_cooling(provider, model)
                 elapsed = time.monotonic() - route_started
                 log_event(
                     "llm.route_complete",
@@ -4566,12 +4569,12 @@ def _stream_with_fallbacks(
             last_exc = ValueError(f"Route ({kind}) {provider}/{model} returned no content")
             attempts.append((provider, model, "returned no content"))
             if not _is_route_cooling(provider, model):
-                _mark_route_cooling(provider, model)
+                _mark_route_cooling(provider, model, reason=str(last_exc))
             elapsed = time.monotonic() - route_started
             if idx < len(ordered) - 1:
                 log_event(
                     "llm.route_empty_fallback",
-                    f"Route ({kind}) {provider}/{model} returned no content after {elapsed:.1f}s; cooling down {_ROUTE_COOLDOWN_SECONDS:.0f}s and trying fallback",
+                    f"Route ({kind}) {provider}/{model} returned no content after {elapsed:.1f}s; preferring fallback after this empty response",
                     kind=kind,
                     provider=provider,
                     model=model,
@@ -4580,7 +4583,7 @@ def _stream_with_fallbacks(
                 continue
             log_event(
                 "llm.route_empty_final",
-                f"Route ({kind}) {provider}/{model} returned no content after {elapsed:.1f}s; cooling down {_ROUTE_COOLDOWN_SECONDS:.0f}s; no fallback left",
+                f"Route ({kind}) {provider}/{model} returned no content after {elapsed:.1f}s; no fallback left; a new request can retry",
                 kind=kind,
                 provider=provider,
                 model=model,
@@ -4602,11 +4605,14 @@ def _stream_with_fallbacks(
                     error=str(exc),
                 )
                 raise
-            if not _is_route_cooling(provider, model) and _is_transient_route_error(exc):
-                _mark_route_cooling(provider, model)
+            if _is_transient_route_error(exc):
+                rate_limited = _is_quota_error(exc)
+                delay = _provider_retry_seconds(exc) if rate_limited else _ROUTE_COOLDOWN_SECONDS
+                _mark_route_cooling(provider, model, delay, hard=rate_limited, reason=str(exc))
                 log_event(
                     "llm.route_transient_fallback",
-                    f"Route ({kind}) {provider}/{model} hit transient provider error after {elapsed:.1f}s; cooling down {_ROUTE_COOLDOWN_SECONDS:.0f}s and using fallback",
+                    f"Route ({kind}) {provider}/{model} failed after {elapsed:.1f}s; "
+                    f"{'rate-limit wait' if rate_limited else 'fallback preference'} {delay:.0f}s. Original error: {exc}",
                     kind=kind,
                     provider=provider,
                     model=model,
