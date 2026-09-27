@@ -1240,13 +1240,17 @@ def test_real_intent_ui_routes_keep_in_openwand_and_rewrite_paste_back(tmp_path,
 
     def submit_when_visible(text: str) -> None:
         deadline = time.time() + 10
+        result = {}
         while time.time() < deadline:
             result = ui.call("ui.debug.intent.submit", {"text": text}, timeout=10)
             if result.get("submitted"):
                 assert result == {"submitted": True, "text": text}
                 return
             time.sleep(0.02)
-        pytest.fail(f"intent picker never accepted {text!r}")
+        pytest.fail(
+            f"intent picker never accepted {text!r}; last response={result!r}; "
+            f"ui stderr={ui.stderr_tail()!r}; brain stderr={brain.stderr_tail()!r}"
+        )
 
     try:
         flow.begin_caller(0)
