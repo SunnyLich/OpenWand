@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="How the OpenWand desktop app handles data, local storage, and network requests." />
+  <title>OpenWand Privacy Notice</title>
+  <link rel="icon" type="image/png" href="assets/openwand-logo.png?v=0.11" />
+  <style>
+    :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+    * { box-sizing: border-box; }
+    body { max-width: 820px; margin: 0 auto; padding: 36px 24px 72px; background: #16181b; color: #e9e6e0; line-height: 1.65; }
+    a { color: #e6b45c; }
+    h1, h2 { line-height: 1.25; }
+    h1 { margin: 28px 0 4px; font-size: 2rem; }
+    h2 { margin-top: 34px; font-size: 1.25rem; }
+    p, li { color: #c8c4bc; }
+    li { margin: 8px 0; }
+    .meta { color: #aaa69f; margin: 0 0 30px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 700; color: #e9e6e0; }
+    .brand img { width: 28px; height: 28px; }
+    footer { border-top: 1px solid #30353b; margin-top: 42px; padding-top: 18px; }
+  </style>
+</head>
+<body>
+  <a class="brand" href="./"><img src="assets/openwand-logo.png?v=0.11" alt="" />OpenWand Docs</a>
+  <main>
+    <h1>OpenWand Privacy Notice</h1>
+    <p class="meta">Effective September 27, 2026</p>
+    <p>This notice describes how the open-source OpenWand desktop app handles information. OpenWand does not require an OpenWand account or route your model requests through an OpenWand-hosted service. The services you choose to connect have their own privacy practices.</p>
+
+    <h2>Information the app handles</h2>
+    <p>Depending on the actions and context sources you use, OpenWand can access prompts and replies; selected text, clipboard contents, active-window details, browser pages, documents, workspace files, and screenshots; microphone audio and transcripts; and provider credentials. It uses this information to answer requests, run the features you enable, and keep local conversations, settings, and logs.</p>
+
+    <h2>What leaves your device</h2>
+    <ul>
+      <li>When you use a cloud model, OpenWand sends the prompt and enabled context to the model provider you select. The provider may process and retain that request under its own terms. A local model route can keep model requests on your own computer or server.</li>
+      <li>If you configure cloud transcription, live voice, or cloud text-to-speech, audio, transcripts, or reply text may be sent to the chosen speech provider. The local faster-whisper transcription option processes audio on your computer.</li>
+      <li>Signing in to a provider contacts that provider's authentication service. Web, GitHub, connected tools, and add-ons can make network requests when used or enabled.</li>
+      <li>Checking for or applying app updates contacts GitHub Releases. Installing optional speech packages, models, or add-on dependencies downloads files from the relevant package or model hosts.</li>
+    </ul>
+    <p>The OpenWand app does not send app analytics to an OpenWand-hosted service. It does make the feature-related network requests described above.</p>
+
+    <h2>Local storage and credentials</h2>
+    <p>OpenWand stores settings, conversations, memory, and diagnostic logs in local application data. Credentials entered through Settings are stored using your operating system's keychain where available. People running from source can also provide credentials through environment variables or their own configuration. Local files remain until you delete them or uninstall OpenWand; information already sent to another service follows that service's retention policy.</p>
+
+    <h2>Your choices</h2>
+    <p>You can choose local model and transcription routes, configure context sources by caller, review context before sending, and turn privacy filtering on or off. Filtering can reduce accidental disclosure but cannot guarantee that all sensitive information is removed. You can delete local conversations and memory in the app, remove stored credentials, or use OpenWand's uninstall flow to remove its local data. To delete information held by a model or speech provider, use that provider's controls.</p>
+
+    <h2>Questions and changes</h2>
+    <p>For privacy questions, open a <a href="https://github.com/SunnyLich/OpenWand/issues">GitHub issue</a> without including personal information or secrets. For a suspected security vulnerability, use <a href="https://github.com/SunnyLich/OpenWand/security/advisories/new">private vulnerability reporting</a>. We will update this notice when the app's data handling changes and change the effective date above.</p>
+  </main>
+  <footer><a href="./#security">Security and privacy documentation</a> · <a href="https://github.com/SunnyLich/OpenWand">Source code</a></footer>
+</body>
+</html>

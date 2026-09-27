@@ -941,24 +941,24 @@ Release             → <span class="c-accent">stop_and_transcribe()</span> → 
 
 'security': {
   title: 'Security & privacy',
-  sub: 'OpenWand reads your screen — so we built it to keep what it sees on your machine. Here is exactly how.',
+  sub: 'How OpenWand handles local data and sends information to services you choose.',
   toc: ['pillars','local-first','keychain','redaction','advanced-privacy','opt-in','no-telemetry','open-source'],
   html: `
 <div id="pillars" class="sec-pillars">
   <div class="sec-pillar">
     <div class="sec-pillar-k">Local-first</div>
     <div class="sec-pillar-t">It runs on your machine</div>
-    <p>OpenWand is a desktop app, not a cloud service. Context capture, transcription, and memory all happen on-device.</p>
+    <p>OpenWand runs on your computer. Context capture and memory are local; transcription can be local or use a configured cloud provider.</p>
   </div>
   <div class="sec-pillar">
     <div class="sec-pillar-k">Your keys</div>
-    <div class="sec-pillar-t">Secrets in the OS keychain</div>
-    <p>API keys live in your operating system's keychain — never in plaintext config, never on a OpenWand server.</p>
+    <div class="sec-pillar-t">Settings use the OS keychain</div>
+    <p>Credentials entered in Settings are stored in your operating system's keychain where available.</p>
   </div>
   <div class="sec-pillar">
     <div class="sec-pillar-k">Redacted</div>
-    <div class="sec-pillar-t">Sensitive text filtered before cloud sends</div>
-    <p>Built-in patterns — and optional local AI — replace likely sensitive text before cloud-bound requests are sent.</p>
+    <div class="sec-pillar-t">Optional privacy filtering</div>
+    <p>Built-in patterns and optional local AI can redact likely sensitive text. You can turn filtering off, and no detector is perfect.</p>
   </div>
   <div class="sec-pillar">
     <div class="sec-pillar-k">Open source</div>
@@ -968,8 +968,9 @@ Release             → <span class="c-accent">stop_and_transcribe()</span> → 
 </div>
 
 <hr />
-<h2 id="local-first">Your data stays on your machine</h2>
-<p>When you fire a hotkey, OpenWand assembles context locally and sends your query <strong>directly</strong> from your machine to whichever model provider you configured — using <em>your</em> API key. Your prompts, context, and replies are not routed through a separate OpenWand-hosted service.</p>
+<h2 id="local-first">Local storage and provider requests</h2>
+<p>OpenWand assembles context on your computer. When you send a request to a cloud model, the prompt and enabled context go directly to the provider you selected. OpenWand does not route them through an OpenWand-hosted model service. Local model routes can keep model requests on your own machine or server.</p>
+<p>For a concise account of the data OpenWand handles, network connections, storage, and your controls, read the <a href="privacy.html" target="_blank" rel="noopener">OpenWand privacy notice</a>.</p>
 <div class="compare">
   <div class="compare-head">
     <div class="ch-issue"><span class="compare-dot"></span>The worry</div>
@@ -981,17 +982,17 @@ Release             → <span class="c-accent">stop_and_transcribe()</span> → 
   </div>
   <div class="compare-row">
     <div class="c-issue">"My conversation history is sitting in someone's database."</div>
-    <div class="c-sol">Memory is a <strong>local JSON store</strong>. Nothing is sent to an external service for storage or retrieval.</div>
+    <div class="c-sol">OpenWand stores chats and memory locally. Content you include in a cloud model request is also handled by that provider under its own terms.</div>
   </div>
   <div class="compare-row">
     <div class="c-issue">"It's recording my microphone to the cloud."</div>
-    <div class="c-sol">Speech-to-text uses <strong>faster-whisper, entirely on your CPU or GPU</strong>. Audio never leaves the machine.</div>
+    <div class="c-sol">The local faster-whisper option transcribes on your computer. If you configure cloud transcription or live voice, audio can be sent to that provider.</div>
   </div>
 </div>
 
 <hr />
 <h2 id="keychain">Secrets live in the OS keychain</h2>
-<p>Your provider API keys are the most sensitive thing OpenWand touches, so they get the strongest handling. Keys are <strong>not</strong> stored in <code>.env</code> or any config file — you enter them in <strong>Settings → Connections</strong>, and they are written to the operating system keychain via the <code>keyring</code> library (Windows Credential Manager, macOS Keychain, or Secret Service on Linux).</p>
+<p>Keys and OAuth tokens entered through <strong>Settings → Connections</strong> are saved using the operating system keychain through <code>keyring</code> (Windows Credential Manager, macOS Keychain, or a compatible Linux secret store). Source users can also supply credentials through environment variables or their own configuration.</p>
 <p>An OS keychain is the password manager built into your operating system: Windows Credential Manager, macOS Keychain, or a Linux Secret Service/KWallet-compatible store. OpenWand uses it so provider keys and OAuth tokens are protected by your OS account instead of sitting in <code>.env</code> or another plain-text config file.</p>
 <div class="callout tip"><div class="callout-label">What this means</div><p>Your keys are encrypted at rest by the OS, scoped to your user account, and never sync to us. Rotating or revoking a key is just a keychain edit away.</p></div>
 
@@ -1018,13 +1019,13 @@ Release             → <span class="c-accent">stop_and_transcribe()</span> → 
 <div class="callout warn"><div class="callout-label">Know the limits</div><p>Privacy filtering reduces accidental disclosure; it is not a guarantee of anonymization or regulatory compliance. Review high-sensitivity content before sending it to any provider.</p></div>
 
 <hr />
-<h2 id="opt-in">Sensitive features are opt-in</h2>
-<p>OpenWand collects no more context than necessary. The features that read the most stay <strong>off</strong> until you decide to enable them — nothing happens silently behind your back.</p>
+<h2 id="opt-in">Control context and local data</h2>
+<p>Context sources are configurable by caller. Review the enabled context and any privacy preview before sending sensitive information.</p>
 <div class="callout"><div class="callout-label">You stay in control</div><p>Every context source can be toggled per <a onclick="navigate('callers')">caller</a>, and you can browse, search, and delete anything in memory from the <strong>Memory Viewer</strong> at any time.</p></div>
 
 <hr />
-<h2 id="no-telemetry">No telemetry, no accounts</h2>
-<p>OpenWand has no sign-up, no account, and no analytics or telemetry calls home. The only outbound network requests it makes are the ones you ask for: the query to your chosen model provider, and — if you enable it — fetching the active browser tab. That's it.</p>
+<h2 id="no-telemetry">No OpenWand account or analytics service</h2>
+<p>OpenWand does not require an OpenWand account or send app analytics to an OpenWand-hosted service. Network requests can include model, speech, and sign-in providers; web or GitHub tools you enable; GitHub release checks and downloads when you use updates; and downloads for optional packages or models. Add-ons and connected tools may make their own requests. See the <a href="privacy.html" target="_blank" rel="noopener">privacy notice</a> for details.</p>
 
 <hr />
 <h2 id="open-source">Open source &amp; auditable</h2>
