@@ -15,13 +15,15 @@ Status: Inno Setup smoke test complete on the `dev` branch. The OpenWand install
 
 ## Migration for users on the current ZIP release
 
-1. The first installer-capable release publishes both the legacy ZIP and the new EXE. Keep `assets["windows-x64"]` mapped to the ZIP so every existing updater can reach this bridge release. Add a distinct `assets["windows-x64-installer"]` entry for the EXE. The manifest generator must reject collisions rather than silently overwrite either artifact.
+1. The first installer-capable release publishes both the transition ZIP and the new EXE. Keep `assets["windows-x64"]` mapped to the transition ZIP so every existing updater can reach it. Add a distinct `assets["windows-x64-installer"]` entry for the EXE. Every later published release manifest must continue to point `windows-x64` to that same immutable transition ZIP URL and SHA-256 while old clients are supported. The manifest generator must reject collisions rather than silently overwrite either artifact.
 2. Current portable users apply the bridge ZIP through Settings as they do today. The bridge app then offers **Switch to installed OpenWand** even when its version equals the EXE version; this is a change of install type, not a version update. The action includes a clear explanation of the new install location and the portable copy that will remain as backup.
 3. The bridge app copies user add-ons from the portable `addons` folder to `%APPDATA%\OpenWand\addons` without overwriting conflicts. Existing settings, chats, models, and credentials stay in their current user-data locations. The installed app uses the user-data add-on folder, while portable mode retains its present behavior.
 4. The bridge app downloads the versioned EXE, checks its manifest SHA-256 and Authenticode signature, then starts a detached helper. After OpenWand exits, the helper runs the installer silently, checks its exit code and registration, and opens the installed executable. On failure, the original portable copy remains usable.
 5. Leave the old portable folder in place after migration. Offer explicit cleanup after the installed app has opened and its add-ons and settings have been checked. Never remove an arbitrary folder merely because it once contained OpenWand.
 
-This gives existing users an in-app path with no manual download: one normal ZIP update, then one explicit switch to the installer. The first EXE release must retain the compatibility ZIP while old clients are supported. A direct one-click handoff from the old updater is technically possible through its new-version PowerShell helper hook, but it would download both the ZIP and EXE and change install type without the old UI explaining it. The bridge prompt is safer and clearer.
+The old updater cannot be pinned to a specific release after it has shipped: it always reads the manifest attached to GitHub's current latest published release. Therefore, later manifests must retain the transition ZIP pointer even when their top-level `version` and installer asset advance. For example, a manifest for version `0.13.0` can point `windows-x64` to the version `0.12.0` transition ZIP and `windows-x64-installer` to the version `0.13.0` EXE. An old client sees `0.13.0` is newer and installs the bridge ZIP; the bridge's new logic must then offer installer migration rather than repeatedly applying that ZIP. Keep the transition ZIP asset hosted at its versioned URL.
+
+This gives existing users an in-app path with no manual download: one normal ZIP update, then one explicit switch to the installer. A direct one-click handoff from the old updater is technically possible through its new-version PowerShell helper hook, but it would download both the ZIP and EXE and change install type without the old UI explaining it. The bridge prompt is safer and clearer.
 
 ## Installed release behavior
 
@@ -36,4 +38,6 @@ This gives existing users an in-app path with no manual download: one normal ZIP
 - Build and sign the real offline installer on a Windows CI runner.
 - Verify silent fresh install, in-place upgrade, Programs entry, launch, Windows uninstall, and no leftover installer registration.
 - Verify a current released ZIP can update to the bridge ZIP, switch to the EXE, retain settings and user add-ons, and recover cleanly from an installer failure.
+- Test a pre-bridge updater against a simulated later latest manifest: it must still download the transition ZIP, and the bridge must migrate without looping back to that ZIP.
+- Fail release publication if the legacy `windows-x64` entry loses its pinned transition URL or SHA-256, or if the transition release asset is unavailable.
 - Verify installer updates do not invoke ZIP folder replacement, and portable updates still do.
