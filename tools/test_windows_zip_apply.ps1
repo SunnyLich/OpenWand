@@ -19,12 +19,12 @@ $ErrorLog = Join-Path (Split-Path -Parent $Archive) 'apply-bridge-error.log'
 $Bootstrap = Join-Path $Root 'invoke-old-updater.ps1'
 
 function Invoke-OldUpdater {
-    param([string]$CurrentCandidate, [string]$CurrentRestartTarget = $RestartTarget)
+    param([string]$CurrentCandidate)
     $env:OW_TEST_HELPER = $Helper
     $env:OW_TEST_ARCHIVE = $Archive
     $env:OW_TEST_INSTALL_ROOT = $InstallRoot
     $env:OW_TEST_CANDIDATE = $CurrentCandidate
-    $env:OW_TEST_RESTART_TARGET = $CurrentRestartTarget
+    $env:OW_TEST_RESTART_TARGET = $RestartTarget
     $env:OW_TEST_BACKUP_ROOT = $BackupRoot
     $env:OW_TEST_WORK_ROOT = $WorkRoot
     $process = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
@@ -93,15 +93,17 @@ exit $LASTEXITCODE
 
     Remove-Item -LiteralPath $ErrorLog -Force
     New-Item -ItemType Directory -Path (Join-Path $Candidate '_internal') -Force | Out-Null
-    Copy-Item -LiteralPath $RestartTarget -Destination (Join-Path $Candidate 'OpenWand.exe')
+    $oldExeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $RestartTarget).Hash
+    Set-Content -LiteralPath (Join-Path $Candidate 'OpenWand.exe') -Value 'invalid executable'
     Set-Content -LiteralPath (Join-Path $Candidate '_internal\version.txt') -Value 'incomplete'
-    Invoke-OldUpdater -CurrentCandidate $Candidate -CurrentRestartTarget (Join-Path $InstallRoot 'missing\OpenWand.exe')
+    Invoke-OldUpdater -CurrentCandidate $Candidate
     for ($attempt = 0; $attempt -lt 120 -and -not (Test-Path -LiteralPath $ErrorLog); $attempt++) {
         Start-Sleep -Milliseconds 500
     }
     if (-not (Test-Path -LiteralPath $ErrorLog)) { throw 'The failed copy did not retain its error log.' }
     if ((Get-Content -LiteralPath (Join-Path $InstallRoot '_internal\version.txt') -Raw).Trim() -ne 'bridge' -or
-        (Test-Path -LiteralPath $BackupRoot)) {
+        (Test-Path -LiteralPath $BackupRoot) -or
+        (Get-FileHash -Algorithm SHA256 -LiteralPath $RestartTarget).Hash -ne $oldExeHash) {
         throw 'The bridge did not restore packaged files after a failed copy.'
     }
     if ((Get-Content -LiteralPath (Join-Path $InstallRoot 'addons\user-addon.txt') -Raw).Trim() -ne 'keep me') {

@@ -450,8 +450,8 @@ def test_windows_update_helper_restores_backup_after_candidate_replacement_fails
     (install_root / "_internal" / "version.txt").write_text("old-known-good", encoding="utf-8")
     (candidate / "_internal" / "version.txt").write_text("new-candidate", encoding="utf-8")
     shutil.copy2(Path(os.environ["WINDIR"]) / "System32" / "where.exe", install_root / "OpenWand.exe")
-    shutil.copy2(install_root / "OpenWand.exe", candidate / "OpenWand.exe")
-    missing_restart_target = install_root / "missing" / "OpenWand.exe"
+    original_exe = (install_root / "OpenWand.exe").read_bytes()
+    (candidate / "OpenWand.exe").write_bytes(b"invalid executable")
 
     result = subprocess.run(
         [
@@ -468,7 +468,7 @@ def test_windows_update_helper_restores_backup_after_candidate_replacement_fails
             "-Candidate",
             str(candidate),
             "-RestartTarget",
-            str(missing_restart_target),
+            str(install_root / "OpenWand.exe"),
             "-BackupRoot",
             str(backup_root),
             "-WorkRoot",
@@ -488,9 +488,10 @@ def test_windows_update_helper_restores_backup_after_candidate_replacement_fails
     assert error_log.is_file()
     assert install_root.is_dir()
     assert (install_root / "_internal" / "version.txt").read_text(encoding="utf-8") == "old-known-good"
+    assert (install_root / "OpenWand.exe").read_bytes() == original_exe
     assert not backup_root.exists()
     assert candidate.exists()
-    assert "Copy-Item" in error_log.read_text(encoding="utf-8")
+    assert "Start-Process" in error_log.read_text(encoding="utf-8")
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows updater helper requires PowerShell")
