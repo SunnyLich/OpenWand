@@ -43,7 +43,7 @@ $Uninstaller = Join-Path $ExpectedInstall 'unins000.exe'
 try {
     $Hash = (Get-FileHash -LiteralPath $Installer -Algorithm SHA256).Hash
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Helper `
-        -Installer $Installer -ExpectedSha256 $Hash -WaitPid 2147483000 `
+        -Installer $Installer -ExpectedSha256 $Hash -WaitPid 0 `
         -CurrentExecutable (Join-Path $Portable 'OpenWand.exe') `
         -SingleInstanceLock (Join-Path $DataRoot 'openwand.lock') `
         -StatusPath $Status -PortableRoot $Portable -UserAddonsRoot $Addons

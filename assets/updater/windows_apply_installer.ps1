@@ -39,7 +39,10 @@ function Test-OpenWandLockReleased {
 function Wait-For-OpenWandExit {
     $deadline = (Get-Date).AddMinutes(5)
     while ((Get-Date) -lt $deadline) {
-        if (-not (Get-Process -Id $WaitPid -ErrorAction SilentlyContinue) -and (Test-OpenWandLockReleased)) {
+        # PID 0 is Windows' Idle process, not an OpenWand process. The ZIP
+        # bridge uses 0 because its released updater has already exited.
+        if (($WaitPid -le 0 -or -not (Get-Process -Id $WaitPid -ErrorAction SilentlyContinue)) -and
+            (Test-OpenWandLockReleased)) {
             Start-Sleep -Seconds 1
             return
         }
