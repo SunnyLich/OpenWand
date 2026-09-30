@@ -155,6 +155,10 @@ jobs:
         shell: pwsh
         run: ./tools/test_portable_to_installer.ps1 -InstallerPath $env:OPENWAND_INSTALLER_PATH
 
+      - name: Smoke-test Windows ZIP bridge and failure log
+        shell: pwsh
+        run: ./tools/test_windows_zip_apply.ps1
+
       - name: Package Windows artifact
         shell: pwsh
         run: |

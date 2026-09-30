@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -421,7 +422,8 @@ def test_windows_new_version_helper_asset_is_bundled() -> None:
 
     assert helper.exists()
     text = helper.read_text(encoding="utf-8")
-    assert "[Parameter(Mandatory = $true)][string]$Candidate" in text
+    assert "[string]$Candidate = ''" in text
+    assert "-WorkingDirectory $ArchiveParent" in text
     assert "Split-Path -LiteralPath" not in text
     assert "Move-Item -LiteralPath $Candidate -Destination $InstallRoot" in text
     assert "Start-Process -FilePath $RestartTarget" in text
@@ -471,13 +473,16 @@ def test_windows_update_helper_restores_backup_after_candidate_replacement_fails
         check=False,
     )
 
-    assert result.returncode == 1
+    assert result.returncode == 0, result.stderr or result.stdout
+    error_log = tmp_path / "apply-bridge-error.log"
+    deadline = time.monotonic() + 30
+    while not error_log.is_file() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert error_log.is_file()
     assert install_root.is_dir()
     assert (install_root / "version.txt").read_text(encoding="utf-8") == "old-known-good"
     assert not backup_root.exists()
     assert not candidate.exists()
-    error_log = tmp_path / "apply-update-error.log"
-    assert error_log.is_file()
     assert "Start-Process" in error_log.read_text(encoding="utf-8")
 
 
@@ -533,13 +538,16 @@ def test_windows_update_helper_replaces_install_restarts_and_cleans_backup(tmp_p
     )
 
     assert result.returncode == 0, result.stderr or result.stdout
+    deadline = time.monotonic() + 30
+    while work_root.exists() and time.monotonic() < deadline:
+        time.sleep(0.1)
     assert (install_root / "version.txt").read_text(encoding="utf-8") == "new-version"
     assert (install_root / "OpenWand.exe").is_file()
     assert not (install_root / "old-only.txt").exists()
     assert not candidate.exists()
     assert not backup_root.exists()
     assert not work_root.exists()
-    assert not (tmp_path / "apply-update-error.log").exists()
+    assert not (tmp_path / "apply-bridge-error.log").exists()
 
 
 def test_process_exists_reports_live_and_dead_pids() -> None:
