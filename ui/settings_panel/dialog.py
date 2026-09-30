@@ -9371,8 +9371,14 @@ class SettingsDialog(QDialog):
         if update_available and asset is not None:
             self._update_check_result = result
             self._update_mode = "download"
-            self._update_btn.setText(t("Download update"))
-            self._set_update_status("Version {version} is available.", "ok", version=latest_version)
+            if bool(getattr(result, "migration_available", False)):
+                self._update_btn.setText(t("Download installer"))
+                self._set_update_status(
+                    "An installed OpenWand release is available. Your portable copy will remain as a backup.", "ok"
+                )
+            else:
+                self._update_btn.setText(t("Download update"))
+                self._set_update_status("Version {version} is available.", "ok", version=latest_version)
             return
 
         from core import updater
@@ -9431,7 +9437,10 @@ class SettingsDialog(QDialog):
         self._update_btn.setEnabled(True)
         if error:
             self._update_mode = "download" if self._update_check_result is not None else "check"
-            self._update_btn.setText(t("Download update") if self._update_mode == "download" else t("Check for updates"))
+            if self._update_mode == "download" and bool(getattr(self._update_check_result, "migration_available", False)):
+                self._update_btn.setText(t("Download installer"))
+            else:
+                self._update_btn.setText(t("Download update") if self._update_mode == "download" else t("Check for updates"))
             self._set_update_status("Update download failed: {error}", "error", error=error)
             return
 
@@ -9441,7 +9450,11 @@ class SettingsDialog(QDialog):
         self._update_mode = "apply"
         self._update_btn.setText(t("Apply update"))
         self._update_btn.setToolTip(t("Apply the downloaded update and restart OpenWand."))
-        self._set_update_status("Update downloaded. Apply it when you are ready to restart OpenWand.", "ok")
+        if bool(getattr(self._update_check_result, "migration_available", False)):
+            self._update_btn.setText(t("Switch to installed OpenWand"))
+            self._set_update_status("Installer downloaded. Switch when you are ready to restart OpenWand.", "ok")
+        else:
+            self._set_update_status("Update downloaded. Apply it when you are ready to restart OpenWand.", "ok")
 
     def _apply_downloaded_update(self) -> None:
         """Apply the downloaded update via a helper process and quit OpenWand."""
@@ -9452,11 +9465,15 @@ class SettingsDialog(QDialog):
             self._set_update_status("Downloaded update file is no longer available.", "error")
             return
 
+        migration = bool(getattr(self._update_check_result, "migration_available", False))
         confirm = QMessageBox(self)
         confirm.setIcon(QMessageBox.Icon.Question)
-        confirm.setWindowTitle(t("Apply update"))
-        confirm.setText(t("Apply the downloaded update now?"))
-        confirm.setInformativeText(t("OpenWand will close, install the update, and restart."))
+        confirm.setWindowTitle(t("Switch to installed OpenWand") if migration else t("Apply update"))
+        confirm.setText(t("Switch to the installed release now?") if migration else t("Apply the downloaded update now?"))
+        confirm.setInformativeText(t(
+            "OpenWand will close and install the signed release. Settings stay in place and user add-ons will be copied; "
+            "your old portable folder will remain as a backup."
+        ) if migration else t("OpenWand will close, install the update, and restart."))
         confirm.setStandardButtons(QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes)
         confirm.button(QMessageBox.StandardButton.Yes).setText(t("Apply and restart"))
         confirm.button(QMessageBox.StandardButton.Cancel).setText(t("Not now"))
@@ -9467,7 +9484,11 @@ class SettingsDialog(QDialog):
         try:
             from core import updater
 
-            updater.apply_update(path)
+            if path.suffix.lower() == ".exe":
+                asset = getattr(self._update_check_result, "asset", None)
+                updater.apply_update(path, expected_sha256=str(getattr(asset, "sha256", "") or ""))
+            else:
+                updater.apply_update(path)
             self._update_mode = "apply"
             self._update_btn.setEnabled(False)
             self._update_btn.setText(t("Applying..."))

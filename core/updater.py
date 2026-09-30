@@ -17,10 +17,10 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Any
 
-from core.system.paths import SINGLE_INSTANCE_LOCK, UPDATE_DOWNLOAD_DIR
+from core.system.paths import SINGLE_INSTANCE_LOCK, UPDATE_DOWNLOAD_DIR, is_installed_release
 
 DEFAULT_MANIFEST_URL = (
-    "https://github.com/SunnyLich/Python-AI-assistant-overlay/"
+    "https://github.com/SunnyLich/OpenWand/"
     "releases/latest/download/openwand-release-manifest.json"
 )
 
@@ -49,6 +49,7 @@ class UpdateCheckResult:
     update_available: bool
     asset: UpdateAsset | None
     notes_url: str = ""
+    migration_available: bool = False
 
 
 @dataclass(frozen=True)
@@ -194,13 +195,24 @@ def check_for_updates(
 ) -> UpdateCheckResult:
     """Check the release manifest for a newer artifact."""
     local_version = installed_version or current_version()
-    latest_version, notes_url, asset = parse_manifest(fetch_manifest(url), platform_key=platform_key)
+    data = fetch_manifest(url)
+    key = platform_key or normalized_platform_key()
+    migration = False
+    if key == "windows-x64" and getattr(sys, "frozen", False):
+        installer_key = f"{key}-installer"
+        if is_installed_release():
+            key = installer_key
+        elif isinstance(data.get("assets"), dict) and installer_key in data["assets"]:
+            key = installer_key
+            migration = True
+    latest_version, notes_url, asset = parse_manifest(data, platform_key=key)
     return UpdateCheckResult(
         current_version=local_version,
         latest_version=latest_version,
-        update_available=is_newer_version(latest_version, local_version) and asset is not None,
+        update_available=(migration or is_newer_version(latest_version, local_version)) and asset is not None,
         asset=asset,
         notes_url=notes_url,
+        migration_available=migration and asset is not None,
     )
 
 
@@ -217,6 +229,8 @@ def download_update(asset: UpdateAsset, target_dir: Path | None = None, timeout:
     destination_dir = target_dir or UPDATE_DOWNLOAD_DIR
     destination_dir.mkdir(parents=True, exist_ok=True)
     destination = destination_dir / asset.name
+    if asset.name.lower().endswith(".exe") and not asset.sha256:
+        raise UpdateError("Installer update is missing its SHA256 hash.")
     with urllib.request.urlopen(asset.url, timeout=timeout) as response:
         with NamedTemporaryFile("wb", delete=False, dir=destination_dir, prefix=".openwand-update-", suffix=".tmp") as tmp:
             shutil.copyfileobj(response, tmp)
@@ -968,7 +982,9 @@ def wait_for_openwand_exit(
     raise UpdateError("Timed out waiting for OpenWand to exit.")
 
 
-def apply_update(update_path: Path, pid: int | None = None) -> Path:
+def apply_update(
+    update_path: Path, pid: int | None = None, *, expected_sha256: str | None = None
+) -> Path:
     """Start a detached helper that applies an update after OpenWand exits."""
     update_path = Path(update_path).resolve()
     if not update_path.exists():
@@ -979,6 +995,33 @@ def apply_update(update_path: Path, pid: int | None = None) -> Path:
     UPDATE_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
     if sys.platform == "win32":
+        if update_path.suffix.lower() == ".exe":
+            expected = str(expected_sha256 or "").lower()
+            if not re.fullmatch(r"[0-9a-f]{64}", expected):
+                raise UpdateError("Installer update is missing a valid SHA256 hash.")
+            if _sha256(update_path) != expected:
+                raise UpdateError("Installer update no longer matches the release manifest.")
+            helper_source = (
+                Path(getattr(sys, "_MEIPASS", source_checkout_root()))
+                / "assets" / "updater" / "windows_apply_installer.ps1"
+            )
+            if not helper_source.is_file():
+                raise UpdateError("Windows installer update helper is missing from this build.")
+            script_path = UPDATE_DOWNLOAD_DIR / f"apply-openwand-installer-{wait_pid}.ps1"
+            shutil.copy2(helper_source, script_path)
+            command = [
+                "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                "-File", str(script_path), "-Installer", str(update_path),
+                "-ExpectedSha256", expected, "-WaitPid", str(wait_pid),
+                "-CurrentExecutable", str(restart_target), "-SingleInstanceLock", str(SINGLE_INSTANCE_LOCK),
+                "-StatusPath", str(UPDATE_DOWNLOAD_DIR / "apply-installer-status.txt"),
+            ]
+            if not is_installed_release():
+                from core.system.paths import USER_DATA_DIR
+
+                command.extend(["-PortableRoot", str(root), "-UserAddonsRoot", str(USER_DATA_DIR / "addons")])
+            launch_detached_helper(command)
+            return script_path
         script_path = _write_windows_apply_script(update_path, root, restart_target, wait_pid)
         launch_detached_helper([
             "powershell",

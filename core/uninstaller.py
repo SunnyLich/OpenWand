@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import stat
 import sys
@@ -11,7 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.system.paths import USER_DATA_DIR
+from core.system.paths import INSTALLED_MARKER_NAME, MIGRATED_PORTABLE_MARKER_NAME, USER_DATA_DIR
 
 
 class UninstallError(RuntimeError):
@@ -46,6 +47,7 @@ class UninstallPlan:
     app_root: Path
     user_data_root: Path
     targets: tuple[Path, ...]
+    registered_uninstaller: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -146,6 +148,27 @@ def _collapse_targets(paths: list[Path], *, platform: str) -> tuple[Path, ...]:
     return tuple(collapsed)
 
 
+def _registered_windows_uninstaller(app_root: Path) -> Path:
+    """Resolve Inno's current uninstaller from this user's install registration."""
+    import winreg
+
+    key_name = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenWand.Desktop_is1"
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_name) as key:
+            install_location = Path(winreg.QueryValueEx(key, "InstallLocation")[0]).resolve()
+            uninstall_command = str(winreg.QueryValueEx(key, "UninstallString")[0]).strip()
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise UninstallError("Installed OpenWand has no usable Windows uninstall registration.") from exc
+    if install_location != app_root.resolve():
+        raise UninstallError("Windows uninstall registration points to a different OpenWand folder.")
+    uninstaller = Path(uninstall_command.strip('"')).resolve()
+    if (uninstaller.parent != app_root.resolve() or
+            not re.fullmatch(r"unins\d+\.exe", uninstaller.name, re.IGNORECASE) or
+            not uninstaller.is_file()):
+        raise UninstallError("Windows uninstall registration does not name an OpenWand uninstaller.")
+    return uninstaller
+
+
 def build_uninstall_plan(
     *,
     platform: str | None = None,
@@ -178,6 +201,11 @@ def build_uninstall_plan(
         app_root = _absolute(source_root or updater.source_checkout_root())
         _validate_source_root(app_root)
     _assert_safe_root(app_root, label="OpenWand app root", home=home_path)
+    if platform == "win32" and frozen and (app_root / MIGRATED_PORTABLE_MARKER_NAME).is_file():
+        raise UninstallError(
+            "This portable backup was migrated to the Windows installer. "
+            "Uninstall from the installed OpenWand copy or Windows Settings to protect shared user data."
+        )
 
     env = dict(os.environ if environ is None else environ)
     hub_root = _huggingface_hub_root(env, home_path)
@@ -192,12 +220,17 @@ def build_uninstall_plan(
     if frozen:
         targets.append(app_root.with_name(f"{app_root.name}.previous-update"))
 
+    registered_uninstaller = None
+    if platform == "win32" and frozen and (app_root / INSTALLED_MARKER_NAME).is_file():
+        registered_uninstaller = _registered_windows_uninstaller(app_root)
+
     return UninstallPlan(
         platform=platform,
         source_checkout=not frozen,
         app_root=app_root,
         user_data_root=data_root,
         targets=_collapse_targets(targets, platform=platform),
+        registered_uninstaller=registered_uninstaller,
     )
 
 
@@ -237,10 +270,13 @@ def _quoted_sh(value: str) -> str:
 def render_windows_uninstall_script(plan: UninstallPlan, *, wait_pid: int, log_path: Path) -> str:
     """Render the detached Windows remover using literal, prevalidated targets."""
     target_lines = "\n".join(f"    {_quoted_ps(str(path))}" for path in plan.targets)
+    registered = _quoted_ps(str(plan.registered_uninstaller)) if plan.registered_uninstaller else "$null"
     return f'''$ErrorActionPreference = "Continue"
 $waitPid = {int(wait_pid)}
 $logPath = {_quoted_ps(str(log_path))}
 $helperRoot = Split-Path -LiteralPath $PSCommandPath -Parent
+$registeredUninstaller = {registered}
+$uninstallKey = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenWand.Desktop_is1'
 $targets = @(
 {target_lines}
 )
@@ -250,6 +286,23 @@ function Write-UninstallLog([string]$Message) {{
 }}
 while (Get-Process -Id $waitPid -ErrorAction SilentlyContinue) {{ Start-Sleep -Milliseconds 500 }}
 Start-Sleep -Seconds 1
+if ($registeredUninstaller) {{
+    if (-not (Test-Path -LiteralPath $registeredUninstaller -PathType Leaf)) {{
+        Write-UninstallLog 'The registered OpenWand uninstaller is missing.'
+        exit 1
+    }}
+    try {{
+        $process = Start-Process -FilePath $registeredUninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -PassThru -Wait -WindowStyle Hidden -ErrorAction Stop
+        if ($process.ExitCode -ne 0) {{ throw "Windows uninstaller exited with code $($process.ExitCode)." }}
+        for ($attempt = 0; $attempt -lt 30 -and (Test-Path -LiteralPath $uninstallKey); $attempt++) {{
+            Start-Sleep -Milliseconds 500
+        }}
+        if (Test-Path -LiteralPath $uninstallKey) {{ throw 'Windows uninstall registration was not removed.' }}
+    }} catch {{
+        Write-UninstallLog ("Windows uninstall failed; user data was kept: " + $_.Exception.Message)
+        exit 1
+    }}
+}}
 try {{
     Remove-ItemProperty -LiteralPath 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'OpenWand' -ErrorAction SilentlyContinue
     Remove-ItemProperty -LiteralPath 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'Wisp' -ErrorAction SilentlyContinue

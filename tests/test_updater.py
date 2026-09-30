@@ -50,6 +50,55 @@ def test_parse_manifest_selects_current_platform_asset() -> None:
     assert asset.name == "OpenWand-0.1.1-windows-x64.zip"
 
 
+def test_transition_manifest_migrates_portable_and_updates_installed(monkeypatch) -> None:
+    manifest = {
+        "version": "0.13.0",
+        "assets": {
+            "windows-x64": {
+                "name": "OpenWand-v0.12.0-windows-x64.zip",
+                "url": "https://example.invalid/bridge.zip",
+            },
+            "windows-x64-installer": {
+                "name": "OpenWand-v0.13.0-windows-x64-setup.exe",
+                "url": "https://example.invalid/setup.exe",
+                "sha256": "b" * 64,
+            },
+        },
+    }
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater, "fetch_manifest", lambda _url: manifest)
+    monkeypatch.setattr(updater, "is_installed_release", lambda: False)
+
+    portable = updater.check_for_updates(platform_key="windows-x64", installed_version="0.13.0")
+    assert portable.update_available
+    assert portable.migration_available
+    assert portable.asset is not None and portable.asset.name.endswith("setup.exe")
+
+    monkeypatch.setattr(updater, "is_installed_release", lambda: True)
+    installed = updater.check_for_updates(platform_key="windows-x64", installed_version="0.12.0")
+    assert installed.update_available
+    assert not installed.migration_available
+    assert installed.asset is not None and installed.asset.platform_key == "windows-x64-installer"
+    assert not updater.check_for_updates(platform_key="windows-x64", installed_version="0.13.0").update_available
+
+
+def test_transition_zip_remains_available_to_old_portable_clients(monkeypatch) -> None:
+    manifest = {
+        "version": "0.13.0",
+        "assets": {"windows-x64": {
+            "name": "OpenWand-v0.12.0-windows-x64.zip",
+            "url": "https://example.invalid/bridge.zip",
+        }},
+    }
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater, "fetch_manifest", lambda _url: manifest)
+    monkeypatch.setattr(updater, "is_installed_release", lambda: False)
+    result = updater.check_for_updates(platform_key="windows-x64", installed_version="0.11.1")
+    assert result.update_available
+    assert not result.migration_available
+    assert result.asset is not None and result.asset.name.endswith(".zip")
+
+
 def test_download_update_verifies_sha256(tmp_path: Path) -> None:
     source = tmp_path / "source.zip"
     source.write_bytes(b"openwand update")
@@ -267,6 +316,39 @@ def test_apply_update_writes_windows_helper_without_running_it(monkeypatch, tmp_
         assert creationflags & updater.subprocess.CREATE_NO_WINDOW
     if hasattr(updater.subprocess, "DETACHED_PROCESS"):
         assert not (creationflags & updater.subprocess.DETACHED_PROCESS)
+
+
+def test_apply_installer_uses_signed_helper_and_keeps_portable_root(monkeypatch, tmp_path: Path) -> None:
+    installer = tmp_path / "OpenWand-setup.exe"
+    installer.write_bytes(b"signed installer placeholder")
+    executable = tmp_path / "portable" / "OpenWand" / "OpenWand.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"current executable")
+    bundle = tmp_path / "bundle"
+    bundled_helper = bundle / "assets" / "updater" / "windows_apply_installer.ps1"
+    bundled_helper.parent.mkdir(parents=True)
+    bundled_helper.write_text("# helper", encoding="utf-8")
+    launched = []
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(sys, "executable", str(executable))
+    monkeypatch.setattr(sys, "_MEIPASS", str(bundle), raising=False)
+    monkeypatch.setattr(updater, "UPDATE_DOWNLOAD_DIR", tmp_path / "updates")
+    monkeypatch.setattr(updater, "SINGLE_INSTANCE_LOCK", tmp_path / "openwand.lock")
+    monkeypatch.setattr(updater, "is_installed_release", lambda: False)
+    monkeypatch.setattr(updater, "launch_detached_helper", lambda command, **_kwargs: launched.append(command))
+
+    digest = updater._sha256(installer)
+    script = updater.apply_update(installer, pid=123, expected_sha256=digest)
+    assert script.read_text(encoding="utf-8") == "# helper"
+    assert len(launched) == 1
+    command = launched[0]
+    assert "-PortableRoot" in command and str(executable.parent) in command
+    assert "-ExpectedSha256" in command and digest in command
+    assert "windows_apply_update.ps1" not in command
+    with pytest.raises(updater.UpdateError, match="no longer matches"):
+        updater.apply_update(installer, pid=123, expected_sha256="0" * 64)
+    assert len(launched) == 1
 
 
 def test_apply_update_writes_posix_helper_with_lock_wait(monkeypatch, tmp_path: Path) -> None:

@@ -37,7 +37,7 @@ Local builds are unsigned. The Windows release workflow uses Azure Artifact
 Signing for every unsigned EXE, DLL, Python extension (`.pyd`), and PowerShell
 script in the bundle. Valid RSA vendor signatures are preserved. Invalid or
 unsupported signatures fail the build instead of being overwritten. Before
-creating the release ZIP, a second check requires all these files to have valid
+creating release artifacts, a second check requires all these files to have valid
 RSA signatures; signing only `OpenWand.exe` does not cover its dependencies.
 
 To inspect an extracted release without running it (PowerShell 7):
@@ -77,6 +77,9 @@ Notes:
   is writable. Drop addon folders there, or use **Addon Manager > Install
   archive/folder**. If the executable lives in a read-only install location,
   OpenWand falls back to the user data addon folder shown by **Open addons folder**.
+- Windows installer builds put user add-ons under `%APPDATA%\OpenWand\addons`. The
+  transition from a portable ZIP copies portable add-ons there without overwriting
+  existing copies. Other settings already live under `%APPDATA%\OpenWand`.
 - Windows builds place `Uninstall OpenWand.bat` beside `OpenWand.exe`. Double-click it
   after closing OpenWand to preview the exact OpenWand-owned paths that will be removed,
   confirm permanent removal, and run the same validated uninstaller available in
@@ -129,15 +132,16 @@ Create a `v`-prefixed release tag that matches the current
 `pyproject.toml` version:
 
 ```powershell
-git tag v0.11.1
-git push origin v0.11.1
+git tag v0.12.0
+git push origin v0.12.0
 ```
 
 Tags without the `v` prefix do not trigger release builds.
 
 The workflow builds:
 
-- Windows: `OpenWand-<tag>-windows-x64.zip`
+- Windows transition release: `OpenWand-<tag>-windows-x64.zip` and signed
+  `OpenWand-<tag>-windows-x64-setup.exe`
 - macOS: `OpenWand-<tag>-macos-<arch>.zip`
 - Linux: `OpenWand-<tag>-linux-x64.tar.gz`
 
@@ -148,6 +152,16 @@ current platform, verify the SHA256 hash, download the matching artifact, and
 then apply it through a small helper process when the user chooses **Apply
 update**. Users can compare downloaded archives against `SHA256SUMS.txt` from
 the release page before unpacking them.
+
+The Windows workflow downloads pinned Inno Setup 6.7.3 and checks its SHA-256.
+It signs the PyInstaller bundle, then Inno's uninstaller, then the final setup
+with the existing Azure Artifact Signing account. A Windows runner silently
+installs the setup, launches the installed app in isolated smoke mode, verifies
+its Windows uninstall registration and signature, and silently uninstalls it.
+Run the workflow manually on `dev` with `windows_only=true` to test this path
+without creating a release. In later releases, the legacy `windows-x64`
+manifest entry must keep pointing to the immutable transition ZIP; see
+[WINDOWS_INSTALLER_MIGRATION_PLAN.md](WINDOWS_INSTALLER_MIGRATION_PLAN.md).
 
 Manual platform build entry points:
 

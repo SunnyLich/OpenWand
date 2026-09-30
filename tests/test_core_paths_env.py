@@ -57,3 +57,25 @@ def test_openwand_addons_dir_env_overrides_default_addons_path(tmp_path, monkeyp
         assert addons_dir.is_dir()
 
     importlib.reload(paths)
+
+
+def test_installed_windows_copy_uses_user_data_addons(tmp_path, monkeypatch):
+    import core.system.paths as paths
+
+    exe_dir = tmp_path / "installed" / "OpenWand"
+    exe_dir.mkdir(parents=True)
+    exe = exe_dir / "OpenWand.exe"
+    exe.write_bytes(b"app")
+    (exe_dir / paths.INSTALLED_MARKER_NAME).write_text("installer", encoding="utf-8")
+    data_root = tmp_path / "user-data"
+    with monkeypatch.context() as mp:
+        mp.delenv("OPENWAND_ADDONS_DIR", raising=False)
+        mp.setenv("OPENWAND_DATA_ROOT", str(data_root))
+        mp.setattr(sys, "platform", "win32")
+        mp.setattr(sys, "frozen", True, raising=False)
+        mp.setattr(sys, "_MEIPASS", str(exe_dir / "_internal"), raising=False)
+        mp.setattr(sys, "executable", str(exe))
+        reloaded = importlib.reload(paths)
+        assert reloaded.is_installed_release()
+        assert reloaded.ADDONS_DIR == data_root / "addons"
+    importlib.reload(paths)
