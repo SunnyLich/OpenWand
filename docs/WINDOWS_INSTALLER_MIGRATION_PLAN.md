@@ -1,10 +1,19 @@
 # Windows installer and portable migration
 
-Status: implemented on `dev` for the planned `v0.12.0` transition release. The [Windows-only development workflow](https://github.com/SunnyLich/OpenWand/actions/runs/36652788044) passed on code commit `87d57ca`: bundle signatures, signed uninstaller and setup, installed launcher and uninstall, plus a portable-to-installer handoff with add-on preservation and backup retention. Focused migration tests passed locally. The released `v0.11.1` updater source selected the pinned transition ZIP from a simulated later manifest. An interactive update from an actual `v0.11.1` ZIP and release publication remain.
+Status: implemented on `dev` for the planned `v0.12.0` transition release. The [Windows-only development workflow](https://github.com/SunnyLich/OpenWand/actions/runs/36652788044) passed on code commit `87d57ca`: bundle signatures, signed uninstaller and setup, installed launcher and uninstall, plus a portable-to-installer handoff with add-on preservation and backup retention. Focused migration tests passed locally. On 2026-09-30, the official `v0.11.1` Windows ZIP passed the end-to-end migration test described below. An interactive Settings click-through, a tagged release, and publication remain.
 
 ## Proven with a disposable app
 
 `tools/test_inno_smoke.ps1` compiles a one-file installer with Inno Setup 6.7.3. On Windows, it verifies a silent per-user install, the Programs and Features entry, an in-place upgrade using the same `AppId`, and silent uninstall. It uses a unique temporary app ID and install path on each run. The real `packaging/windows/OpenWand.iss` also reached Inno's expected request to sign its generated uninstaller with a mock bundle.
+
+## Released ZIP migration check (2026-09-30)
+
+- Downloaded the official `OpenWand-v0.11.1-windows-x64.zip` and matched its SHA-256 against the release's `SHA256SUMS.txt`. Extracted and launched its real `OpenWand.exe` with isolated user data; all four workers reached readiness and shut down cleanly.
+- Ran the updater source from the `v0.11.1` tag against a local manifest containing the `v0.12.0` development ZIP and signed setup EXE. It selected the ZIP, downloaded it, and checked its SHA-256. Ran the old updater's generated PowerShell apply script against the extracted release folder. The folder became the `v0.12.0` bridge ZIP, its executable hash matched the ZIP, and it restarted successfully.
+- Ran the bridge updater against the same manifest. It selected and hash-checked the same-version EXE migration. The shipped helper verified the EXE signature, installed it, registered it in Windows, launched it, and retained the portable backup, isolated settings, and add-ons without overwriting a conflict. The installed uninstaller signature was valid; silent uninstall removed the test install and registration.
+- The first installer attempt was denied write access to `%LOCALAPPDATA%` by the Codex workspace sandbox. The portable copy and user data remained intact. Repeating the test with the required filesystem permission passed. This was a test-environment permission failure, not an installer error on an ordinary user account.
+
+The updater checks and apply helpers were invoked directly from test drivers; the full Settings button sequence has not been clicked through. The `v0.12.0` artifacts were development workflow outputs, not published release assets.
 
 ## Existing release behavior
 
@@ -45,6 +54,6 @@ This gives existing users an in-app path with no manual download: one normal ZIP
 ## Release sequence
 
 1. Run **Build Artifacts** manually on `dev` with `windows_only=true`. Inspect the signed EXE, signed uninstaller, installed launcher smoke result, and Windows uninstall result. This run creates an Actions artifact; it does not publish a GitHub release.
-2. Once the full migration is tested from the current `v0.11.1` ZIP, tag the transition code as `v0.12.0`. The workflow uploads both `OpenWand-v0.12.0-windows-x64.zip` and `OpenWand-v0.12.0-windows-x64-setup.exe` to a draft release. Publish only after inspecting the release manifest and installer.
+2. After reviewing the migration test above, tag the transition code as `v0.12.0`. The workflow uploads both `OpenWand-v0.12.0-windows-x64.zip` and `OpenWand-v0.12.0-windows-x64-setup.exe` to a draft release. Publish only after inspecting the release manifest and installer.
 3. After publishing, copy the exact `assets.windows-x64` object from the `v0.12.0` manifest to `packaging/windows/transition-asset.json` on the development branch. Its versioned URL, SHA-256, and size stay fixed for subsequent releases. The build job then omits new Windows ZIPs, and the manifest generator rejects a collision with that pinned transition ZIP.
 4. Keep the `v0.12.0` ZIP asset available while old updaters are supported. Verify its release URL still exists before every later release and check a pre-transition client against the latest manifest.
