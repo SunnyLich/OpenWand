@@ -215,6 +215,45 @@ def test_packaged_update_real_button_download_apply_retry_matrix(
         _dispose_dialog(dialog, qapp)
 
 
+def test_portable_transition_button_passes_installer_hash(qapp, tmp_path: Path, monkeypatch, runtime_state_guard):
+    """The bridge offers the same-version installer and sends its verified hash to apply."""
+    del runtime_state_guard
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QMessageBox
+
+    import ui.settings_panel.dialog as settings_ui
+    from core import updater
+    from ui.settings_panel.dialog import _UpdateSignals
+
+    asset = updater.UpdateAsset(
+        "windows-x64-installer", "OpenWand-v0.12.0-windows-x64-setup.exe",
+        "https://example.invalid/setup.exe", "a" * 64,
+    )
+    result = updater.UpdateCheckResult("0.12.0", "0.12.0", True, asset, migration_available=True)
+    dialog = _prepare_settings(monkeypatch, repo_checkout=False, version="0.12.0")
+    try:
+        dialog._finish_update_check(_UpdateSignals(), result, "")
+        assert dialog._update_btn.text() == "Download installer"
+        assert "portable copy will remain" in dialog._update_status_lbl.text()
+
+        downloaded = tmp_path / asset.name
+        downloaded.write_bytes(b"installer placeholder")
+        dialog._finish_update_download(_UpdateSignals(), str(downloaded), "")
+        assert dialog._update_btn.text() == "Switch to installed OpenWand"
+
+        confirmations = []
+        applied = []
+        monkeypatch.setattr(QMessageBox, "exec", lambda box: confirmations.append(box.informativeText()) or QMessageBox.StandardButton.Yes)
+        monkeypatch.setattr(updater, "apply_update", lambda *args, **kwargs: applied.append((args, kwargs)))
+        monkeypatch.setattr(settings_ui.QApplication, "instance", staticmethod(lambda: SimpleNamespace(quit=lambda: None)))
+        monkeypatch.setattr(QTimer, "singleShot", staticmethod(lambda _delay, callback: callback()))
+        dialog._apply_downloaded_update()
+        assert "add-ons will be copied" in confirmations[0]
+        assert applied == [((downloaded,), {"expected_sha256": "a" * 64})]
+    finally:
+        _dispose_dialog(dialog, qapp)
+
+
 @pytest.mark.parametrize(
     ("state", "expected_status"),
     [

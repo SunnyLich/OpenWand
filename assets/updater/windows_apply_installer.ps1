@@ -89,6 +89,16 @@ try {
         throw "The installer signature is not valid: $($signature.Status)."
     }
 
+    if ($PortableRoot) {
+        $portablePath = [System.IO.Path]::GetFullPath($PortableRoot).TrimEnd('\')
+        $defaultInstall = [System.IO.Path]::GetFullPath(
+            (Join-Path $env:LOCALAPPDATA 'Programs\OpenWand')
+        ).TrimEnd('\')
+        if ($portablePath -ieq $defaultInstall) {
+            throw 'The portable copy is in the installer destination. Move the portable folder before switching so it can remain as a backup.'
+        }
+    }
+
     Copy-PortableAddons
     Add-Content -LiteralPath $StatusPath -Value 'Running signed installer.'
     $installLog = Join-Path $statusDir 'inno-update.log'

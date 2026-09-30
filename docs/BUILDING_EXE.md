@@ -162,6 +162,8 @@ Run the workflow manually on `dev` with `windows_only=true` to test this path
 without creating a release. In later releases, the legacy `windows-x64`
 manifest entry must keep pointing to the immutable transition ZIP; see
 [WINDOWS_INSTALLER_MIGRATION_PLAN.md](WINDOWS_INSTALLER_MIGRATION_PLAN.md).
+For the Microsoft Store EXE submission, use the versioned setup URL and enter
+`/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART` as the installer parameters.
 
 Manual platform build entry points:
 

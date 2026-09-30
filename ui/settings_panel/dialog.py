@@ -9450,7 +9450,7 @@ class SettingsDialog(QDialog):
         self._update_mode = "apply"
         self._update_btn.setText(t("Apply update"))
         self._update_btn.setToolTip(t("Apply the downloaded update and restart OpenWand."))
-        if bool(getattr(self._update_check_result, "migration_available", False)):
+        if bool(getattr(getattr(self, "_update_check_result", None), "migration_available", False)):
             self._update_btn.setText(t("Switch to installed OpenWand"))
             self._set_update_status("Installer downloaded. Switch when you are ready to restart OpenWand.", "ok")
         else:
