@@ -486,17 +486,9 @@ $singleInstanceLock = {_quoted_ps(str(SINGLE_INSTANCE_LOCK))}
 $archiveRootName = {_quoted_ps(archive_root)}
 $archiveParent = [System.IO.Path]::GetDirectoryName($archive)
 $restartParent = [System.IO.Path]::GetDirectoryName($restartTarget)
-$installRootLeaf = [System.IO.Path]::GetFileName($installRoot)
 $workRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("OpenWandUpdate-" + [guid]::NewGuid().ToString("N"))
 $extractRoot = Join-Path $workRoot "extract"
 $backupRoot = "$installRoot.previous-update"
-$backupRootLeaf = [System.IO.Path]::GetFileName($backupRoot)
-
-function Restore-Backup {{
-    if ((Test-Path -LiteralPath $backupRoot) -and -not (Test-Path -LiteralPath $installRoot)) {{
-        Rename-Item -LiteralPath $backupRoot -NewName $installRootLeaf
-    }}
-}}
 
 function Initialize-InstallerUi {{
     try {{
@@ -692,25 +684,13 @@ try {{
         }}
     }}
     $newVersionHelper = Find-NewVersionHelper $candidate
-    if ($newVersionHelper) {{
-        Invoke-NewVersionHelper -Helper $newVersionHelper -Candidate $candidate
-        Finish-InstallerUi "OpenWand has been updated and reopened." $false
-        exit 0
+    if (-not $newVersionHelper) {{
+        throw "The downloaded Windows ZIP has no update helper. The existing OpenWand files were left unchanged."
     }}
-    Update-InstallerStatus "Replacing the old OpenWand files..."
-    if (Test-Path -LiteralPath $backupRoot) {{
-        Remove-Item -LiteralPath $backupRoot -Recurse -Force
-    }}
-    Rename-Item -LiteralPath $installRoot -NewName $backupRootLeaf
-    Move-Item -LiteralPath $candidate -Destination $installRoot
-    Update-InstallerStatus "Reopening OpenWand..."
-    Start-Process -FilePath $restartTarget -WorkingDirectory $restartParent
-    Start-Sleep -Seconds 5
-    Remove-Item -LiteralPath $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $workRoot -Recurse -Force -ErrorAction SilentlyContinue
-    Finish-InstallerUi "OpenWand has been updated and reopened." $false
+    Invoke-NewVersionHelper -Helper $newVersionHelper -Candidate $candidate
+    Finish-InstallerUi "Update is finishing; OpenWand will reopen shortly." $false
+    exit 0
 }} catch {{
-    Restore-Backup
     $log = Join-Path $archiveParent "apply-update-error.log"
     $_ | Out-String | Set-Content -LiteralPath $log
     Finish-InstallerUi "OpenWand update failed. Details were saved to $log" $true
