@@ -159,6 +159,10 @@ jobs:
         shell: pwsh
         run: ./tools/test_windows_zip_apply.ps1
 
+      - name: Smoke-test one-click ZIP to installer handoff
+        shell: pwsh
+        run: ./tools/test_zip_auto_installer.ps1
+
       - name: Package Windows artifact
         shell: pwsh
         run: |

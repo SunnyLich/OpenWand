@@ -108,6 +108,71 @@ function Restore-Backup {
     }
 }
 
+function Invoke-InstallerMigration {
+    # v0.11.1 can only apply a ZIP. The bridge completes the same update with
+    # the signed installer so the user does not need a second Settings action.
+    $installerHelper = Join-Path $InstallRoot '_internal\assets\updater\windows_apply_installer.ps1'
+    if (-not (Test-Path -LiteralPath $installerHelper -PathType Leaf)) { return $false }
+
+    $manifestUrl = $env:OPENWAND_UPDATE_MANIFEST_URL
+    if (-not $manifestUrl) {
+        $manifestUrl = 'https://github.com/SunnyLich/OpenWand/releases/latest/download/openwand-release-manifest.json'
+    }
+    $manifestUri = [uri]$manifestUrl
+    if ($manifestUri.Scheme -eq 'file') {
+        $manifest = Get-Content -LiteralPath $manifestUri.LocalPath -Raw | ConvertFrom-Json
+    } elseif ($manifestUri.Scheme -eq 'https') {
+        $manifest = Invoke-RestMethod -Uri $manifestUri -TimeoutSec 30
+    } else {
+        throw 'The update manifest must use HTTPS or a local test file.'
+    }
+    $bridgeHash = [string]$manifest.assets.'windows-x64'.sha256
+    if ($bridgeHash -notmatch '^[0-9a-fA-F]{64}$' -or
+        (Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash -ine $bridgeHash) {
+        return $false
+    }
+    $asset = $manifest.assets.'windows-x64-installer'
+    if (-not $asset) { return $false }
+    $name = [string]$asset.name
+    $expectedHash = [string]$asset.sha256
+    $assetUrl = [string]$asset.url
+    if (-not $name.EndsWith('.exe', [StringComparison]::OrdinalIgnoreCase) -or
+        [IO.Path]::GetFileName($name) -cne $name -or
+        $expectedHash -notmatch '^[0-9a-fA-F]{64}$') {
+        throw 'The release manifest has an invalid Windows installer entry.'
+    }
+    $assetUri = [uri]$assetUrl
+    if ($assetUri.Scheme -notin @('https', 'file')) {
+        throw 'The Windows installer URL must use HTTPS or a local test file.'
+    }
+    $installer = Join-Path $ArchiveParent $name
+    $verified = (Test-Path -LiteralPath $installer -PathType Leaf) -and
+        ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ieq $expectedHash)
+    if (-not $verified) {
+        $partial = "$installer.partial"
+        $client = $null
+        try {
+            $client = New-Object System.Net.WebClient
+            $client.DownloadFile($assetUri, $partial)
+            if ((Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash -ine $expectedHash) {
+                throw 'The downloaded installer does not match the release manifest.'
+            }
+            Move-Item -LiteralPath $partial -Destination $installer -Force
+        } finally {
+            Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+            if ($client) { $client.Dispose() }
+        }
+    }
+    $status = Join-Path $ArchiveParent 'apply-installer-status.txt'
+    $addons = Join-Path ([IO.Path]::GetDirectoryName($ArchiveParent)) 'addons'
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installerHelper `
+        -Installer $installer -ExpectedSha256 $expectedHash -WaitPid 0 `
+        -CurrentExecutable $RestartTarget -SingleInstanceLock $SingleInstanceLock `
+        -StatusPath $status -PortableRoot $InstallRoot -UserAddonsRoot $addons
+    if ($LASTEXITCODE -ne 0) { throw "The signed installer failed. See $status" }
+    return $true
+}
+
 try {
     # The released wrapper reports completion and exits after this helper returns.
     # Its current directory can keep packaged files open until that final exit.
@@ -150,12 +215,23 @@ try {
         Remove-Item -LiteralPath $oldBatch -Force
     }
     Copy-Item -LiteralPath (Join-Path $Candidate 'OpenWand.exe') -Destination $RestartTarget -Force
-    $Phase = 'reopening OpenWand'
+    $Phase = 'finishing update'
     Get-ChildItem Env:OPENWAND_BRIDGE_* -ErrorAction SilentlyContinue | Remove-Item
     # The Settings worker inherited its old supervisor identity. A restarted
     # app must create a new identity or its workers immediately exit.
     Remove-Item -Path @('Env:OPENWAND_SUPERVISOR_PID', 'Env:OPENWAND_SUPERVISOR_CREATE_TIME') -ErrorAction SilentlyContinue
-    Start-Process -FilePath $RestartTarget -WorkingDirectory $RestartParent
+    $migrated = $false
+    try {
+        $migrated = Invoke-InstallerMigration
+    } catch {
+        # The ZIP is already usable. Preserve diagnostics and reopen that copy
+        # if the installer download, signature, or installation fails.
+        "Automatic installer migration failed; portable OpenWand was reopened.`n$($_ | Out-String)" |
+            Set-Content -LiteralPath (Join-Path $ArchiveParent 'apply-installer-migration-error.log')
+    }
+    if (-not $migrated) {
+        Start-Process -FilePath $RestartTarget -WorkingDirectory $RestartParent
+    }
     Start-Sleep -Seconds 5
     Remove-Item -LiteralPath $BackupRoot -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $WorkRoot -Recurse -Force -ErrorAction SilentlyContinue
