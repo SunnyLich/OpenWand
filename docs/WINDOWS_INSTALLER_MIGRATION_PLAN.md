@@ -1,6 +1,6 @@
 # Windows installer and portable migration
 
-Status: implemented on `dev` for the planned `v0.12.0` transition release. Focused tests and a local Inno compile pass; the Azure signing workflow and full packaged installer still require a development workflow run before release.
+Status: implemented on `dev` for the planned `v0.12.0` transition release. The [Windows-only development workflow](https://github.com/SunnyLich/OpenWand/actions/runs/36651096842) passed on code commit `4040df4`: bundle signatures, signed uninstaller, signed setup, installed launcher smoke, Windows registration, and uninstall. Focused migration tests passed locally. A current `v0.11.1` ZIP-to-installer migration rehearsal and release publication remain.
 
 ## Proven with a disposable app
 
