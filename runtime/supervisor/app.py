@@ -8,6 +8,7 @@ import os
 import runpy
 import shutil
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -322,6 +323,35 @@ def _dispatch_module_mode() -> None:
         raise SystemExit(0)
 
 
+def _redirect_migrated_portable() -> bool:
+    """Keep old shortcuts useful after a portable copy becomes a backup."""
+    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+        return False
+    from core.system.paths import INSTALLED_MARKER_NAME, MIGRATED_PORTABLE_MARKER_NAME
+
+    portable_root = Path(sys.executable).resolve().parent
+    if not (portable_root / MIGRATED_PORTABLE_MARKER_NAME).is_file():
+        return False
+    try:
+        import winreg
+
+        key_name = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenWand.Desktop_is1"
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_name) as key:
+            install_location, _ = winreg.QueryValueEx(key, "InstallLocation")
+        installed_root = Path(str(install_location)).resolve()
+        installed_exe = installed_root / "OpenWand.exe"
+        if installed_root == portable_root or not installed_exe.is_file() or not (
+            installed_root / INSTALLED_MARKER_NAME
+        ).is_file():
+            return False
+        subprocess.Popen([str(installed_exe)], cwd=str(installed_root), close_fds=True)
+        return True
+    except (OSError, ValueError):
+        # If installation was removed or is damaged, the portable backup can
+        # still run normally and preserve the user's settings.
+        return False
+
+
 def _runtime_log_mode() -> str:
     """Return the supervisor log mode: debug keeps logs, crash writes on failure."""
     mode = str(os.environ.get("OPENWAND_RUNTIME_LOG_MODE") or "").strip().lower()
@@ -477,6 +507,8 @@ def main() -> int:
     """Handle main for runtime supervisor app."""
     suppress_console_ctrl_c()
     install_crash_diagnostics()
+    if _redirect_migrated_portable():
+        return 0
     # Claim process ownership before log pruning, autostart synchronization, or
     # worker construction. A duplicate launcher exits without changing shared
     # state or briefly creating a second OpenWand worker tree.
