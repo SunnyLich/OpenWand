@@ -1,6 +1,6 @@
 # Windows installer and portable migration
 
-Status: implemented on `dev` for the planned `v0.12.0` transition release. The [Windows-only development workflow](https://github.com/SunnyLich/OpenWand/actions/runs/36651096842) passed on code commit `4040df4`: bundle signatures, signed uninstaller, signed setup, installed launcher smoke, Windows registration, and uninstall. Focused migration tests passed locally. A current `v0.11.1` ZIP-to-installer migration rehearsal and release publication remain.
+Status: implemented on `dev` for the planned `v0.12.0` transition release. The [Windows-only development workflow](https://github.com/SunnyLich/OpenWand/actions/runs/36652788044) passed on code commit `87d57ca`: bundle signatures, signed uninstaller and setup, installed launcher and uninstall, plus a portable-to-installer handoff with add-on preservation and backup retention. Focused migration tests passed locally. The released `v0.11.1` updater source selected the pinned transition ZIP from a simulated later manifest. An interactive update from an actual `v0.11.1` ZIP and release publication remain.
 
 ## Proven with a disposable app
 
