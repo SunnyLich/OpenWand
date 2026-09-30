@@ -27,6 +27,8 @@ function Invoke-OldUpdater {
     $env:OW_TEST_RESTART_TARGET = $RestartTarget
     $env:OW_TEST_BACKUP_ROOT = $BackupRoot
     $env:OW_TEST_WORK_ROOT = $WorkRoot
+    $env:OPENWAND_SUPERVISOR_PID = '999999'
+    $env:OPENWAND_SUPERVISOR_CREATE_TIME = '1'
     $process = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
         '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
         '-File', "`"$Bootstrap`""
@@ -43,8 +45,27 @@ function Invoke-OldUpdater {
 
 try {
     New-Item -ItemType Directory -Path $InstallRoot, $Candidate, (Split-Path -Parent $Archive) -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $env:WINDIR 'System32\whoami.exe') -Destination $RestartTarget
-    Copy-Item -LiteralPath $RestartTarget -Destination (Join-Path $Candidate 'OpenWand.exe')
+    $env:OW_TEST_RESTART_REPORT = Join-Path $Root 'restart-env.txt'
+    $env:OW_TEST_PROBE_SOURCE = Join-Path $Root 'restart-probe.cs'
+    $env:OW_TEST_PROBE_EXE = Join-Path $Candidate 'OpenWand.exe'
+    @'
+using System;
+using System.IO;
+public static class Program {
+    public static int Main() {
+        var report = Environment.GetEnvironmentVariable("OW_TEST_RESTART_REPORT");
+        File.WriteAllText(report,
+            (Environment.GetEnvironmentVariable("OPENWAND_SUPERVISOR_PID") ?? "") + "|" +
+            (Environment.GetEnvironmentVariable("OPENWAND_SUPERVISOR_CREATE_TIME") ?? ""));
+        return 0;
+    }
+}
+'@ | Set-Content -LiteralPath $env:OW_TEST_PROBE_SOURCE
+    & powershell.exe -NoProfile -NonInteractive -Command 'Add-Type -Path $env:OW_TEST_PROBE_SOURCE -OutputAssembly $env:OW_TEST_PROBE_EXE -OutputType ConsoleApplication'
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $env:OW_TEST_PROBE_EXE)) {
+        throw 'Could not compile the updater restart probe.'
+    }
+    Copy-Item -LiteralPath $env:OW_TEST_PROBE_EXE -Destination $RestartTarget
     Set-Content -LiteralPath $Archive -Value 'test archive placeholder'
     New-Item -ItemType Directory -Path (Join-Path $InstallRoot '_internal'), (Join-Path $Candidate '_internal') -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $InstallRoot 'addons') -Force | Out-Null
@@ -76,6 +97,10 @@ exit $LASTEXITCODE
     }
     if ((Get-Content -LiteralPath (Join-Path $InstallRoot 'addons\user-addon.txt') -Raw).Trim() -ne 'keep me') {
         throw 'The bridge changed portable add-ons.'
+    }
+    if (-not (Test-Path -LiteralPath $env:OW_TEST_RESTART_REPORT) -or
+        (Get-Content -LiteralPath $env:OW_TEST_RESTART_REPORT -Raw) -ne '|') {
+        throw 'The restarted app inherited the previous supervisor identity.'
     }
     if ((Test-Path -LiteralPath $BackupRoot) -or (Test-Path -LiteralPath $WorkRoot)) {
         throw 'The bridge left its backup or extraction folder after success.'

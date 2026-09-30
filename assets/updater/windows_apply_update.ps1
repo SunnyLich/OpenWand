@@ -152,6 +152,9 @@ try {
     Copy-Item -LiteralPath (Join-Path $Candidate 'OpenWand.exe') -Destination $RestartTarget -Force
     $Phase = 'reopening OpenWand'
     Get-ChildItem Env:OPENWAND_BRIDGE_* -ErrorAction SilentlyContinue | Remove-Item
+    # The Settings worker inherited its old supervisor identity. A restarted
+    # app must create a new identity or its workers immediately exit.
+    Remove-Item -Path @('Env:OPENWAND_SUPERVISOR_PID', 'Env:OPENWAND_SUPERVISOR_CREATE_TIME') -ErrorAction SilentlyContinue
     Start-Process -FilePath $RestartTarget -WorkingDirectory $RestartParent
     Start-Sleep -Seconds 5
     Remove-Item -LiteralPath $BackupRoot -Recurse -Force -ErrorAction SilentlyContinue

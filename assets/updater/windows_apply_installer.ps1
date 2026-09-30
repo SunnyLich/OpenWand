@@ -125,6 +125,9 @@ try {
             Add-Content -LiteralPath $StatusPath -Value ("Could not mark portable backup: " + $_.Exception.Message)
         }
     }
+    # The updater was started by an exiting supervisor. The installed app
+    # needs to establish its own identity for its worker watchdogs.
+    Remove-Item -Path @('Env:OPENWAND_SUPERVISOR_PID', 'Env:OPENWAND_SUPERVISOR_CREATE_TIME') -ErrorAction SilentlyContinue
     Start-Process -FilePath $installedExe -WorkingDirectory ([System.IO.Path]::GetDirectoryName($installedExe))
     exit 0
 } catch {
