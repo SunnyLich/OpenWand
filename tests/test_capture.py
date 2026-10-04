@@ -121,6 +121,79 @@ class CaptureTests(unittest.TestCase):
         send_keys.assert_called_once()
         self.assertEqual(restored, ["selected text"])
 
+    def test_linux_gui_uses_ctrl_c_after_primary_capture_fails(self):
+        window = types.SimpleNamespace(process_name="firefox", exe_path="/usr/bin/firefox")
+        restored = []
+        with mock.patch.object(self.capture, "_IS_LINUX", True), \
+             mock.patch.object(self.capture, "_IS_MAC", False), \
+             mock.patch.dict(os.environ, {"DISPLAY": ":0", "WAYLAND_DISPLAY": ""}), \
+             mock.patch.object(self.capture, "_get_selected_text_uia", return_value=None), \
+             mock.patch.object(self.capture, "_get_primary_selection_linux", return_value=None) as primary, \
+             mock.patch.dict(sys.modules, {"core.context_fetcher": types.SimpleNamespace(get_active_window_info=lambda: window)}), \
+             mock.patch.object(self.capture.pyperclip, "paste", side_effect=["original", "selected"]), \
+             mock.patch.object(self.capture.pyperclip, "copy", side_effect=restored.append), \
+             mock.patch("core.platform_utils.send_keys") as send_keys, \
+             mock.patch.object(self.capture.time, "sleep"):
+            self.assertEqual(self.capture.get_selected_text(), "selected")
+
+        primary.assert_called_once_with()
+        send_keys.assert_called_once_with("ctrl+c")
+        self.assertEqual(restored, ["original"])
+
+    def test_linux_primary_selection_skips_synthetic_copy(self):
+        with mock.patch.object(self.capture, "_IS_LINUX", True), \
+             mock.patch.dict(os.environ, {"DISPLAY": ":0", "WAYLAND_DISPLAY": ""}), \
+             mock.patch.object(self.capture, "_get_selected_text_uia", return_value=None), \
+             mock.patch.object(self.capture, "_get_primary_selection_linux", return_value="highlighted"), \
+             mock.patch.object(self.capture, "_get_selected_text_clipboard") as fallback:
+            self.assertEqual(self.capture.get_selected_text(), "highlighted")
+
+        fallback.assert_not_called()
+
+    def test_linux_terminal_uses_ctrl_shift_c_after_primary_capture_fails(self):
+        window = types.SimpleNamespace(process_name="gnome-terminal-server", exe_path="")
+        restored = []
+        with mock.patch.object(self.capture, "_IS_LINUX", True), \
+             mock.patch.object(self.capture, "_IS_MAC", False), \
+             mock.patch.dict(os.environ, {"DISPLAY": ":0", "WAYLAND_DISPLAY": ""}), \
+             mock.patch.object(self.capture, "_get_selected_text_uia", return_value=None), \
+             mock.patch.object(self.capture, "_get_primary_selection_linux", return_value=None), \
+             mock.patch.dict(sys.modules, {"core.context_fetcher": types.SimpleNamespace(get_active_window_info=lambda: window)}), \
+             mock.patch.object(self.capture.pyperclip, "paste", side_effect=["original", "selected"]), \
+             mock.patch.object(self.capture.pyperclip, "copy", side_effect=restored.append), \
+             mock.patch("core.platform_utils.send_keys") as send_keys, \
+             mock.patch.object(self.capture.time, "sleep"):
+            self.assertEqual(self.capture.get_selected_text(), "selected")
+
+        send_keys.assert_called_once_with("ctrl+shift+c")
+        self.assertEqual(restored, ["original"])
+
+    def test_linux_terminal_copy_failure_never_uses_ctrl_c(self):
+        window = types.SimpleNamespace(process_name="kitty", exe_path="/usr/bin/kitty")
+        with mock.patch.object(self.capture, "_IS_LINUX", True), \
+             mock.patch.object(self.capture, "_IS_MAC", False), \
+             mock.patch.dict(os.environ, {"DISPLAY": ":0", "WAYLAND_DISPLAY": ""}), \
+             mock.patch.object(self.capture, "_get_selected_text_uia", return_value=None), \
+             mock.patch.object(self.capture, "_get_primary_selection_linux", return_value=None), \
+             mock.patch.dict(sys.modules, {"core.context_fetcher": types.SimpleNamespace(get_active_window_info=lambda: window)}), \
+             mock.patch("core.platform_utils.send_keys", side_effect=RuntimeError("copy failed")) as send_keys:
+            self.assertIsNone(self.capture.get_selected_text())
+
+        send_keys.assert_called_once_with("ctrl+shift+c")
+
+    def test_linux_unknown_terminal_or_missing_identity_skips_synthetic_copy(self):
+        for window in (
+            types.SimpleNamespace(process_name="custom-terminal", exe_path=""),
+            types.SimpleNamespace(process_name="", exe_path=""),
+        ):
+            with self.subTest(window=window), \
+                 mock.patch.object(self.capture, "_IS_LINUX", True), \
+                 mock.patch.object(self.capture, "_IS_MAC", False), \
+                 mock.patch.dict(sys.modules, {"core.context_fetcher": types.SimpleNamespace(get_active_window_info=lambda: window)}), \
+                 mock.patch("core.platform_utils.send_keys") as send_keys:
+                self.assertIsNone(self.capture._get_selected_text_clipboard())
+                send_keys.assert_not_called()
+
     def test_uia_selection_ignores_collapsed_text_range(self):
         """Verify UIA insertion-point ranges are not treated as selected text."""
         fake_uiac = types.ModuleType("comtypes.gen.UIAutomationClient")

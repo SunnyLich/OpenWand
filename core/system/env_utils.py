@@ -1,11 +1,15 @@
 """Shared helpers for reading and writing environment-style config."""
 from __future__ import annotations
 
+import base64
+import json
 import os
 import re
+from io import StringIO
 from pathlib import Path
 
 from dotenv import dotenv_values
+from dotenv.parser import parse_stream
 from dotenv.variables import parse_variables
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -17,6 +21,33 @@ FALSE_VALUES = {"0", "false", "no", "off"}
 #   "model" — expose the capture_screen tool so the model grabs one on demand
 SCREENSHOT_MODES = ("off", "auto", "model")
 FILE_ACCESS_MODES = ("off", "read", "ask", "auto")
+LITERAL_TEXT_KEYS = {
+    "SYSTEM_PROMPT_UTILITY",
+    "OPENWAND_CODEX_SYSTEM_PROMPT",
+    "OPENWAND_CLAUDE_SYSTEM_PROMPT",
+    "CHAT_ELABORATE_PROMPT",
+    "LIVE_VOICE_SYSTEM_PROMPT",
+    "GPT_SOVITS_PROMPT_TEXT",
+}
+_CALLER_PROMPT_KEY = re.compile(r"^CALLER_\d+_INTENT_\d+_PROMPT$")
+_LITERAL_PREFIX = "openwand-json-b64:"
+
+
+def is_literal_text_key(name: str) -> bool:
+    """Identify user-authored text that must not use .env interpolation."""
+    return name in LITERAL_TEXT_KEYS or _CALLER_PROMPT_KEY.fullmatch(name) is not None
+
+
+def _decode_literal_value(value: str) -> str:
+    """Decode values written by the literal prompt serializer; accept legacy text."""
+    if not value.startswith(_LITERAL_PREFIX):
+        return value
+    try:
+        payload = base64.b64decode(value[len(_LITERAL_PREFIX):], altchars=b"-_", validate=True)
+        decoded = json.loads(payload.decode("utf-8"))
+    except (ValueError, UnicodeError):
+        return value
+    return decoded if isinstance(decoded, str) else value
 
 
 def normalize_screenshot_mode(value, default: str = "off") -> str:
@@ -197,6 +228,21 @@ def read_env_file(path: Path) -> dict[str, str]:
     }
 
 
+def literal_env_values(path: Path) -> dict[str, str]:
+    """Read prompt fields without environment-variable expansion."""
+    if not path.exists():
+        return {}
+    try:
+        values = dotenv_values(path, interpolate=False)
+    except (OSError, UnicodeError):
+        return {}
+    return {
+        key: _decode_literal_value(value)
+        for key, value in values.items()
+        if key is not None and value is not None and is_literal_text_key(key)
+    }
+
+
 def _resolve_env_variables(values: dict[str, str | None]) -> dict[str, str | None]:
     """Expand ``${VAR}`` references the way python-dotenv's interpolation does.
 
@@ -209,15 +255,22 @@ def _resolve_env_variables(values: dict[str, str | None]) -> dict[str, str | Non
     base = dict(os.environ)
     resolved: dict[str, str | None] = {}
     for name, value in values.items():
-        if value is not None and "${" in value:
+        if value is not None and is_literal_text_key(name):
+            value = _decode_literal_value(value)
+        elif value is not None and "${" in value:
             env: dict[str, str | None] = {**base, **resolved}
             value = "".join(atom.resolve(env) for atom in parse_variables(value))
         resolved[name] = value
     return resolved
 
 
-def format_env_value(value: str) -> str:
+def format_env_value(value: str, *, literal: bool = False) -> str:
     """Format env value."""
+    if literal:
+        # Encode serialized text as .env-safe ASCII. dotenv's quoted-string
+        # parser does not decode every JSON escape (for example, \u0000).
+        payload = json.dumps(value, ensure_ascii=False).encode("utf-8")
+        return _LITERAL_PREFIX + base64.urlsafe_b64encode(payload).decode("ascii")
     if any(ch in value for ch in ("\n", "\r", '"', "#")):
         escaped = (
             value.replace("\\", "\\\\")
@@ -237,24 +290,45 @@ def write_env_file(
 ) -> None:
     """Write env file."""
     remove_keys = remove_keys or set()
-    lines: list[str] = []
+    chunks: list[str] = []
     written: set[str] = set()
+    newline = "\n"
 
     if path.exists():
-        for line in path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if stripped and not stripped.startswith("#") and "=" in stripped:
-                key = stripped.split("=", 1)[0].strip()
-                if key in remove_keys:
-                    continue
-                if key in values:
-                    lines.append(f"{key}={format_env_value(values[key])}")
-                    written.add(key)
-                    continue
-            lines.append(line)
+        with path.open("r", encoding="utf-8", newline="") as env_file:
+            source = env_file.read()
+        first_newline = re.search(r"\r\n|\n|\r", source)
+        if first_newline:
+            newline = first_newline.group(0)
+        for binding in parse_stream(StringIO(source)):
+            key = binding.key
+            original = binding.original.string
+            if key not in remove_keys and key not in values:
+                chunks.append(original)
+                continue
+
+            # The parser includes all physical lines of a quoted value in one
+            # binding, so replacing it cannot leave apparent settings behind.
+            prefix = re.match(r"\s*(?:export[^\S\r\n]+)?", original).group(0)
+            if key in remove_keys:
+                last_newline = max(prefix.rfind("\n"), prefix.rfind("\r"))
+                chunks.append(prefix[: last_newline + 1])
+                continue
+            ending = re.search(r"(?:\r\n|\n|\r)$", original)
+            chunks.append(
+                f"{prefix}{key}={format_env_value(values[key], literal=is_literal_text_key(key))}"
+                f"{ending.group(0) if ending else ''}"
+            )
+            written.add(key)
 
     for key, value in values.items():
         if key not in written:
-            lines.append(f"{key}={format_env_value(value)}")
+            if chunks and not chunks[-1].endswith(("\r", "\n")):
+                chunks.append(newline)
+            chunks.append(f"{key}={format_env_value(value, literal=is_literal_text_key(key))}{newline}")
 
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    result = "".join(chunks)
+    if not result.endswith(("\r", "\n")):
+        result += newline
+    with path.open("w", encoding="utf-8", newline="") as env_file:
+        env_file.write(result)

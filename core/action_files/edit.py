@@ -65,6 +65,32 @@ def _comment_suffix(text: str) -> str:
     return ""
 
 
+def _assignment_end(lines: list[str], start: int) -> int:
+    """Find the last line of one complete TOML assignment (exclusive)."""
+    for end in range(start + 1, len(lines) + 1):
+        try:
+            tomllib.loads("\n".join(lines[start:end]))
+        except tomllib.TOMLDecodeError:
+            continue
+        return end
+    raise ValueError(f"Incomplete or invalid TOML assignment on line {start + 1}")
+
+
+def _assignment_comment(lines: list[str], start: int, end: int) -> str:
+    """Keep a comment after the value, including after a multiline string."""
+    last_line = lines[end - 1]
+    for index, char in enumerate(last_line):
+        if char != "#":
+            continue
+        before_comment = "\n".join([*lines[start : end - 1], last_line[:index]])
+        try:
+            tomllib.loads(before_comment)
+        except tomllib.TOMLDecodeError:
+            continue
+        return " " + last_line[index:].strip()
+    return ""
+
+
 def update_toml_values(
     path: Path,
     updates: dict[str, Any],
@@ -81,25 +107,38 @@ def update_toml_values(
     section_seen = active
     insert_at = len(lines)
     output: list[str] = []
-    for line in lines:
+    index = 0
+    while index < len(lines):
+        line = lines[index]
         stripped = line.strip()
-        if stripped.startswith("[") and stripped.endswith("]"):
+        try:
+            header = tomllib.loads(line) if stripped.startswith("[") else None
+        except tomllib.TOMLDecodeError:
+            header = None
+        if header is not None:
             if active:
                 insert_at = len(output)
-            active = stripped == f"[{section}]" if section else False
+            active = header == {section: {}} if section else False
             section_seen = section_seen or active
-        match = _ASSIGNMENT.match(line) if active else None
-        key = _assignment_key(match) if match else ""
-        if key in remove:
+        match = _ASSIGNMENT.match(line)
+        if match is None:
+            output.append(line)
+            index += 1
             continue
-        if key in wanted and match is not None:
-            suffix = _comment_suffix(match.group("rest"))
+        end = _assignment_end(lines, index)
+        key = _assignment_key(match) if active else ""
+        if active and key in remove:
+            index = end
+            continue
+        if active and key in wanted:
+            suffix = _assignment_comment(lines, index, end)
             output.append(
                 f"{match.group('indent')}{_toml_key(key)}{match.group('space')}= "
                 f"{_literal(wanted.pop(key))}{suffix}"
             )
-            continue
-        output.append(line)
+        else:
+            output.extend(lines[index:end])
+        index = end
     if active:
         insert_at = len(output)
     additions = [f"{_toml_key(key)} = {_literal(value)}" for key, value in wanted.items()]

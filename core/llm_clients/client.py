@@ -5081,7 +5081,24 @@ def _stream_openai_compat(
                 yield text
         tool_calls_acc = _openai_compat_message_tool_calls(response)
 
-    if finish_reason != "tool_calls" or not tool_calls_acc:
+    # Some OpenAI-compatible providers finish a complete streamed call with "stop".
+    # Only promote calls with a stable identity and complete object arguments.
+    offered_tool_names = {schema["function"]["name"] for schema in tools or []}
+    complete_tool_calls = {}
+    for index, tc in tool_calls_acc.items():
+        if not isinstance(tc.get("id"), str) or not tc["id"].strip():
+            continue
+        if not isinstance(tc.get("name"), str) or tc["name"] not in offered_tool_names:
+            continue
+        try:
+            arguments = _json.loads(tc["arguments"])
+        except (TypeError, ValueError):
+            continue
+        if isinstance(arguments, dict):
+            complete_tool_calls[index] = tc
+    tool_calls_acc = complete_tool_calls
+
+    if finish_reason not in {"tool_calls", "stop"} or not tool_calls_acc:
         first_round_joined = "".join(first_round_text)
         if tools and allow_screenshot_tool and _looks_like_screenshot_tool_request(first_round_joined):
             print("[llm] text requested capture_screen; continuing with implicit tool call", flush=True)

@@ -639,6 +639,103 @@ class LlmFallbackTests(unittest.TestCase):
         self.assertEqual(getattr(chunks[0], "kind", ""), "progress")
         self.assertEqual(getattr(chunks[1], "kind", "answer"), "answer")
 
+    def test_openai_streamed_stop_only_runs_complete_tool_calls(self):
+        """A provider may finish a complete streamed tool call with stop."""
+        def chunk(*, content=None, tool_calls=(), finish_reason=None):
+            return SimpleNamespace(choices=[SimpleNamespace(
+                finish_reason=finish_reason,
+                delta=SimpleNamespace(content=content, tool_calls=tool_calls),
+            )])
+
+        def tool_delta(*, id=None, name=None, arguments=None):
+            return SimpleNamespace(
+                index=0, id=id,
+                function=SimpleNamespace(name=name, arguments=arguments),
+            )
+
+        cases = (
+            (
+                "complete stop", "stop",
+                [tool_delta(id="call_1", name="read_file", arguments='{"path":'),
+                 tool_delta(arguments='"note.txt"}')], True,
+            ),
+            (
+                "ordinary tool_calls", "tool_calls",
+                [tool_delta(id="call_1", name="read_file", arguments='{"path":'),
+                 tool_delta(arguments='"note.txt"}')], True,
+            ),
+            (
+                "incomplete JSON", "stop",
+                [tool_delta(id="call_1", name="read_file", arguments='{"path":')], False,
+            ),
+            (
+                "missing identity", "stop",
+                [tool_delta(name="read_file", arguments='{"path":"note.txt"}')], False,
+            ),
+            (
+                "incomplete name", "stop",
+                [tool_delta(id="call_1", name="read_fi", arguments='{"path":"note.txt"}')], False,
+            ),
+            ("text only", "stop", [], False),
+        )
+
+        for label, finish_reason, deltas, should_call_tool in cases:
+            with self.subTest(label=label):
+                first_round_chunks = [chunk(content="Checking.")]
+                first_round_chunks.extend(chunk(tool_calls=[delta]) for delta in deltas)
+                first_round_chunks.append(chunk(finish_reason=finish_reason))
+
+                class FakeStream:
+                    def __enter__(self):
+                        return iter(first_round_chunks)
+
+                    def __exit__(self, exc_type, exc, tb):
+                        return False
+
+                class FakeCompletions:
+                    def __init__(self):
+                        self.calls = []
+
+                    def create(self, **kwargs):
+                        self.calls.append(kwargs)
+                        if len(self.calls) == 1:
+                            return FakeStream()
+                        return SimpleNamespace(choices=[SimpleNamespace(
+                            finish_reason="stop",
+                            message=SimpleNamespace(content="Read complete.", tool_calls=None),
+                        )])
+
+                completions = FakeCompletions()
+                fake_client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+                with (
+                    patch.object(llm.macos_safety, "openai_compat_tools_enabled", return_value=True),
+                    patch.object(llm, "_execute_model_tool", return_value="file contents") as execute,
+                ):
+                    output = list(llm._stream_openai_compat(
+                        "read note.txt", None, "gemini-3.5-flash", fake_client,
+                        use_tools=True, allowed_tools=["read_file"],
+                        pinned_tools=["read_file"], provider="google",
+                    ))
+
+                if should_call_tool:
+                    self.assertEqual(output, ["Checking.", "Read complete."])
+                    self.assertEqual(getattr(output[0], "kind", ""), "progress")
+                    execute.assert_called_once_with(
+                        "read_file", {"path": "note.txt"}, allowed_tools=["read_file"],
+                    )
+                    self.assertEqual(len(completions.calls), 2)
+                    assistant = completions.calls[1]["messages"][-2]
+                    self.assertEqual(assistant["tool_calls"][0], {
+                        "id": "call_1", "type": "function",
+                        "function": {
+                            "name": "read_file", "arguments": '{"path":"note.txt"}',
+                        },
+                    })
+                else:
+                    self.assertEqual(output, ["Checking."])
+                    execute.assert_not_called()
+                    self.assertEqual(len(completions.calls), 1)
+
     def test_openai_followup_tool_call_marks_intermediate_text_as_progress(self):
         """Verify follow-up text with another tool call is progress, not final."""
         first_round_chunks = [

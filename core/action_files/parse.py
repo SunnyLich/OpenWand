@@ -90,6 +90,10 @@ def parse_action_file(path: Path | str) -> tuple[ActionFile | None, tuple[LoadIs
         ):
             issues.append(LoadIssue(display, "wrong_type", f"{key} must be a list of text values."))
 
+    # Do not build an action from values that failed schema validation.
+    if any(issue.code == "wrong_type" for issue in issues):
+        return None, tuple(issues)
+
     template = _string(values, "template")
     label = _string(values, "label")
     if not label and not template:
