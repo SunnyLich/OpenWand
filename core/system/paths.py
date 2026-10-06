@@ -11,6 +11,8 @@ migrate_process_environment()
 
 _APP_NAME = "OpenWand"
 _LEGACY_APP_NAME = "Wisp"
+INSTALLED_MARKER_NAME = ".openwand-installed"
+MIGRATED_PORTABLE_MARKER_NAME = ".openwand-migrated-to-installer"
 
 
 def _user_data_dir() -> Path:
@@ -62,6 +64,15 @@ def _executable_root() -> Path | None:
     return executable.parent if executable.name else None
 
 
+def is_installed_release(executable: Path | None = None, *, frozen: bool | None = None) -> bool:
+    """Identify Windows copies managed by the registered OpenWand installer."""
+    packaged = bool(getattr(sys, "frozen", False)) if frozen is None else frozen
+    if sys.platform != "win32" or not packaged:
+        return False
+    root = Path(executable or sys.executable).resolve().parent
+    return (root / INSTALLED_MARKER_NAME).is_file()
+
+
 def _writable_dir(path: Path) -> bool:
     """Return whether *path* can be created and written to."""
     try:
@@ -101,6 +112,8 @@ def _addons_dir() -> Path:
         d = Path(override).expanduser()
         d.mkdir(parents=True, exist_ok=True)
         return d
+    if is_installed_release():
+        return REPO_ROOT / "addons"
     exe_root = _executable_root()
     if exe_root is not None:
         portable_addons = exe_root / "addons"

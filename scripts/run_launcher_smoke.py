@@ -275,7 +275,7 @@ def run_launcher_smoke(
                 }
             )
         if kind == "source":
-            env["OPENWAND_LAUNCH_PYTHON"] = str((source_python or Path(sys.executable)).resolve())
+            env["OPENWAND_LAUNCH_PYTHON"] = str(source_python or Path(sys.executable))
         try:
             creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
             process = subprocess.Popen(

@@ -5,6 +5,7 @@ An action is a pair: name.toml describes it, name.py optionally holds its code.
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 from core.action_files import (
@@ -309,6 +310,49 @@ def test_settings_edits_preserve_toml_comments(tmp_path: Path) -> None:
     assert catalog.menu_for("quick") == ()
 
 
+def test_settings_replace_complete_multiline_prompt_and_preserve_other_fields(tmp_path: Path) -> None:
+    action_source = (
+        '# action note\nlabel = "Original" # label note\n'
+        'prompt = """\nOld prompt\nenabled = false\n[context]\n""" # prompt note\n'
+        'access = [\n    "text", # access note\n] # access closing note\n'
+        'custom_note = """Keep this # text\nlabel = "not an assignment"\n[tools]\n""" # custom note\n'
+        'enabled = true # enabled note\n'
+    )
+    _quick(tmp_path, {"grammar.toml": action_source})
+
+    save_callers(
+        tmp_path,
+        [
+            {
+                "folder": "quick",
+                "hotkey": "ctrl+q",
+                "label": "Quick",
+                "actions": [
+                    {
+                        "name": "grammar",
+                        "label": "Updated label",
+                        "prompt": "Updated prompt\nSecond line",
+                        "enabled": False,
+                    }
+                ],
+            }
+        ],
+    )
+
+    result = (tmp_path / "quick" / "grammar.toml").read_text(encoding="utf-8")
+    values = tomllib.loads(result)
+    assert values["label"] == "Updated label"
+    assert values["prompt"] == "Updated prompt\nSecond line"
+    assert values["enabled"] is False
+    assert values["access"] == ["text"]
+    assert values["custom_note"] == 'Keep this # text\nlabel = "not an assignment"\n[tools]\n'
+    assert "Old prompt" not in result
+    assert 'access = [\n    "text", # access note\n] # access closing note' in result
+    assert 'custom_note = """Keep this # text\nlabel = "not an assignment"\n[tools]\n""" # custom note' in result
+    for comment in ("# action note", "# label note", "# prompt note", "# enabled note"):
+        assert comment in result
+
+
 def test_runtime_caller_preserves_exact_file_access_mode(tmp_path: Path) -> None:
     """The compatibility row must not collapse read access into ask access."""
     _quick(
@@ -355,6 +399,34 @@ def test_a_broken_description_is_reported_and_skipped(tmp_path: Path) -> None:
 
     assert [item.action.label for item in catalog.callers[0].actions] == ["Fix grammar"]
     assert [issue.code for issue in catalog.issues] == ["bad_toml", "missing_action"]
+
+
+def test_wrong_type_action_fields_are_reported_before_use(tmp_path: Path) -> None:
+    for setting in ("access = 123", "context = 123", "enabled = 123", "hint = 123"):
+        action, issues = parse_action_file(
+            _written(tmp_path / "invalid.toml", f'label = "Invalid"\nprompt = "x"\n{setting}\n')
+        )
+
+        assert action is None
+        assert [issue.code for issue in issues] == ["wrong_type"]
+
+
+def test_wrong_type_action_does_not_stop_catalog_loading(tmp_path: Path) -> None:
+    _quick(
+        tmp_path,
+        {
+            "first.toml": 'label = "First"\nprompt = "x"\n',
+            "invalid.toml": 'label = "Invalid"\nprompt = "x"\naccess = 123\n',
+            "last.toml": 'label = "Last"\nprompt = "x"\n',
+        },
+    )
+
+    catalog = load_catalog(tmp_path)
+
+    assert [item.action.label for item in catalog.callers[0].actions] == ["First", "Last"]
+    assert [(issue.code, issue.path) for issue in catalog.issues] == [
+        ("wrong_type", str(tmp_path / "quick" / "invalid.toml"))
+    ]
 
 
 def test_an_unknown_setting_is_reported(tmp_path: Path) -> None:

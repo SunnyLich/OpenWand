@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -48,6 +49,55 @@ def test_parse_manifest_selects_current_platform_asset() -> None:
     assert asset is not None
     assert asset.platform_key == "windows-x64"
     assert asset.name == "OpenWand-0.1.1-windows-x64.zip"
+
+
+def test_transition_manifest_migrates_portable_and_updates_installed(monkeypatch) -> None:
+    manifest = {
+        "version": "0.13.0",
+        "assets": {
+            "windows-x64": {
+                "name": "OpenWand-v0.12.0-windows-x64.zip",
+                "url": "https://example.invalid/bridge.zip",
+            },
+            "windows-x64-installer": {
+                "name": "OpenWand-v0.13.0-windows-x64-setup.exe",
+                "url": "https://example.invalid/setup.exe",
+                "sha256": "b" * 64,
+            },
+        },
+    }
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater, "fetch_manifest", lambda _url: manifest)
+    monkeypatch.setattr(updater, "is_installed_release", lambda: False)
+
+    portable = updater.check_for_updates(platform_key="windows-x64", installed_version="0.13.0")
+    assert portable.update_available
+    assert portable.migration_available
+    assert portable.asset is not None and portable.asset.name.endswith("setup.exe")
+
+    monkeypatch.setattr(updater, "is_installed_release", lambda: True)
+    installed = updater.check_for_updates(platform_key="windows-x64", installed_version="0.12.0")
+    assert installed.update_available
+    assert not installed.migration_available
+    assert installed.asset is not None and installed.asset.platform_key == "windows-x64-installer"
+    assert not updater.check_for_updates(platform_key="windows-x64", installed_version="0.13.0").update_available
+
+
+def test_transition_zip_remains_available_to_old_portable_clients(monkeypatch) -> None:
+    manifest = {
+        "version": "0.13.0",
+        "assets": {"windows-x64": {
+            "name": "OpenWand-v0.12.0-windows-x64.zip",
+            "url": "https://example.invalid/bridge.zip",
+        }},
+    }
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater, "fetch_manifest", lambda _url: manifest)
+    monkeypatch.setattr(updater, "is_installed_release", lambda: False)
+    result = updater.check_for_updates(platform_key="windows-x64", installed_version="0.11.1")
+    assert result.update_available
+    assert not result.migration_available
+    assert result.asset is not None and result.asset.name.endswith(".zip")
 
 
 def test_download_update_verifies_sha256(tmp_path: Path) -> None:
@@ -243,6 +293,8 @@ def test_apply_update_writes_windows_helper_without_running_it(monkeypatch, tmp_
     assert "Updating OpenWand" in script_text
     assert "Find-NewVersionHelper" in script_text
     assert "windows_apply_update.ps1" in script_text
+    assert "The downloaded Windows ZIP has no update helper" in script_text
+    assert "Rename-Item" not in script_text
     assert "Starting the newer installer..." in script_text
     assert "Test-OpenWandLockReleased" in script_text
     assert "$singleInstanceLock" in script_text
@@ -267,6 +319,39 @@ def test_apply_update_writes_windows_helper_without_running_it(monkeypatch, tmp_
         assert creationflags & updater.subprocess.CREATE_NO_WINDOW
     if hasattr(updater.subprocess, "DETACHED_PROCESS"):
         assert not (creationflags & updater.subprocess.DETACHED_PROCESS)
+
+
+def test_apply_installer_uses_signed_helper_and_keeps_portable_root(monkeypatch, tmp_path: Path) -> None:
+    installer = tmp_path / "OpenWand-setup.exe"
+    installer.write_bytes(b"signed installer placeholder")
+    executable = tmp_path / "portable" / "OpenWand" / "OpenWand.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"current executable")
+    bundle = tmp_path / "bundle"
+    bundled_helper = bundle / "assets" / "updater" / "windows_apply_installer.ps1"
+    bundled_helper.parent.mkdir(parents=True)
+    bundled_helper.write_text("# helper", encoding="utf-8")
+    launched = []
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(sys, "executable", str(executable))
+    monkeypatch.setattr(sys, "_MEIPASS", str(bundle), raising=False)
+    monkeypatch.setattr(updater, "UPDATE_DOWNLOAD_DIR", tmp_path / "updates")
+    monkeypatch.setattr(updater, "SINGLE_INSTANCE_LOCK", tmp_path / "openwand.lock")
+    monkeypatch.setattr(updater, "is_installed_release", lambda: False)
+    monkeypatch.setattr(updater, "launch_detached_helper", lambda command, **_kwargs: launched.append(command))
+
+    digest = updater._sha256(installer)
+    script = updater.apply_update(installer, pid=123, expected_sha256=digest)
+    assert script.read_text(encoding="utf-8") == "# helper"
+    assert len(launched) == 1
+    command = launched[0]
+    assert "-PortableRoot" in command and str(executable.parent) in command
+    assert "-ExpectedSha256" in command and digest in command
+    assert "windows_apply_update.ps1" not in command
+    with pytest.raises(updater.UpdateError, match="no longer matches"):
+        updater.apply_update(installer, pid=123, expected_sha256="0" * 64)
+    assert len(launched) == 1
 
 
 def test_apply_update_writes_posix_helper_with_lock_wait(monkeypatch, tmp_path: Path) -> None:
@@ -339,18 +424,20 @@ def test_windows_new_version_helper_asset_is_bundled() -> None:
 
     assert helper.exists()
     text = helper.read_text(encoding="utf-8")
-    assert "[Parameter(Mandatory = $true)][string]$Candidate" in text
+    assert "[string]$Candidate = ''" in text
+    assert "-WorkingDirectory $ArchiveParent" in text
     assert "Split-Path -LiteralPath" not in text
-    assert "Move-Item -LiteralPath $Candidate -Destination $InstallRoot" in text
+    assert "Copy-PackagedDirectory" in text
+    assert "Rename-Item" not in text
     assert "Start-Process -FilePath $RestartTarget" in text
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows updater helper requires PowerShell")
 def test_windows_update_helper_restores_backup_after_candidate_replacement_fails(tmp_path: Path) -> None:
-    """The real helper restores the old install after a post-replacement failure."""
+    """The real helper restores packaged files after an in-place copy fails."""
     helper = Path("assets/updater/windows_apply_update.ps1").resolve()
     install_root = tmp_path / "OpenWand"
-    backup_root = tmp_path / "OpenWand-backup"
+    backup_root = tmp_path / "OpenWand.previous-update"
     candidate = tmp_path / "candidate"
     work_root = tmp_path / "work"
     archive = tmp_path / "OpenWand-update.zip"
@@ -358,70 +445,13 @@ def test_windows_update_helper_restores_backup_after_candidate_replacement_fails
     candidate.mkdir()
     work_root.mkdir()
     archive.write_bytes(b"contract archive placeholder")
-    (install_root / "version.txt").write_text("old-known-good", encoding="utf-8")
-    (candidate / "version.txt").write_text("new-candidate", encoding="utf-8")
-    missing_restart_target = install_root / "missing-OpenWand.exe"
-
-    result = subprocess.run(
-        [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(helper),
-            "-Archive",
-            str(archive),
-            "-InstallRoot",
-            str(install_root),
-            "-Candidate",
-            str(candidate),
-            "-RestartTarget",
-            str(missing_restart_target),
-            "-BackupRoot",
-            str(backup_root),
-            "-WorkRoot",
-            str(work_root),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
-
-    assert result.returncode == 1
-    assert install_root.is_dir()
-    assert (install_root / "version.txt").read_text(encoding="utf-8") == "old-known-good"
-    assert not backup_root.exists()
-    assert not candidate.exists()
-    error_log = tmp_path / "apply-update-error.log"
-    assert error_log.is_file()
-    assert "Start-Process" in error_log.read_text(encoding="utf-8")
-
-
-@pytest.mark.skipif(sys.platform != "win32", reason="Windows updater helper requires PowerShell")
-def test_windows_update_helper_replaces_install_restarts_and_cleans_backup(tmp_path: Path) -> None:
-    """The shipped helper completes a real successful install-directory swap."""
-    helper = Path("assets/updater/windows_apply_update.ps1").resolve()
-    install_root = tmp_path / "OpenWand"
-    backup_root = tmp_path / "OpenWand-backup"
-    candidate = tmp_path / "candidate"
-    work_root = tmp_path / "work"
-    archive = tmp_path / "OpenWand-update.zip"
-    install_root.mkdir()
-    candidate.mkdir()
-    work_root.mkdir()
-    archive.write_bytes(b"contract archive placeholder")
-    (install_root / "version.txt").write_text("old-version", encoding="utf-8")
-    (install_root / "old-only.txt").write_text("remove me", encoding="utf-8")
-    (candidate / "version.txt").write_text("new-version", encoding="utf-8")
-
-    # Use a genuine short-lived Windows executable as the packaged restart
-    # target. ``where.exe`` exits immediately when started without arguments,
-    # so the test proves Start-Process accepted the replaced executable without
-    # leaving a background test process behind.
-    restart_target = candidate / "OpenWand.exe"
-    shutil.copy2(Path(os.environ["WINDIR"]) / "System32" / "where.exe", restart_target)
+    (install_root / "_internal").mkdir()
+    (candidate / "_internal").mkdir()
+    (install_root / "_internal" / "version.txt").write_text("old-known-good", encoding="utf-8")
+    (candidate / "_internal" / "version.txt").write_text("new-candidate", encoding="utf-8")
+    shutil.copy2(Path(os.environ["WINDIR"]) / "System32" / "where.exe", install_root / "OpenWand.exe")
+    original_exe = (install_root / "OpenWand.exe").read_bytes()
+    (candidate / "OpenWand.exe").write_bytes(b"invalid executable")
 
     result = subprocess.run(
         [
@@ -451,13 +481,89 @@ def test_windows_update_helper_replaces_install_restarts_and_cleans_backup(tmp_p
     )
 
     assert result.returncode == 0, result.stderr or result.stdout
-    assert (install_root / "version.txt").read_text(encoding="utf-8") == "new-version"
+    error_log = tmp_path / "apply-bridge-error.log"
+    deadline = time.monotonic() + 30
+    while not error_log.is_file() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert error_log.is_file()
+    assert install_root.is_dir()
+    assert (install_root / "_internal" / "version.txt").read_text(encoding="utf-8") == "old-known-good"
+    assert (install_root / "OpenWand.exe").read_bytes() == original_exe
+    assert not backup_root.exists()
+    assert candidate.exists()
+    assert "Start-Process" in error_log.read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows updater helper requires PowerShell")
+def test_windows_update_helper_replaces_install_restarts_and_cleans_backup(tmp_path: Path) -> None:
+    """The shipped helper updates packaged files without replacing the folder."""
+    helper = Path("assets/updater/windows_apply_update.ps1").resolve()
+    install_root = tmp_path / "OpenWand"
+    backup_root = tmp_path / "OpenWand.previous-update"
+    work_root = tmp_path / "work"
+    candidate = work_root / "extracted" / "OpenWand"
+    archive = tmp_path / "OpenWand-update.zip"
+    install_root.mkdir()
+    candidate.mkdir(parents=True)
+    archive.write_bytes(b"contract archive placeholder")
+    (install_root / "_internal").mkdir()
+    (candidate / "_internal").mkdir()
+    (install_root / "_internal" / "version.txt").write_text("old-version", encoding="utf-8")
+    (install_root / "_internal" / "old-only.txt").write_text("remove me", encoding="utf-8")
+    (candidate / "_internal" / "version.txt").write_text("new-version", encoding="utf-8")
+    # Real releases have different timestamps. Equal-size files created in one
+    # filesystem clock tick can otherwise look identical to robocopy.
+    os.utime(install_root / "_internal" / "version.txt", (1_000_000, 1_000_000))
+    (install_root / "addons").mkdir()
+    (install_root / "addons" / "user-addon.txt").write_text("keep me", encoding="utf-8")
+
+    # Use a genuine short-lived Windows executable as the packaged restart
+    # target. ``where.exe`` exits immediately when started without arguments,
+    # so the test proves Start-Process accepted the replaced executable without
+    # leaving a background test process behind.
+    restart_target = candidate / "OpenWand.exe"
+    shutil.copy2(Path(os.environ["WINDIR"]) / "System32" / "where.exe", restart_target)
+    shutil.copy2(restart_target, install_root / "OpenWand.exe")
+
+    result = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(helper),
+            "-Archive",
+            str(archive),
+            "-InstallRoot",
+            str(install_root),
+            "-Candidate",
+            str(candidate),
+            "-RestartTarget",
+            str(install_root / "OpenWand.exe"),
+            "-BackupRoot",
+            str(backup_root),
+            "-WorkRoot",
+            str(work_root),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    deadline = time.monotonic() + 30
+    while work_root.exists() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert (install_root / "_internal" / "version.txt").read_text(encoding="utf-8") == "new-version"
     assert (install_root / "OpenWand.exe").is_file()
-    assert not (install_root / "old-only.txt").exists()
+    assert not (install_root / "_internal" / "old-only.txt").exists()
+    assert (install_root / "addons" / "user-addon.txt").read_text(encoding="utf-8") == "keep me"
     assert not candidate.exists()
     assert not backup_root.exists()
     assert not work_root.exists()
-    assert not (tmp_path / "apply-update-error.log").exists()
+    assert not (tmp_path / "apply-bridge-error.log").exists()
 
 
 def test_process_exists_reports_live_and_dead_pids() -> None:

@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+import types
 import uuid
 from pathlib import Path
 
@@ -68,6 +69,43 @@ def test_dispatch_module_mode_runs_requested_worker_module(monkeypatch):
         )
     ]
     assert supervisor_app.sys.argv == ["runtime.workers.audio_host", "--flag"]
+
+
+def test_migrated_portable_shortcut_opens_registered_install(tmp_path, monkeypatch):
+    portable = tmp_path / "portable"
+    installed = tmp_path / "installed"
+    portable.mkdir()
+    installed.mkdir()
+    (portable / "OpenWand.exe").touch()
+    (portable / ".openwand-migrated-to-installer").touch()
+    (installed / "OpenWand.exe").touch()
+    (installed / ".openwand-installed").touch()
+
+    class RegistryKey:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    registry = types.SimpleNamespace(
+        HKEY_CURRENT_USER=1,
+        OpenKey=lambda *_args: RegistryKey(),
+        QueryValueEx=lambda *_args: (str(installed), 1),
+    )
+    monkeypatch.setitem(sys.modules, "winreg", registry)
+    monkeypatch.setattr(supervisor_app.sys, "platform", "win32")
+    monkeypatch.setattr(supervisor_app.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(supervisor_app.sys, "executable", str(portable / "OpenWand.exe"))
+    launches = []
+    monkeypatch.setattr(supervisor_app.subprocess, "Popen", lambda *args, **kwargs: launches.append((args, kwargs)))
+
+    assert supervisor_app._redirect_migrated_portable() is True
+    assert launches == [(([str(installed / "OpenWand.exe")],), {"cwd": str(installed), "close_fds": True})]
+
+    (installed / ".openwand-installed").unlink()
+    assert supervisor_app._redirect_migrated_portable() is False
+    assert len(launches) == 1
 
 
 def test_runtime_log_mode_defaults_to_crash(tmp_path, monkeypatch):

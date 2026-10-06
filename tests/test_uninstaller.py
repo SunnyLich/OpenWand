@@ -145,6 +145,43 @@ def test_windows_script_uses_only_literal_manifest_targets(tmp_path):
     assert "-Filter" not in script
 
 
+def test_installed_windows_uninstall_runs_registered_uninstaller_first(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    app_root = tmp_path / "installed" / "OpenWand"
+    app_root.mkdir(parents=True)
+    exe = app_root / "OpenWand.exe"
+    exe.write_bytes(b"app")
+    (app_root / uninstaller.INSTALLED_MARKER_NAME).write_text("installer", encoding="utf-8")
+    registered = app_root / "unins000.exe"
+    registered.write_bytes(b"uninstaller")
+    monkeypatch.setattr(uninstaller, "_registered_windows_uninstaller", lambda _root: registered)
+    data_root = home / "AppData" / "Roaming" / "OpenWand"
+    plan = uninstaller.build_uninstall_plan(
+        platform="win32", frozen=True, executable=exe, home=home,
+        user_data_root=data_root, optional_packages_root=data_root / "python_packages", environ={},
+    )
+    assert plan.registered_uninstaller == registered
+    script = uninstaller.render_windows_uninstall_script(plan, wait_pid=123, log_path=tmp_path / "log.txt")
+    assert str(registered) in script
+    assert script.index("Start-Process -FilePath $registeredUninstaller") < script.index("foreach ($target in $targets)")
+    assert "user data was kept" in script
+
+
+def test_migrated_portable_backup_cannot_remove_shared_user_data(tmp_path):
+    home = tmp_path / "home"
+    app_root = tmp_path / "portable" / "OpenWand"
+    app_root.mkdir(parents=True)
+    exe = app_root / "OpenWand.exe"
+    exe.write_bytes(b"app")
+    (app_root / uninstaller.MIGRATED_PORTABLE_MARKER_NAME).write_text("installed", encoding="utf-8")
+    data_root = home / "AppData" / "Roaming" / "OpenWand"
+    with pytest.raises(uninstaller.UninstallError, match="portable backup was migrated"):
+        uninstaller.build_uninstall_plan(
+            platform="win32", frozen=True, executable=exe, home=home,
+            user_data_root=data_root, optional_packages_root=data_root / "python_packages", environ={},
+        )
+
+
 def test_posix_script_uses_literal_targets_and_self_cleans(tmp_path):
     """POSIX helper quotes paths, waits for OpenWand, and removes its temp directory."""
     target = tmp_path / "OpenWand release"

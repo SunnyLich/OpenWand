@@ -56,6 +56,7 @@ from core.system.env_utils import (
     env_float,
     env_int,
     env_screenshot_mode,
+    literal_env_values,
     normalize_file_access_mode,
     parse_tool_modes,
     write_env_file,
@@ -91,7 +92,11 @@ def _dotenv_keys() -> set[str]:
 def _load_dotenv() -> None:
     """Load .env values and remember which keys are .env-managed."""
     global _LOADED_DOTENV_KEYS
+    existing_keys = set(os.environ)
     load_dotenv(_ENV_FILE)
+    for key, value in literal_env_values(_ENV_FILE).items():
+        if key not in existing_keys:
+            os.environ[key] = value
     _LOADED_DOTENV_KEYS = _dotenv_keys()
 
 
@@ -102,6 +107,7 @@ def _reload_dotenv() -> None:
     for key in _LOADED_DOTENV_KEYS - current_keys:
         os.environ.pop(key, None)
     load_dotenv(_ENV_FILE, override=True)
+    os.environ.update(literal_env_values(_ENV_FILE))
     _LOADED_DOTENV_KEYS = current_keys
 
 
@@ -1332,7 +1338,7 @@ def _load_config() -> None:
     # the model is no longer promised tools on queries that attach none.
     SYSTEM_PROMPT_UTILITY = SYSTEM_PROMPT_UTILITY.replace(
         _LEGACY_TOOL_PROMPT_SENTENCE, ""
-    ).strip()
+    )
     SYSTEM_PROMPT_UTILITY = localize_system_prompt_utility_if_default(
         SYSTEM_PROMPT_UTILITY,
         ASSISTANT_LANGUAGE,

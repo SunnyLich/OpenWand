@@ -31,6 +31,14 @@ _PORTAL_SCREENSHOT_IFACE = "org.freedesktop.portal.Screenshot"
 _PORTAL_REQUEST_IFACE = "org.freedesktop.portal.Request"
 _PORTAL_TIMEOUT_SECONDS = 25.0
 
+_LINUX_TERMINAL_PROCESSES = {
+    "alacritty", "foot", "ghostty", "gnome-terminal", "gnome-terminal-server",
+    "gnome-terminal-", "guake", "kgx", "kitty", "konsole", "lxterminal",
+    "mate-terminal", "ptyxis", "qterminal", "rxvt", "rxvt-unicode",
+    "sakura", "st", "terminator", "tilix", "tilda", "urxvt", "uxterm",
+    "wezterm", "wezterm-gui", "xfce4-terminal", "xterm", "yakuake",
+}
+
 
 # ------------------------------------------------------------------
 # UIA singleton — initialised once, reused across calls
@@ -104,8 +112,33 @@ def _get_selected_text_uia() -> str | None:
         return None
 
 
+def _linux_copy_combo() -> str | None:
+    """Choose a copy shortcut from the focused X11 app's process identity."""
+    try:
+        from core.context_fetcher import get_active_window_info
+
+        window = get_active_window_info()
+    except Exception:
+        _log.exception("Focused-window lookup failed before Linux copy fallback.")
+        return None
+
+    identities = {
+        str(value or "").strip().rsplit("/", 1)[-1].casefold()
+        for value in (getattr(window, "process_name", ""), getattr(window, "exe_path", ""))
+    }
+    identities.discard("")
+    if identities & _LINUX_TERMINAL_PROCESSES:
+        return "ctrl+shift+c"
+    if not identities or any(
+        hint in identity for identity in identities for hint in ("terminal", "term", "console")
+    ):
+        # An unidentified or terminal-like process must not receive Ctrl+C.
+        return None
+    return "ctrl+c"
+
+
 def _get_selected_text_clipboard() -> str | None:
-    """Fallback: Ctrl+C with save/restore so existing clipboard is preserved."""
+    """Fallback: app-appropriate copy with clipboard save/restore."""
     from core.platform_utils import COPY_COMBO, send_keys
 
     if _IS_MAC:
@@ -115,6 +148,10 @@ def _get_selected_text_clipboard() -> str | None:
         # is also called directly by native_host), so don't nest it here.
         return macos_native.get_selected_text(COPY_COMBO)
 
+    copy_combo = _linux_copy_combo() if _IS_LINUX else COPY_COMBO
+    if copy_combo is None:
+        return None
+
     from core.system import clipboard_lock
 
     # Serialize the save->copy->restore dance with any other OpenWand-derived
@@ -122,7 +159,7 @@ def _get_selected_text_clipboard() -> str | None:
     with clipboard_lock.held():
         previous = _safe_get_clipboard()
         previous_sequence = _clipboard_sequence_number()
-        send_keys(COPY_COMBO)
+        send_keys(copy_combo)
         text = ""
         changed = False
         deadline = time.monotonic() + (0.50 if sys.platform == "win32" else 0.18)
@@ -367,10 +404,10 @@ def get_selected_text(
     Returns the currently highlighted text.
 
     Windows: UIA (no clipboard touch), then Ctrl+C fallback.
-    Linux:   PRIMARY selection (no keypress), then Ctrl+C fallback.
+    Linux:   PRIMARY selection (no keypress), then app-aware copy fallback.
     macOS:   Ctrl+C fallback.
 
-    allow_synthetic_copy=False skips the Ctrl+C/Cmd+C fallback entirely —
+    allow_synthetic_copy=False skips the synthetic copy shortcut entirely —
     callers that can't guarantee the target app has focus (e.g. the MCP
     context server, whose caller's own window is focused) use it so the copy
     keystroke never lands in the wrong window.
