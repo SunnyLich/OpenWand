@@ -500,18 +500,20 @@ def test_windows_update_helper_replaces_install_restarts_and_cleans_backup(tmp_p
     helper = Path("assets/updater/windows_apply_update.ps1").resolve()
     install_root = tmp_path / "OpenWand"
     backup_root = tmp_path / "OpenWand.previous-update"
-    candidate = tmp_path / "candidate"
     work_root = tmp_path / "work"
+    candidate = work_root / "extracted" / "OpenWand"
     archive = tmp_path / "OpenWand-update.zip"
     install_root.mkdir()
-    candidate.mkdir()
-    work_root.mkdir()
+    candidate.mkdir(parents=True)
     archive.write_bytes(b"contract archive placeholder")
     (install_root / "_internal").mkdir()
     (candidate / "_internal").mkdir()
     (install_root / "_internal" / "version.txt").write_text("old-version", encoding="utf-8")
     (install_root / "_internal" / "old-only.txt").write_text("remove me", encoding="utf-8")
     (candidate / "_internal" / "version.txt").write_text("new-version", encoding="utf-8")
+    # Real releases have different timestamps. Equal-size files created in one
+    # filesystem clock tick can otherwise look identical to robocopy.
+    os.utime(install_root / "_internal" / "version.txt", (1_000_000, 1_000_000))
     (install_root / "addons").mkdir()
     (install_root / "addons" / "user-addon.txt").write_text("keep me", encoding="utf-8")
 

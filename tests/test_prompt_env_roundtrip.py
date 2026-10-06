@@ -9,7 +9,6 @@ from unittest.mock import patch
 from core.system.env_utils import read_env_file, write_env_file
 from ui import settings_env
 
-
 PROMPTS = [
     "'Tis a useful assistant",
     "'preserve these literal quotes'",

@@ -189,7 +189,7 @@ class CaptureTests(unittest.TestCase):
             with self.subTest(window=window), \
                  mock.patch.object(self.capture, "_IS_LINUX", True), \
                  mock.patch.object(self.capture, "_IS_MAC", False), \
-                 mock.patch.dict(sys.modules, {"core.context_fetcher": types.SimpleNamespace(get_active_window_info=lambda: window)}), \
+                 mock.patch.dict(sys.modules, {"core.context_fetcher": types.SimpleNamespace(get_active_window_info=lambda window=window: window)}), \
                  mock.patch("core.platform_utils.send_keys") as send_keys:
                 self.assertIsNone(self.capture._get_selected_text_clipboard())
                 send_keys.assert_not_called()

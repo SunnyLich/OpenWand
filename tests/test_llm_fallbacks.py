@@ -686,26 +686,30 @@ class LlmFallbackTests(unittest.TestCase):
                 first_round_chunks.append(chunk(finish_reason=finish_reason))
 
                 class FakeStream:
+                    def __init__(self, chunks):
+                        self.chunks = chunks
+
                     def __enter__(self):
-                        return iter(first_round_chunks)
+                        return iter(self.chunks)
 
                     def __exit__(self, exc_type, exc, tb):
                         return False
 
                 class FakeCompletions:
-                    def __init__(self):
+                    def __init__(self, chunks):
                         self.calls = []
+                        self.first_round_chunks = chunks
 
                     def create(self, **kwargs):
                         self.calls.append(kwargs)
                         if len(self.calls) == 1:
-                            return FakeStream()
+                            return FakeStream(self.first_round_chunks)
                         return SimpleNamespace(choices=[SimpleNamespace(
                             finish_reason="stop",
                             message=SimpleNamespace(content="Read complete.", tool_calls=None),
                         )])
 
-                completions = FakeCompletions()
+                completions = FakeCompletions(first_round_chunks)
                 fake_client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
                 with (
                     patch.object(llm.macos_safety, "openai_compat_tools_enabled", return_value=True),
