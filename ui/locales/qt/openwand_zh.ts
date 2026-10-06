@@ -6736,5 +6736,11 @@ This cannot be undone. Imported Codex and Claude Code source files will not be d
     <message><source>ChatGPT needs your input</source><translation>ChatGPT 需要您的输入</translation></message>
     <message><source>Open in browser</source><translation>在浏览器中打开</translation></message>
     <message><source>{server} needs your input</source><translation>{server} 需要您的输入</translation></message>
+    <message><source>Download installer</source><translation>下载安装程序</translation></message>
+    <message><source>Switch to installed OpenWand</source><translation>切换至已安装的 OpenWand</translation></message>
+    <message><source>Switch to the installed release now?</source><translation>现在切换至已安装的版本吗？</translation></message>
+    <message><source>An installed OpenWand release is available. Your portable copy will remain as a backup.</source><translation>OpenWand 安装版已可使用。您的便携版将保留作为备份。</translation></message>
+    <message><source>Installer downloaded. Switch when you are ready to restart OpenWand.</source><translation>安装程序已下载。准备好重新启动 OpenWand 时，即可切换。</translation></message>
+    <message><source>OpenWand will close and install the signed release. Settings stay in place and user add-ons will be copied; your old portable folder will remain as a backup.</source><translation>OpenWand 将关闭并安装已签名的版本。设置会保留，用户附加组件会复制过去；原来的便携版文件夹将保留作为备份。</translation></message>
   </context>
 </TS>

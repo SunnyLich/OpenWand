@@ -6736,5 +6736,11 @@ Esta acción no se puede deshacer. No se eliminarán los archivos de origen de C
     <message><source>ChatGPT needs your input</source><translation>ChatGPT necesita tu respuesta</translation></message>
     <message><source>Open in browser</source><translation>Abrir en el navegador</translation></message>
     <message><source>{server} needs your input</source><translation>{server} necesita tu respuesta</translation></message>
+    <message><source>Download installer</source><translation>Descargar instalador</translation></message>
+    <message><source>Switch to installed OpenWand</source><translation>Cambiar a OpenWand instalado</translation></message>
+    <message><source>Switch to the installed release now?</source><translation>¿Cambiar ahora a la versión instalada?</translation></message>
+    <message><source>An installed OpenWand release is available. Your portable copy will remain as a backup.</source><translation>Hay una versión instalable de OpenWand disponible. Tu copia portátil se conservará como respaldo.</translation></message>
+    <message><source>Installer downloaded. Switch when you are ready to restart OpenWand.</source><translation>Instalador descargado. Cambia cuando estés listo para reiniciar OpenWand.</translation></message>
+    <message><source>OpenWand will close and install the signed release. Settings stay in place and user add-ons will be copied; your old portable folder will remain as a backup.</source><translation>OpenWand se cerrará e instalará la versión firmada. La configuración se conservará y se copiarán los complementos del usuario; la carpeta portátil anterior se conservará como respaldo.</translation></message>
   </context>
 </TS>

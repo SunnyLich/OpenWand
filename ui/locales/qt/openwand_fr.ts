@@ -6736,5 +6736,11 @@ Cette action est irréversible. Les fichiers sources Codex et Claude Code import
     <message><source>ChatGPT needs your input</source><translation>ChatGPT attend votre réponse</translation></message>
     <message><source>Open in browser</source><translation>Ouvrir dans le navigateur</translation></message>
     <message><source>{server} needs your input</source><translation>{server} attend votre réponse</translation></message>
+    <message><source>Download installer</source><translation>Télécharger le programme d’installation</translation></message>
+    <message><source>Switch to installed OpenWand</source><translation>Passer à OpenWand installé</translation></message>
+    <message><source>Switch to the installed release now?</source><translation>Passer maintenant à la version installée ?</translation></message>
+    <message><source>An installed OpenWand release is available. Your portable copy will remain as a backup.</source><translation>Une version installable d’OpenWand est disponible. Votre copie portable sera conservée comme sauvegarde.</translation></message>
+    <message><source>Installer downloaded. Switch when you are ready to restart OpenWand.</source><translation>Programme d’installation téléchargé. Passez à la version installée lorsque vous êtes prêt à redémarrer OpenWand.</translation></message>
+    <message><source>OpenWand will close and install the signed release. Settings stay in place and user add-ons will be copied; your old portable folder will remain as a backup.</source><translation>OpenWand se fermera et installera la version signée. Les paramètres seront conservés et les extensions de l’utilisateur seront copiées ; votre ancien dossier portable sera conservé comme sauvegarde.</translation></message>
   </context>
 </TS>

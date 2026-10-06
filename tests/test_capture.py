@@ -97,7 +97,8 @@ class CaptureTests(unittest.TestCase):
     def test_clipboard_selection_fallback_restores_original_clipboard(self):
         """Verify Ctrl+C selection fallback preserves the user's next paste."""
         restored: list[str] = []
-        with mock.patch.object(self.capture, "_IS_MAC", False), \
+        with mock.patch.object(self.capture, "_IS_LINUX", False), \
+             mock.patch.object(self.capture, "_IS_MAC", False), \
              mock.patch.object(self.capture.pyperclip, "paste", side_effect=["original clipboard", "selected text"]), \
              mock.patch.object(self.capture.pyperclip, "copy", side_effect=restored.append), \
              mock.patch("core.platform_utils.send_keys") as send_keys, \
@@ -110,7 +111,8 @@ class CaptureTests(unittest.TestCase):
     def test_clipboard_selection_accepts_same_text_when_clipboard_sequence_changes(self):
         """Browsers may copy the same selected text that was already on the clipboard."""
         restored: list[str] = []
-        with mock.patch.object(self.capture, "_IS_MAC", False), \
+        with mock.patch.object(self.capture, "_IS_LINUX", False), \
+             mock.patch.object(self.capture, "_IS_MAC", False), \
              mock.patch.object(self.capture.pyperclip, "paste", side_effect=["selected text", "selected text"]), \
              mock.patch.object(self.capture.pyperclip, "copy", side_effect=restored.append), \
              mock.patch.object(self.capture, "_clipboard_sequence_number", side_effect=[10, 11]), \
