@@ -219,7 +219,6 @@ class IconOverlay(QMainWindow):
         self._icon_label.setFixedSize(sz, sz)
         self._icon_label.move(x, y)
         self._icon_label.setScaledContents(True)
-        self._icon_label.set_vector_source(os.path.join(ASSETS_DIR, "openwand.svg"))
         self._icon_label.set_vfx_sources(os.path.join(ASSETS_DIR, "vfx"))
         self._icon_label.set_animation_state("idle")
         self._set_icon_pixmap("idle")
