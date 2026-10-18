@@ -7,6 +7,8 @@ on:
     paths:
       - "OpenWand Website/**"
       - ".github/workflows/pages.yml"
+      - "packaging/microsoft-store/downloads.json"
+      - "scripts/stage_store_downloads.py"
   workflow_dispatch:
 
 permissions:
@@ -81,6 +83,10 @@ jobs:
           cp -R "OpenWand Website/." "$site_dir/"
           cp "$site_dir/OpenWand Docs.html" "$site_dir/index.html"
           touch "$site_dir/.nojekyll"
+
+      - name: Stage verified Microsoft Store downloads
+        if: steps.pages_setup.outputs.enabled == 'true'
+        run: python3 scripts/stage_store_downloads.py "$RUNNER_TEMP/openwand-site"
 
       - name: Upload Pages artifact
         if: steps.pages_setup.outputs.enabled == 'true'

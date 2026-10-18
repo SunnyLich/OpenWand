@@ -1,0 +1,11 @@
+{
+  "installers": [
+    {
+      "version": "v0.12.1",
+      "filename": "OpenWand-v0.12.1-windows-x64-setup.exe",
+      "url": "https://github.com/SunnyLich/OpenWand/releases/download/v0.12.1/OpenWand-v0.12.1-windows-x64-setup.exe",
+      "sha256": "8066c4bdc00b3e6bf72b4de72c0b032a36c033943ed993975fbba3e46e07475b",
+      "size": 271838136
+    }
+  ]
+}
