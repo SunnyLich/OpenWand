@@ -132,8 +132,8 @@ Create a `v`-prefixed release tag that matches the current
 `pyproject.toml` version:
 
 ```powershell
-git tag v0.12.0
-git push origin v0.12.0
+git tag v0.12.1
+git push origin v0.12.1
 ```
 
 Tags without the `v` prefix do not trigger release builds.
