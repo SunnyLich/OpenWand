@@ -1,76 +1,16 @@
 param(
-    [string]$Source = (Join-Path $PSScriptRoot "..\assets\social-preview.svg"),
-    [string]$Output = (Join-Path $PSScriptRoot "..\assets\social-preview.png")
+    [string]$Source = (Join-Path $PSScriptRoot "..\assets\app.png"),
+    [string]$Output = (Join-Path $PSScriptRoot "..\assets\social-preview.png"),
+    [string]$Python = ""
 )
 
 $ErrorActionPreference = "Stop"
-
-$browserCandidates = @(
-    "C:\Program Files\Google\Chrome\Application\chrome.exe",
-    "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-    "C:\Program Files\Microsoft\Edge\Application\msedge.exe"
-)
-$browser = $browserCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-if (-not $browser) {
-    throw "Chrome or Microsoft Edge is required to render the social preview."
+if (-not $Python) {
+    $venvPython = Join-Path $PSScriptRoot "..\.venv\Scripts\python.exe"
+    $Python = if (Test-Path -LiteralPath $venvPython) { $venvPython } else { "python" }
 }
-
-$sourcePath = (Resolve-Path -LiteralPath $Source).Path
-$outputPath = [System.IO.Path]::GetFullPath($Output)
-$outputDirectory = Split-Path -Parent $outputPath
-if (-not (Test-Path -LiteralPath $outputDirectory)) {
-    New-Item -ItemType Directory -Path $outputDirectory | Out-Null
+$generator = Join-Path $PSScriptRoot "generate_brand_assets.py"
+& $Python $generator --social-preview-only --source $Source --output $Output
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not generate the PNG social preview. Python with Pillow is required."
 }
-
-$profileRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.tmp"))
-New-Item -ItemType Directory -Path $profileRoot -Force | Out-Null
-$profilePath = Join-Path $profileRoot ("social-preview-" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $profilePath | Out-Null
-
-try {
-    $fileUri = [System.Uri]::new($sourcePath).AbsoluteUri
-    $arguments = @(
-        "--headless=new",
-        "--disable-gpu",
-        "--hide-scrollbars",
-        "--force-device-scale-factor=1",
-        "--window-size=1280,640",
-        "--user-data-dir=$profilePath",
-        "--screenshot=$outputPath",
-        $fileUri
-    )
-
-    $process = Start-Process -FilePath $browser -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
-    if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $outputPath)) {
-        throw "Browser rendering failed with exit code $($process.ExitCode)."
-    }
-}
-finally {
-    if (Test-Path -LiteralPath $profilePath) {
-        $resolvedProfile = [System.IO.Path]::GetFullPath($profilePath)
-        $expectedPrefix = $profileRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
-        if (-not $resolvedProfile.StartsWith($expectedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "Refusing to remove a browser profile outside the project temporary directory."
-        }
-        Remove-Item -LiteralPath $resolvedProfile -Recurse -Force
-    }
-}
-
-Add-Type -AssemblyName System.Drawing
-$image = [System.Drawing.Image]::FromFile($outputPath)
-try {
-    if ($image.Width -ne 1280 -or $image.Height -ne 640) {
-        throw "Expected a 1280x640 image, got $($image.Width)x$($image.Height)."
-    }
-}
-finally {
-    $image.Dispose()
-}
-
-$canonicalOutput = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\assets\social-preview.png"))
-if ($outputPath -eq $canonicalOutput) {
-    $websiteOutput = Join-Path $PSScriptRoot "..\OpenWand Website\assets\social-preview.png"
-    Copy-Item -LiteralPath $outputPath -Destination $websiteOutput -Force
-}
-
-Write-Output "Rendered $outputPath (1280x640)"

@@ -8,7 +8,9 @@ state PNGs, website icons, and `avatar.png`. The avatar adds padding around the 
 artwork so a circular crop does not cut the star. It is optional for circular uses;
 the app and website use the approved composition.
 
-The existing social card embeds the PNG master in `assets/social-preview.svg`.
-After regenerating assets, run `powershell -ExecutionPolicy Bypass -File
-scripts/render_social_preview.ps1` to refresh its PNG and website copy. Upload
-`assets/social-preview.png` under GitHub repository Settings > Social preview.
+The social preview is the approved PNG centered on a matching dark 1280 x 640
+canvas, without extra text or graphics. The generator refreshes both
+`assets/social-preview.png` and its website copy. To regenerate only this preview,
+run `python scripts/generate_brand_assets.py --social-preview-only`.
+
+Upload `assets/social-preview.png` under GitHub repository Settings > Social preview.
