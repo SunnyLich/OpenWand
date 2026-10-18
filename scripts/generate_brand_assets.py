@@ -43,6 +43,7 @@ def generate(source: Path | None = None) -> None:
     avatar.convert('RGB').save(branding / 'avatar.png')
 
     generate_social_preview()
+    generate_store_icons()
     print('Generated app, overlay/tray, website, social-preview, and circular-avatar assets.')
 
 
@@ -63,15 +64,36 @@ def generate_social_preview(source: Path = MASTER, output: Path | None = None) -
     print(f'Generated logo-only preview: {output}')
 
 
+def generate_store_icons(source: Path = MASTER) -> None:
+    """Export the approved square PNG for Microsoft Store listing fields."""
+    destination = ROOT / 'packaging' / 'microsoft-store'
+    destination.mkdir(parents=True, exist_ok=True)
+    with Image.open(source) as original:
+        image = original.convert('RGB')
+    if image.width != image.height:
+        raise ValueError('The Store logo source must be square.')
+    for size in (1080, 300):
+        image.resize((size, size), Image.Resampling.LANCZOS).save(
+            destination / f'openwand-store-logo-{size}.png'
+        )
+    print(f'Generated Microsoft Store icons: {destination}')
+
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, help='Approved square PNG to copy as the master.')
-    parser.add_argument('--social-preview-only', action='store_true', help='Regenerate only the logo preview.')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--social-preview-only', action='store_true', help='Regenerate only the logo preview.')
+    mode.add_argument('--store-icons-only', action='store_true', help='Regenerate only Microsoft Store logos.')
     parser.add_argument('--output', type=Path, help='Custom output path with --social-preview-only.')
     args = parser.parse_args()
     if args.social_preview_only:
         generate_social_preview(args.source or MASTER, args.output)
+    elif args.store_icons_only:
+        if args.output is not None:
+            parser.error('--output requires --social-preview-only')
+        generate_store_icons(args.source or MASTER)
     else:
         if args.output is not None:
             parser.error('--output requires --social-preview-only')
