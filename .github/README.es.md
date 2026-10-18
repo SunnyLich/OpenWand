@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="../assets/doll/idle.png" width="112" alt="Icono de OpenWand" />
+<img src="../assets/app.png" width="112" alt="Icono de OpenWand" />
 
 # OpenWand
 

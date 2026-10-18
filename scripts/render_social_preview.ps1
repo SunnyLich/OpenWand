@@ -22,7 +22,9 @@ if (-not (Test-Path -LiteralPath $outputDirectory)) {
     New-Item -ItemType Directory -Path $outputDirectory | Out-Null
 }
 
-$profilePath = Join-Path ([System.IO.Path]::GetTempPath()) ("openwand-social-preview-" + [guid]::NewGuid().ToString("N"))
+$profileRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.tmp"))
+New-Item -ItemType Directory -Path $profileRoot -Force | Out-Null
+$profilePath = Join-Path $profileRoot ("social-preview-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $profilePath | Out-Null
 
 try {
@@ -45,7 +47,12 @@ try {
 }
 finally {
     if (Test-Path -LiteralPath $profilePath) {
-        Remove-Item -LiteralPath $profilePath -Recurse -Force
+        $resolvedProfile = [System.IO.Path]::GetFullPath($profilePath)
+        $expectedPrefix = $profileRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+        if (-not $resolvedProfile.StartsWith($expectedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to remove a browser profile outside the project temporary directory."
+        }
+        Remove-Item -LiteralPath $resolvedProfile -Recurse -Force
     }
 }
 
@@ -58,6 +65,12 @@ try {
 }
 finally {
     $image.Dispose()
+}
+
+$canonicalOutput = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\assets\social-preview.png"))
+if ($outputPath -eq $canonicalOutput) {
+    $websiteOutput = Join-Path $PSScriptRoot "..\OpenWand Website\assets\social-preview.png"
+    Copy-Item -LiteralPath $outputPath -Destination $websiteOutput -Force
 }
 
 Write-Output "Rendered $outputPath (1280x640)"

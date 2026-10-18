@@ -69,7 +69,7 @@ class SpeakingRippleGraphicsItem(QGraphicsObject):
 class OpenWandIconLabel(QLabel):
     """Paint the OpenWand mark and its restrained state feedback.
 
-    The logo stays vector. A finished third-party animation supplies the
+    The approved PNG is painted directly. A finished third-party animation supplies the
     center-out speaking ripple; runtime code only plays and places its frames.
     """
 

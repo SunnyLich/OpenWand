@@ -182,7 +182,8 @@ def test_openwand_icon_animates_without_smoke_and_tracks_speech_amplitude(monkey
     overlay = IconOverlay(signals)
 
     try:
-        assert overlay._icon_label.uses_vector_source
+        assert not overlay._icon_label.uses_vector_source
+        assert not overlay._icon_label.pixmap().isNull()
         assert overlay._icon_label.uses_vfx_assets
         assert not hasattr(overlay._icon_label, "_smoke_frames")
         assert not hasattr(overlay._icon_label, "_wave_frames")
@@ -206,33 +207,6 @@ def test_openwand_icon_animates_without_smoke_and_tracks_speech_amplitude(monkey
         overlay._icon_label.close()
         overlay.close()
         app.processEvents()
-
-
-def test_openwand_svg_keeps_the_outer_corners_transparent():
-    """The black logo fill must stay inside its rounded-square boundary."""
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtCore import QRectF
-    from PySide6.QtGui import QImage, QPainter
-    from PySide6.QtSvg import QSvgRenderer
-    from PySide6.QtWidgets import QApplication
-
-    from core.system.paths import DOLL_ASSETS_DIR
-
-    app = QApplication.instance() or QApplication(sys.argv)
-    image = QImage(128, 128, QImage.Format.Format_ARGB32)
-    image.fill(0)
-    painter = QPainter(image)
-    QSvgRenderer(str(DOLL_ASSETS_DIR / "openwand.svg")).render(
-        painter, QRectF(0, 0, 128, 128)
-    )
-    painter.end()
-
-    assert [
-        image.pixelColor(x, y).alpha()
-        for x, y in ((0, 0), (127, 0), (0, 127), (127, 127))
-    ] == [0, 0, 0, 0]
-    assert image.pixelColor(64, 64).alpha() == 255
-    app.processEvents()
 
 
 def test_default_icon_position_reserves_context_panel_space(monkeypatch):

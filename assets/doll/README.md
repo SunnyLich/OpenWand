@@ -1,4 +1,7 @@
 # OpenWand overlay artwork
 
-`openwand.svg` is the primary vector source rendered by the floating overlay.
-The state PNGs remain packaged fallbacks and provide static tray icons.
+The four state PNGs use the approved `assets/app.png` artwork. The floating overlay
+paints these PNGs directly, and the tray uses the matching state images. Listening,
+thinking, and speaking feedback still comes from the existing animation code.
+
+Regenerate these copies and platform icons with `python scripts/generate_brand_assets.py`.
