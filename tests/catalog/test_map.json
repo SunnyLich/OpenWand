@@ -2129,7 +2129,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 15
+      "node_count": 14
     },
     {
       "path": "tests/test_overlay_shell_acceptance.py",
