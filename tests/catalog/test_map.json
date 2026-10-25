@@ -277,6 +277,81 @@
       "node_count": 3
     },
     {
+      "path": "tests/integration/provider_adapters/claude_v2/test_adapters.py",
+      "kind": "pytest",
+      "scope": "integration",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 82
+    },
+    {
+      "path": "tests/integration/provider_adapters/claude_v2/test_budget.py",
+      "kind": "pytest",
+      "scope": "integration",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 46
+    },
+    {
+      "path": "tests/integration/provider_adapters/claude_v2/test_review.py",
+      "kind": "pytest",
+      "scope": "integration",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 23
+    },
+    {
+      "path": "tests/integration/provider_adapters/claude_v2/test_targeted_completion.py",
+      "kind": "pytest",
+      "scope": "integration",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 14
+    },
+    {
+      "path": "tests/integration/provider_adapters/gemini_v2/test_gemini_adapter_qa.py",
+      "kind": "pytest",
+      "scope": "integration",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 20
+    },
+    {
       "path": "tests/runtime/test_app_logging.py",
       "kind": "pytest",
       "scope": "integration",
@@ -1252,6 +1327,21 @@
       "node_count": 19
     },
     {
+      "path": "tests/test_claude_credit_runner.py",
+      "kind": "pytest",
+      "scope": "support",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 20
+    },
+    {
       "path": "tests/test_config_env.py",
       "kind": "pytest",
       "scope": "component",
@@ -1604,6 +1694,21 @@
       ],
       "schedule": "github-actions",
       "node_count": 41
+    },
+    {
+      "path": "tests/test_gemini_provider_regressions.py",
+      "kind": "pytest",
+      "scope": "integration",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 18
     },
     {
       "path": "tests/test_ghost_cursor.py",
@@ -2072,6 +2177,21 @@
       "node_count": 21
     },
     {
+      "path": "tests/test_openai_provider_adapter.py",
+      "kind": "pytest",
+      "scope": "integration",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 27
+    },
+    {
       "path": "tests/test_optional_deps.py",
       "kind": "pytest",
       "scope": "integration",
@@ -2323,6 +2443,51 @@
       ],
       "schedule": "github-actions",
       "node_count": 8
+    },
+    {
+      "path": "tests/test_provider_adapter_harness.py",
+      "kind": "pytest",
+      "scope": "integration",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 152
+    },
+    {
+      "path": "tests/test_provider_adapter_matrix.py",
+      "kind": "pytest",
+      "scope": "integration",
+      "behaviour": "internal",
+      "execution": "isolated_host",
+      "category": "II",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "isolated-host",
+      "node_count": 36
+    },
+    {
+      "path": "tests/test_provider_adapter_protocol.py",
+      "kind": "pytest",
+      "scope": "integration",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 25
     },
     {
       "path": "tests/test_provider_auth_acceptance.py",

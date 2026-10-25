@@ -1,5 +1,8 @@
 # Test structure
 
+Provider adapter recovery, offline execution, known failures, and the recreated
+OpenAI supplement are documented in [PROVIDER_ADAPTER_TESTS.md](../docs/PROVIDER_ADAPTER_TESTS.md).
+
 Tests use two required classification axes recorded in `catalog/test_map.json`:
 
 | | Internal | User path |

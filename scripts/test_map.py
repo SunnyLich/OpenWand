@@ -40,12 +40,14 @@ CATALOG_RELATIVE = Path("tests/catalog/test_map.json")
 REPORT_RELATIVE = Path("tests/TEST_MAP.md")
 
 _ISOLATED_FILENAMES = {
+    "test_provider_adapter_matrix.py",
     "test_real_gpt55_integration.py",
     "test_real_harness_integration.py",
     "test_real_host_native_smoke.py",
 }
 
 _SUPPORT_FILENAMES = {
+    "test_claude_credit_runner.py",
     "test_app_workflow_runner.py",
     "test_build_scripts.py",
     "test_dependency_locks.py",

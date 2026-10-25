@@ -1,0 +1,502 @@
+{
+  "model": "claude-haiku-4-5-20251001",
+  "limits": {
+    "reservation_cap_usd": 0.2,
+    "max_generation_requests": 36,
+    "max_output_tokens": 256,
+    "retries": 0,
+    "fallback": false
+  },
+  "cases": [
+    {
+      "scenario": "no_tools",
+      "mode": "create",
+      "status": "passed",
+      "classification": "pass",
+      "problems": [],
+      "final_text": "QA_OK",
+      "tool_calls": [],
+      "requests": 1
+    },
+    {
+      "scenario": "no_tools",
+      "mode": "stream",
+      "status": "passed",
+      "classification": "pass",
+      "problems": [],
+      "final_text": "QA_OK",
+      "tool_calls": [],
+      "requests": 1
+    },
+    {
+      "scenario": "single_add",
+      "mode": "tool_loop",
+      "status": "blocked",
+      "classification": "infrastructure",
+      "error": {
+        "error_class": "GuardAbort",
+        "details": {
+          "error_class": "GuardAbort",
+          "http_status": null
+        }
+      }
+    },
+    {
+      "scenario": "distinct_selection",
+      "mode": "tool_loop",
+      "status": "passed",
+      "classification": "pass",
+      "problems": [],
+      "final_text": "ORCHID",
+      "tool_calls": [
+        [
+          "qa_upper",
+          {
+            "text": "orchid"
+          }
+        ]
+      ],
+      "requests": 2
+    },
+    {
+      "scenario": "json_arguments",
+      "mode": "tool_loop",
+      "status": "failed",
+      "classification": "model",
+      "problems": [
+        "final_text"
+      ],
+      "final_text": "RECORDED.",
+      "tool_calls": [
+        [
+          "qa_record",
+          {
+            "payload": {
+              "label": "café \"blue\"",
+              "items": [
+                1,
+                true,
+                null
+              ],
+              "meta": {
+                "active": false
+              }
+            }
+          }
+        ]
+      ],
+      "requests": 2
+    },
+    {
+      "scenario": "result_round_trip",
+      "mode": "tool_loop",
+      "status": "passed",
+      "classification": "pass",
+      "problems": [],
+      "final_text": "LILAC_83",
+      "tool_calls": [
+        [
+          "qa_lookup",
+          {
+            "code": "alpha"
+          }
+        ]
+      ],
+      "requests": 2
+    },
+    {
+      "scenario": "multiple_tools",
+      "mode": "tool_loop",
+      "status": "failed",
+      "classification": "model",
+      "problems": [
+        "final_text"
+      ],
+      "final_text": "IRIS IRIS IRIS IRIS IRIS IRIS IRIS IRIS IRIS",
+      "tool_calls": [
+        [
+          "qa_add",
+          {
+            "a": 4,
+            "b": 5
+          }
+        ],
+        [
+          "qa_upper",
+          {
+            "text": "iris"
+          }
+        ]
+      ],
+      "requests": 2
+    },
+    {
+      "scenario": "multi_round",
+      "mode": "tool_loop",
+      "status": "passed",
+      "classification": "pass",
+      "problems": [],
+      "final_text": "9",
+      "tool_calls": [
+        [
+          "qa_lookup",
+          {
+            "code": "beta"
+          }
+        ],
+        [
+          "qa_add",
+          {
+            "a": 7,
+            "b": 2
+          }
+        ]
+      ],
+      "requests": 3
+    },
+    {
+      "scenario": "tool_error",
+      "mode": "tool_loop",
+      "status": "passed",
+      "classification": "pass",
+      "problems": [],
+      "final_text": "SYNTHETIC_ERROR",
+      "tool_calls": [
+        [
+          "qa_lookup",
+          {
+            "code": "missing"
+          }
+        ]
+      ],
+      "requests": 2
+    }
+  ],
+  "usage": {
+    "generation_requests": 16,
+    "count_tokens_requests": 16,
+    "reserved_usd": 0.057363,
+    "input_tokens": 10073,
+    "output_tokens": 638,
+    "estimated_cost_usd": 0.013263,
+    "usage_complete": true,
+    "abort": null,
+    "records": [
+      {
+        "request": 1,
+        "counted_input_tokens": 35,
+        "input_token_bound": 1276,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 2556,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 35,
+        "output_tokens": 7,
+        "estimated_micro_usd": 70,
+        "stop_reason": "end_turn",
+        "provider_text": "QA_OK",
+        "provider_tool_calls": []
+      },
+      {
+        "request": 2,
+        "counted_input_tokens": 35,
+        "input_token_bound": 1265,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 2545,
+        "status": "complete",
+        "mode": "stream",
+        "input_tokens": 35,
+        "output_tokens": 7,
+        "estimated_micro_usd": 70,
+        "stop_reason": "end_turn",
+        "provider_text": "QA_OK",
+        "provider_tool_calls": []
+      },
+      {
+        "request": 3,
+        "counted_input_tokens": 619,
+        "input_token_bound": 2262,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 3542,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 619,
+        "output_tokens": 71,
+        "estimated_micro_usd": 974,
+        "stop_reason": "tool_use",
+        "provider_text": "",
+        "provider_tool_calls": [
+          {
+            "name": "qa_add",
+            "arguments": {
+              "a": 2,
+              "b": 3
+            }
+          }
+        ]
+      },
+      {
+        "request": 4,
+        "counted_input_tokens": 677,
+        "input_token_bound": 2378,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 3658,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 677,
+        "output_tokens": 55,
+        "estimated_micro_usd": 952,
+        "stop_reason": "tool_use",
+        "provider_text": "",
+        "provider_tool_calls": [
+          {
+            "name": "qa_upper",
+            "arguments": {
+              "text": "orchid"
+            }
+          }
+        ]
+      },
+      {
+        "request": 5,
+        "counted_input_tokens": 747,
+        "input_token_bound": 2518,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 3798,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 747,
+        "output_tokens": 6,
+        "estimated_micro_usd": 777,
+        "stop_reason": "end_turn",
+        "provider_text": "ORCHID",
+        "provider_tool_calls": []
+      },
+      {
+        "request": 6,
+        "counted_input_tokens": 628,
+        "input_token_bound": 2280,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 3560,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 628,
+        "output_tokens": 80,
+        "estimated_micro_usd": 1028,
+        "stop_reason": "tool_use",
+        "provider_text": "",
+        "provider_tool_calls": [
+          {
+            "name": "qa_record",
+            "arguments": {
+              "payload": {
+                "label": "café \"blue\"",
+                "items": [
+                  1,
+                  true,
+                  null
+                ],
+                "meta": {
+                  "active": false
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "request": 7,
+        "counted_input_tokens": 754,
+        "input_token_bound": 2532,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 3812,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 754,
+        "output_tokens": 6,
+        "estimated_micro_usd": 784,
+        "stop_reason": "end_turn",
+        "provider_text": "RECORDED.",
+        "provider_tool_calls": []
+      },
+      {
+        "request": 8,
+        "counted_input_tokens": 618,
+        "input_token_bound": 2260,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 3540,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 618,
+        "output_tokens": 54,
+        "estimated_micro_usd": 888,
+        "stop_reason": "tool_use",
+        "provider_text": "",
+        "provider_tool_calls": [
+          {
+            "name": "qa_lookup",
+            "arguments": {
+              "code": "alpha"
+            }
+          }
+        ]
+      },
+      {
+        "request": 9,
+        "counted_input_tokens": 696,
+        "input_token_bound": 2416,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 3696,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 696,
+        "output_tokens": 8,
+        "estimated_micro_usd": 736,
+        "stop_reason": "end_turn",
+        "provider_text": "LILAC_83",
+        "provider_tool_calls": []
+      },
+      {
+        "request": 10,
+        "counted_input_tokens": 694,
+        "input_token_bound": 2412,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 3692,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 694,
+        "output_tokens": 107,
+        "estimated_micro_usd": 1229,
+        "stop_reason": "tool_use",
+        "provider_text": "",
+        "provider_tool_calls": [
+          {
+            "name": "qa_add",
+            "arguments": {
+              "a": 4,
+              "b": 5
+            }
+          },
+          {
+            "name": "qa_upper",
+            "arguments": {
+              "text": "iris"
+            }
+          }
+        ]
+      },
+      {
+        "request": 11,
+        "counted_input_tokens": 867,
+        "input_token_bound": 2758,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 4038,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 867,
+        "output_tokens": 21,
+        "estimated_micro_usd": 972,
+        "stop_reason": "end_turn",
+        "provider_text": "IRIS IRIS IRIS IRIS IRIS IRIS IRIS IRIS IRIS",
+        "provider_tool_calls": []
+      },
+      {
+        "request": 12,
+        "counted_input_tokens": 703,
+        "input_token_bound": 2430,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 3710,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 703,
+        "output_tokens": 65,
+        "estimated_micro_usd": 1028,
+        "stop_reason": "tool_use",
+        "provider_text": "I'll start by looking up the code \"beta\".",
+        "provider_tool_calls": [
+          {
+            "name": "qa_lookup",
+            "arguments": {
+              "code": "beta"
+            }
+          }
+        ]
+      },
+      {
+        "request": 13,
+        "counted_input_tokens": 791,
+        "input_token_bound": 2606,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 3886,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 791,
+        "output_tokens": 86,
+        "estimated_micro_usd": 1221,
+        "stop_reason": "tool_use",
+        "provider_text": "Now I'll add the returned value (7) with b=2:",
+        "provider_tool_calls": [
+          {
+            "name": "qa_add",
+            "arguments": {
+              "a": 7,
+              "b": 2
+            }
+          }
+        ]
+      },
+      {
+        "request": 14,
+        "counted_input_tokens": 890,
+        "input_token_bound": 2804,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 4084,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 890,
+        "output_tokens": 4,
+        "estimated_micro_usd": 910,
+        "stop_reason": "end_turn",
+        "provider_text": "9",
+        "provider_tool_calls": []
+      },
+      {
+        "request": 15,
+        "counted_input_tokens": 623,
+        "input_token_bound": 2270,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 3550,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 623,
+        "output_tokens": 54,
+        "estimated_micro_usd": 893,
+        "stop_reason": "tool_use",
+        "provider_text": "",
+        "provider_tool_calls": [
+          {
+            "name": "qa_lookup",
+            "arguments": {
+              "code": "missing"
+            }
+          }
+        ]
+      },
+      {
+        "request": 16,
+        "counted_input_tokens": 696,
+        "input_token_bound": 2416,
+        "max_output_tokens": 256,
+        "reserved_micro_usd": 3696,
+        "status": "complete",
+        "mode": "create",
+        "input_tokens": 696,
+        "output_tokens": 7,
+        "estimated_micro_usd": 731,
+        "stop_reason": "end_turn",
+        "provider_text": "SYNTHETIC_ERROR",
+        "provider_tool_calls": []
+      }
+    ]
+  }
+}
