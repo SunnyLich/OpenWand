@@ -5325,7 +5325,7 @@ def test_chat_file_tool_summary_is_progress_not_reply_text():
     )
 
     chunks = [call["params"] for call in ui.calls_for("ui.chat.chunk")]
-    summary = next(item for item in chunks if item.get("text") == "Read file: notes.md")
+    summary = next(item for item in chunks if item.get("text") == "Read file: notes.md\n")
     assert summary["request_id"] == "chat-1"
     assert summary["is_progress"] is True
     assert summary["is_thought"] is True

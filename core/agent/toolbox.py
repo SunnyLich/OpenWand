@@ -141,17 +141,22 @@ class AgentToolbox:
         return self._result("write_file_base64", True, self.workspace.relative(path))
 
     def edit_file(self, path: str, old: str, new: str) -> ToolResult:
-        """Edit a file by replacing one exact text block."""
+        """Replace one exact block, or append new text when old is empty."""
         return self.patch_file(path, old, new, action_name="edit_file")
 
     def patch_file(self, path: str, old: str, new: str, *, action_name: str = "patch_file") -> ToolResult:
         """Handle patch file for agent toolbox."""
         resolved = self.workspace.resolve(path)
         before = resolved.read_text(encoding="utf-8", errors="replace")
-        count = before.count(old)
-        if count != 1:
-            raise ValueError(f"Patch expected exactly 1 match, found {count}.")
-        after = before.replace(old, new, 1)
+        append = action_name == "edit_file" and old == ""
+        if append:
+            separator = "\n" if before and new and not before.endswith("\n") and not new.startswith("\n") else ""
+            after = before + separator + new
+        else:
+            count = before.count(old)
+            if count != 1:
+                raise ValueError(f"Patch expected exactly 1 match, found {count}.")
+            after = before.replace(old, new, 1)
         self._approve(
             action_name,
             {
@@ -164,12 +169,16 @@ class AgentToolbox:
         current = resolved.read_text(encoding="utf-8", errors="replace")
         if current != before:
             raise PermissionDenied(f"{action_name} refused because the file changed after approval preview.")
-        count = self.workspace.patch_text(
-            path,
-            old,
-            new,
-            edit=self.permissions.allow_file_edit,
-        )
+        if append:
+            self.workspace.write_text(path, after, create=False, edit=self.permissions.allow_file_edit)
+            count = 1
+        else:
+            count = self.workspace.patch_text(
+                path,
+                old,
+                new,
+                edit=self.permissions.allow_file_edit,
+            )
         return self._result(action_name, True, f"{self.workspace.relative(path)} patched", {"replacements": count})
 
     def delete_file(self, path: str) -> ToolResult:

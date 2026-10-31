@@ -565,6 +565,8 @@ class LlmFallbackTests(unittest.TestCase):
 
     def test_openai_tool_call_marks_preamble_as_progress_before_final_answer(self):
         """Verify OpenAI-compatible tool preambles are progress, not final answer."""
+        live_progress = []
+        test_case = self
         first_round_chunks = [
             SimpleNamespace(
                 choices=[
@@ -596,7 +598,11 @@ class LlmFallbackTests(unittest.TestCase):
         class FakeStream:
             def __enter__(self):
                 """Enter the context manager."""
-                return iter(first_round_chunks)
+                def stream():
+                    yield first_round_chunks[0]
+                    test_case.assertEqual(live_progress, ["I need a screenshot."])
+                    yield first_round_chunks[1]
+                return stream()
 
             def __exit__(self, exc_type, exc, tb):
                 """Exit the context manager."""
@@ -622,7 +628,8 @@ class LlmFallbackTests(unittest.TestCase):
         completions = FakeCompletions()
         fake_client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
 
-        with patch.object(llm.macos_safety, "openai_compat_tools_enabled", return_value=True), \
+        with patch.object(llm._LIVE_TOOL_CONTEXT, "progress_callback", live_progress.append, create=True), \
+             patch.object(llm.macos_safety, "openai_compat_tools_enabled", return_value=True), \
              patch.object(llm, "_capture_screen_b64", return_value="image-b64"):
             chunks = list(
                 llm._stream_openai_compat(
@@ -638,6 +645,7 @@ class LlmFallbackTests(unittest.TestCase):
         self.assertEqual(chunks, ["I need a screenshot.", "Here is what I can see."])
         self.assertEqual(getattr(chunks[0], "kind", ""), "progress")
         self.assertEqual(getattr(chunks[1], "kind", "answer"), "answer")
+        self.assertEqual(live_progress[-1], "Preparing response...")
 
     def test_openai_streamed_stop_only_runs_complete_tool_calls(self):
         """A provider may finish a complete streamed tool call with stop."""
@@ -715,6 +723,15 @@ class LlmFallbackTests(unittest.TestCase):
                     patch.object(llm.macos_safety, "openai_compat_tools_enabled", return_value=True),
                     patch.object(llm, "_execute_model_tool", return_value="file contents") as execute,
                 ):
+                    if label == "missing identity":
+                        with self.assertRaises(ValueError):
+                            list(llm._stream_openai_compat(
+                                "read note.txt", None, "gemini-3.5-flash", fake_client,
+                                use_tools=True, allowed_tools=["read_file"],
+                                pinned_tools=["read_file"], provider="google",
+                            ))
+                        execute.assert_not_called()
+                        continue
                     output = list(llm._stream_openai_compat(
                         "read note.txt", None, "gemini-3.5-flash", fake_client,
                         use_tools=True, allowed_tools=["read_file"],
@@ -736,9 +753,16 @@ class LlmFallbackTests(unittest.TestCase):
                         },
                     })
                 else:
-                    self.assertEqual(output, ["Checking."])
                     execute.assert_not_called()
-                    self.assertEqual(len(completions.calls), 1)
+                    if label == "text only":
+                        self.assertEqual(output, ["Checking."])
+                        self.assertEqual(len(completions.calls), 1)
+                    else:
+                        self.assertEqual(output, ["Checking.", "Read complete."])
+                        self.assertEqual(len(completions.calls), 2)
+                        result = completions.calls[1]["messages"][-1]
+                        self.assertEqual(result["tool_call_id"], "call_1")
+                        self.assertIn("Tool", result["content"])
 
     def test_openai_followup_tool_call_marks_intermediate_text_as_progress(self):
         """Verify follow-up text with another tool call is progress, not final."""
@@ -1101,7 +1125,7 @@ class LlmFallbackTests(unittest.TestCase):
             "fireworks": "https://api.fireworks.ai/inference/v1",
             "cohere": "https://api.cohere.ai/compatibility/v1",
             "ai21": "https://api.ai21.com/studio/v1",
-            "nebius": "https://api.studio.nebius.com/v1",
+            "nebius": "https://api.tokenfactory.nebius.com/v1",
         }
 
         for provider, base_url in expected.items():
@@ -1716,7 +1740,7 @@ class LlmFallbackTests(unittest.TestCase):
                 )
             )
 
-        self.assertEqual(chunks, ["done"])
+        self.assertIn("couldn't complete the requested file change", chunks[-1])
         self.assertGreaterEqual(len(calls), 1)
         self.assertIn("tools", calls[0])
         self.assertEqual([tool["name"] for tool in calls[0]["tools"]], ["write_file"])
@@ -1767,11 +1791,11 @@ class LlmFallbackTests(unittest.TestCase):
                         {"role": "user", "content": "previous"},
                         {"role": "assistant", "content": "ok"},
                         {"role": "system", "content": "Chat rules."},
-                        {"role": "user", "content": "create hello_world.py"},
+                        {"role": "user", "content": "What tools are available?"},
                     ],
                     use_tools=True,
                     allowed_tools=["create_file"],
-                    pinned_tools=[],
+                    pinned_tools=["create_file"],
                 )
             )
 
@@ -1794,7 +1818,7 @@ class LlmFallbackTests(unittest.TestCase):
         """Verify Copilot chat history uses the shared route without losing turns."""
         calls = []
 
-        def fake_stream(prompt, model, *, system="", session_id=None, allow_tools=True):
+        def fake_stream(prompt, model, *, system="", session_id=None, allow_tools=True, **tool_options):
             """Record Copilot stream arguments."""
             calls.append({
                 "prompt": prompt,
@@ -1802,6 +1826,7 @@ class LlmFallbackTests(unittest.TestCase):
                 "system": system,
                 "session_id": session_id,
                 "allow_tools": allow_tools,
+                "tool_options": tool_options,
             })
             yield "done"
 
@@ -1831,6 +1856,8 @@ class LlmFallbackTests(unittest.TestCase):
         self.assertTrue(calls[0]["prompt"].endswith("now"))
         self.assertEqual(calls[0]["session_id"], "openwand-chat")
         self.assertFalse(calls[0]["allow_tools"])
+
+        self.assertEqual(calls[0]["tool_options"]["tool_request"].allowed_tools, ["create_file"])
 
     def test_macos_openai_compat_query_uses_non_streaming_safe_mode(self):
         calls = []

@@ -5732,10 +5732,12 @@ class FlowController:
                 )
         except Exception as exc:  # noqa: BLE001
             log.exception("chat request failed")
+            from core.llm_clients.error_details import from_exception
+            info = from_exception(exc)
             self._safe_call(
                 self.ui,
                 "ui.chat.error",
-                {"request_id": request_id, "error": f"{type(exc).__name__}: {exc}"},
+                {"request_id": request_id, "error": info["message"], "provider_error": info},
                 timeout=30.0,
             )
 
@@ -9240,7 +9242,7 @@ class FlowController:
     ) -> None:
         """Display local-file tool summaries without adding them to reply text."""
         for text in self._file_context_progress_texts(file_context):
-            payload = {"text": text, "is_progress": True, "is_thought": True}
+            payload = {"text": text + "\n", "is_progress": True, "is_thought": True}
             if include_bubble:
                 self._safe_call(self.ui, "ui.reply.chunk", payload, timeout=30.0)
             if chat_request_id:

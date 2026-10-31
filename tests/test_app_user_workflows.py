@@ -101,6 +101,124 @@ def _pump_until(app: Any, predicate, *, timeout: float = 2.0) -> None:
     assert predicate()
 
 
+@pytest.mark.parametrize("status", [429, 401, 500])
+def test_chat_provider_failure_is_visible_persisted_and_recoverable(qapp, isolated_app_state, status):
+    """A failed stream keeps its file notice, shows the error and permits a new turn."""
+    from PySide6.QtWidgets import QLabel, QPlainTextEdit, QToolButton
+
+    from core.llm_clients.error_details import from_exception
+    from ui.chat_window import ChatWindow, _chat_model_messages, _MessageTextView
+
+    conversations = [{"id": "error-recovery", "messages": []}]
+    sent = []
+    persisted = []
+
+    def send(messages, **_kwargs):
+        sent.append(messages)
+        if len(sent) == 1:
+            yield {"type": "chunk", "local_work": {"tool": "edit_file", "path": "checklist.md", "status": "completed"}}
+            yield {"type": "chunk", "text": "<think>Checking the file"}
+            error = RuntimeError("private-sk-test-value {'retryDelay': '57.2s'}")
+            error.status_code = status
+            error.body = {"error": {"message": f"Original provider message {status}. <think>literal</think>",
+                                    "code": "test_error", "details": [{"retryDelay": "57.2s"}]}}
+            error.provider_error = from_exception(error, provider="google", model="test-model")
+            raise error
+        yield "Second request succeeded."
+
+    window = ChatWindow(send_fn=send, conversations=conversations, persist_fn=lambda: persisted.append(True))
+    try:
+        window.show()
+        window._send("Update the checklist")
+        _pump_until(qapp, lambda: not window._streaming)
+        message = conversations[0]["messages"][-1]
+        assert f"Google reported an error · {status} test_error" in message["content"]
+        assert f"Original provider message {status}. <think>literal</think>" in message["content"]
+        assert "Retry after 58s" in message["content"]
+        assert "Check the file" in message["content"]
+        assert "private-sk-test-value" not in message["content"]
+        assert message["response_error"] is True
+        assert message["display_content"] == message["content"]
+        assert message["provider_error"]["provider"] == "google"
+        assert "<think>literal</think>" in window.findChildren(_MessageTextView)[-1].toPlainText()
+        button = window.findChild(QToolButton, "providerErrorDetailsToggle")
+        editor = window.findChild(QPlainTextEdit, "providerErrorDetailsText")
+        assert button is not None and editor is not None
+        assert not button.isChecked() and editor.isHidden()
+        button.click()
+        qapp.processEvents()
+        assert editor.isVisible() and str(status) in editor.toPlainText()
+        assert "private-sk-test-value" not in editor.toPlainText()
+        window._refresh_addon_message_page(0)
+        qapp.processEvents()
+        rebuilt_button = window._stack.currentWidget().findChild(QToolButton, "providerErrorDetailsToggle")
+        assert rebuilt_button is not None and not rebuilt_button.isChecked()
+        assert persisted and window._send_btn.isEnabled()
+        notices = window.findChildren(QLabel, "localWorkMonitorNotice")
+        assert notices and all("activity finished" in notice.text() for notice in notices)
+        assert not any(turn["role"] == "assistant" for turn in _chat_model_messages(conversations[0]["messages"]))
+        window._send("Read the current file before doing anything else")
+        _pump_until(qapp, lambda: not window._streaming)
+        assert conversations[0]["messages"][-1]["content"] == "Second request succeeded."
+        assert not conversations[0]["messages"][-1].get("response_error")
+        assert all("Original provider message" not in turn["content"] for turn in sent[-1])
+    finally:
+        window.close()
+        window.deleteLater()
+        qapp.processEvents()
+
+
+def test_overlay_reply_shows_and_replaces_waiting_state(qapp, isolated_app_state):
+    from ui.chat_window import ChatWindow
+
+    conversation = {"id": "overlay-progress", "messages": [{"role": "user", "content": "Hello"}]}
+    window = ChatWindow(send_fn=lambda _messages: iter(()), conversations=[conversation])
+    try:
+        window.show()
+        window.begin_external_reply_stream(0)
+        qapp.processEvents()
+        assert "Preparing response..." in window._current_ai_label.toPlainText()
+        assert not window._send_btn.isEnabled()
+        assert window._current_ai_text == ""
+        window.external_reply_chunk(0, {"text": "Waiting for model...", "is_progress": True})
+        assert "Waiting for model..." in window._current_ai_label.toPlainText()
+        assert "Preparing response..." not in window._current_ai_label.toPlainText()
+        window.external_reply_chunk(0, "Hello back")
+        assert window._current_ai_label.toPlainText() == "Hello back"
+        window.finish_external_reply_stream(0, "Hello back")
+        conversation["messages"].append({"role": "assistant", "content": "Hello back"})
+        window.sync_conversation(0)
+        qapp.processEvents()
+        assert not window._streaming and window._send_btn.isEnabled()
+        assert all("Waiting for model" not in m["content"] for m in conversation["messages"])
+    finally:
+        window.close()
+        window.deleteLater()
+        qapp.processEvents()
+
+
+def test_external_file_activity_finishes_without_losing_details_link(qapp, isolated_app_state):
+    from PySide6.QtWidgets import QLabel
+
+    from ui.chat_window import ChatWindow
+
+    window = ChatWindow(send_fn=lambda _messages: iter(()), conversations=[{"id": "external", "messages": []}])
+    try:
+        window.begin_external_reply_stream(0)
+        window._on_local_work_activity({"tool": "read_file", "path": "notes.md", "status": "completed"})
+        window.finish_external_reply_stream(0, "Done")
+        notices = window.findChildren(QLabel, "localWorkMonitorNotice")
+        assert notices and all("activity finished" in notice.text() for notice in notices)
+        assert "openwand-local-work" in notices[0].text()
+        notices[0].linkActivated.emit("openwand-local-work")
+        qapp.processEvents()
+        assert window._local_work_dialogs[-1].isVisible()
+    finally:
+        window.close()
+        window.deleteLater()
+        qapp.processEvents()
+
+
 def _ensure_brain_path() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     brain_dir = repo_root / "runtime" / "brain"
@@ -4299,7 +4417,7 @@ def test_ui_accessibility_layout_and_model_popup_workflow(qapp, monkeypatch: pyt
     from ui.shared.theme import apply_app_theme
 
     monkeypatch.setattr(config, "LLM_PROVIDER", "chatgpt", raising=False)
-    monkeypatch.setattr(config, "LLM_MODEL", "gpt-5.5", raising=False)
+    monkeypatch.setattr(config, "LLM_MODEL", "gpt-6.1-sol", raising=False)
     monkeypatch.setattr(config, "THEME_MODE", "dark", raising=False)
     monkeypatch.setattr(chatgpt_auth, "get_tokens", lambda: {"access_token": "test-token"})
 

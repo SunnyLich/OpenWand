@@ -125,9 +125,12 @@ def _main() -> int:
     from openwand_brain.handlers import set_runtime_event_emitter
     set_runtime_event_emitter(lambda event, data: emit_event(event, data, None))
 
-    def respond(req_id, ok: bool, *, result=None, error=None) -> None:
+    def respond(req_id, ok: bool, *, result=None, error=None, provider_error=None) -> None:
         """Handle respond for runtime brain openwand brain host."""
-        send(protocol.make_response(req_id, ok, result=result, error=error))
+        response = protocol.make_response(req_id, ok, result=result, error=error)
+        if isinstance(provider_error, dict):
+            response["provider_error"] = provider_error
+        send(response)
 
     def dispatch(req: dict) -> None:
         """Route an incoming request to its handler and send the response."""
@@ -159,7 +162,9 @@ def _main() -> int:
             respond(req_id, True, result=result)
         except Exception as exc:  # noqa: BLE001 -- reported to host + stderr
             _log_handler_error(method, exc)
-            respond(req_id, False, error=f"{type(exc).__name__}: {exc}")
+            info = getattr(exc, "provider_error", None)
+            message = info.get("message", str(exc)) if isinstance(info, dict) else str(exc)
+            respond(req_id, False, error=f"{type(exc).__name__}: {message}", provider_error=info)
 
     while True:
         req = protocol.read_message(stdin)

@@ -223,10 +223,10 @@ def _dispatch_tool(toolbox: AgentToolbox, name: str, inputs: dict, rel_path: str
         max_chars = _clamp_int(inputs.get("max_chars"), default=20_000, minimum=1, maximum=80_000)
         return toolbox.read_file(rel_path, max_chars=max_chars)
     if name == "edit_file":
+        if not isinstance(inputs.get("old"), str) or not isinstance(inputs.get("new"), str):
+            raise ValueError("edit_file requires old and new strings. Use an empty old string only to append.")
         old = str(inputs.get("old") or "")
         new = str(inputs.get("new") or "")
-        if not old:
-            raise ValueError("edit_file requires a non-empty old string.")
         result = toolbox.patch_file(rel_path, old, new, action_name="edit_file")
         return ToolResult(
             tool="edit_file",

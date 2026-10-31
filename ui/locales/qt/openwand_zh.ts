@@ -6742,5 +6742,41 @@ This cannot be undone. Imported Codex and Claude Code source files will not be d
     <message><source>An installed OpenWand release is available. Your portable copy will remain as a backup.</source><translation>OpenWand 安装版已可使用。您的便携版将保留作为备份。</translation></message>
     <message><source>Installer downloaded. Switch when you are ready to restart OpenWand.</source><translation>安装程序已下载。准备好重新启动 OpenWand 时，即可切换。</translation></message>
     <message><source>OpenWand will close and install the signed release. Settings stay in place and user add-ons will be copied; your old portable folder will remain as a backup.</source><translation>OpenWand 将关闭并安装已签名的版本。设置会保留，用户附加组件会复制过去；原来的便携版文件夹将保留作为备份。</translation></message>
+    <message>
+      <source>Preparing response...</source>
+      <translation>正在准备回复…</translation>
+    </message>
+    <message>
+      <source>Completed file operations were kept. Check the file before repeating this request.</source>
+      <translation>已完成的文件操作已保留。再次发送此请求前，请先检查文件。</translation>
+    </message>
+    <message>
+      <source>Local file activity finished. View details {here}.</source>
+      <translation>本地文件操作已完成。详情请见{here}。</translation>
+    </message>
+    <message>
+      <source>Technical details</source>
+      <translation>技术详情</translation>
+    </message>
+    <message>
+      <source>OpenWand reported an error</source>
+      <translation>OpenWand 报告了错误</translation>
+    </message>
+    <message>
+      <source>Retry after {duration}.</source>
+      <translation>{duration}后重试。</translation>
+    </message>
+    <message>
+      <source>OpenWand retry wait: {duration}.</source>
+      <translation>OpenWand 重试等待时间：{duration}。</translation>
+    </message>
+    <message>
+      <source>{provider} reported an error</source>
+      <translation>{provider} 报告了错误</translation>
+    </message>
+    <message>
+      <source>OpenWand error ({provider})</source>
+      <translation>OpenWand 错误（{provider}）</translation>
+    </message>
   </context>
 </TS>

@@ -223,8 +223,10 @@ def test_openai_malformed_stream_call_does_not_discard_valid_sibling(monkeypatch
 
     execute.assert_called_once_with("read_file", {"path": "good.txt"}, allowed_tools=["read_file"])
     assert len(endpoint.calls) == 2
-    assistant, result = endpoint.calls[1]["messages"][-2:]
-    assert [item["id"] for item in assistant["tool_calls"]] == ["good-call"]
+    assistant, error, result = endpoint.calls[1]["messages"][-3:]
+    assert [item["id"] for item in assistant["tool_calls"]] == ["bad-call", "good-call"]
+    assert error["tool_call_id"] == "bad-call"
+    assert "JSON object" in error["content"]
     assert result == {"role": "tool", "tool_call_id": "good-call", "content": "good contents"}
 
 
@@ -433,14 +435,6 @@ def test_responses_malformed_arguments_normalize_without_losing_identity(argumen
 
 
 @pytest.mark.parametrize("provider", ["google", "openai"])
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "client._stream_openai_compat accepts initial stop-ended tool calls but "
-        "discards complete follow-up calls unless finish_reason is tool_calls"
-    ),
-)
 def test_openai_followup_stop_ended_complete_call_is_not_lost(monkeypatch, provider):
     """The accepted initial stop-ended call contract must also hold on follow-up."""
     endpoint = _Endpoint([

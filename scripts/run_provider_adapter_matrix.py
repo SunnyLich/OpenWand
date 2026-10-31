@@ -89,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
             pytest_args += ["tests/test_provider_adapter_matrix.py", "-k", selection]
         else:
             pytest_args += [
+                "tests/test_all_provider_adapters.py",
                 "tests/test_provider_adapter_protocol.py",
                 "tests/test_provider_adapter_harness.py",
                 "tests/test_claude_credit_runner.py",

@@ -58,8 +58,8 @@ const DOCS_PAGES = {
 <p>These clips show OpenWand staying in the current app, collecting the right context, acting on focused work, and handing longer jobs to an Agent Team.</p>
 <div class="demo-grid">
   <figure class="demo-card">
-    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-prompt-demo.gif', 'OpenWand prompt demo')">
-      <img src="assets/openwand-prompt-demo.gif" alt="OpenWand prompt demo" loading="lazy" />
+    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-prompt-demo.gif?v=20261023-rounded-ow', 'OpenWand prompt demo')">
+      <img src="assets/openwand-prompt-demo.gif?v=20261023-rounded-ow" alt="OpenWand prompt demo" loading="lazy" />
     </button>
     <figcaption>
       <h2 id="prompt-flow">Prompt from anywhere</h2>
@@ -68,8 +68,8 @@ const DOCS_PAGES = {
   </figure>
 
   <figure class="demo-card">
-    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-context-demo.gif', 'OpenWand cross-app context demo')">
-      <img src="assets/openwand-context-demo.gif" alt="OpenWand cross-app context demo" loading="lazy" />
+    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-context-demo.gif?v=20261023-rounded-ow', 'OpenWand cross-app context demo')">
+      <img src="assets/openwand-context-demo.gif?v=20261023-rounded-ow" alt="OpenWand cross-app context demo" loading="lazy" />
     </button>
     <figcaption>
       <h2 id="context-flow">Cross-app context</h2>
@@ -78,8 +78,8 @@ const DOCS_PAGES = {
   </figure>
 
   <figure class="demo-card">
-    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-screen-snip-demo.gif', 'OpenWand screen snip demo')">
-      <img src="assets/openwand-screen-snip-demo.gif" alt="OpenWand screen snip demo" loading="lazy" />
+    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-screen-snip-demo.gif?v=20261023-rounded-ow', 'OpenWand screen snip demo')">
+      <img src="assets/openwand-screen-snip-demo.gif?v=20261023-rounded-ow" alt="OpenWand screen snip demo" loading="lazy" />
     </button>
     <figcaption>
       <h2 id="vision-snip">Vision snip</h2>
@@ -88,8 +88,8 @@ const DOCS_PAGES = {
   </figure>
 
   <figure class="demo-card">
-    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-rewrite-demo.gif', 'OpenWand rewrite demo')">
-      <img src="assets/openwand-rewrite-demo.gif" alt="OpenWand rewrite demo" loading="lazy" />
+    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-rewrite-demo.gif?v=20261023-rounded-ow', 'OpenWand rewrite demo')">
+      <img src="assets/openwand-rewrite-demo.gif?v=20261023-rounded-ow" alt="OpenWand rewrite demo" loading="lazy" />
     </button>
     <figcaption>
       <h2 id="rewrite-flow">Rewrite in place</h2>
@@ -98,8 +98,8 @@ const DOCS_PAGES = {
   </figure>
 
   <figure class="demo-card">
-    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-app-aware-action-demo.gif', 'OpenWand app-aware action demo')">
-      <img src="assets/openwand-app-aware-action-demo.gif" alt="OpenWand app-aware action demo" loading="lazy" />
+    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-app-aware-action-demo.gif?v=20261023-rounded-ow', 'OpenWand app-aware action demo')">
+      <img src="assets/openwand-app-aware-action-demo.gif?v=20261023-rounded-ow" alt="OpenWand app-aware action demo" loading="lazy" />
     </button>
     <figcaption>
       <h2 id="app-action">App-aware action</h2>
@@ -108,8 +108,8 @@ const DOCS_PAGES = {
   </figure>
 
   <figure class="demo-card">
-    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-agent-task-demo.gif', 'OpenWand Agent Team task demo')">
-      <img src="assets/openwand-agent-task-demo.gif" alt="OpenWand Agent Team task demo" loading="lazy" />
+    <button class="demo-media" type="button" onclick="openDemoLightbox('assets/openwand-agent-task-demo.gif?v=20261023-rounded-ow', 'OpenWand Agent Team task demo')">
+      <img src="assets/openwand-agent-task-demo.gif?v=20261023-rounded-ow" alt="OpenWand Agent Team task demo" loading="lazy" />
     </button>
     <figcaption>
       <h2 id="agent-team">Agent Team</h2>
@@ -958,7 +958,7 @@ Release             → <span class="c-accent">stop_and_transcribe()</span> → 
   <div class="sec-pillar">
     <div class="sec-pillar-k">Redacted</div>
     <div class="sec-pillar-t">Optional privacy filtering</div>
-    <p>Built-in patterns and optional local AI can redact likely sensitive text. You can turn filtering off, and no detector is perfect.</p>
+    <p>Built-in patterns and optional local AI can redact likely sensitive text.</p>
   </div>
   <div class="sec-pillar">
     <div class="sec-pillar-k">Open source</div>

@@ -4,7 +4,7 @@ Covers the OS-independent half of core/context_fetcher.py that the per-OS
 context tests skip: prompt formatting, snapshot persistence and reload,
 config-dir/URI decoding, filename resolution through folders, VS Code
 storage.json and Obsidian vaults, recent-file listings, and the online-search
-tool fallback with the DuckDuckGo HTML parser. Everything runs against temp
+public-search delegation and failures. Everything runs against temp
 directories and canned payloads; no native APIs or network.
 """
 from __future__ import annotations
@@ -359,112 +359,20 @@ def test_fetch_recent_files_dispatches_per_platform(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_search_online_for_tool_clamps_limits_and_falls_back(monkeypatch):
-    calls: list[tuple[str, int]] = []
-
-    def _provider(query, limit):
-        calls.append(("provider", limit))
-        return []
-
-    def _fallback(query, limit):
-        calls.append(("fallback", limit))
-        return [{"title": "T", "url": "https://e.com", "snippet": ""}]
-
-    monkeypatch.setattr(context_fetcher, "_search_online", _provider)
-    monkeypatch.setattr(context_fetcher, "_search_duckduckgo_html", _fallback)
-
-    results = context_fetcher.search_online_for_tool("openwand", max_results="not-a-number")
-    assert results == [{"title": "T", "url": "https://e.com", "snippet": ""}]
-    assert calls == [("provider", 5), ("fallback", 5)]
-
-    calls.clear()
-    context_fetcher.search_online_for_tool("openwand", max_results=99)
-    assert calls[0] == ("provider", 10)
-    calls.clear()
-    context_fetcher.search_online_for_tool("openwand", max_results=-2)
-    assert calls[0] == ("provider", 1)
+def test_search_online_for_tool_uses_public_search(monkeypatch):
+    rows = [{"title": "T", "url": "https://example.com", "snippet": "Current result"}]
+    calls = []
+    monkeypatch.setattr("core.web_search.search_web", lambda query, count: calls.append((query, count)) or rows)
+    assert context_fetcher.search_online_for_tool("weather", 3) == rows
+    assert calls == [("weather", 3)]
 
 
-def test_search_online_for_tool_prefers_provider_results(monkeypatch):
-    provider_rows = [{"title": f"t{i}", "url": f"https://e.com/{i}", "snippet": ""} for i in range(4)]
-    monkeypatch.setattr(context_fetcher, "_search_online", lambda q, n: provider_rows)
-    monkeypatch.setattr(
-        context_fetcher,
-        "_search_duckduckgo_html",
-        lambda q, n: pytest.fail("fallback must not run when the provider returns results"),
-    )
+def test_search_failure_does_not_discard_other_ambient_context(monkeypatch, capsys):
+    def fail(*args, **kwargs):
+        raise context_fetcher.WebSearchError("All public engines are unavailable")
 
-    assert context_fetcher.search_online_for_tool("openwand", max_results=2) == provider_rows[:2]
-
-
-_DDG_HTML = """
-<html><body>
-  <div class="result">
-    <a class="result__a" href="https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdocs&amp;rut=abc">
-      Example <b>Docs</b>
-    </a>
-    <a class="result__snippet">The   official
-      documentation.</a>
-  </div>
-  <div class="result">
-    <a class="result__a" href="https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdocs">Duplicate URL</a>
-    <a class="result__snippet">Dropped as duplicate.</a>
-  </div>
-  <div class="result">
-    <a class="result__a" href="javascript:alert(1)">Bad scheme</a>
-  </div>
-  <div class="result">
-    <a class="result__a" href="https://second.example.org/page">Second Result</a>
-    <a class="result__snippet">Another snippet.</a>
-  </div>
-</body></html>
-"""
-
-
-class _FakeResponse:
-    def __init__(self, body: str):
-        self._body = body.encode("utf-8")
-
-    def read(self, limit: int) -> bytes:
-        return self._body[:limit]
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_exc):
-        return False
-
-
-def test_search_duckduckgo_html_parses_normalizes_and_dedupes(monkeypatch):
-    import urllib.request
-
-    seen_urls: list[str] = []
-
-    def _fake_urlopen(request, timeout=0):
-        seen_urls.append(request.full_url)
-        return _FakeResponse(_DDG_HTML)
-
-    monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
-
-    results = context_fetcher._search_duckduckgo_html("openwand overlay", max_results=5)
-
-    assert results == [
-        {"title": "Example Docs", "url": "https://example.com/docs", "snippet": "The official documentation."},
-        {"title": "Second Result", "url": "https://second.example.org/page", "snippet": "Another snippet."},
-    ]
-    assert seen_urls and "openwand+overlay" in seen_urls[0]
-
-    assert context_fetcher._search_duckduckgo_html("   ") == []
-    assert len(seen_urls) == 1  # the blank query never touched the network
-
-
-def test_search_duckduckgo_html_returns_empty_on_network_failure(monkeypatch, capsys):
-    import urllib.request
-
-    def _fail(request, timeout=0):
-        raise OSError("offline")
-
-    monkeypatch.setattr(urllib.request, "urlopen", _fail)
-
-    assert context_fetcher._search_duckduckgo_html("openwand") == []
-    assert "DuckDuckGo search failed" in capsys.readouterr().out
+    monkeypatch.setattr("core.web_search.search_web", fail)
+    assert context_fetcher._search_online("weather") == []
+    assert "All public engines are unavailable" in capsys.readouterr().out
+    with pytest.raises(context_fetcher.WebSearchError):
+        context_fetcher.search_online_for_tool("weather")

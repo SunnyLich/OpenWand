@@ -311,7 +311,7 @@ def test_low_setup_switch_survives_save_reopen_and_switch_back(profile_workflow:
     try:
         profile_workflow.choose_profile(dialog, "Low setup")
         assert dialog._profiles_btn.text() == "Low setup"
-        assert _main_model(dialog) == "gpt-5.5"
+        assert _main_model(dialog) == "gpt-6.1-sol"
         assert dialog._apply_btn.isEnabled()
         assert "detected" not in dialog._status_lbl.text().casefold()
         assert "selected" not in dialog._status_lbl.text().casefold()
@@ -333,7 +333,7 @@ def test_low_setup_switch_survives_save_reopen_and_switch_back(profile_workflow:
     assert "OPENWAND_SETTINGS_PRESET" not in saved
     assert profile_workflow.config.ACTIVE_PROFILE == "low_setup"
     assert profile_workflow.config.LLM_PROVIDER == "chatgpt"
-    assert profile_workflow.config.LLM_MODEL == "gpt-5.5"
+    assert profile_workflow.config.LLM_MODEL == "gpt-6.1-sol"
 
     reopened = profile_workflow.open_settings()
     try:
@@ -344,7 +344,7 @@ def test_low_setup_switch_survives_save_reopen_and_switch_back(profile_workflow:
         assert reopened._fields["BUBBLE_WIDTH"].text() != "333"
         profile_workflow.choose_profile(reopened, "Low setup")
         assert reopened._profiles_btn.text() == "Low setup"
-        assert _main_model(reopened) == "gpt-5.5"
+        assert _main_model(reopened) == "gpt-6.1-sol"
         assert reopened._fields["BUBBLE_WIDTH"].text() == "333"
         profile_workflow.choose_profile(reopened, "Work")
         assert reopened._profiles_btn.text() == "Work"

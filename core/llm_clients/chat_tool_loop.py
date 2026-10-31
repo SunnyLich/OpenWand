@@ -6,9 +6,18 @@ translate to or from OpenAI Responses, Anthropic, or OpenAI-compatible payloads.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+import re
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+
+from core.llm_clients.adapter_protocol import (
+    AdapterProtocolError,
+    ToolContinuationError,
+    argument_error,
+    validate_call_ids,
+)
 
 
 @dataclass(frozen=True)
@@ -36,6 +45,7 @@ class OpenWandToolCall:
     name: str
     arguments: dict[str, Any] = field(default_factory=dict)
     provider_payload: dict[str, Any] | None = None
+    validation_error: str = ""
 
 
 @dataclass(frozen=True)
@@ -109,12 +119,79 @@ class ChatToolExecutor(Protocol):
         """Execute one normalized tool call."""
 
 
+class ToolExecutionGuard:
+    """Apply the same allowlist, schema, identity, and budget rules to every SDK."""
+
+    def __init__(self, request: ChatToolRequest, executor: ChatToolExecutor, max_calls: int):
+        self.request, self.executor = request, executor
+        self.max_calls = max(0, max_calls)
+        self.invoked = 0
+        self.seen: set[str] = set()
+        self.schemas: dict[str, dict] = {}
+        for tool in request.tools:
+            definition = tool.get("function", tool)
+            if definition.get("name"):
+                self.schemas[definition["name"]] = definition.get("parameters", definition.get("input_schema", {}))
+
+    def check_batch(self, calls: list[OpenWandToolCall]) -> None:
+        try:
+            validate_call_ids(calls, self.seen)
+        except AdapterProtocolError as exc:
+            if self.invoked:
+                raise ToolContinuationError("Provider reused a tool-call ID after execution; replay was stopped.") from exc
+            raise
+
+    def execute(self, call: OpenWandToolCall) -> OpenWandToolResult:
+        self.check_batch([call])
+        self.seen.add(call.id)
+        error = call.validation_error
+        kind = "invalid_tool_arguments"
+        if call.name not in self.schemas or (
+            call.name not in _available_tool_names(self.request)
+        ):
+            error, kind = "Tool was not offered or is disabled for this request.", "tool_not_allowed"
+        if not error:
+            error = argument_error(call.arguments, self.schemas.get(call.name, {}))
+        if not error and self.invoked >= self.max_calls:
+            error = "Tool call skipped: this reply's tool-call budget is exhausted."
+            kind = "tool_budget_exhausted"
+        if error:
+            return OpenWandToolResult(
+                call_id=call.id, name=call.name, ok=False, content=error,
+                metadata={"error_type": kind},
+            )
+        self.invoked += 1
+        try:
+            result = self.executor.execute(call)
+            if result.call_id != call.id or result.name != call.name:
+                raise AdapterProtocolError("Executor returned a result for a different tool call")
+            return result
+        except Exception as exc:
+            raise ToolContinuationError(
+                "Tool execution failed with an uncertain outcome; automatic route replay was stopped."
+            ) from exc
+
+
 class ChatToolLoop:
     """Provider-neutral observe-act-observe loop for chat tools."""
 
-    def __init__(self, config: ChatToolLoopConfig | None = None):
+    def __init__(
+        self,
+        config: ChatToolLoopConfig | None = None,
+        *,
+        on_progress: Callable[[str], None] | None = None,
+    ):
         """Initialize the chat tool loop."""
         self.config = config or ChatToolLoopConfig()
+        self.on_progress = on_progress
+
+    def _progress(self, text: str) -> None:
+        if self.on_progress:
+            try:
+                self.on_progress(text)
+            except Exception:
+                # A disconnected activity display must not repeat model work.
+                pass
 
     def run(
         self,
@@ -129,31 +206,31 @@ class ChatToolLoop:
         metadata: dict[str, Any] = {"completion_gate_missed": False}
         gate_nudges: set[str] = set()
         tool_call_count = 0
+        guard = ToolExecutionGuard(request, executor, self.config.max_tool_calls)
 
         for _round in range(max(1, self.config.max_rounds)):
-            turn = model.next_turn(request, observations, tool_calls)
+            if self.on_progress:
+                self._progress("Waiting for model...")
+            try:
+                turn = model.next_turn(request, observations, tool_calls)
+            except Exception as exc:
+                if guard.invoked:
+                    # Preserve SDK/auth/rate-limit/budget exception types for
+                    # diagnostics while preventing another route from replaying.
+                    exc.tools_executed = True
+                    exc.add_note("Automatic route replay blocked because tools already executed.")
+                raise
             if turn.progress:
                 progress_chunks.append(turn.progress)
+                if self.on_progress:
+                    self._progress(turn.progress)
             if turn.tool_calls:
+                guard.check_batch(turn.tool_calls)
                 results: list[OpenWandToolResult] = []
                 for call in turn.tool_calls:
                     tool_calls.append(call)
-                    if tool_call_count >= max(0, self.config.max_tool_calls):
-                        results.append(
-                            OpenWandToolResult(
-                                call_id=call.id,
-                                name=call.name,
-                                ok=False,
-                                content=(
-                                    "Tool call skipped: this reply's tool-call budget is exhausted. "
-                                    "Ask for a narrower request or run a deeper profile."
-                                ),
-                                metadata={"error_type": "tool_budget_exhausted"},
-                            )
-                        )
-                        continue
-                    tool_call_count += 1
-                    results.append(executor.execute(call))
+                    results.append(guard.execute(call))
+                tool_call_count = guard.invoked
                 observations.append(
                     OpenWandObservation(
                         tool_results=results,
@@ -165,7 +242,11 @@ class ChatToolLoop:
                 )
                 continue
             if turn.final_text:
-                gate_message = self._completion_gate_message(request, tool_calls, observations, turn.final_text)
+                final_text = turn.final_text
+                if _disabled_file_tool_text(request, final_text):
+                    final_text = "File access is disabled, so the saved file was not changed."
+                    metadata["disabled_file_call_blocked"] = True
+                gate_message = self._completion_gate_message(request, tool_calls, observations, final_text)
                 if self.config.completion_gate and gate_message and gate_message not in gate_nudges:
                     gate_nudges.add(gate_message)
                     observations.append(
@@ -182,11 +263,20 @@ class ChatToolLoop:
                 if self.config.completion_gate and gate_message and gate_message in gate_nudges:
                     metadata["completion_gate_missed"] = True
                     metadata["completion_gate_message"] = gate_message
+                    if gate_message.startswith(("web_search is enabled", "Cite an exact URL")):
+                        sources = _web_source_urls(observations)
+                        final_text = (
+                            "Search returned these sources, but I couldn't verify the model's proposed answer:\n"
+                            + "\n".join(sources)
+                            if sources else "The model did not complete a successful web search. No current information was retrieved."
+                        )
+                    elif _looks_like_file_mutation_request(_request_user_text(request).lower()):
+                        final_text = "I couldn't complete the requested file change. No successful file change was confirmed."
                 metadata["completion_gate_nudges"] = list(gate_nudges)
                 metadata["progress_chunks"] = progress_chunks
                 metadata.update(turn.metadata)
                 return ChatLoopFinal(
-                    text=turn.final_text,
+                    text=final_text,
                     status=turn.status or "final",
                     observations=observations,
                     tool_calls=tool_calls,
@@ -244,6 +334,22 @@ class ChatToolLoop:
         if _looks_like_file_mutation_request(prompt):
             mutation_tools = available.intersection({"create_file", "edit_file", "write_file", "delete_file"})
             if mutation_tools and mutation_tools.isdisjoint(succeeded):
+                if "read_file" in available and "read_file" not in succeeded:
+                    return (
+                        "The requested file change is not complete. Do not claim it succeeded. "
+                        "First call read_file on the file referenced by the latest user request "
+                        "to obtain its exact current contents. Then use edit_file: an empty old "
+                        "string appends new text safely; for replacement, copy an exact old substring."
+                    )
+                if succeeded.intersection({"read_file", "list_files"}):
+                    return (
+                        "Continue the file operation requested by the user. You have only gathered "
+                        "file context so far; if the requested change is possible inside the allowed "
+                        "folder, call the appropriate create_file, edit_file, or write_file tool "
+                        "before giving the final answer. For edit_file, copy a nonempty exact "
+                        "old substring from the read_file result and supply the replacement as new. "
+                        "Preserve all other content. Do not ask the user for text already read."
+                    )
                 return _gate_nudge("file mutation")
         failed_names = _failed_tool_names(observations)
         if "read_file" in failed_names and "list_files" in available and "list_files" not in called:
@@ -264,7 +370,12 @@ class ChatToolLoop:
             )
         if _looks_like_verification_request(prompt) and "run_command" in available and "run_command" not in called:
             return _gate_nudge("verification")
-        if _looks_like_file_context_request(prompt):
+        mutation_finished = (
+            _looks_like_file_mutation_request(prompt)
+            and bool(succeeded.intersection({"create_file", "edit_file", "write_file", "delete_file"}))
+            and not re.search(r"\b(?:read|inspect|verify|check)\b", prompt)
+        )
+        if _looks_like_file_context_request(prompt) and not mutation_finished:
             context_tools = available.intersection({"list_files", "read_file"})
             if context_tools and context_tools.isdisjoint(called):
                 return _gate_nudge("file context")
@@ -274,7 +385,62 @@ class ChatToolLoop:
                     "Inspect relevant file contents with read_file before finalizing, or explain "
                     "the concrete permission or capability boundary."
                 )
+        # Anthropic runs its server search inside the API request. It does not
+        # produce an OpenWand client-tool call to dispatch or grade here.
+        server_search = any(
+            tool.get("name") == "web_search" and str(tool.get("type", "")).startswith("web_search_")
+            for tool in request.tools
+        )
+        if _explicit_web_search(prompt) and "web_search" in available and not server_search:
+            if "web_search" not in called:
+                return "web_search is enabled for this request. Call it to perform the user's requested live search before answering."
+            sources = _web_source_urls(observations)
+            if sources and re.search(r"\b(?:url|link|source|citation)s?\b", prompt):
+                cited = set(re.findall(r"https?://[^\s<>\"\[\]]+|\[URL_\d+\]", final_text))
+                normalized = set()
+                for url in cited:
+                    while url not in sources and url and url[-1] in ".,;:)":
+                        url = url[:-1]
+                    normalized.add(url)
+                cited = normalized
+                if not cited or cited.difference(sources):
+                    return (
+                        "Cite an exact URL from the successful web_search result. Copy privacy URL placeholders "
+                        "verbatim so OpenWand can restore them. Do not replace them with a URL from memory. "
+                        "Use a value already retrieved below; do not search for these instructions: "
+                        + json.dumps(sources, ensure_ascii=False)
+                    )
         return ""
+
+
+def _explicit_web_search(prompt: str) -> bool:
+    """Recognize explicit search requests without triggering on ordinary greetings."""
+    prefix = r"(?:(?:please|can you|could you|would you|(?:but )?try to)\s+)*"
+    action = (
+        r"(?:search\s+(?:the\s+)?(?:web|internet|online)\b|look\s+up\b|"
+        r"(?:use|perform|run|do)\s+(?:a\s+)?(?:live\s+)?web\s+search\b)"
+    )
+    return bool(re.match(prefix + action, prompt.strip(), re.IGNORECASE))
+
+
+def _web_source_urls(observations: list[OpenWandObservation]) -> list[str]:
+    """Read source URLs from successful search observations, including privacy tokens."""
+    sources = []
+    for observation in observations:
+        for result in observation.tool_results:
+            if result.name != "web_search" or not result.ok:
+                continue
+            raw = str(result.content).rpartition("Raw JSON:\n")[2]
+            try:
+                rows = json.loads(raw)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(rows, list):
+                for row in rows:
+                    url = row.get("url") if isinstance(row, dict) else None
+                    if isinstance(url, str) and url and url not in sources:
+                        sources.append(url)
+    return sources
 
 
 def _gate_nudge(kind: str) -> str:
@@ -286,6 +452,27 @@ def _gate_nudge(kind: str) -> str:
     )
 
 
+def _disabled_file_tool_text(request: ChatToolRequest, text: str) -> bool:
+    """Recognize an attempted disabled file call without executing assistant text."""
+    if request.permissions.get("file_access_mode") != "off":
+        return False
+    candidate = text.strip()
+    if candidate.startswith("```json") and candidate.endswith("```"):
+        candidate = candidate[7:-3].strip()
+    try:
+        payload = json.loads(candidate)
+    except (ValueError, TypeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    function = payload.get("function", payload)
+    return (
+        isinstance(function, dict)
+        and function.get("name") in {"file", "create_file", "edit_file", "write_file", "read_file", "list_files"}
+        and ("parameters" in function or "arguments" in function)
+    )
+
+
 def _request_user_text(request: ChatToolRequest) -> str:
     """Extract the latest user text from a request."""
     for message in reversed(request.messages):
@@ -293,6 +480,10 @@ def _request_user_text(request: ChatToolRequest) -> str:
             continue
         content = message.get("content")
         if isinstance(content, str):
+            # Context wrapped by build_contextual_user_text is evidence, not a
+            # second user request. Do not demand tools mentioned only there.
+            if content.startswith("<context>\n") and "\n</context>\n\n<request>\n" in content and content.endswith("\n</request>"):
+                return content.rsplit("\n</context>\n\n<request>\n", 1)[1][:-len("\n</request>")]
             return content
         if isinstance(content, list):
             parts = []
@@ -306,14 +497,20 @@ def _request_user_text(request: ChatToolRequest) -> str:
 def _available_tool_names(request: ChatToolRequest) -> set[str]:
     """Return tool names made available to the neutral loop."""
     if request.allowed_tools is not None:
-        return set(request.allowed_tools)
-    names: set[str] = set()
-    for tool in request.tools:
-        name = str(tool.get("name") or "")
-        if not name and isinstance(tool.get("function"), dict):
-            name = str(tool["function"].get("name") or "")
-        if name:
-            names.add(name)
+        names = set(request.allowed_tools)
+    else:
+        names: set[str] = set()
+        for tool in request.tools:
+            name = str(tool.get("name") or "")
+            if not name and isinstance(tool.get("function"), dict):
+                name = str(tool["function"].get("name") or "")
+            if name:
+                names.add(name)
+    mode = request.permissions.get("file_access_mode")
+    if mode == "off":
+        names -= {"list_files", "read_file", "create_file", "edit_file", "write_file"}
+    elif mode == "read":
+        names -= {"create_file", "edit_file", "write_file"}
     return names
 
 
@@ -402,7 +599,12 @@ def _looks_like_file_context_request(prompt: str) -> bool:
 
 def _looks_like_file_mutation_request(prompt: str) -> bool:
     """Return whether the prompt likely asks for a file change."""
-    return any(word in prompt for word in ("change", "fix", "update", "edit", "write", "create", "delete"))
+    if re.search(r"\b(?:change|fix|update|edit|write|create|delete)\b", prompt):
+        return True
+    return bool(
+        re.search(r"\b(?:add|append|comment)\b", prompt)
+        and re.search(r"\b(?:file|folder|directory|workspace)\b|\.[a-z0-9]{1,8}\b", prompt)
+    )
 
 
 def _looks_like_verification_request(prompt: str) -> bool:

@@ -1,4 +1,4 @@
-﻿"""
+"""
 core/llm.py - Cloud LLM client with streaming support.
 
 Supports:
@@ -160,6 +160,12 @@ from core.llm_clients.routing import (
     _route_cooldowns,
     _route_failure_summary,
     _route_rate_limit_message,
+)
+from core.llm_clients.tool_call_metadata import (
+    StreamToolCallAccumulator,
+)
+from core.llm_clients.tool_call_metadata import (
+    tool_call_payload as _tool_call_payload,
 )
 from core.ollama_manager import ensure_ollama_running as _ensure_ollama_running
 from core.system import macos_safety, sdk_clients
@@ -394,6 +400,42 @@ def set_live_background_task_event_callback(callback: Callable[[dict], None] | N
     _LIVE_TOOL_CONTEXT.background_task_event_callback = callback
 
 
+def set_live_progress_callback(callback: Callable[[str], None] | None) -> None:
+    """Set the chat activity sink for this request thread, separate from answers."""
+    if callback is None:
+        if hasattr(_LIVE_TOOL_CONTEXT, "progress_callback"):
+            delattr(_LIVE_TOOL_CONTEXT, "progress_callback")
+        return
+    _LIVE_TOOL_CONTEXT.progress_callback = callback
+
+
+def _emit_live_progress(text: str) -> None:
+    """Publish activity immediately, including while a tool/model call blocks."""
+    callback = getattr(_LIVE_TOOL_CONTEXT, "progress_callback", None)
+    if callable(callback) and text:
+        try:
+            callback(text)
+        except Exception:
+            # A disconnected UI must not turn a successful tool into a failure.
+            pass
+
+
+def _tool_progress_text(name: str) -> str:
+    """Describe the operation without exposing arguments or tool result content."""
+    return {
+        "web_search": "Searching the web...",
+        "read_file": "Reading a file...",
+        "list_files": "Looking through files...",
+        "create_file": "Creating a file...",
+        "edit_file": "Editing a file...",
+        "write_file": "Writing a file...",
+        "get_context": "Reading context...",
+        "memory_search": "Searching memory...",
+        "save_memory": "Saving memory...",
+        "capture_screen": "Capturing the screen...",
+    }.get(name, f"Using {name.replace('_', ' ')}...")
+
+
 def set_live_privacy_context(
     session,
     *,
@@ -423,10 +465,22 @@ def _scrub_live_tool_result(name: str, result: str) -> str:
     session = getattr(_LIVE_TOOL_CONTEXT, "privacy_session", None)
     if session is None:
         return str(result or "")
+    public_source_urls = []
+    if name == "web_search":
+        try:
+            rows = _stdlib_json.loads(str(result).rpartition("Raw JSON:\n")[2])
+            if isinstance(rows, list):
+                public_source_urls = [
+                    row["url"] for row in rows
+                    if isinstance(row, dict) and isinstance(row.get("url"), str)
+                ]
+        except (TypeError, ValueError):
+            pass
     scrubbed, report = session.scrub_fields(
         {f"tool:{name}": str(result or "")},
         ai_enabled=bool(getattr(_LIVE_TOOL_CONTEXT, "privacy_ai_enabled", False)),
         review=getattr(_LIVE_TOOL_CONTEXT, "privacy_review_callback", None),
+        public_source_urls=public_source_urls,
     )
     report_callback = getattr(_LIVE_TOOL_CONTEXT, "privacy_report_callback", None)
     if report.get("count") and report_callback is not None:
@@ -653,7 +707,7 @@ def _github_get_json(url: str) -> str:
 
 
 def _execute_web_search(inputs: dict) -> str:
-    """Execute OpenWand's local web-search fallback for non-native tool routes."""
+    """Execute public metasearch for routes without a native search service."""
     import json
 
     query = str(
@@ -670,15 +724,21 @@ def _execute_web_search(inputs: dict) -> str:
         max_results = 5
     max_results = max(1, min(max_results, 10))
 
-    from core.context_fetcher import search_online_for_tool
+    from core.context_fetcher import WebSearchError, search_online_for_tool
 
-    results = search_online_for_tool(query, max_results=max_results)
+    try:
+        results = search_online_for_tool(query, max_results=max_results)
+    except WebSearchError as exc:
+        return f"Web search failed: {exc}\nDo not claim to have searched successfully or invent current information."
     if not results:
-        return (
-            "No web search results were returned. The search backend may be "
-            "offline, blocked, or missing credentials."
-        )
-    lines = [f"Search query: {query}", "Results:"]
+        return "No web search results were returned. No current information was retrieved."
+    lines = [
+        f"Search query: {query}",
+        "Cite the exact URL from a search result. If its URL is a privacy placeholder, "
+        "copy that placeholder verbatim; OpenWand restores it for the user. "
+        "Never reconstruct or guess a different URL from memory.",
+        "Results:",
+    ]
     for index, item in enumerate(results[:max_results], start=1):
         title = str(item.get("title") or "Untitled").strip()
         url = str(item.get("url") or "").strip()
@@ -1095,14 +1155,16 @@ def _register_builtin_tools() -> None:
                 "Replace exactly one matching text span in a file inside the user's "
                 "configured local-file roots. Use this when the user asks to edit, "
                 "change, update, modify, patch, or fix an existing file and you know "
-                "the exact old text. Uses the configured never/ask/auto edit mode."
+                "the exact old text. To append text at the end without replacing existing "
+                "content, set old to an empty string and new to the text to append. "
+                "Uses the configured never/ask/auto edit mode."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "root": {"type": "string", "description": "Required for relative paths when multiple roots are configured."},
                     "path": {"type": "string", "description": "Absolute path, or a path relative to root."},
-                    "old": {"type": "string", "description": "Exact existing text to replace. Must match exactly once."},
+                    "old": {"type": "string", "description": "Exact existing text to replace once, or an empty string to append new text at the end."},
                     "new": {"type": "string", "description": "Replacement text."},
                 },
                 "required": ["path", "old", "new"],
@@ -1569,6 +1631,10 @@ def _execute_model_tool(name: str, inputs: dict, allowed_tools: list[str] | None
                 )
         elif name not in allowed:
             return _scrub_live_tool_result(name, f"Tool {name!r} is disabled for this caller.")
+    # Legacy multimodal routes also use this executor. Track dispatches so a
+    # transport failure cannot replay an action on another provider.
+    _LIVE_TOOL_CONTEXT.tool_execution_serial = getattr(_LIVE_TOOL_CONTEXT, "tool_execution_serial", 0) + 1
+    _emit_live_progress(_tool_progress_text(name))
     if name in _LOCAL_FILE_TOOLS:
         result = execute_live_file_tool(
             name,
@@ -1580,7 +1646,9 @@ def _execute_model_tool(name: str, inputs: dict, allowed_tools: list[str] | None
     else:
         result = _TOOL_REGISTRY.execute(name, inputs)
         result = _consume_model_tool_ui_request(name, result)
-    return _scrub_live_tool_result(name, result)
+    result = _scrub_live_tool_result(name, result)
+    _emit_live_progress("Reading tool results...")
+    return result
 
 
 def _effective_live_file_access_mode(allowed_tools: list[str] | None = None) -> str:
@@ -1609,10 +1677,16 @@ def _with_local_file_tools_note(system: str, allowed_tools: list[str] | None) ->
     """Tell the model exactly when and where live local-file tools are available."""
     allowed = set(allowed_tools or [])
     file_tools = sorted(allowed & _LOCAL_FILE_TOOLS)
-    if not file_tools:
-        return system
     mode = _effective_live_file_access_mode(file_tools)
     if mode == "off":
+        note = (
+            "Local file access is disabled for this request, even if files or file tools "
+            "appear in earlier conversation turns. If asked to access or change a local "
+            "file, clearly say that file access is disabled and leave the file unchanged. "
+            "Do not print a pretend tool call or claim that a file operation occurred."
+        )
+        return system if note in system else f"{system}\n\n{note}".strip()
+    if not file_tools:
         return system
     roots = configured_file_roots()
     if not roots:
@@ -1641,6 +1715,13 @@ def _with_local_file_tools_note(system: str, allowed_tools: list[str] | None) ->
         "with the appropriate local file tool before replying. Use read_file only "
         "to gather needed context; reading a file is not a substitute for a "
         "requested create, edit, or write operation."
+        " To append to an existing file, use edit_file with old set to an empty string "
+        "and new containing only the added text. OpenWand preserves the existing content "
+        "and inserts a line break when needed. For other edits, first read_file, then "
+        "use edit_file with the exact old substring and replacement new text. "
+        "write_file replaces the entire file; "
+        "never pass only an added fragment to write_file. Preserve existing content "
+        "unless the user explicitly asks to replace or remove it."
         f"{relative_hint}{approval}"
     )
     return f"{system}\n\n{note}" if system else note
@@ -1772,7 +1853,10 @@ def _capture_screen_b64(provided_b64: str | None = None) -> str | None:
     """Grab the primary monitor and return it as a base64 PNG, or None on failure."""
     from core.llm_clients.screenshot_tool import resolve_capture_screen_b64
 
-    return resolve_capture_screen_b64(provided_b64)
+    _emit_live_progress("Capturing the screen...")
+    result = resolve_capture_screen_b64(provided_b64)
+    _emit_live_progress("Preparing response...")
+    return result
 
 
 def _anthropic_vision_model(current_model: str) -> str:
@@ -2293,6 +2377,8 @@ def _recover_openai_compat_kwargs(
         print(f"[llm] {provider}/{model}: max_tokens -> max_completion_tokens", flush=True)
         return new
     name = _unsupported_parameter_name(exc)
+    if name in {"model", "messages", "input", "instructions", "tools"}:
+        return None
     if name and name in kwargs:
         _mark_unsupported_parameter(provider, model, name)
         new = dict(kwargs)
@@ -2461,19 +2547,12 @@ def _openai_compat_message_text(response) -> str:
 
 
 def _openai_compat_message_tool_calls(response) -> dict[int, dict]:
-    """Handle openai compat message tool calls for LLM clients client."""
-    choice = response.choices[0] if getattr(response, "choices", None) else None
-    message = getattr(choice, "message", None) if choice is not None else None
-    tool_calls = getattr(message, "tool_calls", None) or []
-    acc: dict[int, dict] = {}
-    for i, tc in enumerate(tool_calls):
-        fn = getattr(tc, "function", None)
-        acc[i] = {
-            "id": getattr(tc, "id", "") or f"tool_call_{i}",
-            "name": getattr(fn, "name", "") if fn is not None else "",
-            "arguments": getattr(fn, "arguments", "") if fn is not None else "",
-        }
-    return acc
+    """Decode complete calls without inventing provider call identities."""
+    from core.llm_clients.adapter_protocol import value
+    from core.llm_clients.chat_completions_adapter import complete_calls
+
+    choices = value(response, "choices", []) or []
+    return complete_calls(value(choices[0], "message", {})) if choices else {}
 
 
 def _response_output_text(response) -> str:
@@ -2521,14 +2600,17 @@ def _response_function_calls(response) -> list[dict[str, str]]:
             item_id = str(item.get("id") or "")
             name = str(item.get("name") or "")
             arguments = str(item.get("arguments") or "")
-            call_id = str(item.get("call_id") or item_id or "")
+            call_id = str(item.get("call_id") or "")
         else:
             item_type = str(getattr(item, "type", "") or "")
             item_id = str(getattr(item, "id", "") or "")
             name = str(getattr(item, "name", "") or "")
             arguments = str(getattr(item, "arguments", "") or "")
-            call_id = str(getattr(item, "call_id", "") or item_id or "")
-        if item_type == "function_call" and name:
+            call_id = str(getattr(item, "call_id", "") or "")
+        if item_type == "function_call":
+            from core.llm_clients.adapter_protocol import check_terminal
+
+            check_terminal(_event_value(item, "status"))
             calls.append({"id": item_id, "name": name, "arguments": arguments, "call_id": call_id})
     return calls
 
@@ -2582,6 +2664,20 @@ def _responses_stream_to_response(client, kwargs: dict, *, provider: str, model:
                     response = _event_value(event, "response", None)
                     if response is not None:
                         response_id = response_id or _response_id(response)
+                    if event_type in {"response.failed", "response.incomplete", "error"}:
+                        from core.llm_clients.adapter_protocol import AdapterProtocolError
+                        from core.llm_clients.error_details import from_provider_event
+                        detail = _event_value(response, "error", None) if response is not None else None
+                        if detail is None:
+                            detail = _event_value(event, "error", None)
+                        if detail is None and _event_value(event, "message", None):
+                            detail = {"message": _event_value(event, "message"), "code": _event_value(event, "code", "")}
+                        if detail:
+                            info = from_provider_event(detail, provider=provider, model=model)
+                            error = AdapterProtocolError(info["message"])
+                            error.provider_error = info
+                            raise error
+                        raise AdapterProtocolError("Responses stream failed or was truncated")
                     if event_type == "response.completed":
                         completed_response = response
                         continue
@@ -2642,7 +2738,7 @@ def _responses_stream_to_response(client, kwargs: dict, *, provider: str, model:
                 raise
             name = _unsupported_parameter_name(exc)
             _mark_unsupported_parameter(provider, model, name)
-            if name == "tools":
+            if name in {"tools", "model", "input", "instructions"}:
                 raise
             print("[llm] Responses stream rejected unsupported parameter; retrying without it", flush=True)
             current = retry_kwargs
@@ -2680,7 +2776,7 @@ def _responses_create_with_retries(client, kwargs: dict, *, provider: str, model
                 raise
             name = _unsupported_parameter_name(exc)
             _mark_unsupported_parameter(provider, model, name)
-            if name == "tools":
+            if name in {"tools", "model", "input", "instructions"}:
                 raise
             print("[llm] Responses create rejected unsupported parameter; retrying without it", flush=True)
             current = retry_kwargs
@@ -2724,6 +2820,38 @@ def _chat_tool_trace_ui_enabled() -> bool:
     return bool(getattr(config, "CHAT_TOOL_TRACE_UI", False))
 
 
+def _run_unified_compatible_tool_loop(
+    client, kwargs: dict, *, provider: str, model: str,
+    allowed_tools=None, pinned_tools=None, user_intent: str = "",
+):
+    """Every compatible text/tool route shares validation and continuation."""
+    from core.llm_clients.chat_completions_adapter import ChatCompletionsLoopModel
+    from core.llm_clients.chat_tool_loop import ChatToolLoop, ChatToolLoopConfig, ChatToolRequest
+    from core.llm_clients.responses_chat_adapter import LiveModelToolExecutor
+
+    budget = _tool_turn_budget()
+    limit = max(0, int(budget.max_calls or 0))
+    request = ChatToolRequest(
+        messages=[{"role": "user", "content": user_intent}], system_prompt="",
+        model_route={"provider": provider, "model": model}, tools=list(kwargs.get("tools") or []),
+        allowed_tools=allowed_tools, pinned_tools=pinned_tools,
+        permissions={"file_access_mode": getattr(_LIVE_TOOL_CONTEXT, "file_access_mode", None)}, budgets={},
+    )
+    progress = getattr(_LIVE_TOOL_CONTEXT, "progress_callback", None)
+    final = ChatToolLoop(
+        ChatToolLoopConfig(max_rounds=max(7, min(limit + 2, 60)), max_tool_calls=limit),
+        on_progress=_emit_live_progress if progress else None,
+    ).run(
+        request, ChatCompletionsLoopModel(client, provider=provider, model=model, kwargs=kwargs),
+        LiveModelToolExecutor(allowed_tools=allowed_tools),
+    )
+    if not progress:
+        for text in final.metadata.get("progress_chunks", []):
+            yield _progress_chunk(text)
+    if final.text:
+        yield final.text
+
+
 def _run_unified_responses_tool_loop(
     client,
     kwargs: dict,
@@ -2755,7 +2883,7 @@ def _run_unified_responses_tool_loop(
         tools=tools,
         allowed_tools=allowed_tools,
         pinned_tools=pinned_tools,
-        permissions={},
+        permissions={"file_access_mode": getattr(_LIVE_TOOL_CONTEXT, "file_access_mode", None)},
         budgets={
             "max_rounds": effective_max_rounds,
             "max_tool_calls": max_tool_calls,
@@ -2763,11 +2891,13 @@ def _run_unified_responses_tool_loop(
             "max_total_chars": int(tool_budget.max_total_chars or 0),
         },
     )
+    progress_callback = getattr(_LIVE_TOOL_CONTEXT, "progress_callback", None)
     final = ChatToolLoop(
         ChatToolLoopConfig(
             max_rounds=effective_max_rounds,
             max_tool_calls=max_tool_calls,
-        )
+        ),
+        on_progress=_emit_live_progress if progress_callback else None,
     ).run(
         request,
         ResponsesChatLoopModel(
@@ -2777,11 +2907,12 @@ def _run_unified_responses_tool_loop(
             tools=tools,
             initial_input=initial_input,
             provider=provider,
+            request_options=kwargs,
         ),
         LiveModelToolExecutor(allowed_tools=allowed_tools),
     )
     for progress in final.metadata.get("progress_chunks") or []:
-        if progress:
+        if progress and not progress_callback:
             yield _progress_chunk(str(progress))
     if trace_ui:
         names = [call.name for call in final.tool_calls]
@@ -2867,6 +2998,8 @@ def _stream_false_required_error(exc: Exception) -> bool:
 def _tools_not_supported_error(exc: Exception) -> bool:
     """Handle tools not supported error for LLM clients client."""
     text = str(exc).lower()
+    if _unsupported_parameter_name(exc) in {"parallel_tool_calls", "tool_choice"}:
+        return False
     if "tool" not in text and "function" not in text:
         return False
     return any(
@@ -3266,14 +3399,16 @@ def _build_ollama_prefix_request(
     )
     if allow_screenshot_tool and tools_allowed:
         system = _with_screenshot_note(system, True)
-    if tools:
+    if tools or file_access_mode == "off":
         previous_mode = getattr(_LIVE_TOOL_CONTEXT, "file_access_mode", None)
         set_live_file_access_mode(file_access_mode or None)
         try:
-            system = _with_tools_note(system, True)
+            if tools:
+                system = _with_tools_note(system, True)
             system = _with_local_file_tools_note(system, allowed_tools)
-            system = _with_memory_search_note(system, allowed_tools)
-            system = _with_memory_save_note(system, allowed_tools)
+            if tools:
+                system = _with_memory_search_note(system, allowed_tools)
+                system = _with_memory_save_note(system, allowed_tools)
         finally:
             set_live_file_access_mode(previous_mode)
 
@@ -3516,6 +3651,7 @@ def safe_list_models(provider: str, *, api_key: str = "", base_url: str = "") ->
 
 
 _CHATGPT_SUPPORTED_MODELS = {
+    "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-astra", "gpt-6-luna", "gpt-6-sol",
     "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
     "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano",
     "gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2",
@@ -3655,8 +3791,11 @@ def _check_vision_config() -> None:
 
 def _check_route_config(provider: str, model: str, route_name: str) -> None:
     """Check route config."""
+    from core.llm_clients.provider_adapters import adapter_for
+
     if not provider or not model:
         raise ValueError(f"{route_name} route is missing provider or model.")
+    adapter_for(provider, model)
     if provider == "chatgpt":
         from core.auth import chatgpt as chatgpt_auth
         if not chatgpt_auth.get_tokens():
@@ -3697,8 +3836,11 @@ def _check_route_config_with_credentials(
     compat_keys: dict[str, str] | None = None,
 ) -> None:
     """Check route config with credentials."""
+    from core.llm_clients.provider_adapters import adapter_for
+
     if not provider or not model:
         raise ValueError(f"{route_name} route is missing provider or model.")
+    adapter_for(provider, model)
     if provider == "chatgpt":
         from core.auth import chatgpt as chatgpt_auth
         if not chatgpt_auth.get_tokens():
@@ -4540,7 +4682,14 @@ def _stream_with_fallbacks(
     ready = [c for c in eligible if not _is_route_cooling(*c)]
     cooling = [c for c in eligible if _is_route_cooling(*c)]
     if candidates and not eligible:
-        raise RuntimeError("\n".join(dict.fromkeys(blocked.values())))
+        from core.llm_clients.routing import _route_provider_error
+        error = RuntimeError("\n".join(dict.fromkeys(blocked.values())))
+        for provider, model in candidates:
+            info = _route_provider_error(provider, model)
+            if info:
+                error.provider_error = info
+                break
+        raise error
     ordered = ready + cooling
     last_exc: Exception | None = None
     attempts: list[tuple[str, str, Exception | str]] = [
@@ -4548,10 +4697,13 @@ def _stream_with_fallbacks(
     ]
     for idx, (provider, model) in enumerate(ordered):
         emitted = False
+        execution_serial = getattr(_LIVE_TOOL_CONTEXT, "tool_execution_serial", 0)
         route_started = time.monotonic()
         try:
+            _emit_live_progress("Waiting for model..." if idx == 0 else "Trying another model...")
             for chunk in factory(provider, model):
-                emitted = True
+                if chunk and getattr(chunk, "kind", "answer") != "progress":
+                    emitted = True
                 yield chunk
             if emitted:
                 _clear_route_cooling(provider, model)
@@ -4565,6 +4717,10 @@ def _stream_with_fallbacks(
                     elapsed_seconds=elapsed,
                 )
                 return
+            if getattr(_LIVE_TOOL_CONTEXT, "tool_execution_serial", 0) != execution_serial:
+                from core.llm_clients.adapter_protocol import ToolContinuationError
+
+                raise ToolContinuationError("Provider returned no answer after tool execution; automatic replay was stopped.")
             # Model returned HTTP 200 but zero content chunks — treat as failure.
             last_exc = ValueError(f"Route ({kind}) {provider}/{model} returned no content")
             attempts.append((provider, model, "returned no content"))
@@ -4590,11 +4746,24 @@ def _stream_with_fallbacks(
                 elapsed_seconds=elapsed,
             )
         except Exception as exc:
+            from core.llm_clients.error_details import from_exception
+            try:
+                secret = _api_key_for(provider)
+            except Exception:
+                secret = ""
+            exc.provider_error = from_exception(exc, provider=provider, model=model, secrets=(secret,))
             _record_route_error_capabilities(provider, model, exc)
             last_exc = exc
             attempts.append((provider, model, exc))
             elapsed = time.monotonic() - route_started
-            if emitted:
+            executed = getattr(_LIVE_TOOL_CONTEXT, "tool_execution_serial", 0) != execution_serial
+            if executed:
+                exc.tools_executed = True
+            if emitted or executed or getattr(exc, "tools_executed", False):
+                if _is_quota_error(exc):
+                    _mark_route_cooling(
+                        provider, model, _provider_retry_seconds(exc), hard=True, reason=str(exc), provider_error=exc.provider_error
+                    )
                 log_event(
                     "llm.route_streaming_failure",
                     f"Route ({kind}) {provider}/{model} failed after streaming for {elapsed:.1f}s; not falling back: {exc}",
@@ -4608,7 +4777,7 @@ def _stream_with_fallbacks(
             if _is_transient_route_error(exc):
                 rate_limited = _is_quota_error(exc)
                 delay = _provider_retry_seconds(exc) if rate_limited else _ROUTE_COOLDOWN_SECONDS
-                _mark_route_cooling(provider, model, delay, hard=rate_limited, reason=str(exc))
+                _mark_route_cooling(provider, model, delay, hard=rate_limited, reason=str(exc), provider_error=exc.provider_error)
                 log_event(
                     "llm.route_transient_fallback",
                     f"Route ({kind}) {provider}/{model} failed after {elapsed:.1f}s; "
@@ -4666,6 +4835,10 @@ def _stream_single_response_route(
     route_kind: str = "query",
 ) -> Generator[str, None, None]:
     """Stream single response route."""
+    if getattr(_LIVE_TOOL_CONTEXT, "file_access_mode", None) == "off":
+        system_prompt = _with_local_file_tools_note(
+            system_prompt if system_prompt is not None else config.get_system_prompt(), allowed_tools
+        )
     _check_route_config(provider, model, route_name)
     model = _normalize_model_for_provider(provider, model)
     # capture_screen also needs the Anthropic tool loop, so it counts as "tools".
@@ -4800,13 +4973,22 @@ def _stream_copilot(
     """Stream copilot."""
     from core.auth import copilot_client
 
+    tool_options = {}
     if use_tools:
-        _update_route_capabilities("copilot", model, supports_tools=False)
-        ambient_context = _inject_frontloaded_tool_context(
-            ambient_context,
-            allowed_tools,
-            query=user_message,
-        )
+        from core.llm_clients.chat_tool_loop import ChatToolRequest
+        from core.llm_clients.responses_chat_adapter import LiveModelToolExecutor
+
+        schemas = _get_openai_tool_schemas(user_message, include_general=True, allowed_tools=allowed_tools)
+        tool_options = {
+            "tool_request": ChatToolRequest(
+                messages=[{"role": "user", "content": user_message}], system_prompt=system_prompt or "",
+                model_route={"provider": "copilot", "model": model}, tools=schemas,
+                allowed_tools=allowed_tools, pinned_tools=None,
+                permissions={"file_access_mode": getattr(_LIVE_TOOL_CONTEXT, "file_access_mode", None)}, budgets={},
+            ),
+            "tool_executor": LiveModelToolExecutor(allowed_tools=allowed_tools),
+            "max_tool_calls": max(0, int(_tool_turn_budget().max_calls or 0)),
+        }
     parts = []
     if system_prompt:
         parts.append(system_prompt)
@@ -4820,6 +5002,7 @@ def _stream_copilot(
         system=system,
         session_id="openwand-chat" if history else None,
         allow_tools=False,
+        **tool_options,
     )
 
 
@@ -4982,10 +5165,40 @@ def _stream_openai_compat(
             system_prompt=system_prompt,
         )
 
+    if tools and not allow_screenshot_tool and not image_base64:
+        from core.llm_clients.provider_adapters import Protocol, adapter_for
+
+        adapter = adapter_for(provider or "openai", model)
+        try:
+            if adapter.protocol == Protocol.RESPONSES:
+                from core.llm_clients.provider_requests import responses_kwargs
+
+                yield from _run_unified_responses_tool_loop(
+                    client, responses_kwargs(kwargs), provider=provider, model=model,
+                    allowed_tools=allowed_tools, pinned_tools=pinned_tools,
+                    user_intent=user_message, trace_ui=_chat_tool_trace_ui_enabled(),
+                )
+            else:
+                yield from _run_unified_compatible_tool_loop(
+                    client, kwargs, provider=provider, model=model,
+                    allowed_tools=allowed_tools, pinned_tools=pinned_tools,
+                    user_intent=user_message,
+                )
+        except Exception as exc:
+            if getattr(exc, "tools_executed", False):
+                raise
+            if _tools_not_supported_error(exc):
+                yield from _retry_without_live_tools(str(exc))
+                return
+            raise
+        return
+
     # Stream first round — yield text, accumulate any tool-call deltas.
-    tool_calls_acc: dict[int, dict] = {}  # index → {id, name, arguments}
+    tool_call_accumulator = StreamToolCallAccumulator()
+    tool_calls_acc = tool_call_accumulator.calls
     finish_reason = None
     first_round_text: list[str] = []
+    last_progress_at = 0.0
 
     try:
         with client.chat.completions.create(**kwargs) as stream:
@@ -5003,17 +5216,14 @@ def _stream_openai_compat(
                 if delta.content:
                     if tools:
                         first_round_text.append(delta.content)
+                        now = _time.monotonic()
+                        if now - last_progress_at >= 0.1:
+                            _emit_live_progress("".join(first_round_text))
+                            last_progress_at = now
                     else:
                         yield delta.content
                 for tc in (delta.tool_calls or []):
-                    entry = tool_calls_acc.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
-                    if tc.id:
-                        entry["id"] = tc.id
-                    if tc.function:
-                        if tc.function.name:
-                            entry["name"] += tc.function.name
-                        if tc.function.arguments:
-                            entry["arguments"] += tc.function.arguments
+                    tool_call_accumulator.add(tc)
     except Exception as exc:
         _record_route_error_capabilities(provider, model, exc)
         retry_kwargs = _without_unsupported_parameter(kwargs, exc)
@@ -5116,8 +5326,7 @@ def _stream_openai_compat(
 
     # Build the assistant tool-call turn and append it to messages.
     assistant_tool_calls = [
-        {"id": tc["id"], "type": "function",
-         "function": {"name": tc["name"], "arguments": tc["arguments"]}}
+        _tool_call_payload(tc)
         for tc in tool_calls_acc.values()
     ]
     first_round_progress = "".join(first_round_text)
@@ -5196,6 +5405,7 @@ def _stream_openai_compat(
             _apply_max_output(follow_up_kwargs, current_model, max_tokens or _QUERY_DEFAULT_MAX_TOKENS)
         if tools and not vision_mode:
             follow_up_kwargs["tools"] = tools
+        _emit_live_progress("Preparing response...")
         follow_up = client.chat.completions.create(**follow_up_kwargs)
         choice = follow_up.choices[0]
         text = choice.message.content or ""
@@ -5232,21 +5442,14 @@ def _stream_openai_compat(
                     yield text
                 return
         # Another tool round — update accumulator and append assistant turn.
-        tool_calls_acc = {}
+        tool_calls_acc = _openai_compat_message_tool_calls(follow_up)
         if choice.message.tool_calls:
             if text:
                 yield _progress_chunk(text)
-            for i, tc in enumerate(choice.message.tool_calls):
-                tool_calls_acc[i] = {
-                    "id": tc.id,
-                    "name": tc.function.name,
-                    "arguments": tc.function.arguments or "",
-                }
             messages.append({
                 "role": "assistant", "content": text or None,
                 "tool_calls": [
-                    {"id": tc["id"], "type": "function",
-                     "function": {"name": tc["name"], "arguments": tc["arguments"]}}
+                    _tool_call_payload(tc)
                     for tc in tool_calls_acc.values()
                 ],
             })
@@ -5333,6 +5536,8 @@ def _stream_codex(
                 )
                 return
             except Exception as exc:
+                if getattr(exc, "tools_executed", False):
+                    raise
                 if (
                     not _requires_stream_error(exc)
                     and not _tools_not_supported_error(exc)
@@ -5539,7 +5744,7 @@ def _run_unified_anthropic_tool_loop(
         tools=tools,
         allowed_tools=allowed_tools,
         pinned_tools=pinned_tools,
-        permissions={},
+        permissions={"file_access_mode": getattr(_LIVE_TOOL_CONTEXT, "file_access_mode", None)},
         budgets={
             "max_rounds": effective_max_rounds,
             "max_tool_calls": max_tool_calls,
@@ -5547,11 +5752,13 @@ def _run_unified_anthropic_tool_loop(
             "max_total_chars": int(tool_budget.max_total_chars or 0),
         },
     )
+    progress_callback = getattr(_LIVE_TOOL_CONTEXT, "progress_callback", None)
     final = ChatToolLoop(
         ChatToolLoopConfig(
             max_rounds=effective_max_rounds,
             max_tool_calls=max_tool_calls,
-        )
+        ),
+        on_progress=_emit_live_progress if progress_callback else None,
     ).run(
         request,
         AnthropicChatLoopModel(
@@ -5565,7 +5772,7 @@ def _run_unified_anthropic_tool_loop(
         LiveModelToolExecutor(allowed_tools=allowed_tools),
     )
     for progress in final.metadata.get("progress_chunks") or []:
-        if progress:
+        if progress and not progress_callback:
             yield _progress_chunk(str(progress))
     if trace_ui:
         names = [call.name for call in final.tool_calls]
@@ -5647,8 +5854,7 @@ def _stream_anthropic(
             "system": system,
             "messages": [*prior_turns, {"role": "user", "content": content}],
         }
-        if temperature is not None:
-            request["temperature"] = temperature
+        _apply_sampling(request, model, temperature)
         with client.messages.stream(**request) as stream:
             _update_route_capabilities("anthropic", model, supports_stream=True)
             if image_base64:
@@ -5712,6 +5918,8 @@ def _stream_anthropic(
         )
         return
     except Exception as exc:
+        if getattr(exc, "tools_executed", False):
+            raise
         _record_route_error_capabilities("anthropic", model, exc)
         if _tools_not_supported_error(exc):
             print("[llm] Anthropic unified live tools rejected; retrying with front-loaded context", flush=True)
@@ -5945,27 +6153,17 @@ def _stream_single_action_plan_route(
     tool_schema: dict,
     user_message: str,
 ) -> Generator[str, None, None]:
-    """Dispatch one forced planning request through the configured route style."""
+    """Extract one action plan through the selected provider's protocol adapter."""
+    from core.llm_clients.provider_requests import required_tool_call
+
     _check_route_config(provider, model, "LLM")
     _log_model_route("action_plan", provider, model, use_tools=True)
-    if _is_openai_compat_provider(provider):
-        yield from _stream_openai_compat_action_plan(
-            provider, model, name, description, action_schema, tool_schema, user_message
-        )
-        return
-    if provider == "anthropic":
-        yield from _stream_anthropic_action_plan(
-            model, name, description, action_schema, tool_schema, user_message
-        )
-        return
-    if provider == "chatgpt":
-        yield from _stream_responses_action_plan(
-            model, name, description, action_schema, tool_schema, user_message
-        )
-        return
-    if provider == "copilot":
-        raise ValueError("Copilot action planning does not support forced planning tool calls.")
-    raise ValueError(f"Unknown action planning provider: {provider}")
+    call = required_tool_call(
+        provider, model, system=_ACTION_PLANNING_SYSTEM_PROMPT, prompt=user_message,
+        tool={"name": name, "description": description, "parameters": tool_schema}, max_tokens=2048,
+        stream=False,
+    )
+    yield from _action_plan_chunks(name, action_schema, call.arguments)
 
 
 def _action_plan_chunks(name: str, action_schema: dict, arguments: str | dict) -> Generator[str, None, None]:
@@ -6296,22 +6494,22 @@ def stream_rewrite(
 
 
 def _stream_single_rewrite_route(provider: str, model: str, user_message: str) -> Generator[str, None, None]:
-    """Stream single rewrite route."""
+    """Extract replacement text without executing any provider-side action."""
+    from core.llm_clients.provider_requests import required_tool_call
+
     _check_route_config(provider, model, "LLM")
     _log_model_route("rewrite", provider, model, use_tools=True)
-    if _is_openai_compat_provider(provider):
-        yield from _stream_openai_compat_rewrite_tool(provider, model, user_message)
-        return
-    elif provider == "anthropic":
-        yield from _stream_anthropic_rewrite_tool(model, user_message)
-        return
-    elif provider == "chatgpt":
-        yield from _stream_responses_rewrite_tool(model, user_message)
-        return
-    elif provider == "copilot":
-        raise ValueError("Copilot rewrite route does not support forced rewrite_selection tool calls.")
-    else:
-        raise ValueError(f"Unknown rewrite provider: {provider}")
+    call = required_tool_call(
+        provider, model, system=_REWRITE_SYSTEM_PROMPT, prompt=user_message,
+        tool=_rewrite_tool_openai_schema(), max_tokens=1024,
+    )
+    replacement, visible = _rewrite_payload_from_tool_arguments(call.arguments)
+    if not replacement:
+        raise ValueError("Rewrite model did not provide replacement_text.")
+    progress = _rewrite_visible_progress(visible, "", replacement)
+    if progress:
+        yield _progress_chunk(progress)
+    yield _rewrite_result_chunk(replacement)
 
 
 def _stream_openai_compat_rewrite_tool(
@@ -6850,7 +7048,7 @@ def _stream_single_history_route(
     """Stream single history route."""
     if not _history_user_has_image(messages):
         system_msg, user_message, history = _history_text_payload(messages)
-        chat_temperature = 0.7 if _is_openai_compat_provider(provider) else None
+        chat_temperature = (0.0 if provider == "ollama" and use_tools else 0.7) if _is_openai_compat_provider(provider) else None
         yield from _stream_single_response_route(
             provider,
             model,
@@ -6987,6 +7185,8 @@ def _stream_single_history_route(
                     )
                     return
                 except Exception as exc:
+                    if getattr(exc, "tools_executed", False):
+                        raise
                     if (
                         not _requires_stream_error(exc)
                         and not _tools_not_supported_error(exc)

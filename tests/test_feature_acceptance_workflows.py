@@ -2273,7 +2273,7 @@ def test_builtin_profile_action_saves_and_reopens_as_the_active_runtime_profile(
         for route in ("LLM", "VISION_LLM", "MEMORY_LLM"):
             row = reopened._model_section_rows[route][0]
             assert row["api_key_combo"].currentData() == "chatgpt"
-            assert reopened._model_value(row) == "gpt-5.5"
+            assert reopened._model_value(row) == "gpt-6.1-sol"
     finally:
         if reopened is not None:
             reopened.close()

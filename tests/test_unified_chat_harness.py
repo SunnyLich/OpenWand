@@ -37,6 +37,36 @@ from core.llm_clients.responses_chat_adapter import ResponsesChatLoopModel
 class ChatToolLoopTypesTests(unittest.TestCase):
     """Test provider-neutral chat tool loop contracts."""
 
+    def test_tool_loop_reports_narration_before_tool_execution(self):
+        """A blocked tool must not hold the model's commentary until the end."""
+        from core.llm_clients.chat_tool_loop import ChatModelTurn
+
+        events = []
+        request = ChatToolRequest(
+            messages=[], system_prompt="", model_route={}, tools=[],
+            allowed_tools=None, pinned_tools=None, permissions={}, budgets={},
+        )
+
+        class Model:
+            def next_turn(self, _request, observations, _calls):
+                if observations:
+                    self_test.assertEqual(events[-1], "Waiting for model...")
+                    return ChatModelTurn(final_text="Done.", status="final")
+                return ChatModelTurn(
+                    progress="Checking sources.",
+                    tool_calls=[OpenWandToolCall(id="one", name="web_search")],
+                )
+
+        class Executor:
+            def execute(self, call):
+                self_test.assertEqual(events, ["Waiting for model...", "Checking sources."])
+                return OpenWandToolResult(call_id=call.id, name=call.name, ok=True, content="evidence")
+
+        self_test = self
+        result = ChatToolLoop(on_progress=events.append).run(request, Model(), Executor())
+        self.assertEqual(result.text, "Done.")
+        self.assertEqual(events, ["Waiting for model...", "Checking sources.", "Waiting for model..."])
+
     def test_chat_tool_request_keeps_provider_neutral_fields(self):
         """Verify provider-neutral request can describe one chat route."""
         request = ChatToolRequest(

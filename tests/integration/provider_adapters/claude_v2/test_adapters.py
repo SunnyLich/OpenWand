@@ -56,7 +56,7 @@ class Executor:
 
 
 def anthropic_response(calls=(), text="", stop=None):
-    content = [{"type": "tool_use", "id": f"call_{i}", "name": n, "input": a} for i, (n, a) in enumerate(calls)]
+    content = [{"type": "tool_use", "id": f"call_{n}_{i}", "name": n, "input": a} for i, (n, a) in enumerate(calls)]
     if text:
         content.insert(0, {"type": "text", "text": text})
     return Message(
@@ -75,7 +75,7 @@ def responses_response(calls=(), text=""):
         {
             "type": "function_call",
             "id": f"fc_{i}",
-            "call_id": f"call_{i}",
+            "call_id": f"call_{n}_{i}",
             "name": n,
             "arguments": json.dumps(a),
         }
@@ -134,14 +134,14 @@ def test_actual_neutral_adapters(scenario, family):
             assert followup["system"] == SYSTEM and followup["tools"] == req.tools
             blocks = followup["messages"][-1]["content"]
             assert [(b["tool_use_id"], b["content"]) for b in blocks] == [
-                (f"call_{n}", execute(name, args)) for n, (name, args) in enumerate(calls)
+                (f"call_{name}_{n}", execute(name, args)) for n, (name, args) in enumerate(calls)
             ]
             assert followup["messages"][0] == req.messages[0]
         else:
             assert followup["store"] is False and "previous_response_id" not in followup
             outs = [x for x in followup["input"] if x.get("type") == "function_call_output"][-len(calls) :]
             assert [(b["call_id"], b["output"]) for b in outs] == [
-                (f"call_{n}", execute(name, args)) for n, (name, args) in enumerate(calls)
+                (f"call_{name}_{n}", execute(name, args)) for n, (name, args) in enumerate(calls)
             ]
             assert all("id" not in x for x in followup["input"])
             assert followup["input"][0]["content"][0]["text"] == scenario.prompt
@@ -170,7 +170,7 @@ def test_provider_errors_propagate_without_tool_execution(family, status):
     assert len(wire.requests) == 1
 
 
-@pytest.mark.parametrize("stop", ["tool_use", "end_turn", "max_tokens"])
+@pytest.mark.parametrize("stop", ["tool_use", "end_turn"])
 def test_anthropic_complete_call_normalized_from_content(stop):
     wire = Scripted([anthropic_response(calls=(("qa_add", {"a": 2, "b": 3}),), stop=stop)])
     req = request(SCENARIOS[1], "anthropic")
@@ -186,10 +186,6 @@ def test_anthropic_complete_call_normalized_from_content(stop):
     assert [(c.name, c.arguments) for c in turn.tool_calls] == [("qa_add", {"a": 2, "b": 3})]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Anthropic adapter labels max_tokens truncation final and drops stop metadata",
-)
 def test_anthropic_truncation_not_reported_as_success():
     wire = Scripted([anthropic_response(text="unfinished", stop="max_tokens")])
     req = request(SCENARIOS[0], "anthropic")
@@ -201,8 +197,8 @@ def test_anthropic_truncation_not_reported_as_success():
         tools=[],
         max_tokens=256,
     )
-    turn = model.next_turn(req, [], [])
-    assert turn.status != "final" or turn.metadata.get("stop_reason") == "max_tokens"
+    with pytest.raises(ValueError, match="truncated"):
+        model.next_turn(req, [], [])
 
 
 def chunk(content=None, calls=(), finish=None):
@@ -248,7 +244,7 @@ def test_openai_compatible_real_entrypoint(provider, scenario, monkeypatch):
                     calls=[
                         NS(
                             index=i,
-                            id=f"call_{i}" if start else None,
+                            id=f"call_{name}_{i}" if start else None,
                             function=NS(name=name if start else None, arguments=part),
                         )
                     ]
@@ -314,25 +310,36 @@ def test_compatible_stream_finish_and_json_validation(finish, arguments, expecte
     called = []
     monkeypatch.setattr(llm, "_get_openai_tool_schemas", lambda *a, **k: schemas(scenario, "openai"))
     monkeypatch.setattr(llm, "_execute_model_tool", lambda *a, **k: called.append(a) or "5")
-    list(
-        llm._stream_openai_compat(
-            scenario.prompt,
-            None,
-            "qa-model",
-            NS(chat=NS(completions=wire)),
-            provider="openai",
-            use_tools=True,
-            allowed_tools=["qa_add"],
-            max_tokens=256,
+    if finish == "length":
+        with pytest.raises(ValueError, match="truncated"):
+            list(
+                llm._stream_openai_compat(
+                    scenario.prompt,
+                    None,
+                    "qa-model",
+                    NS(chat=NS(completions=wire)),
+                    provider="openai",
+                    use_tools=True,
+                    allowed_tools=["qa_add"],
+                    max_tokens=256,
+                )
+            )
+    else:
+        list(
+            llm._stream_openai_compat(
+                scenario.prompt,
+                None,
+                "qa-model",
+                NS(chat=NS(completions=wire)),
+                provider="openai",
+                use_tools=True,
+                allowed_tools=["qa_add"],
+                max_tokens=256,
+            )
         )
-    )
     assert bool(called) is expected
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Later nonstreaming complete tool call with finish_reason=stop is discarded at client.py:5202",
-)
 @pytest.mark.parametrize("provider", ["openai", "google"])
 def test_compatible_later_stop_tool_call(provider, monkeypatch):
     scenario = SCENARIOS[6]

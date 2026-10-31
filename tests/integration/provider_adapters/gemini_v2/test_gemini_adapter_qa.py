@@ -13,7 +13,7 @@ from . import gemini_adapter_qa as qa
 
 def tool_call(name, args, index):
     """Build one SDK function-call fixture."""
-    return {"id": f"call_{index}", "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
+    return {"id": f"call_{name}_{index}", "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
 
 
 def completion(calls=(), final="", stream=False):
@@ -150,7 +150,6 @@ def test_secret_redaction(monkeypatch):
     assert "synthetic-sensitive-value" not in json.dumps(qa.sanitized({"message": "key=synthetic-sensitive-value"}))
 
 
-@pytest.mark.xfail(strict=True, raises=KeyError, reason="dev drops Gemini thought signatures; recovered product fix is absent")
 def test_signature_survives_after_fix():
     """Ensure the live harness observes preserved metadata in replayed calls."""
     class SignatureSDK(ScriptedSDK):

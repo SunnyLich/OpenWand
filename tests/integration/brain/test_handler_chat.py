@@ -192,6 +192,65 @@ def test_chat_emits_progress_chunks_without_saving_them(record_ctx, monkeypatch)
     assert [data for event, data in events if event == "reply.done"] == [{"text": "Done."}]
 
 
+def test_chat_reports_tool_progress_before_execution_and_excludes_it_from_answer(record_ctx, monkeypatch):
+    """Drive the real progress callback through brain.chat before a tool returns."""
+    import config
+    from core.llm_clients import client as llm
+
+    monkeypatch.delenv("OPENWAND_BRAIN_FAKE_LLM", raising=False)
+    monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", False)
+    events, ctx = record_ctx()
+
+    def execute(name, inputs):
+        assert name == "web_search"
+        assert _chunks(events) == ["Checking sources.", "Searching the web..."]
+        # The request's observer must not leak into another request thread.
+        other = threading.Thread(target=lambda: llm._emit_live_progress("Other request"))
+        other.start()
+        other.join(timeout=2)
+        assert not other.is_alive()
+        assert _chunks(events)[-1] == "Searching the web..."
+        return "search evidence"
+
+    def stream(*_args, **_kwargs):
+        llm._emit_live_progress("Checking sources.")
+        llm._execute_model_tool("web_search", {"query": "synthetic"}, allowed_tools=["web_search"])
+        assert _chunks(events)[-1] == "Reading tool results..."
+        yield "Done."
+
+    monkeypatch.setattr(llm._TOOL_REGISTRY, "execute", execute)
+    monkeypatch.setattr(llm, "stream_response_with_history", stream)
+    result = handlers.brain_chat(
+        ctx, messages=[{"role": "user", "content": "search"}],
+        memory_enabled=False, use_tools=True, allowed_tools=["web_search"],
+    )
+
+    assert result["text"] == "Done."
+    assert _chunks(events) == ["Checking sources.", "Searching the web...", "Reading tool results...", "Done."]
+    assert all(data["is_progress"] for event, data in events if event == "reply.chunk" and data["text"] != "Done.")
+    llm._emit_live_progress("After completion")
+    assert _chunks(events)[-1] == "Done."
+
+
+def test_chat_clears_live_progress_callback_when_provider_raises(record_ctx, monkeypatch):
+    """Failed requests must not send future activity to their old chat window."""
+    from core.llm_clients import client as llm
+
+    monkeypatch.delenv("OPENWAND_BRAIN_FAKE_LLM", raising=False)
+    events, ctx = record_ctx()
+
+    def fail(*_args, **_kwargs):
+        llm._emit_live_progress("Waiting for model...")
+        raise RuntimeError("synthetic provider failure")
+        yield  # Keep the production iterator contract.
+
+    monkeypatch.setattr(llm, "stream_response_with_history", fail)
+    with pytest.raises(RuntimeError, match="synthetic provider failure"):
+        list(handlers._stream_chat_reply([{"role": "user", "content": "hi"}], "", ctx=ctx))
+    llm._emit_live_progress("After failure")
+    assert _chunks(events) == ["Waiting for model..."]
+
+
 def test_chat_harness_streams_thought_and_reply_and_returns_session(record_ctx, monkeypatch):
     """The harness route preserves live channel types and resumable metadata."""
     import config

@@ -3,9 +3,34 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import inspect
 import os
 import time
 from collections.abc import Iterable
+
+from core.llm_clients.adapter_protocol import (
+    AdapterCapabilityError,
+    ToolContinuationError,
+    result_text,
+    tool_call,
+    value,
+)
+
+
+def _options_call(function, options):
+    """Support legacy option dictionaries and current keyword-only SDK APIs.
+
+    Inspect before invoking: retrying a TypeError after creating a session can
+    create duplicate remote sessions and hide an exception from inside the SDK.
+    """
+    parameters = inspect.signature(function).parameters
+    positional = [p for p in parameters.values() if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+    if len(positional) == 1 and positional[0].name in {"options", "config"}:
+        return function(options)
+    unknown = set(options) - set(parameters)
+    if unknown and not any(p.kind == p.VAR_KEYWORD for p in parameters.values()):
+        raise AdapterCapabilityError(f"Installed Copilot SDK does not support options: {', '.join(sorted(unknown))}")
+    return function(**options)
 
 _SDK_MODULE = "copilot"
 _COPILOT_STATE_HOME = os.path.abspath(
@@ -68,6 +93,7 @@ async def _ask_async(
     system: str = "",
     session_id: str | None = None,
     allow_tools: bool = False,
+    *, tool_request=None, tool_executor=None, max_tool_calls: int = 4,
 ) -> str:
     """Handle ask async for auth copilot client."""
     from copilot import CopilotClient  # type: ignore
@@ -84,7 +110,9 @@ async def _ask_async(
     if not ok:
         raise RuntimeError(message)
 
-    client = CopilotClient(_client_options(token))
+    client = _options_call(CopilotClient, _client_options(token))
+    guard = None
+    failures = []
     try:
         await client.start()
         session_options: dict = {
@@ -94,16 +122,75 @@ async def _ask_async(
         }
         if not allow_tools:
             session_options["available_tools"] = []
+        if tool_request is not None:
+            from copilot import Tool, ToolResult
+
+            from core.llm_clients.chat_tool_loop import ToolExecutionGuard
+
+            if tool_executor is None:
+                raise AdapterCapabilityError("OpenWand tools require an explicit OpenWand executor")
+            guard = ToolExecutionGuard(tool_request, tool_executor, max_tool_calls)
+
+            def handler(name):
+                def invoke(invocation):
+                    try:
+                        if value(invocation, "tool_name", name) != name:
+                            raise AdapterCapabilityError("Copilot tool invocation does not match its registered handler")
+                        call = tool_call(value(invocation, "tool_call_id"), name, value(invocation, "arguments", {}))
+                        result = guard.execute(call)
+                        return ToolResult(
+                            text_result_for_llm=result_text(result.content),
+                            result_type="success" if result.ok else "failure",
+                        )
+                    except Exception as exc:
+                        failures.append(exc)
+                        raise
+                return invoke
+
+            native_tools = []
+            for schema in tool_request.tools:
+                definition = schema.get("function", schema)
+                name = definition["name"]
+                if tool_request.allowed_tools is not None and name not in tool_request.allowed_tools:
+                    continue
+                native_tools.append(Tool(
+                    name=name, description=definition.get("description", ""),
+                    parameters=definition.get("parameters", definition.get("input_schema", {})),
+                    handler=handler(name), overrides_built_in_tool=True,
+                    # The SDK only delegates to OpenWand's guarded executor.
+                    # OpenWand retains its own file/action approval checks.
+                    skip_permission=True,
+                ))
+            session_options.update({
+                "tools": native_tools, "available_tools": [tool.name for tool in native_tools],
+                "on_permission_request": _deny_permission,
+            })
         if system:
             session_options["system_message"] = {
                 "mode": "replace",
                 "content": system,
             }
-        session = await client.create_session(session_options)
-        response = await session.send_and_wait({"prompt": prompt})
-        return _extract_content(response)
+        session = await _options_call(client.create_session, session_options)
+        send_parameters = inspect.signature(session.send_and_wait).parameters
+        pending = session.send_and_wait(prompt) if "prompt" in send_parameters else session.send_and_wait({"prompt": prompt})
+        response = await asyncio.wait_for(pending, timeout=120)
+        if failures:
+            raise failures[0]
+        text = _extract_content(response)
+        if guard is not None and guard.invoked and not text:
+            raise ToolContinuationError("Copilot returned no answer after tool execution; automatic replay was stopped.")
+        return text
+    except Exception as exc:
+        if guard is not None and guard.invoked:
+            raise ToolContinuationError("Copilot failed after OpenWand tool execution; automatic replay was stopped.") from exc
+        raise
     finally:
-        await client.stop()
+        try:
+            await client.stop()
+        except Exception as exc:
+            if guard is not None and guard.invoked:
+                raise ToolContinuationError("Copilot cleanup failed after tool execution; automatic replay was stopped.") from exc
+            raise
 
 
 def _ask_sync(
@@ -112,9 +199,10 @@ def _ask_sync(
     system: str = "",
     session_id: str | None = None,
     allow_tools: bool = False,
+    **kwargs,
 ) -> str:
     """Handle ask sync for auth copilot client."""
-    return asyncio.run(_ask_async(prompt, model, system, session_id, allow_tools))
+    return asyncio.run(_ask_async(prompt, model, system, session_id, allow_tools, **kwargs))
 
 
 def ask(
@@ -123,13 +211,14 @@ def ask(
     system: str = "",
     session_id: str | None = None,
     allow_tools: bool = False,
+    **kwargs,
 ) -> str:
     """Handle ask for auth copilot client."""
     try:
         asyncio.get_running_loop()
     except RuntimeError as exc:
         if "no running event loop" in str(exc):
-            return _ask_sync(prompt, model, system, session_id, allow_tools)
+            return _ask_sync(prompt, model, system, session_id, allow_tools, **kwargs)
         raise
     raise RuntimeError("Copilot calls cannot run inside an existing asyncio event loop yet.")
 
@@ -140,9 +229,10 @@ def stream(
     system: str = "",
     session_id: str | None = None,
     allow_tools: bool = False,
+    **kwargs,
 ) -> Iterable[str]:
     """Yield the Copilot reply as a single chunk (non-streaming shim)."""
-    text = ask(prompt, model, system, session_id, allow_tools)
+    text = ask(prompt, model, system, session_id, allow_tools, **kwargs)
     if text:
         yield text
 

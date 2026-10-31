@@ -8,8 +8,12 @@ anyio==4.14.1
     # via
     #   anthropic
     #   cartesia
+    #   claude-agent-sdk
     #   httpx
+    #   mcp
     #   openai
+    #   sse-starlette
+    #   starlette
 attrs==26.1.0
     # via
     #   jsonschema
@@ -27,6 +31,7 @@ certifi==2026.6.17
     #   requests
 cffi==2.0.0
     # via
+    #   cryptography
     #   sounddevice
     #   soundfile
 charset-normalizer==3.4.7
@@ -35,14 +40,18 @@ claude-agent-sdk==0.2.120
     # via -r requirements/requirements.txt
 click==8.4.2
     # via
+    #   ddgs
     #   huggingface-hub
     #   typer
+    #   uvicorn
 coloredlogs==15.0.1
     # via onnxruntime
 cryptography==49.0.0
     # via pyjwt
 ctranslate2==4.8.0
     # via faster-whisper
+ddgs==9.16.1
+    # via -r requirements/requirements.txt
 defusedxml==0.7.1
     # via odfpy
 distro==1.9.0
@@ -69,7 +78,9 @@ fsspec==2026.6.0
 github-copilot-sdk==1.0.4
     # via -r requirements/requirements.txt
 h11==0.16.0
-    # via httpcore
+    # via
+    #   httpcore
+    #   uvicorn
 hf-xet==1.5.1
     # via huggingface-hub
 httpcore==1.0.9
@@ -81,6 +92,7 @@ httpx==0.28.1
     #   elevenlabs
     #   github-copilot-sdk
     #   huggingface-hub
+    #   mcp
     #   openai
 httpx-sse==0.4.3
     # via mcp
@@ -119,6 +131,7 @@ liteparse==2.3.0
     # via -r requirements/requirements.txt
 lxml==6.1.1
     # via
+    #   ddgs
     #   python-docx
     #   python-pptx
 markdown-it-py==4.2.0
@@ -157,6 +170,8 @@ pillow==12.2.0
     # via
     #   -r requirements/requirements.txt
     #   python-pptx
+primp==2.0.1
+    # via ddgs
 protobuf==6.33.2
     # via
     #   -r requirements/requirements.txt
@@ -171,7 +186,9 @@ pydantic==2.13.4
     #   cartesia
     #   elevenlabs
     #   github-copilot-sdk
+    #   mcp
     #   openai
+    #   pydantic-settings
 pydantic-core==2.46.4
     # via
     #   elevenlabs
@@ -367,7 +384,9 @@ python-dateutil==2.9.0.post0
 python-docx==1.2.0
     # via -r requirements/requirements.txt
 python-dotenv==1.2.2
-    # via -r requirements/requirements.txt
+    # via
+    #   -r requirements/requirements.txt
+    #   pydantic-settings
 python-multipart==0.0.32
     # via mcp
 python-pptx==1.0.2
@@ -409,6 +428,7 @@ sniffio==1.3.1
     # via
     #   anthropic
     #   cartesia
+    #   claude-agent-sdk
     #   openai
 sounddevice==0.5.5
     # via -r requirements/requirements.txt
@@ -443,15 +463,21 @@ typing-extensions==4.15.0
     #   cartesia
     #   elevenlabs
     #   huggingface-hub
+    #   mcp
     #   openai
     #   pydantic
     #   pydantic-core
     #   python-docx
     #   python-pptx
+    #   referencing
     #   soundfile
+    #   starlette
     #   typing-inspection
 typing-inspection==0.4.2
-    # via pydantic
+    # via
+    #   mcp
+    #   pydantic
+    #   pydantic-settings
 urllib3==2.7.0
     # via requests
 uvicorn==0.51.0

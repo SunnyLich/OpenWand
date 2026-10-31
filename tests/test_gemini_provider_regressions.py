@@ -23,10 +23,7 @@ def offline_provider_state(monkeypatch):
 
 @pytest.mark.parametrize("stream_first", [True, False], ids=["streamed", "nonstream-fallback"])
 @pytest.mark.parametrize("signed", [
-    pytest.param(True, id="google-metadata", marks=pytest.mark.xfail(
-        strict=True, raises=AssertionError,
-        reason="dev drops Gemini extra_content signatures during normalization/replay; recovered product fix is absent",
-    )),
+    pytest.param(True, id="google-metadata"),
     pytest.param(False, id="ordinary-openai"),
 ])
 def test_openai_tool_metadata_survives_parallel_and_later_rounds(stream_first, signed):
@@ -124,7 +121,6 @@ def test_openai_tool_metadata_survives_parallel_and_later_rounds(stream_first, s
     assert [message["tool_call_id"] for message in requests[-1]["messages"] if message["role"] == "tool"] == ["call-a", "call-b", "call-c"]
 
 
-@pytest.mark.xfail(strict=True, raises=KeyError, reason="dev drops extra_content instead of copying provider metadata")
 def test_openai_tool_metadata_is_copied_at_normalization_and_replay():
     """History, normalized calls, and SDK responses must not alias metadata."""
     extra = {"google": {"thought_signature": "synthetic-signature"}, "other": {"items": [1, 2]}}
@@ -140,10 +136,6 @@ def test_openai_tool_metadata_is_copied_at_normalization_and_replay():
 
 
 @pytest.mark.parametrize("ambiguous", [False, True], ids=["distinct-calls", "unidentified-fragment"])
-@pytest.mark.xfail(
-    strict=True, raises=(AssertionError, pytest.fail.Exception),
-    reason="dev merges indexless parallel calls and does not reject unidentified fragments; recovered fix is absent",
-)
 def test_openai_parallel_stream_without_indices_executes_both_calls(ambiguous):
     """Reproduce the exact Gemini shape: distinct IDs, empty args, no indices."""
     from openai._models import construct_type
@@ -209,10 +201,6 @@ def test_openai_parallel_stream_without_indices_executes_both_calls(ambiguous):
 
 
 @pytest.mark.parametrize("identity", ["index", "id", "mixed"])
-@pytest.mark.xfail(
-    strict=True, raises=ModuleNotFoundError,
-    reason="recovered tests require the missing product helper core.llm_clients.tool_call_metadata",
-)
 def test_openai_stream_interleaved_fragments_keep_call_identity(identity):
     """Join each call's text and late metadata through either stable identity."""
     from core.llm_clients.tool_call_metadata import StreamToolCallAccumulator
@@ -254,10 +242,6 @@ def test_openai_stream_interleaved_fragments_keep_call_identity(identity):
     ({"index": True, "id": "c"}, "invalid index"),
     ({"id": " "}, "invalid ID"),
 ])
-@pytest.mark.xfail(
-    strict=True, raises=ModuleNotFoundError,
-    reason="recovered tests require the missing product helper core.llm_clients.tool_call_metadata",
-)
 def test_openai_stream_rejects_ambiguous_identity_without_mutating_calls(fragment, message):
     """Never join unrelated calls or attach opaque metadata by last-seen order."""
     from core.llm_clients.tool_call_metadata import StreamToolCallAccumulator

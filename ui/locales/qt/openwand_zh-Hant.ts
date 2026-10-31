@@ -4246,6 +4246,42 @@ Let model decide — expose browser context tools. Public web search is controll
 開啟 — 傳送提示前讀取目前的瀏覽器頁面。
 讓模型決定 — 提供瀏覽器情境工具。公開網頁搜尋在「允許的工具」中獨立控制。</translation></message>
     <message><source>{provider}/{model}: the provider reported a rate limit. Retry in {seconds} seconds. Original error: {error}</source><translation>{provider}/{model}：供應商回報請求頻率限制。請在 {seconds} 秒後重試。原始錯誤：{error}</translation></message>
+    <message>
+      <source>Preparing response...</source>
+      <translation>正在準備回覆…</translation>
+    </message>
+    <message>
+      <source>Completed file operations were kept. Check the file before repeating this request.</source>
+      <translation>已完成的檔案操作已保留。再次傳送此請求前，請先檢查檔案。</translation>
+    </message>
+    <message>
+      <source>Local file activity finished. View details {here}.</source>
+      <translation>本機檔案操作已完成。詳情請見{here}。</translation>
+    </message>
+    <message>
+      <source>Technical details</source>
+      <translation>技術詳情</translation>
+    </message>
+    <message>
+      <source>OpenWand reported an error</source>
+      <translation>OpenWand 回報了錯誤</translation>
+    </message>
+    <message>
+      <source>Retry after {duration}.</source>
+      <translation>{duration}後重試。</translation>
+    </message>
+    <message>
+      <source>OpenWand retry wait: {duration}.</source>
+      <translation>OpenWand 重試等待時間：{duration}。</translation>
+    </message>
+    <message>
+      <source>{provider} reported an error</source>
+      <translation>{provider} 回報了錯誤</translation>
+    </message>
+    <message>
+      <source>OpenWand error ({provider})</source>
+      <translation>OpenWand 錯誤（{provider}）</translation>
+    </message>
 </context>
   <context>
     <name>OpenWand</name>

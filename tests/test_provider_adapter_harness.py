@@ -491,12 +491,12 @@ def test_run_case_classifies_errors_without_secret_exception_text(provider, erro
 def test_run_case_rejected_unknown_wire_tool_is_model_selection(provider, tmp_path):
     scenario = _CASES["no_tool_needed"]
     endpoint = _Endpoint([_reply(provider, [("bad-call", "unknown_tool", {})], first=True,
-                                 text="adapter-ready")])
+                                 text="adapter-ready"), _reply(provider, text="adapter-ready")])
     trace = run_case(provider, _MODEL, scenario, _client(provider, endpoint), tmp_path)
     assert not trace.error_category
     assert not trace.executions
-    # The fake stream also narrates a preamble, violating the exact-answer request.
-    assert _categories(trace, scenario) == {"model_tool_selection", "model_answer"}
+    # Unknown calls receive a correlated denial and cannot reach any executor.
+    assert _categories(trace, scenario) == {"model_tool_selection"}
 
 
 def test_grade_does_not_hide_corrupt_result_behind_later_correct_replay():

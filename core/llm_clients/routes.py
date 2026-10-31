@@ -28,7 +28,7 @@ VERCEL_BASE_URL         = "https://ai-gateway.vercel.sh/v1"
 FIREWORKS_BASE_URL      = "https://api.fireworks.ai/inference/v1"
 COHERE_BASE_URL         = "https://api.cohere.ai/compatibility/v1"
 AI21_BASE_URL           = "https://api.ai21.com/studio/v1"
-NEBIUS_BASE_URL         = "https://api.studio.nebius.com/v1"
+NEBIUS_BASE_URL         = "https://api.tokenfactory.nebius.com/v1"
 
 
 def api_key_for(provider: str) -> str:

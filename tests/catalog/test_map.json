@@ -139,7 +139,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 22
+      "node_count": 24
     },
     {
       "path": "tests/integration/brain/test_handler_config.py",
@@ -289,7 +289,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 82
+      "node_count": 81
     },
     {
       "path": "tests/integration/provider_adapters/claude_v2/test_budget.py",
@@ -559,7 +559,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 46
+      "node_count": 48
     },
     {
       "path": "tests/runtime/test_ui_host_agent_meeting.py",
@@ -1087,6 +1087,21 @@
       "node_count": 8
     },
     {
+      "path": "tests/test_all_provider_adapters.py",
+      "kind": "pytest",
+      "scope": "integration",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 160
+    },
+    {
       "path": "tests/test_app_icon.py",
       "kind": "pytest",
       "scope": "ui",
@@ -1114,7 +1129,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 104
+      "node_count": 109
     },
     {
       "path": "tests/test_assistant_text.py",
@@ -1282,6 +1297,21 @@
       "node_count": 27
     },
     {
+      "path": "tests/test_chat_completion_boundaries.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 15
+    },
+    {
       "path": "tests/test_chat_rendering.py",
       "kind": "pytest",
       "scope": "ui",
@@ -1410,7 +1440,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 26
+      "node_count": 24
     },
     {
       "path": "tests/test_context_fetcher_windows.py",
@@ -2294,7 +2324,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 6
+      "node_count": 5
     },
     {
       "path": "tests/test_planned_chunking.py",
@@ -2518,6 +2548,21 @@
       ],
       "schedule": "github-actions",
       "node_count": 140
+    },
+    {
+      "path": "tests/test_provider_error_details.py",
+      "kind": "pytest",
+      "scope": "integration",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 12
     },
     {
       "path": "tests/test_query_pipeline.py",
@@ -3083,7 +3128,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 18
+      "node_count": 19
     },
     {
       "path": "tests/test_uninstaller.py",
@@ -3204,6 +3249,21 @@
       ],
       "schedule": "github-actions",
       "node_count": 4
+    },
+    {
+      "path": "tests/test_web_search.py",
+      "kind": "pytest",
+      "scope": "component",
+      "behaviour": "internal",
+      "execution": "github_safe",
+      "category": "GI",
+      "platforms": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "schedule": "github-actions",
+      "node_count": 28
     },
     {
       "path": "tests/test_window_chrome.py",

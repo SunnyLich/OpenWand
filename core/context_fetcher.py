@@ -12,7 +12,7 @@ Sources implemented (Windows):
   • Recent Files     — Windows %APPDATA%\\Microsoft\\Windows\\Recent
   • File System Events — background watchdog watcher on Desktop/Documents/Downloads
   • Browser Content  — fetches & parses the current browser page as plain text (redacted)
-  • Online Search    — DuckDuckGo text search, no API key required (redacted)
+  • Online Search    — DDGS public metasearch, no API key required (redacted)
 
 Optional:
   • Screen Capture   — enable by passing capture_screen=True to fetch_and_save()
@@ -44,17 +44,15 @@ import time
 import unicodedata
 from collections import deque
 from dataclasses import dataclass, field
-from html import unescape as html_unescape
-from html.parser import HTMLParser
 from threading import Lock
 from typing import Any
-from urllib.parse import parse_qs, unquote, urlencode, urlparse
+from urllib.parse import unquote, urlparse
 
 import config
 from core import context_fetcher_page
-from core.system import macos_safety, sdk_clients
-from core.system.native_locks import ssl_init_lock
+from core.system import macos_safety
 from core.system.safe import swallow
+from core.web_search import WebSearchError
 
 _log = logging.getLogger("openwand.context_fetcher")
 _IS_WIN = sys.platform == "win32"
@@ -152,15 +150,6 @@ def _redact(text: str) -> str:
 # ---------------------------------------------------------------------------
 # Stable temp file path
 # ---------------------------------------------------------------------------
-
-# Model used for the web-search call.  Haiku does not invoke web search;
-# Sonnet is the cheapest tier that actually uses the tool.
-# Override with SEARCH_LLM_MODEL in .env if needed.
-_SEARCH_MODEL = os.getenv("SEARCH_LLM_MODEL", "claude-sonnet-4-5")
-# web_search_20250305: basic search, works on all capable models.
-# web_search_20260209: adds dynamic filtering (requires code-execution tool
-#   enabled in your org and a Sonnet 4.6 / Opus 4.6+ model).
-_WEB_SEARCH_TOOL_TYPE = os.getenv("WEB_SEARCH_TOOL_TYPE", "web_search_20250305")
 
 _TEMP_FILE = os.path.join(tempfile.gettempdir(), "ai_assistant_context.json")
 
@@ -328,212 +317,24 @@ def _fetch_browser_content(url: str, max_chars: int | None = None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Source: Online search  (Anthropic web search tool, charges via ANTHROPIC_API_KEY)
+# Source: Public web search (DDGS; no AI-provider credentials required)
 # ---------------------------------------------------------------------------
 
+
 def _search_online(query: str, max_results: int = 5) -> list[dict]:
-    """
-    Use the Anthropic web search tool to find up to *max_results* hits for
-    *query* and return them as [{"title", "url", "snippet"}].
-
-    Charges through ANTHROPIC_API_KEY at ~$10 / 1 000 searches plus token
-    costs.  Returns [] immediately if the key is not configured or on any
-    failure.
-
-    Response structure parsed here:
-      • web_search_tool_result blocks  → raw {url, title} from Anthropic
-      • text blocks with citations     → {cited_text} snippets (≤150 chars)
-    Both are merged by URL and passed through the sensitive-data redactor.
-    """
-    if not query or not query.strip():
-        return []
-    if not config.ANTHROPIC_API_KEY:
-        print("[context_fetcher] ANTHROPIC_API_KEY not set — online search skipped.")
-        return []
-
+    """Best-effort search for ambient snapshots; failure must not lose other context."""
     try:
-        from core.privacy_gateway import scrub_cloud_fields
-
-        privacy_session, scrubbed, _privacy_report = scrub_cloud_fields(
-            {"search_query": query.strip()},
-            session_id="context:online-search",
-        )
-        query = scrubbed["search_query"]
-        with ssl_init_lock():
-            client = sdk_clients.anthropic_client(api_key=config.ANTHROPIC_API_KEY)
-
-        response = client.messages.create(
-            model=_SEARCH_MODEL,
-            max_tokens=1024,
-            tools=[{
-                "type": _WEB_SEARCH_TOOL_TYPE,
-                "name": "web_search",
-                "max_uses": 2,           # cap at 2 search queries per call
-            }],
-            messages=[{"role": "user", "content": query.strip()}],
-        )
-
-        # Collect results preserving insertion order (dict, Python 3.7+)
-        results: dict[str, dict] = {}   # url → {title, url, snippet}
-
-        for block in response.content:
-            btype = getattr(block, "type", "")
-
-            # Raw search results list returned by Anthropic infrastructure
-            if btype == "web_search_tool_result":
-                for item in (getattr(block, "content", None) or []):
-                    if getattr(item, "type", "") == "web_search_result":
-                        url   = (getattr(item, "url",   "") or "").strip()
-                        title = (getattr(item, "title", "") or "").strip()
-                        if url and url not in results:
-                            results[url] = {
-                                "title":   _redact(title),
-                                "url":     url,
-                                "snippet": "",
-                            }
-
-            # Text blocks carry inline citations with short cited_text snippets
-            elif btype == "text":
-                for citation in (getattr(block, "citations", None) or []):
-                    url        = (getattr(citation, "url",        "") or "").strip()
-                    title      = (getattr(citation, "title",      "") or "").strip()
-                    cited_text = (getattr(citation, "cited_text", "") or "").strip()
-                    if url:
-                        if url not in results:
-                            results[url] = {
-                                "title":   _redact(title),
-                                "url":     url,
-                                "snippet": "",
-                            }
-                        if cited_text and not results[url]["snippet"]:
-                            results[url]["snippet"] = _redact(cited_text)
-
-        output = list(results.values())[:max_results]
-        if privacy_session is not None:
-            for item in output:
-                item["title"] = privacy_session.restore(str(item.get("title") or ""))
-                item["snippet"] = privacy_session.restore(str(item.get("snippet") or ""))
-        return output
-
-    except Exception as exc:
-        print(f"[context_fetcher] online search failed: {exc}")
+        return search_online_for_tool(query, max_results)
+    except WebSearchError as exc:
+        print(f"[context_fetcher] {exc}")
         return []
-
-
-class _DuckDuckGoResultParser(HTMLParser):
-    """Extract result titles, URLs, and snippets from DuckDuckGo's HTML page."""
-
-    def __init__(self, max_results: int):
-        super().__init__(convert_charrefs=True)
-        self.max_results = max(1, max_results)
-        self.results: list[dict] = []
-        self._current: dict[str, str] | None = None
-        self._capture: str = ""
-        self._text_parts: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        attr = {key: value or "" for key, value in attrs}
-        classes = set((attr.get("class") or "").split())
-        if tag == "a" and "result__a" in classes:
-            self._commit_current()
-            href = _normalize_search_result_url(attr.get("href") or "")
-            if not href:
-                return
-            self._current = {"title": "", "url": href, "snippet": ""}
-            self._capture = "title"
-            self._text_parts = []
-        elif self._current is not None and "result__snippet" in classes:
-            self._capture = "snippet"
-            self._text_parts = []
-
-    def handle_data(self, data: str) -> None:
-        if self._capture and data:
-            self._text_parts.append(data)
-
-    def handle_endtag(self, tag: str) -> None:
-        if self._current is None or not self._capture:
-            return
-        if self._capture == "title" and tag == "a":
-            self._current["title"] = _redact(_collapse_ws(" ".join(self._text_parts)))
-            self._capture = ""
-            self._text_parts = []
-        elif self._capture == "snippet" and tag in {"a", "div"}:
-            self._current["snippet"] = _redact(_collapse_ws(" ".join(self._text_parts)))
-            self._capture = ""
-            self._text_parts = []
-            self._commit_current()
-
-    def close(self) -> None:
-        super().close()
-        self._commit_current()
-
-    def _commit_current(self) -> None:
-        if (
-            self._current
-            and self._current.get("title")
-            and self._current.get("url")
-            and not any(item.get("url") == self._current["url"] for item in self.results)
-        ):
-            self.results.append(dict(self._current))
-            self._current = None
-
-
-def _collapse_ws(text: str) -> str:
-    return re.sub(r"\s+", " ", text or "").strip()
-
-
-def _normalize_search_result_url(href: str) -> str:
-    href = html_unescape(str(href or "").strip())
-    if not href:
-        return ""
-    parsed = urlparse(href)
-    if parsed.path.startswith("/l/"):
-        target = (parse_qs(parsed.query).get("uddg") or [""])[0]
-        if target:
-            href = unquote(target)
-            parsed = urlparse(href)
-    if parsed.scheme in {"http", "https"} and parsed.netloc:
-        return href
-    return ""
-
-
-def _search_duckduckgo_html(query: str, max_results: int = 5) -> list[dict]:
-    """Search DuckDuckGo's no-script HTML endpoint using only stdlib HTTP."""
-    if not query or not query.strip():
-        return []
-    import urllib.request
-
-    url = "https://duckduckgo.com/html/?" + urlencode({"q": query.strip()})
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (compatible; OpenWand/1.0; +https://github.com/SunnyLich/Python-AI-assistant-overlay)",
-            "Accept": "text/html,application/xhtml+xml",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            html = resp.read(800_000).decode("utf-8", errors="replace")
-    except Exception as exc:
-        print(f"[context_fetcher] DuckDuckGo search failed: {exc}")
-        return []
-
-    parser = _DuckDuckGoResultParser(max_results)
-    parser.feed(html)
-    parser.close()
-    return parser.results[:max(1, max_results)]
 
 
 def search_online_for_tool(query: str, max_results: int = 5) -> list[dict]:
-    """Public model-tool search wrapper with provider search plus stdlib fallback."""
-    try:
-        limit = max(1, min(int(max_results or 5), 10))
-    except Exception:
-        limit = 5
-    results = _search_online(query, limit)
-    if results:
-        return results[:limit]
-    return _search_duckduckgo_html(query, limit)
+    """Search public engines without coupling retrieval to an AI account."""
+    from core.web_search import search_web
+
+    return search_web(query, max_results)
 
 
 # ---------------------------------------------------------------------------
@@ -1947,7 +1748,7 @@ def fetch_and_save(
         fetch_browser_content: Fetch and parse the URL in the active browser
                               window as plain text (on by default; only fires
                               when a supported browser is in the foreground).
-        online_query:         If provided, run a DuckDuckGo search and include
+        online_query:         If provided, run DDGS public metasearch and include
                               up to 5 results in the snapshot.
         active_hwnd:          Windows-only foreground window handle captured at
                               hotkey time. Avoids re-detecting the overlay after

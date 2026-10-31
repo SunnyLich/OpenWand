@@ -38,10 +38,12 @@ secrets.*
 /artifacts/
 /reports/
 /assets/brand-concepts/
+/assets/icon-explorations/
 
 # Local README drafts and duplicate capture exports
 /docs/copy-mockups/
 /OpenWand * Demo.gif
+/OpenWand Website/assets/openwand-demo-reel.mp4
 
 # Machine-specific MCP client config snippet (regenerated at addon startup)
 addons/mcp_bridge/claude_config_snippet.json

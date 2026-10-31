@@ -14,6 +14,10 @@ one superset is the optional ``id`` on events: a streaming method (e.g.
 id so the host can route partial output to the right in-flight call. Events with
 ``id == null`` are broadcast/unsolicited (lifecycle, logs).
 
+Error responses may also contain a ``provider_error`` object with the original
+provider message, status, retry timing and sanitized diagnostic fields. Older
+consumers can continue reading the ``error`` string.
+
 Large binary payloads (PCM audio) must NOT be base64'd through here on the hot
 path. Audio paths cross process boundaries; only *paths* cross
 this channel; if a streaming binary frame is ever needed it gets its own

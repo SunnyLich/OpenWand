@@ -796,6 +796,7 @@ class IntentOverlay(QWidget):
         self._initial_custom_text = str(initial_custom_text or "").strip()
         self._focus_overlay_requested = bool(focus_overlay)
         self._interaction_started = False
+        self._user_interacted = False
         self._was_activated = False   # macOS: dismiss on focus-out once activated
         self._kb_hook = None
         self._overlay_grabbed_keyboard = False
@@ -837,6 +838,7 @@ class IntentOverlay(QWidget):
 
     def _note_interaction(self) -> None:
         """Record active use of the overlay so it does not close mid-change."""
+        self._user_interacted = True
         self._restart_timer()
 
     def _debug(self, message: str) -> None:
@@ -943,6 +945,8 @@ class IntentOverlay(QWidget):
     def update_action_provider(self, action_provider: dict | None = None) -> None:
         """Load app-specific actions after deferred hotkey context capture."""
         if self._handled:
+            return
+        if isinstance(action_provider, dict) and action_provider.get("_contextual_ranked") and self._user_interacted:
             return
         self._action_provider = (
             dict(action_provider or {}) if self._action_provider_enabled else {}
@@ -2294,6 +2298,8 @@ class IntentOverlay(QWidget):
             row_idx = self._row_at(pos)
             if row_idx != self._hovered:
                 self._hovered = row_idx
+                if row_idx is not None:
+                    self._user_interacted = True
                 self.setCursor(
                     Qt.CursorShape.PointingHandCursor
                     if (
@@ -2331,6 +2337,7 @@ class IntentOverlay(QWidget):
     def mousePressEvent(self, event):  # noqa: N802
         """Toggle context chips, or select an intent row, when clicked."""
         if event.button() == Qt.MouseButton.LeftButton:
+            self._user_interacted = True
             pos = event.position().toPoint()
             if self._handle_conversation_click(pos):
                 event.accept()
@@ -2684,6 +2691,7 @@ class IntentOverlay(QWidget):
         """Handle raw key events."""
         if getattr(self, "_closed", False) or self._handled or self._custom_mode:
             return
+        self._user_interacted = True
         if name in ('escape', 'esc'):
             self._cancel(restore_target_focus=True)
             return
@@ -2706,6 +2714,7 @@ class IntentOverlay(QWidget):
 
     def keyPressEvent(self, event):
         """Handle key press event for intent overlay."""
+        self._user_interacted = True
         self._debug_key("overlay-keypress", event)
         if event.matches(QKeySequence.StandardKey.Paste) and self._paste_clipboard_context():
             event.accept()
