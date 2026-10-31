@@ -1,0 +1,9 @@
+[
+  {"provider":"anthropic","adapter":"AnthropicChatLoopModel / _stream_anthropic","model":"claude-haiku-4-5-20251001","credential_env":"Anthropic_API_Key","live_enabled":true},
+  {"provider":"openai","adapter":"_stream_openai_compat","model":null,"credential_env":null,"live_enabled":false},
+  {"provider":"google","adapter":"_stream_openai_compat","model":null,"credential_env":null,"live_enabled":false},
+  {"provider":"groq","adapter":"_stream_openai_compat","model":null,"credential_env":null,"live_enabled":false},
+  {"provider":"mistral","adapter":"_stream_openai_compat","model":null,"credential_env":null,"live_enabled":false},
+  {"provider":"deepseek","adapter":"_stream_openai_compat","model":null,"credential_env":null,"live_enabled":false},
+  {"provider":"chatgpt","adapter":"ResponsesChatLoopModel","model":null,"credential_env":null,"live_enabled":false}
+]

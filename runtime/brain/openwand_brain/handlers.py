@@ -3156,6 +3156,13 @@ def _stream_chat_reply(
 
     from core.llm_clients import client as llm_client
 
+    def report_progress(text: str) -> None:
+        if ctx is None or ctx.cancelled:
+            return
+        if privacy_session is not None:
+            text = privacy_session.restore(text)
+        ctx.emit("reply.chunk", {"text": text, "is_progress": True, "is_thought": False})
+
     llm_client.set_live_file_access_mode(file_access_mode or None)
     llm_client.set_live_file_approval_callback(_live_file_approval_callback(ctx) if ctx is not None else None)
     llm_client.set_live_file_event_callback(
@@ -3191,6 +3198,7 @@ def _stream_chat_reply(
                 else None
             ),
         )
+    llm_client.set_live_progress_callback(report_progress if ctx is not None else None)
     try:
         yield from llm_client.stream_response_with_history(
             messages,
@@ -3200,6 +3208,7 @@ def _stream_chat_reply(
             pinned_tools=pinned_tools,
         )
     finally:
+        llm_client.set_live_progress_callback(None)
         llm_client.set_live_file_access_mode(None)
         llm_client.set_live_file_approval_callback(None)
         llm_client.set_live_file_event_callback(None)

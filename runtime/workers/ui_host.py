@@ -4444,6 +4444,10 @@ class QtProtocolHost:
                             yield {"type": "final", "text": final_text}
                         return
                     elif kind == "error":
+                        if isinstance(payload, dict):
+                            error = RuntimeError(str(payload.get("message") or "chat failed"))
+                            error.provider_error = payload.get("provider_error")
+                            raise error
                         raise RuntimeError(str(payload or "chat failed"))
             finally:
                 with self._chat_streams_lock:
@@ -4551,12 +4555,12 @@ class QtProtocolHost:
             return {"queued": True}
         return {"queued": stream is not None}
 
-    def _chat_error(self, request_id: str = "", error: str = "") -> dict[str, Any]:
+    def _chat_error(self, request_id: str = "", error: str = "", provider_error: dict | None = None) -> dict[str, Any]:
         """Handle chat error for qt protocol host."""
         log.warning("chat error (request %s): %s", request_id or "?", error)
         stream = self._chat_stream(request_id)
         if stream is not None:
-            stream.put(("error", _translate_notice_text(error)))
+            stream.put(("error", {"message": error, "provider_error": provider_error}))
         return {"queued": stream is not None}
 
     def _chat_background_result(

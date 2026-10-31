@@ -9,7 +9,7 @@ from __future__ import annotations
 # for a settings-time heads-up; unknown models are treated as text-only so we err
 # toward warning. This never gates runtime behavior.
 _VISION_MODEL_HINTS = (
-    "gpt-4o", "gpt-4.1", "gpt-4-turbo", "gpt-4-vision", "gpt-5", "chatgpt-4o",
+    "gpt-4o", "gpt-4.1", "gpt-4-turbo", "gpt-4-vision", "gpt-5", "gpt-6", "chatgpt-4o",
     "o1", "o3", "o4",
     "claude", "sonnet", "opus", "haiku",
     "gemini",
@@ -29,12 +29,13 @@ def _model_accepts_images(model: str) -> bool:
 
 
 # Model substrings whose providers reject any non-default sampling value
-# (temperature / top_p): GPT-5 family + OpenAI o-series reasoning models, and the
+# (temperature / top_p): GPT-5/6 families + OpenAI o-series reasoning models, and the
 # newest Claude models (Opus 4.7+, Fable), which removed those parameters. For
 # these we omit temperature and let the model use its default.
 _NO_CUSTOM_SAMPLING_HINTS = (
-    "gpt-5", "o1", "o3", "o4",
-    "opus-4-7", "opus-4-8", "fable",
+    "gpt-5", "gpt-6", "o1", "o3", "o4",
+    "opus-4-7", "opus-4-8", "opus-5", "sonnet-5-5", "haiku-5-5", "fable",
+    "opus-5.5", "sonnet-5.5", "haiku-5.5",
 )
 
 
@@ -47,7 +48,7 @@ def _model_rejects_custom_sampling(model: str) -> bool:
 def _apply_sampling(kwargs: dict, model: str, temperature: float | None) -> dict:
     """Add ``temperature`` only when the model accepts a custom one.
 
-    Comply with each model's rules up front: GPT-5/o-series and the newest Claude
+    Comply with each model's rules up front: GPT-5/6/o-series and the newest Claude
     models only accept their default sampling value and 400 on anything else, so
     we omit it for them. Models that do accept it keep the requested value. The
     reactive drop-and-retry on the OpenAI-compatible route remains the backstop
@@ -58,10 +59,10 @@ def _apply_sampling(kwargs: dict, model: str, temperature: float | None) -> dict
     return kwargs
 
 
-# OpenAI's GPT-5 family and o-series reasoning models reject ``max_tokens`` and
+# OpenAI's GPT-5/6 families and o-series reasoning models reject ``max_tokens`` and
 # require ``max_completion_tokens``. Only OpenAI serves these model names, so the
 # substring match is effectively provider-scoped.
-_MAX_COMPLETION_TOKENS_HINTS = ("gpt-5", "o1", "o3", "o4")
+_MAX_COMPLETION_TOKENS_HINTS = ("gpt-5", "gpt-6", "o1", "o3", "o4")
 
 
 def _model_uses_max_completion_tokens(model: str) -> bool:
@@ -73,7 +74,7 @@ def _model_uses_max_completion_tokens(model: str) -> bool:
 def _apply_max_output(kwargs: dict, model: str, value) -> dict:
     """Set the output-token cap under the field name the model accepts.
 
-    GPT-5 / o-series want ``max_completion_tokens``; everything else takes
+    GPT-5/6 / o-series want ``max_completion_tokens``; everything else takes
     ``max_tokens``. Complying up front avoids a 400 + retry round-trip.
     """
     if value is None:

@@ -68,8 +68,10 @@ def test_unrelated_error_returns_empty():
 # --- proactive: omit temperature for models that only accept the default --------
 
 def test_models_that_reject_custom_sampling():
-    for model in ("gpt-5.5", "gpt-5-mini", "o1", "o3-pro", "claude-opus-4-8",
-                  "claude-opus-4-7", "claude-fable-5"):
+    for model in ("gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-astra", "gpt-6-luna",
+                  "gpt-5.5", "gpt-5-mini", "o1", "o3-pro", "claude-opus-4-8",
+                  "claude-opus-4-7", "claude-fable-5", "claude-opus-5-5",
+                  "claude-sonnet-5-5", "claude-haiku-5-5", "anthropic/claude-sonnet-5.5"):
         assert _model_rejects_custom_sampling(model), model
 
 
@@ -100,7 +102,7 @@ def test_apply_sampling_omits_when_temperature_none():
 # --- max_tokens vs max_completion_tokens naming --------------------------------
 
 def test_max_completion_tokens_models():
-    for m in ("gpt-5.5", "o1-mini", "o3"):
+    for m in ("gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-astra", "gpt-6-luna", "gpt-5.5", "o1-mini", "o3"):
         assert _model_uses_max_completion_tokens(m), m
     for m in ("gpt-4o", "llama3-8b-8192", "claude-opus-4-8"):
         assert not _model_uses_max_completion_tokens(m), m

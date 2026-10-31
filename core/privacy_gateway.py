@@ -1,13 +1,14 @@
 """Fail-closed privacy gateway for cloud-bound text."""
 from __future__ import annotations
 
+import re
 import threading
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from core.privacy_redaction import SensitiveEntity, detect_sensitive_entities, safe_preview
+from core.privacy_redaction import SensitiveEntity, detect_sensitive_entities, is_public_source_url, safe_preview
 
 
 class PrivacyFilterError(RuntimeError):
@@ -63,16 +64,27 @@ def _detect_entities(
     *,
     source: str = "",
     ai_enabled: bool = False,
+    public_source_urls: frozenset[str] = frozenset(),
+    protected_source_urls: frozenset[str] = frozenset(),
 ) -> list[SensitiveEntity]:
     """Run the invariant built-in detector and optionally merge local AI hits."""
     builtin = detect_sensitive_entities(text, source=source)
-    if not ai_enabled or not text:
-        return builtin
+    if ai_enabled and text:
+        from core.privacy_model import detect_with_model
 
-    from core.privacy_model import detect_with_model
-
-    model = detect_with_model(text, source=source)
-    return _merge_entities(builtin, model)
+        builtin = _merge_entities(builtin, detect_with_model(text, source=source))
+    # Mask an unsafe source as a whole: redacting only a token inside it can
+    # leave a URL prefix that fails the final privacy check.
+    protected = [
+        SensitiveEntity("url", match.start(), match.end(), url, "[URL]", source)
+        for url in protected_source_urls if url
+        for match in re.finditer(re.escape(url), text)
+    ]
+    builtin = _merge_entities(builtin, protected)
+    return [
+        entity for entity in builtin
+        if not (entity.category == "url" and entity.original in public_source_urls)
+    ]
 
 
 @dataclass
@@ -115,13 +127,20 @@ class PrivacySession:
         *,
         ai_enabled: bool = False,
         review: Callable[[dict[str, Any]], Any] | None = None,
+        public_source_urls: Iterable[str] = (),
     ) -> tuple[dict[str, str], dict[str, Any]]:
         mode = "advanced" if ai_enabled else "builtin"
+        source_urls = frozenset(public_source_urls)
+        readable_urls = frozenset(url for url in source_urls if is_public_source_url(url))
+        protected_urls = source_urls - readable_urls
         detected: dict[str, list[SensitiveEntity]] = {}
         items: list[dict[str, str]] = []
         for source, raw in fields.items():
             text = str(raw or "")
-            entities = _detect_entities(text, source=source, ai_enabled=ai_enabled)
+            entities = _detect_entities(
+                text, source=source, ai_enabled=ai_enabled, public_source_urls=readable_urls,
+                protected_source_urls=protected_urls,
+            )
             detected[source] = entities
             for entity in entities:
                 placeholder = self.placeholder_for(entity.original, entity.category, entity.replacement)
@@ -180,7 +199,10 @@ class PrivacySession:
 
         leaked: dict[str, int] = {}
         for value in scrubbed.values():
-            remaining = _detect_entities(value, ai_enabled=ai_enabled)
+            remaining = _detect_entities(
+                value, ai_enabled=ai_enabled, public_source_urls=readable_urls,
+                protected_source_urls=protected_urls,
+            )
             for entity in remaining:
                 leaked[entity.category] = leaked.get(entity.category, 0) + 1
         if leaked:

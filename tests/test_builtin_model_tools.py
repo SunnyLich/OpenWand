@@ -855,7 +855,7 @@ class BuiltinModelToolsTests(unittest.TestCase):
 
                 text = "".join(
                     llm._stream_codex(
-                        "update hello_world.py",
+                        "Explain the allowed local-file folder.",
                         "gpt-test",
                         client,
                         use_tools=True,

@@ -6,12 +6,14 @@ text.  Context-aware/model detections are merged by :mod:`core.privacy_gateway`.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 Validator = Callable[[str], bool]
 
@@ -274,10 +276,12 @@ def detect_sensitive_entities(
     *,
     source: str = "",
     include_custom: bool = True,
+    exclude_categories: Iterable[str] = (),
 ) -> list[SensitiveEntity]:
     """Return deterministic, non-overlapping sensitive spans."""
     value = str(text or "")
     candidates: list[tuple[int, SensitiveEntity]] = []
+    excluded = set(exclude_categories)
     category_priority = {
         "custom": 0,
         "private_key": 1,
@@ -296,6 +300,8 @@ def detect_sensitive_entities(
         "phone": 14,
     }
     for order, item in enumerate(iter_patterns(include_custom=include_custom)):
+        if item.category in excluded:
+            continue
         priority = category_priority.get(item.category, 20) * 1000 + order
         for match in item.pattern.finditer(value):
             original = match.group(0)
@@ -323,6 +329,40 @@ def detect_sensitive_entities(
             continue
         accepted.append(entity)
     return sorted(accepted, key=lambda item: item.start)
+
+
+def is_public_source_url(value: str) -> bool:
+    """Allow readable search sources only without detected private URL content."""
+    try:
+        parsed = urlsplit(value)
+        host = (parsed.hostname or "").rstrip(".").lower()
+        if parsed.scheme not in {"http", "https"} or not host or parsed.username or parsed.password:
+            return False
+        try:
+            if not ipaddress.ip_address(host).is_global:
+                return False
+        except ValueError:
+            if (
+                "." not in host or re.fullmatch(r"[\d.]+", host)
+                or host.endswith((".localhost", ".local", ".localdomain", ".internal", ".lan", ".home", ".test", ".invalid"))
+            ):
+                return False
+        # Decode encoded credentials/PII too. Exclude URL detection before span
+        # selection so the outer URL cannot conceal a sensitive inner value.
+        decoded = value
+        for _ in range(3):
+            decoded = unquote(decoded)
+            if detect_sensitive_entities(decoded, exclude_categories=("url",)):
+                return False
+        if unquote(decoded) != decoded:
+            return False
+        for name, _value in parse_qsl(urlsplit(decoded).query):
+            key = re.sub(r"[^a-z]", "", name.lower())
+            if key in {"session", "sessionid", "sid", "authorization"} or key.endswith(("token", "secret", "signature", "credential")):
+                return False
+        return True
+    except (TypeError, ValueError):
+        return False
 
 
 def safe_preview(value: str, *, prefix: int = 3, suffix: int = 4) -> str:

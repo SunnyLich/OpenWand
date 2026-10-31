@@ -887,13 +887,17 @@ def test_every_provider_reaches_its_real_chat_route_probe(
                     lambda: not dialog._running_test_tokens,
                     timeout=15.0,
                 )
-                assert f"✓ Primary — {route_provider} / {model}: Passed" in dialog._llm_test_status_lbl.text()
                 after_counts = (
                     len(openai_requests),
                     len(response_requests),
                     len(anthropic_requests),
                     len(copilot_requests),
                 )
+                if provider == "github_models":
+                    assert "GitHub Models has retired; choose another provider" in dialog._llm_test_status_lbl.text()
+                    assert after_counts == before_counts
+                    continue
+                assert f"✓ Primary — {route_provider} / {model}: Passed" in dialog._llm_test_status_lbl.text()
                 assert sum(after_counts) == sum(before_counts) + 1
                 before_counts = after_counts
                 if llm._is_openai_compat_provider(route_provider):
@@ -919,7 +923,7 @@ def test_every_provider_reaches_its_real_chat_route_probe(
         assert len(openai_requests) == sum(
             2 if provider in settings_dialog._PROVIDER_KEY_NAMES else 1
             for provider in providers
-            if provider in llm._OPENAI_COMPAT_PROVIDER_SET
+            if provider in llm._OPENAI_COMPAT_PROVIDER_SET and provider != "github_models"
         )
 
         assert [factory["api_key"] for factory, _request in anthropic_requests] == [

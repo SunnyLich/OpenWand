@@ -132,6 +132,10 @@ def _force_stop_managed_processes(
 class WorkerError(RuntimeError):
     """A worker call failed, timed out, or the worker is unavailable."""
 
+    def __init__(self, message: str, *, provider_error: dict | None = None):
+        super().__init__(message)
+        self.provider_error = provider_error
+
 
 @dataclass
 class WorkerSpec:
@@ -440,7 +444,7 @@ class WorkerClient:
                 tail = self.stderr_tail()
                 if tail:
                     error += f"\nRecent {self.spec.name} stderr:\n{tail}"
-            raise WorkerError(error)
+            raise WorkerError(error, provider_error=resp.get("provider_error"))
         return resp.get("result")
 
     def call_with_events(
@@ -544,7 +548,7 @@ class WorkerClient:
                 raise WorkerError(detail)
             resp = slot["resp"] or {"ok": False, "error": "missing response"}
             if not resp.get("ok"):
-                raise WorkerError(str(resp.get("error") or f"{method!r} failed"))
+                raise WorkerError(str(resp.get("error") or f"{method!r} failed"), provider_error=resp.get("provider_error"))
             return resp.get("result")
         finally:
             with self._scoped_event_lock:

@@ -5,6 +5,7 @@ import argparse
 import shutil
 import subprocess
 import sys
+from importlib.util import find_spec
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +15,13 @@ LANGUAGES = ("zh", "zh-Hant", "es", "fr")
 
 def _lrelease_path() -> str | None:
     """Support command-line helper for scripts i18n compile qt for lrelease path."""
+    # Use Qt's native tool directly. Entry-point wrappers in a moved virtual
+    # environment can still point at the retired checkout's interpreter.
+    spec = find_spec("PySide6")
+    if spec is not None and spec.origin:
+        native = Path(spec.origin).parent / ("lrelease.exe" if sys.platform == "win32" else "lrelease")
+        if native.is_file():
+            return str(native)
     found = shutil.which("pyside6-lrelease") or shutil.which("lrelease")
     if found:
         return found

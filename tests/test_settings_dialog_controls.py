@@ -1294,16 +1294,25 @@ def test_provider_model_lists_include_current_defaults():
     from ui.settings_panel.dialog import _PROVIDER_MODELS
 
     expected = {
-        "openai": {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"},
-        "chatgpt": {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"},
-        "google": {"gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"},
-        "anthropic": {"claude-fable-5", "claude-opus-5", "claude-sonnet-5"},
-        "groq": {"openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"},
-        "deepseek": {"deepseek-v4-flash", "deepseek-v4-pro"},
-        "mistral": {"mistral-medium-3-5", "mistral-small-2603"},
-        "xai": {"grok-4.5", "grok-4.3"},
-        "openrouter": {"openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna"},
-        "vercel": {"openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna"},
+        "openai": {"gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-astra", "gpt-6-luna"},
+        "chatgpt": {"gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-astra", "gpt-6-luna"},
+        "copilot": {"gpt-6.1-sol", "claude-sonnet-5.5", "gemini-3.8-flash"},
+        "google": {"gemini-4-argon", "gemini-3.8-flash", "gemini-3.5-flash-lite"},
+        "anthropic": {"claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"},
+        "groq": {"openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"},
+        "deepseek": {"deepseek-flash", "deepseek-v4-pro"},
+        "mistral": {"mistral-large-4", "mistral-medium-3-5", "mistral-small-2603"},
+        "xai": {"grok-4.7"},
+        "openrouter": {"openai/gpt-6.1-sol", "anthropic/claude-sonnet-5.5", "x-ai/grok-4.7"},
+        "vercel": {"openai/gpt-6.1-sol", "anthropic/claude-sonnet-5.5", "spacexai/grok-4.7"},
+        "together": {"deepseek-ai/DeepSeek-V4.1-Flash-1017", "MiniMaxAI/MiniMax-M3.1-Flash"},
+        "cerebras": {"gpt-oss-120b", "qwen-3.8-27b"},
+        "zai": {"glm-5.3", "glm-5.3-flash", "glm-5.3-flashx"},
+        "nvidia": {"nvidia/nemotron-3.5-lightning-30b-a3b", "nvidia/nemotron-3-super-120b-a12b"},
+        "sambanova": {"gpt-oss-120b", "MiniMax-M3.1-Flash"},
+        "huggingface": {"zai-org/GLM-5.3", "deepseek-ai/DeepSeek-V4.1-Flash-1017"},
+        "chutes": {"zai-org/GLM-5.3", "Qwen/Qwen3.8-27B-TEE"},
+        "fireworks": {"accounts/fireworks/models/deepseek-v4p1-flash-1017", "accounts/fireworks/models/glm-5p3"},
         "cohere": {"command-a-plus-05-2026", "command-a-03-2025"},
         "ai21": {"jamba-large-1.7", "jamba-mini-2"},
     }
@@ -1318,6 +1327,12 @@ def test_provider_model_lists_include_current_defaults():
     } & set(_PROVIDER_MODELS["groq"])
     assert not {"deepseek-chat", "deepseek-reasoner"} & set(_PROVIDER_MODELS["deepseek"])
     assert _PROVIDER_MODELS["ollama"] == []
+    assert _PROVIDER_MODELS["github_models"] == []
+    assert not {"gpt-5.5", "gpt-5.4", "gpt-5.4-mini"} & set(_PROVIDER_MODELS["chatgpt"])
+
+    from core.llm_clients.client import _CHATGPT_SUPPORTED_MODELS
+
+    assert set(_PROVIDER_MODELS["chatgpt"]) <= _CHATGPT_SUPPORTED_MODELS
 
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
@@ -5810,7 +5825,7 @@ def test_low_setup_preset_uses_chatgpt_oauth_routes(tmp_path, monkeypatch):
             rows = dialog._model_section_rows[section]
             assert len(rows) == 1
             assert rows[0]["api_key_combo"].currentData() == "chatgpt"
-            assert dialog._model_value(rows[0]) == "gpt-5.5"
+            assert dialog._model_value(rows[0]) == "gpt-6.1-sol"
 
         assert dialog._voice_block["context_browser_mode"].currentData() == "off"
         assert dialog._voice_block["context_github_mode"].currentData() == "off"

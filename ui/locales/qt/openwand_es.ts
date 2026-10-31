@@ -6742,5 +6742,41 @@ Esta acción no se puede deshacer. No se eliminarán los archivos de origen de C
     <message><source>An installed OpenWand release is available. Your portable copy will remain as a backup.</source><translation>Hay una versión instalable de OpenWand disponible. Tu copia portátil se conservará como respaldo.</translation></message>
     <message><source>Installer downloaded. Switch when you are ready to restart OpenWand.</source><translation>Instalador descargado. Cambia cuando estés listo para reiniciar OpenWand.</translation></message>
     <message><source>OpenWand will close and install the signed release. Settings stay in place and user add-ons will be copied; your old portable folder will remain as a backup.</source><translation>OpenWand se cerrará e instalará la versión firmada. La configuración se conservará y se copiarán los complementos del usuario; la carpeta portátil anterior se conservará como respaldo.</translation></message>
+    <message>
+      <source>Preparing response...</source>
+      <translation>Preparando la respuesta…</translation>
+    </message>
+    <message>
+      <source>Completed file operations were kept. Check the file before repeating this request.</source>
+      <translation>Se conservaron las operaciones de archivo completadas. Revisa el archivo antes de repetir esta solicitud.</translation>
+    </message>
+    <message>
+      <source>Local file activity finished. View details {here}.</source>
+      <translation>Las operaciones con archivos locales finalizaron. Consulta los detalles {here}.</translation>
+    </message>
+    <message>
+      <source>Technical details</source>
+      <translation>Detalles técnicos</translation>
+    </message>
+    <message>
+      <source>OpenWand reported an error</source>
+      <translation>OpenWand informó de un error</translation>
+    </message>
+    <message>
+      <source>Retry after {duration}.</source>
+      <translation>Vuelve a intentarlo dentro de {duration}.</translation>
+    </message>
+    <message>
+      <source>OpenWand retry wait: {duration}.</source>
+      <translation>Espera de OpenWand antes de reintentar: {duration}.</translation>
+    </message>
+    <message>
+      <source>{provider} reported an error</source>
+      <translation>{provider} informó de un error</translation>
+    </message>
+    <message>
+      <source>OpenWand error ({provider})</source>
+      <translation>Error de OpenWand ({provider})</translation>
+    </message>
   </context>
 </TS>

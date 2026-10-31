@@ -6742,5 +6742,41 @@ Cette action est irréversible. Les fichiers sources Codex et Claude Code import
     <message><source>An installed OpenWand release is available. Your portable copy will remain as a backup.</source><translation>Une version installable d’OpenWand est disponible. Votre copie portable sera conservée comme sauvegarde.</translation></message>
     <message><source>Installer downloaded. Switch when you are ready to restart OpenWand.</source><translation>Programme d’installation téléchargé. Passez à la version installée lorsque vous êtes prêt à redémarrer OpenWand.</translation></message>
     <message><source>OpenWand will close and install the signed release. Settings stay in place and user add-ons will be copied; your old portable folder will remain as a backup.</source><translation>OpenWand se fermera et installera la version signée. Les paramètres seront conservés et les extensions de l’utilisateur seront copiées ; votre ancien dossier portable sera conservé comme sauvegarde.</translation></message>
+    <message>
+      <source>Preparing response...</source>
+      <translation>Préparation de la réponse…</translation>
+    </message>
+    <message>
+      <source>Completed file operations were kept. Check the file before repeating this request.</source>
+      <translation>Les opérations sur les fichiers déjà effectuées ont été conservées. Vérifiez le fichier avant de répéter cette demande.</translation>
+    </message>
+    <message>
+      <source>Local file activity finished. View details {here}.</source>
+      <translation>Opérations locales sur les fichiers terminées. Consultez les détails {here}.</translation>
+    </message>
+    <message>
+      <source>Technical details</source>
+      <translation>Détails techniques</translation>
+    </message>
+    <message>
+      <source>OpenWand reported an error</source>
+      <translation>OpenWand a signalé une erreur</translation>
+    </message>
+    <message>
+      <source>Retry after {duration}.</source>
+      <translation>Réessayez dans {duration}.</translation>
+    </message>
+    <message>
+      <source>OpenWand retry wait: {duration}.</source>
+      <translation>Délai d’attente d’OpenWand avant nouvelle tentative : {duration}.</translation>
+    </message>
+    <message>
+      <source>{provider} reported an error</source>
+      <translation>{provider} a signalé une erreur</translation>
+    </message>
+    <message>
+      <source>OpenWand error ({provider})</source>
+      <translation>Erreur OpenWand ({provider})</translation>
+    </message>
   </context>
 </TS>

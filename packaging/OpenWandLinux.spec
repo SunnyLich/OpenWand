@@ -101,7 +101,7 @@ a = Analysis(
         "_ssl",
         "certifi",
     ] + MODULE_MODE_HIDDENIMPORTS + OPTIONAL_RUNTIME_HIDDENIMPORTS + RUNTIME_WORKER_HIDDENIMPORTS + BRAIN_HIDDENIMPORTS + LITEPARSE_HIDDENIMPORTS + ANYDOC_HIDDENIMPORTS + LANGUAGE_TAGS_HIDDENIMPORTS + CLAUDE_SDK_HIDDENIMPORTS + ZIAMATH_HIDDENIMPORTS + LATEX2MATHML_HIDDENIMPORTS,
-    hookspath=[],
+    hookspath=[str(ROOT / "packaging" / "hooks")],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[

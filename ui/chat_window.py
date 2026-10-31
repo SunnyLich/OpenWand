@@ -406,6 +406,8 @@ def _chat_model_messages(messages: list[dict]) -> list[dict[str, str]]:
     """Return only model-relevant turn payload, with attachments anchored to users."""
     turns: list[dict[str, str]] = []
     for msg in messages:
+        if msg.get("response_error"):
+            continue  # App diagnostics are visible history, not model answers.
         role = str(msg.get("role") or "").strip()
         content = msg.get("content")
         if role in {"system", "user", "assistant"} and isinstance(content, str) and content.strip():
@@ -813,6 +815,7 @@ class _StreamSignals(QObject):
     chunk     = Signal(object)
     final     = Signal(str)
     metadata  = Signal(object)
+    error     = Signal(object)
     finished  = Signal()
     external_sync = Signal(object)
 
@@ -2068,6 +2071,8 @@ class ChatWindow(QWidget):
         self._window_geometry_save_timer.setInterval(_CHAT_WINDOW_GEOMETRY_SAVE_DELAY_MS)
         self._window_geometry_save_timer.timeout.connect(self._save_window_state)
         self._current_ai_label: _MessageTextView | None = None
+        self._current_ai_response_error = False
+        self._current_ai_provider_error: dict = {}
         self._current_ai_text = ""
         self._current_ai_reply_text = ""
         self._current_ai_segments: list[tuple[str, bool]] = []
@@ -2137,6 +2142,7 @@ class ChatWindow(QWidget):
         self._signals.chunk.connect(self._on_chunk)
         self._signals.final.connect(self._on_final_text)
         self._signals.metadata.connect(self._on_metadata)
+        self._signals.error.connect(self._on_stream_error)
         self._signals.finished.connect(self._on_finished)
         self._signals.external_sync.connect(self._on_external_sync_finished)
 
@@ -3759,6 +3765,9 @@ class ChatWindow(QWidget):
         self._current_local_work_notice = None
         self._current_user_message = None
         self._current_ai_label = self._bubble(layout, "...", "assistant", created_at=_now_iso())
+        self._current_ai_response_error = False
+        self._current_ai_provider_error = {}
+        self._on_chunk({"text": t("Preparing response..."), "is_progress": True})
         self._scroll_bottom()
 
     def external_reply_chunk(self, idx: int, chunk: object) -> None:
@@ -3783,8 +3792,7 @@ class ChatWindow(QWidget):
             return
         if final_text:
             self._on_final_text(final_text)
-        if self._current_local_work_dialog is not None:
-            self._current_local_work_dialog.mark_finished()
+        self._finish_local_work()
         label = self._current_ai_label
         wrapper = label.parentWidget() if label is not None else None
         self._current_ai_label = None
@@ -5569,7 +5577,10 @@ class ChatWindow(QWidget):
             role == "assistant" and _contains_markdown_table(display_text),
         )
         lbl.set_annotation_tooltips(display_text, display_annotations)
-        if role == "assistant":
+        if role == "assistant" and message.get("response_error"):
+            from ui.provider_errors import literal_html
+            lbl.setHtml(literal_html(display_text))
+        elif role == "assistant":
             lbl.setHtml(_assistant_text_to_html(display_text, annotations=display_annotations))
         else:
             lbl.setHtml(_user_text_to_html(display_text, display_annotations))
@@ -5690,6 +5701,9 @@ class ChatWindow(QWidget):
             lbl.hide()
         else:
             wl.addWidget(lbl)
+        if isinstance(message.get("provider_error"), dict):
+            from ui.provider_errors import details_widget
+            wl.addWidget(details_widget(message["provider_error"], wrapper))
         if not display_text and image_label is not None:
             lbl.hide()
 
@@ -6523,7 +6537,10 @@ class ChatWindow(QWidget):
         self._current_local_work_dialog = None
         self._current_local_work_notice = None
         self._current_user_message = user_message
+        self._current_ai_response_error = False
+        self._current_ai_provider_error = {}
         self._current_ai_label = self._bubble(layout, "...", "assistant", created_at=_now_iso()) if layout else None
+        self._on_chunk({"text": t("Preparing response..."), "is_progress": True})
         self._scroll_bottom()
 
         # Keep the system/tool prefix stable. Legacy conversation context and
@@ -6575,6 +6592,9 @@ class ChatWindow(QWidget):
                         self._signals.chunk.emit(item)
                     else:
                         self._signals.chunk.emit(str(item or ""))
+            except Exception as exc:
+                from core.llm_clients.error_details import from_exception
+                self._signals.error.emit(from_exception(exc))
             finally:
                 self._signals.finished.emit()
 
@@ -6634,6 +6654,52 @@ class ChatWindow(QWidget):
         self._render_current_ai_stream()
         self._scroll_bottom()
 
+    def _on_stream_error(self, payload: object) -> None:
+        """Keep failures visible and persisted, without exposing raw SDK secrets."""
+        if self._current_ai_label is None:
+            return
+        from core.llm_clients.error_details import normalize
+        from ui.provider_errors import details_widget, error_text
+
+        info = normalize(payload)
+        self._current_ai_provider_error = info
+        message = error_text(info)
+        self._current_ai_response_error = True
+        self._current_ai_annotations = []
+        if self._current_ai_parser is not None:
+            for text, is_thought in self._current_ai_parser.finish():
+                _merge_display_segments(self._current_ai_segments, text, is_thought)
+                if not is_thought:
+                    self._current_ai_reply_text += text
+            self._current_ai_parser = None
+        if self._current_local_work_dialog is not None:
+            message += "\n\n" + t("Completed file operations were kept. Check the file before repeating this request.")
+        text = ("\n\n" if self._current_ai_reply_text else "") + message
+        self._current_ai_status_text = ""
+        self._current_ai_text += text
+        self._current_ai_reply_text += text
+        _merge_display_segments(self._current_ai_segments, text, False)
+        self._render_current_ai_stream()
+        wrapper = self._current_ai_label.parentWidget()
+        if wrapper is not None and wrapper.layout() is not None:
+            wrapper.layout().insertWidget(
+                wrapper.layout().indexOf(self._current_ai_label) + 1, details_widget(info, wrapper)
+            )
+        self._scroll_bottom()
+
+    def _finish_local_work(self) -> None:
+        """End the live notice while retaining access to the activity details."""
+        if self._current_local_work_dialog is not None:
+            self._current_local_work_dialog.mark_finished()
+        if self._current_local_work_notice is not None:
+            linked_here = (
+                f"<a href='openwand-local-work' style='color:{_ACCENT}; text-decoration:underline;'>"
+                f"{html.escape(t('here'))}</a>"
+            )
+            self._current_local_work_notice.setText(
+                t("Local file activity finished. View details {here}.").format(here=linked_here)
+            )
+
     def _on_local_work_activity(self, event: dict) -> None:
         """Show one opt-in monitor link and update its hidden progress window."""
         dialog = self._current_local_work_dialog
@@ -6687,6 +6753,10 @@ class ChatWindow(QWidget):
     def _render_current_ai_stream(self) -> None:
         """Render durable chronological segments plus the replaceable live status."""
         if not self._current_ai_label:
+            return
+        if self._current_ai_response_error:
+            from ui.provider_errors import literal_html
+            self._current_ai_label.setHtml(literal_html(self._current_ai_reply_text))
             return
         segments = list(self._current_ai_segments)
         if self._current_ai_status_text:
@@ -6909,8 +6979,7 @@ class ChatWindow(QWidget):
             and bool(pending_workspace_changes.get("files"))
         )
         self._current_ai_status_text = ""
-        if self._current_local_work_dialog is not None:
-            self._current_local_work_dialog.mark_finished()
+        self._finish_local_work()
         if self._current_ai_parser is not None:
             flushed = self._current_ai_parser.finish()
             self._current_ai_segments = merge_segment_iterables(self._current_ai_segments, flushed)
@@ -6940,13 +7009,18 @@ class ChatWindow(QWidget):
             conv = self._conversations[self._active_idx]
             stamp = _touch_conversation(conv)
             message = {"role": "assistant", "content": self._current_ai_reply_text, "created_at": stamp}
+            if getattr(self, "_current_ai_response_error", False):
+                message["response_error"] = True
+                message["provider_error"] = deepcopy(self._current_ai_provider_error)
             _ensure_message_metadata(message, fallback_created_at=stamp)
             if self._current_ai_annotations:
                 message["annotations"] = list(self._current_ai_annotations)
             if self._current_ai_attachments:
                 message["attachments"] = list(self._current_ai_attachments)
             durable_segments = list(self._current_ai_segments)
-            if durable_segments and any(is_thought for _text, is_thought in durable_segments):
+            if self._current_ai_response_error:
+                message["display_content"] = self._current_ai_reply_text
+            elif durable_segments and any(is_thought for _text, is_thought in durable_segments):
                 message["display_segments"] = [
                     {"text": text, "is_thought": is_thought}
                     for text, is_thought in durable_segments
@@ -7015,6 +7089,8 @@ class ChatWindow(QWidget):
                     _assistant_text_to_html(display_text, annotations=self._current_ai_annotations)
                 )
         self._current_ai_label = None
+        self._current_ai_response_error = False
+        self._current_ai_provider_error = {}
         self._current_ai_text = ""
         self._current_ai_reply_text = ""
         self._current_ai_segments = []

@@ -22,6 +22,7 @@ _route_cooldowns: dict[tuple[str, str], float] = {}
 
 _route_cooldowns_lock = _threading.Lock()
 _route_cooldown_details: dict[tuple[str, str], tuple[bool, str]] = {}
+_route_provider_errors: dict[tuple[str, str], dict] = {}
 
 def _route_key(provider: str, model: str) -> tuple[str, str]:
     """Handle route key for LLM clients client."""
@@ -37,16 +38,21 @@ def _is_route_cooling(provider: str, model: str) -> bool:
         if _time.time() >= until:
             _route_cooldowns.pop(key, None)
             _route_cooldown_details.pop(key, None)
+            _route_provider_errors.pop(key, None)
             return False
         return True
 
 def _mark_route_cooling(provider: str, model: str, seconds: float = _ROUTE_COOLDOWN_SECONDS,
-                        *, hard: bool = False, reason: str = "") -> None:
+                        *, hard: bool = False, reason: str = "", provider_error: dict | None = None) -> None:
     """Prefer healthy fallbacks; only explicit rate limits block a manual retry."""
     with _route_cooldowns_lock:
         key = _route_key(provider, model)
         _route_cooldowns[key] = _time.time() + seconds
         _route_cooldown_details[key] = (hard, reason)
+        if provider_error:
+            _route_provider_errors[key] = dict(provider_error)
+        else:
+            _route_provider_errors.pop(key, None)
 
 
 def _route_rate_limit_message(provider: str, model: str) -> str:
@@ -68,10 +74,27 @@ def _clear_route_cooling(provider: str, model: str) -> None:
         key = _route_key(provider, model)
         _route_cooldowns.pop(key, None)
         _route_cooldown_details.pop(key, None)
+        _route_provider_errors.pop(key, None)
+
+
+def _route_provider_error(provider: str, model: str) -> dict | None:
+    from copy import deepcopy
+    with _route_cooldowns_lock:
+        key = _route_key(provider, model)
+        remaining = _route_cooldowns.get(key, 0) - _time.time()
+        info = deepcopy(_route_provider_errors.get(key))
+    if info and remaining > 0:
+        info["retry_after_seconds"] = math.ceil(remaining)
+        info.setdefault("retry_source", "openwand")
+        return info
+    return None
 
 
 def _error_status(exc: Exception) -> int | None:
     """Read structured status first, including wrapped urllib errors."""
+    info = getattr(exc, "provider_error", None)
+    if isinstance(info, dict) and isinstance(info.get("http_status"), int):
+        return info["http_status"]
     for source in (exc, getattr(exc, "response", None), exc.__cause__):
         for name in ("status_code", "status", "code"):
             value = getattr(source, name, None)
@@ -82,6 +105,9 @@ def _error_status(exc: Exception) -> int | None:
 
 
 def _is_quota_error(exc: Exception) -> bool:
+    info = getattr(exc, "provider_error", None)
+    if isinstance(info, dict) and info.get("code") in {"RESOURCE_EXHAUSTED", "rate_limit_error", "rate_limit_exceeded", "insufficient_quota", "usage_limit_reached"}:
+        return True
     status = _error_status(exc)
     if status is not None:
         return status == 429
@@ -120,7 +146,9 @@ def _provider_retry_seconds(exc: Exception) -> float:
         if math.isfinite(seconds):
             return max(1.0, seconds)
     # Google may put its retry duration in the error body instead of a header.
-    match = re.search(r'"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"', str(exc))
+    match = re.search(r'''["']retryDelay["']\s*:\s*["'](\d+(?:\.\d+)?)s["']''', str(exc))
+    if not match:
+        match = re.search(r"retry(?: again)? in\s+(\d+(?:\.\d+)?)\s*(?:seconds?|s)\b", str(exc), re.I)
     if match:
         return max(1.0, float(match[1]))
     return 30.0
@@ -136,4 +164,7 @@ def _route_failure_summary(
     for provider, model, err in attempts:
         details.append(f"{provider}/{model}: {err}")
     joined = "; ".join(details)
-    return RuntimeError(f"All {kind} model routes failed. Tried {joined}")
+    error = RuntimeError(f"All {kind} model routes failed. Tried {joined}")
+    if isinstance(getattr(last_exc, "provider_error", None), dict):
+        error.provider_error = last_exc.provider_error
+    return error

@@ -1759,6 +1759,45 @@ def test_unknown_method_reports_error_without_killing_worker():
         worker.shutdown()
 
 
+@pytest.mark.parametrize("streaming", [False, True])
+def test_provider_error_fields_survive_the_real_worker_protocol(tmp_path, streaming):
+    """Normal calls and event calls retain structured errors from the brain host."""
+    root=Path(__file__).resolve().parents[2]
+    module=tmp_path/'provider_error_worker.py'
+    module.write_text(textwrap.dedent('''
+        from runtime.bootstrap import configure_paths
+        configure_paths(include_brain=True)
+        from openwand_brain.host import _main
+        from openwand_brain.handlers import HANDLERS
+        from core.llm_clients.error_details import from_exception
+        def fail():
+            error=RuntimeError('SDK wrapper')
+            error.status_code=429
+            error.body={'error':{'message':'Original provider message.','status':'RESOURCE_EXHAUSTED'}}
+            error.provider_error=from_exception(error,provider='google',model='test-model')
+            raise error
+        HANDLERS['test.provider_error']=fail
+        raise SystemExit(_main())
+    '''),encoding='utf-8')
+    worker=WorkerClient(WorkerSpec('provider-error','provider_error_worker','brain',cwd=root,env={
+        'PYTHONPATH':os.pathsep.join([str(tmp_path),str(root),str(root/'runtime/brain')]),
+        'OPENWAND_BRAIN_FAKE_LLM':'1','OPENWAND_DATA_ROOT':str(tmp_path/'data'),
+        'OPENWAND_ADDONS_DIR':str(tmp_path/'addons'),'PRIVACY_MODE':'builtin',
+    },restart_limit=0))
+    try:
+        with pytest.raises(WorkerError) as caught:
+            if streaming:
+                worker.call_with_events('test.provider_error',{},timeout=30,on_event=lambda *_a:None)
+            else:
+                worker.call('test.provider_error',{},timeout=30)
+        assert caught.value.provider_error['message']=='Original provider message.'
+        assert caught.value.provider_error['provider']=='google'
+        assert caught.value.provider_error['http_status']==429
+        assert caught.value.provider_error['code']=='RESOURCE_EXHAUSTED'
+    finally:
+        worker.shutdown()
+
+
 def test_worker_stderr_log_file_is_created_in_run_log_dir(tmp_path):
     worker = _worker(
         "runtime.workers.native_host",
