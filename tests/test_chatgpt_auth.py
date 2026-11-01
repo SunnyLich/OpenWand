@@ -322,6 +322,7 @@ def test_browser_oauth_valid_callback_uses_pkce_and_persists_tokens(monkeypatch)
         timeout=5,
     ) as response:
         assert response.status == 200
+        response.read()  # Finish the happy-path page load before closing the callback socket.
     assert finished.wait(_ASYNC_OAUTH_TEST_TIMEOUT)
 
     assert exchanges == [("valid-code", "valid-verifier", f"http://localhost:{port}/auth/callback")]
