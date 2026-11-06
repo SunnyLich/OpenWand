@@ -11,7 +11,14 @@ from scripts import make_release_manifest, prepare_store_submission
 
 def test_store_submission_uses_actual_bytes_and_preserves_previous_downloads(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]
-    previous = json.loads((root / "packaging/microsoft-store/downloads.json").read_text(encoding="utf-8"))
+    # Keep this fixture independent of the evolving published download list.
+    previous = {"installers": [{
+        "version": "v0.12.2",
+        "filename": "OpenWand-v0.12.2-windows-x64-setup.exe",
+        "url": "https://example.test/downloads/v0.12.2/setup.exe",
+        "sha256": hashlib.sha256(b"previous signed installer").hexdigest(),
+        "size": len(b"previous signed installer"),
+    }]}
     notes = json.loads((root / "docs/releases/0.12.3-store.json").read_text(encoding="utf-8"))
     before = json.dumps(previous)
     installer = tmp_path / "OpenWand-v0.12.3-windows-x64-setup.exe"
