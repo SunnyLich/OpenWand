@@ -13,6 +13,13 @@
       "url": "https://github.com/SunnyLich/OpenWand/releases/download/v0.12.2/OpenWand-v0.12.2-windows-x64-setup.exe",
       "sha256": "6f4edfc80fe2e5d36dbc9fbac01d5a9c5c612ff5439cd3d136c3e00d220f654d",
       "size": 275937448
+    },
+    {
+      "version": "v0.12.3",
+      "filename": "OpenWand-v0.12.3-windows-x64-setup.exe",
+      "url": "https://github.com/SunnyLich/OpenWand/releases/download/v0.12.3/OpenWand-v0.12.3-windows-x64-setup.exe",
+      "sha256": "758f8d122b4078c2b6c794397035ed9902f4124c52488b417fe23f1346c5571b",
+      "size": 272307064
     }
   ]
 }
