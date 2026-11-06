@@ -14,7 +14,8 @@ from scripts.user_journeys.report import source_section, validate_execution
 from scripts.user_journeys.scenarios import CASES
 
 
-def test_dialog_title_tracking_keeps_real_qt_choice_when_native_title_is_empty(monkeypatch):
+@pytest.mark.parametrize("constructor", ["helper", "instance"])
+def test_dialog_title_tracking_keeps_real_qt_choice_when_native_title_is_empty(monkeypatch, constructor):
     from PySide6.QtCore import Qt, QTimer
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QMessageBox
@@ -24,7 +25,8 @@ def test_dialog_title_tracking_keeps_real_qt_choice_when_native_title_is_empty(m
     app = QApplication.instance() or QApplication([])
     host = SimpleNamespace()
     # Restore the actual Qt helpers after this one test's instrumentation.
-    for name in ("question", "information", "warning", "critical"):
+    original_set_title = QMessageBox.setWindowTitle
+    for name in ("question", "information", "warning", "critical", "setWindowTitle"):
         monkeypatch.setattr(QMessageBox, name, getattr(QMessageBox, name))
     track_message_box_titles(host)
     observed = []
@@ -34,7 +36,7 @@ def test_dialog_title_tracking_keeps_real_qt_choice_when_native_title_is_empty(m
         modal = QApplication.activeModalWidget()
         try:
             assert isinstance(modal, QMessageBox)
-            modal.setWindowTitle("")  # Reproduce the native macOS title behavior.
+            original_set_title(modal, "")  # Native title loss must not change the requested title.
             observed.append(dialog_title(host, modal))
             QTest.mouseClick(modal.button(QMessageBox.StandardButton.No), Qt.MouseButton.LeftButton)
         except Exception as error:
@@ -43,8 +45,15 @@ def test_dialog_title_tracking_keeps_real_qt_choice_when_native_title_is_empty(m
                 modal.reject()
 
     QTimer.singleShot(0, choose_no)
-    choice = QMessageBox.question(None, "Review Addon Access", "Allow access?",
-                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+    if constructor == "helper":
+        choice = QMessageBox.question(None, "Review Addon Access", "Allow access?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+    else:
+        dialog = QMessageBox()
+        dialog.setWindowTitle("Review Addon Access")
+        dialog.setText("Allow access?")
+        dialog.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        choice = dialog.exec()
     assert not errors
     assert observed == ["Review Addon Access"]
     assert choice == QMessageBox.StandardButton.No

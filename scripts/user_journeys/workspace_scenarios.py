@@ -55,8 +55,21 @@ def test_workspace_02_open(app):
     new(app)
     app.send("E2E_WORKSPACE_START")
     app.reply("E2E_WORKSPACE_START")
-    app.wait(lambda s: bool(s["extended"].get("workspace", {}).get("scope"))
-             and s["extended"]["workspace"]["start_enabled"] and s["extended"]["workspace"]["tree_ready"], "the connected Shared Workspace")
+    try:
+        app.wait(lambda s: bool(s["extended"].get("workspace", {}).get("scope"))
+                 and s["extended"]["workspace"]["start_enabled"] and s["extended"]["workspace"]["tree_ready"], "the connected Shared Workspace")
+    except AssertionError as failure:
+        # Preserve the actual failure and inspect the real user-visible addon
+        # status/logs so a host error is not reduced to an absent window.
+        try:
+            manager(app)
+            status = app.ui()["extended"].get("addons", [])
+            app.ui("extended.addon_button", name=NAME, text="Logs")
+            details = app.wait(lambda s: "virtual-workspace" in s["extended"]["addon_logs"], "workspace host diagnostics")
+            diagnostics = {"status": status, "logs": details["extended"]["addon_logs"]["virtual-workspace"]}
+        except Exception as diagnostic_error:
+            diagnostics = {"diagnostic_error": str(diagnostic_error)}
+        raise AssertionError(f"{failure}\nWorkspace addon diagnostics: {diagnostics}") from failure
     assert scope(app).is_dir()
     assert any("virtual_workspace" in str(item) for item in app.request("E2E_WORKSPACE_START").get("tools", []))
 

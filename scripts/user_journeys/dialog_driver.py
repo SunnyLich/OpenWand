@@ -36,6 +36,14 @@ def track_message_box_titles(host):
     for name in ("question", "information", "warning", "critical"):
         setattr(QMessageBox, name, staticmethod(tracked(getattr(QMessageBox, name))))
 
+    original_set_title = QMessageBox.setWindowTitle
+
+    def set_title(dialog, title):
+        dialog.setProperty("_openwand_journey_title", str(title))
+        return original_set_title(dialog, title)
+
+    QMessageBox.setWindowTitle = set_title
+
 
 def dialog_title(host, dialog):
     from PySide6.QtWidgets import QMessageBox
@@ -43,6 +51,10 @@ def dialog_title(host, dialog):
     titles = getattr(host, "_journey_message_titles", [])
     if isinstance(dialog, QMessageBox) and titles:
         return titles[-1]
+    if isinstance(dialog, QMessageBox):
+        requested = dialog.property("_openwand_journey_title")
+        if requested is not None:
+            return str(requested)
     return dialog.windowTitle()
 
 
