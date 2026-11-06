@@ -31,3 +31,21 @@ Current Store package URL:
 Keep submitted version entries and their bytes unchanged while Store submissions
 use them. A new installer requires a new versioned path. Pages has a 1 GB site
 limit; move retained installers to a dedicated CDN before exceeding that limit.
+
+## Preparing the next submission
+
+The Windows artifact workflow generates a `microsoft-store-submission` artifact
+after signing and installer validation. It contains `submission.json` with the
+versioned Pages URL, silent installation parameters, actual installer SHA256 and
+size, and five localized release notes from `docs/releases/<version>-store.json`.
+Its `downloads.json` preserves existing entries and adds the new exact bytes.
+These files are preparation material; generating them does not publish or submit.
+
+After review, publish the matching GitHub release, copy that release build's
+`downloads.json` to `packaging/microsoft-store/downloads.json`, and deploy Pages.
+Do not use a development build's hash for a separately rebuilt release installer.
+Confirm the public versioned URL returns HTTP 200 without redirects and matches
+the final installer before submitting it in Partner Center. Only then replace
+the Store package URL and add the localized notes. Store publication remains a
+separate certification step; GitHub and the Store need not update simultaneously.
+Existing users of either EXE distribution use OpenWand's in-app updater.

@@ -243,6 +243,16 @@ jobs:
             Compress-Archive -Path dist\OpenWand -DestinationPath "dist\OpenWand-$safeRef-windows-x64.zip" -Force
           }
 
+      - name: Prepare Microsoft Store submission files
+        run: .\.venv-build\Scripts\python.exe scripts/prepare_store_submission.py --installer $env:OPENWAND_INSTALLER_PATH
+
+      - name: Upload Microsoft Store submission files for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: microsoft-store-submission
+          path: reports/store-submission/
+          if-no-files-found: error
+
       - name: Upload Windows release asset
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
