@@ -726,6 +726,7 @@ class VirtualWorkspaceWindow(QDialog):
         self._activity_items: dict[str, WorkspaceActivityItem] = {}
         self._cursor_signature: tuple[Any, ...] = ()
         self._last_state: dict[str, Any] = {}
+        self._connected = False
         self._scope_folder = ""
         self._task_running = False
         self._task_paused = False
@@ -929,6 +930,8 @@ class VirtualWorkspaceWindow(QDialog):
             reply.deleteLater()
 
     def _render(self, state: dict[str, Any]) -> None:
+        reconnected = not self._connected
+        self._connected = True
         self._last_state = dict(state)
         self._connection.setText(t("● Live"))
         entries = [item for item in (state.get("entries") or []) if isinstance(item, dict)]
@@ -939,7 +942,8 @@ class VirtualWorkspaceWindow(QDialog):
         cursor = state.get("cursor") if isinstance(state.get("cursor"), dict) else {}
         self._render_operations(list(state.get("operations") or []))
         self._sync_task_controls()
-        if not self._task_running and not self._task_stopping:
+        # A routine poll must not erase validation, save or completion notices.
+        if reconnected and not self._task_running and not self._task_stopping:
             self._notice.setText(t("Ready for a task"))
         cursor_signature = (
             str(cursor.get("path") or ""),
@@ -1810,6 +1814,7 @@ class VirtualWorkspaceWindow(QDialog):
             QTimer.singleShot(0, self.refresh)
 
     def _set_offline(self, detail: str) -> None:
+        self._connected = False
         self._connection.setText(t("● Offline"))
         self._notice.setText(
             t("Workspace connection unavailable: {detail}").format(detail=detail)

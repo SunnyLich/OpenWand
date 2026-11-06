@@ -554,6 +554,8 @@ def test_ext_28_chatgpt_sign_in_failures(app):
     # OpenWand's actual button, PKCE, loopback server and status handling run.
     output = Path(os.environ["OPENWAND_E2E_OUTPUT"])
     app.settings()
+    app.wait(lambda s: s["extended"]["chatgpt_oauth"]["login_enabled"],
+             "the initial account-status check to enable sign-in")
     for mode, message in (("declined", "E2E sign-in declined"), ("mismatched_state", "Sign-in state did not match"), ("missing_code", "Sign-in did not return an authorization code")):
         (output / "browser-mode.txt").write_text(mode, encoding="utf-8")
         app.ui("extended.chatgpt_sign_in")

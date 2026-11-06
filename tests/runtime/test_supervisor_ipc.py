@@ -757,6 +757,10 @@ def test_settings_persist_and_reload_across_real_workers(tmp_path, monkeypatch):
                 "LLM_PROVIDER=groq",
                 "LLM_MODEL=initial-model",
                 "TTS_PROVIDER=none",
+                # This persistence test exercises real workers, not model
+                # downloads. Keep STT disabled so config reload cannot start
+                # an unrelated network-backed Whisper warmup.
+                "STT_PROVIDER=none",
                 "STT_MODEL=tiny",
                 "STT_DEVICE=cpu",
                 "STT_COMPUTE_TYPE=int8",

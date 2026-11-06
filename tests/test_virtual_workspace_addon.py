@@ -473,6 +473,18 @@ def test_workspace_renders_in_a_native_openwand_window(workspace: WorkspaceContr
         assert window._desktop.pointer.isVisible()
         assert window._desktop.pointer.mode == "text"
 
+        window._start.click()
+        assert "Describe what OpenWand should do first" in window._notice.text()
+        before_refresh = window._last_state
+        window.refresh()
+        deadline = time.monotonic() + 3.0
+        while window._last_state is before_refresh and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.01)
+        assert window._last_state is not before_refresh
+        assert "Describe what OpenWand should do first" in window._notice.text()
+        assert not started
+
         window._task.setPlainText("Create a visual notes folder")
         window._start.click()
         app.processEvents()
