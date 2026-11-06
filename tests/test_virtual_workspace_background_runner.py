@@ -32,6 +32,7 @@ def test_python_syntax_check_passes_without_executing_source(tmp_path: Path) -> 
     assert result.summary == "python_syntax check passed"
     assert result.security_notice == SECURITY_NOTICE
     assert not marker.exists()
+    assert not (tmp_path / "__pycache__").exists()
 
 
 def test_python_syntax_check_reports_invalid_file(tmp_path: Path) -> None:

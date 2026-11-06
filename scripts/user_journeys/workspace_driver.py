@@ -22,7 +22,9 @@ def act(host, action, params, *, click, type_text, button):
             event = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, point, tree.viewport().mapToGlobal(point))
             QApplication.sendEvent(tree.viewport(), event)
         elif action == "workspace_open":
-            QTest.keyClick(tree, Qt.Key.Key_Return)
+            # Qt's Return-to-activate behavior differs on macOS. A normal
+            # file double-click is the same user action on every platform.
+            QTest.mouseDClick(tree.viewport(), Qt.MouseButton.LeftButton, pos=point)
         else:
             QTest.keyClick(tree, getattr(Qt.Key, "Key_" + params["key"]))
     elif action == "workspace_edit":

@@ -66,6 +66,37 @@ def complete_results():
     return [{"id": case["id"], "status": "passed", "steps": [{"action": "snapshot"}], "evidence": {"screenshots": ["window.png"]}} for case in CASES]
 
 
+def test_workspace_open_driver_activates_a_real_file_tree_by_double_click():
+    from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
+
+    from scripts.user_journeys.workspace_driver import act
+    from ui.workspace_file_tree import WorkspaceFileTree
+
+    app = QApplication.instance() or QApplication([])
+    class WorkspaceWindowFixture(QWidget):
+        def __init__(self):
+            super().__init__()
+            self._desktop = SimpleNamespace(_icons=WorkspaceFileTree(self))
+            QVBoxLayout(self).addWidget(self._desktop._icons)
+
+    window = WorkspaceWindowFixture()
+    tree = window._desktop._icons
+    host = SimpleNamespace(_virtual_workspace_window=window)
+    activated = []
+    tree.file_activated.connect(activated.append)
+    tree.set_entries([{"path": "notes/document.txt", "kind": "file"}])
+    window.resize(500, 400)
+    window.show()
+    app.processEvents()
+    try:
+        act(host, "workspace_open", {"path": "notes/document.txt"}, click=None, type_text=None, button=None)
+        app.processEvents()
+        assert activated == ["notes/document.txt"]
+    finally:
+        window.close()
+        app.processEvents()
+
+
 def test_missing_journey_fails_even_when_every_emitted_result_passes():
     # Removing one result must fail the gate, not quietly reduce the denominator.
     results = complete_results()
