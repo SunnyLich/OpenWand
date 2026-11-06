@@ -5,12 +5,51 @@ from __future__ import annotations
 import copy
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from scripts.user_journeys.pytest_report import render_pytest_report
 from scripts.user_journeys.report import source_section, validate_execution
 from scripts.user_journeys.scenarios import CASES
+
+
+def test_dialog_title_tracking_keeps_real_qt_choice_when_native_title_is_empty(monkeypatch):
+    from PySide6.QtCore import Qt, QTimer
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication, QMessageBox
+
+    from scripts.user_journeys.dialog_driver import dialog_title, track_message_box_titles
+
+    app = QApplication.instance() or QApplication([])
+    host = SimpleNamespace()
+    # Restore the actual Qt helpers after this one test's instrumentation.
+    for name in ("question", "information", "warning", "critical"):
+        monkeypatch.setattr(QMessageBox, name, getattr(QMessageBox, name))
+    track_message_box_titles(host)
+    observed = []
+    errors = []
+
+    def choose_no():
+        modal = QApplication.activeModalWidget()
+        try:
+            assert isinstance(modal, QMessageBox)
+            modal.setWindowTitle("")  # Reproduce the native macOS title behavior.
+            observed.append(dialog_title(host, modal))
+            QTest.mouseClick(modal.button(QMessageBox.StandardButton.No), Qt.MouseButton.LeftButton)
+        except Exception as error:
+            errors.append(str(error))
+            if isinstance(modal, QMessageBox):
+                modal.reject()
+
+    QTimer.singleShot(0, choose_no)
+    choice = QMessageBox.question(None, "Review Addon Access", "Allow access?",
+                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+    assert not errors
+    assert observed == ["Review Addon Access"]
+    assert choice == QMessageBox.StandardButton.No
+    assert host._journey_message_titles == []
+    app.processEvents()
 
 
 def complete_results():

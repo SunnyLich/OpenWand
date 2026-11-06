@@ -306,7 +306,8 @@ def test_addon_13_unsafe_archive(app):
     app.ui("extended.addon_button", text="Install archive")
     completed_dialogs(app)
     try:
-        app.wait(lambda s: "unsafe archive path" in s["extended"].get("bubble", {}).get("text", "").lower(), "a useful unsafe-archive error")
+        # Font metrics can wrap this phrase onto multiple rendered lines.
+        app.wait(lambda s: "unsafe archive path" in " ".join(s["extended"].get("bubble", {}).get("text", "").split()).lower(), "a useful unsafe-archive error")
     finally:
         assert not (app.state / "addons/journey-unsafe").exists()
         assert not list(app.state.rglob("e2e-escaped-addon.txt"))

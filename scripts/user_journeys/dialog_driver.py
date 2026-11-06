@@ -12,6 +12,40 @@ import traceback
 from pathlib import Path
 
 
+def track_message_box_titles(host):
+    """Observe helper titles without replacing dialogs or their user results.
+
+    macOS can ignore a QMessageBox window title. Preserve the actual product
+    call's title while the original Qt helper runs its real nested event loop.
+    """
+    from PySide6.QtWidgets import QMessageBox
+
+    if hasattr(host, "_journey_message_titles"):
+        return
+    host._journey_message_titles = []
+
+    def tracked(original):
+        def show(parent, title, *args, **kwargs):
+            host._journey_message_titles.append(str(title))
+            try:
+                return original(parent, title, *args, **kwargs)
+            finally:
+                host._journey_message_titles.pop()
+        return show
+
+    for name in ("question", "information", "warning", "critical"):
+        setattr(QMessageBox, name, staticmethod(tracked(getattr(QMessageBox, name))))
+
+
+def dialog_title(host, dialog):
+    from PySide6.QtWidgets import QMessageBox
+
+    titles = getattr(host, "_journey_message_titles", [])
+    if isinstance(dialog, QMessageBox) and titles:
+        return titles[-1]
+    return dialog.windowTitle()
+
+
 def watch_unexpected_dialogs(host):
     """Cancel an unplanned modal safely so later independent stories can run."""
     from PySide6.QtCore import Qt, QTimer
@@ -20,6 +54,7 @@ def watch_unexpected_dialogs(host):
 
     if getattr(host, "_journey_modal_watch", None) is not None:
         return
+    track_message_box_titles(host)
     timer = QTimer(QApplication.instance())
     timer.setInterval(100)
     host._journey_modal_watch = timer
@@ -101,12 +136,13 @@ def queue_dialogs(host, plans, *, click, type_text, select):
         if time.monotonic() > host._journey_dialog_deadline:
             controls = [] if dialog is None else [(w.text(), w.isEnabled()) for w in dialog.findChildren(QPushButton) if w.isVisible()]
             fields = [] if dialog is None else [(w.objectName(), w.text()) for w in dialog.findChildren(QLineEdit) if w.isVisible()]
-            host._journey_dialog_errors.append(f"Dialog timed out for {plan}; buttons={controls}; fields={fields}")
+            observed = None if dialog is None else dialog_title(host, dialog)
+            host._journey_dialog_errors.append(f"Dialog timed out for {plan}; observed_title={observed!r}; buttons={controls}; fields={fields}")
             timer.stop()
             if dialog is not None and dialog.isVisible():
                 QTest.keyClick(dialog, Qt.Key.Key_Escape)
             return
-        if dialog is None or not dialog.isVisible() or (plan.get("title") and plan["title"] not in dialog.windowTitle()):
+        if dialog is None or not dialog.isVisible() or (plan.get("title") and plan["title"] not in dialog_title(host, dialog)):
             if time.monotonic() > host._journey_dialog_deadline:
                 title = dialog.windowTitle() if dialog is not None else "no dialog"
                 host._journey_dialog_errors.append(f"Expected {plan}, observed {title!r}")
@@ -114,7 +150,7 @@ def queue_dialogs(host, plans, *, click, type_text, select):
             return
         host._journey_dialog_preparing = True
         try:
-            event = {"kind": plan["kind"], "title": dialog.windowTitle(), "choice": plan.get("button", plan.get("value", ""))}
+            event = {"kind": plan["kind"], "title": dialog_title(host, dialog), "native_title": dialog.windowTitle(), "choice": plan.get("button", plan.get("value", ""))}
             if plan["kind"] == "menu":
                 assert isinstance(dialog, QMenu), "Expected the real popup menu"
                 choices = [action for action in dialog.actions() if action.text().replace("&", "") == plan["value"]]

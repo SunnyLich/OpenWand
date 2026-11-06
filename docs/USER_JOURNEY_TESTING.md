@@ -14,6 +14,12 @@ On macOS the isolated child opts into OpenAI-compatible SDK tools and streaming
 against the local HTTP fixture. Native audio and background safe-mode safeguards
 remain enabled; this does not validate the default macOS tool-disable policy.
 
+The dialog driver records the title passed to the original Qt message-box helper
+because macOS can ignore its native window title. It still opens the real dialog,
+clicks its real controls, and uses the actual Qt result. Both requested and native
+titles are retained in the evidence; dialog return values are never supplied by
+the test driver.
+
 The provider is an explicit HTTP fixture, credentials use a disposable keyring
 backend, and external desktop input is synthetic. OAuth cache paths are isolated
 too. An external browser fixture tests declined, mismatched-state and incomplete

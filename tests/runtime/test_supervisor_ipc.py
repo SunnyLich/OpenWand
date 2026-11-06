@@ -1366,12 +1366,16 @@ def test_real_intent_failure_preserves_message_without_invented_recommendations(
     native = BoundaryWorker()
     brain = BoundaryWorker(fail_query=True)
     flow = FlowController(native=native, ui=ui, brain=brain, audio=native, run_async=True)
-    flow.start()
-
     try:
+        assert ui.call("ui.ping", timeout=30)["pong"] is True
+        flow.start()
         flow.begin_caller(0)
-        deadline = time.time() + 10
-        while time.time() < deadline:
+        pending = flow._pending
+        assert pending is not None
+        assert pending.context_ready.wait(30), "caller context never became ready"
+        deadline = time.monotonic() + 30
+        submitted = {}
+        while time.monotonic() < deadline:
             submitted = ui.call(
                 "ui.debug.intent.submit",
                 {"text": "Trigger route failure"},
@@ -1381,7 +1385,10 @@ def test_real_intent_failure_preserves_message_without_invented_recommendations(
                 break
             time.sleep(0.02)
         else:
-            pytest.fail("intent picker never accepted the failure request")
+            pytest.fail(
+                f"intent picker never accepted the failure request: {submitted!r}; "
+                f"pending={flow._pending is not None}; worker stderr:\n{ui.stderr_tail()}"
+            )
 
         deadline = time.time() + 10
         bubble = {}
