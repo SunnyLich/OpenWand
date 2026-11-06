@@ -42,8 +42,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
-            || gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME" --notes "Draft OpenWand release."
+          notes_file="docs/releases/${GITHUB_REF_NAME#v}.md"
+          if [ ! -s "$notes_file" ]; then
+            echo "::error::Missing release notes: $notes_file"
+            exit 1
+          fi
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" != "true" ]; then
+              echo "::error::Refusing to overwrite a published release."
+              exit 1
+            fi
+            gh release edit "$GITHUB_REF_NAME" --title "OpenWand $GITHUB_REF_NAME" --notes-file "$notes_file"
+          else
+            gh release create "$GITHUB_REF_NAME" --draft --title "OpenWand $GITHUB_REF_NAME" --notes-file "$notes_file"
+          fi
 
   build-windows:
     name: Windows build
@@ -151,6 +163,21 @@ jobs:
       - name: Prepare Inno installer and uninstaller for signing
         shell: pwsh
         run: ./tools/build_windows_installer.ps1 -Phase Prepare
+
+      - name: Verify installer maintenance and downgrade notices
+        shell: pwsh
+        run: ./tools/test_installer_maintenance.ps1 -CompilerPath (Join-Path $env:RUNNER_TEMP 'OpenWand-Inno-6.7.3\ISCC.exe')
+
+      - name: Upload installer maintenance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-maintenance-windows
+          path: |
+            .tmp/installer-maintenance-*/result.json
+            .tmp/installer-maintenance-*/*.log
+          include-hidden-files: true
+          if-no-files-found: warn
 
       - name: Sign Windows uninstaller
         uses: azure/artifact-signing-action@v2

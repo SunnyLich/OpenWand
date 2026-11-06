@@ -175,6 +175,27 @@ manifest entry must keep pointing to the immutable transition ZIP; see
 For the Microsoft Store EXE submission, use the versioned setup URL and enter
 `/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART` as the installer parameters.
 
+Interactive installers begin with a native welcome confirmation and language-selection step. The second step
+offers English, Traditional Chinese, Simplified Chinese, Spanish, and French;
+version notices appear only after this selection. Standard pages, custom actions,
+notice buttons, and uninstall messages use the selected language. Silent installs
+skip these interactive steps and honor `/LANG=en|zhHant|zh|es|fr`, otherwise reusing
+the previous installation language or the Windows UI language.
+They read the existing per-user Windows uninstall registration and show installed
+and bundled versions. They offer update for older installations,
+repair/reinstall for the same version, and the registered uninstaller. Update and
+repair retain the installation directory. Numeric version comparison identifies
+downgrades and displays a heads-up with a choice to continue or cancel. Silent
+installs log the downgrade and proceed without prompting. An unrecognized installed
+version blocks replacement. Previously released installers do not gain the notice
+retroactively.
+
+Run `tools/test_installer_maintenance.ps1 -CompilerPath <path-to-ISCC.exe>` to
+compile the actual script with a unique test product ID and tiny payload. It checks
+automatic discovery of a non-default installation directory, repair, numeric
+version ordering, allowed downgrades with logged notices, unknown versions, and relocation refusal.
+This test does not exercise the full application or native dialog clicks.
+
 For local installer validation, build the app and then create an explicitly
 unsigned development installer with the same Inno script:
 
