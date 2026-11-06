@@ -458,10 +458,10 @@
     {
       "function_id": "F051",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "real IntentOverlay request -> FlowController query error -> error recommendation -> real reply bubble",
-      "test_node_ids": ["tests/runtime/test_supervisor_ipc.py::test_real_intent_failure_shows_recovery_recommendation_in_reply_bubble"],
-      "success_assertions": ["A rate-limit failure is visibly rendered with the retry, usage-limit, and billing recommendation."],
-      "audit_note": "The deterministic failure is injected at the provider/brain boundary; user entry, controller formatting, UI IPC, and bubble rendering are real.",
+      "production_entry_point": "real IntentOverlay request -> FlowController local-error formatting -> real reply bubble",
+      "test_node_ids": ["tests/runtime/test_supervisor_ipc.py::test_real_intent_failure_preserves_message_without_invented_recommendations"],
+      "success_assertions": ["The original unstructured failure is visible and labelled as a local error, without invented provider, retry, or billing advice."],
+      "audit_note": "An unstructured local exception is injected at the brain boundary; user entry, literal error formatting, UI IPC, and bubble rendering are real.",
       "dependency_status": "audited",
       "interaction_ids": ["I053"]
     },
