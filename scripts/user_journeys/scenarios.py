@@ -37,7 +37,13 @@ class App:
         self.state = Path(os.environ["OPENWAND_E2E_STATE"])
 
     def ui(self, action="snapshot", **params):
-        result = self.supervisor.call("ui", "ui.debug.user_journey", {"action": action, **params}, timeout=30)
+        try:
+            result = self.supervisor.call("ui", "ui.debug.user_journey", {"action": action, **params}, timeout=30)
+        except Exception as error:
+            worker = getattr(self.supervisor, "workers", {}).get("ui")
+            if worker is not None and (tail := worker.stderr_tail(max_lines=35)):
+                error.add_note("Recent UI worker stderr:\n" + tail)
+            raise
         # Retain actions and observations, never typed credentials.
         safe = dict(params)
         if safe.get("field") in {"key", "provider_key"}:

@@ -121,21 +121,21 @@ const DOCS_PAGES = {
 
 'installation': {
   title: 'Installation',
-  sub: 'Portable versions, source launchers, and updates.',
+  sub: 'Windows installer, packaged apps, source launchers, and updates.',
   toc: ['portable-build','updates','source-launch','source-requirements','install-steps','lite-vs-full','running'],
   html: `
-<h2 id="portable-build">Portable version</h2>
-<p>For most people, start with a portable package from <a href="https://github.com/SunnyLich/OpenWand/releases" target="_blank">GitHub Releases</a>. Download the package for your OS, unzip it anywhere, and run the included OpenWand app or launcher.</p>
+<h2 id="portable-build">Install OpenWand</h2>
+<p>On Windows, download the signed setup program from <a href="https://github.com/SunnyLich/OpenWand/releases" target="_blank">GitHub Releases</a> or install OpenWand from the <a href="https://apps.microsoft.com/detail/XP99WCK9Q8WTG1" target="_blank">Microsoft Store</a>. Run the setup program to install or update your existing installation. On macOS and Linux, download the package for your platform and open the included app.</p>
 <table>
   <thead><tr><th>Path</th><th>Use it when</th><th>How to start</th></tr></thead>
   <tbody>
-    <tr><td>Portable package</td><td>You want the easiest setup and do not plan to edit the source</td><td>Open the app or launcher included in the portable package</td></tr>
-    <tr><td>Portable build</td><td>You want a self-contained folder you can move or remove later</td><td>Unzip the portable package, keep the folder together, and run OpenWand from inside it</td></tr>
+    <tr><td>Windows installer</td><td>Windows: new installation, update or repair</td><td>Run the signed setup program or install from the Microsoft Store</td></tr>
+    <tr><td>macOS / Linux package</td><td>macOS or Linux: packaged app</td><td>Download and extract the package, then open the included app</td></tr>
   </tbody>
 </table>
 <hr />
 <h2 id="updates">Packaged updates</h2>
-<p>OpenWand includes an in-app updater for packaged installations. Open <strong>Settings</strong> to check for and install the latest version.</p>
+<p>Packaged installations include an in-app updater under <strong>Settings</strong>. Windows installations from GitHub and the Microsoft Store use the same in-app update path. If an older version cannot download an update because of a certificate error, download the latest Windows installer from GitHub Releases and run it over your existing installation.</p>
 
 <hr />
 <h2 id="source-launch">Repo / source checkout</h2>
@@ -212,13 +212,13 @@ python -m runtime.supervisor.app</code></pre>
 <h2 id="step-1">1. Start</h2>
 <p>There are two ways to start OpenWand.</p>
 
-<div class="callout tip"><div class="callout-label">Portable version</div><p>Recommended: download a portable package from <a href="https://github.com/SunnyLich/OpenWand/releases" target="_blank">GitHub Releases</a>, unzip it, and run the included OpenWand app or launcher. No repo checkout is needed for that path.</p></div>
+<div class="callout tip"><div class="callout-label">Packaged app</div><p>On Windows, install the signed setup program from <a href="https://github.com/SunnyLich/OpenWand/releases" target="_blank">GitHub Releases</a> or use the <a href="https://apps.microsoft.com/detail/XP99WCK9Q8WTG1" target="_blank">Microsoft Store</a>, then open OpenWand from the Start menu. On macOS and Linux, download the package for your platform and run the included app. No source checkout is required.</p></div>
 <table>
   <thead><tr><th>Platform</th><th>Double-click</th></tr></thead>
   <tbody>
     <tr><td>macOS</td><td><code>OpenWand.app</code></td></tr>
     <tr><td>Linux</td><td><code>OpenWand</code></td></tr>
-    <tr><td>Windows</td><td><code>OpenWand.exe</code></td></tr>
+    <tr><td>Windows</td><td>OpenWand from the Start menu</td></tr>
   </tbody>
 </table>
 

@@ -111,10 +111,10 @@ def act(host, action, params, *, click, type_text, select, button):
             raise ValueError("Unknown route control")
     elif action == "conversation_menu":
         matches = [b for index, b in chat._sidebar_btns if index == params["index"]]
-        assert len(matches) == 1
+        assert len(matches) == 1, f"Conversation row {params['index']} is absent or ambiguous; rows={[i for i, _ in chat._sidebar_btns]}; active={chat._active_idx}"
         row = matches[0].parentWidget()
         options = [b for b in row.findChildren(QPushButton) if b.toolTip() == "Conversation options"]
-        assert len(options) == 1
+        assert len(options) == 1, f"Expected one conversation options button; found {len(options)}"
         click(options[0])
     elif action == "project":
         if params.get("new"):
@@ -238,6 +238,8 @@ def observe(host):
         "dialog_events": getattr(host, "_journey_dialog_events", []),
         "dialog_pending": len(getattr(host, "_journey_dialog_plans", [])),
         "dialog_errors": getattr(host, "_journey_dialog_errors", []),
+        "dialog_active": any(widget is not None and widget.isVisible() for widget in
+                             (QApplication.activePopupWidget(), QApplication.activeModalWidget())),
     }
     from scripts.user_journeys.agent_driver import observe as observe_agents
     output.update(observe_agents(host))

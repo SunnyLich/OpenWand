@@ -14,6 +14,48 @@ from scripts.user_journeys.report import source_section, validate_execution
 from scripts.user_journeys.scenarios import CASES
 
 
+@pytest.mark.parametrize("kind", ["menu", "message"])
+def test_completed_dialog_input_waits_for_the_real_qt_surface_to_close(tmp_path, monkeypatch, kind):
+    from PySide6.QtCore import QPoint, Qt, QTimer
+    from PySide6.QtWidgets import QApplication, QMenu, QMessageBox
+
+    from scripts.user_journeys.extended_scenarios import completed_dialogs
+    from scripts.user_journeys.scenarios import App
+    from scripts.user_journeys.ui_extensions import observe
+
+    qt = QApplication.instance() or QApplication([])
+    host = SimpleNamespace(_journey_dialog_events=[{"completed": True}])
+    dialog = QMenu() if kind == "menu" else QMessageBox()
+    if kind == "menu":
+        dialog.addAction("Delete")
+        dialog.popup(QPoint(10, 10))
+    else:
+        dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        dialog.show()
+    qt.processEvents()
+    assert dialog.isVisible()
+    closed = []
+
+    def finish_closing():
+        closed.append(True)
+        dialog.close()
+
+    class Observer:
+        def call(self, *args, **kwargs):
+            qt.processEvents()
+            return {"extended": observe(host)}
+
+    monkeypatch.setenv("OPENWAND_E2E_STATE", str(tmp_path))
+    QTimer.singleShot(100, finish_closing)
+    try:
+        completed_dialogs(App(Observer()))
+        assert closed, "Input completion must not advance while the actual popup/modal is still open"
+        assert not dialog.isVisible()
+    finally:
+        dialog.close()
+        qt.processEvents()
+
+
 @pytest.mark.parametrize("constructor", ["helper", "instance"])
 def test_dialog_title_tracking_keeps_real_qt_choice_when_native_title_is_empty(monkeypatch, constructor):
     from PySide6.QtCore import Qt, QTimer

@@ -20,12 +20,15 @@ def dialogs(app, *plans):
 
 
 def completed_dialogs(app):
-    return app.wait(lambda s: s["extended"]["dialog_pending"] == 0 and all(event.get("completed") for event in s["extended"]["dialog_events"]), "the user's dialog choices")["extended"]["dialog_events"]
+    return app.wait(lambda s: s["extended"]["dialog_pending"] == 0
+                    and not s["extended"]["dialog_active"]
+                    and all(event.get("completed") for event in s["extended"]["dialog_events"]),
+                    "the user's dialog choices and the popup/modal to close")["extended"]["dialog_events"]
 
 
 def conversation_action(app, *plans):
-    dialogs(app, *plans)
     index = app.ui()["extended"]["active_conversation"]
+    dialogs(app, *plans)
     app.ui("extended.conversation_menu", index=index)
     return completed_dialogs(app)
 
