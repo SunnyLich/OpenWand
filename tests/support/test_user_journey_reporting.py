@@ -56,6 +56,44 @@ def test_completed_dialog_input_waits_for_the_real_qt_surface_to_close(tmp_path,
         qt.processEvents()
 
 
+def test_real_submenu_selection_closes_the_parent_without_replaying_a_choice():
+    from PySide6.QtCore import QPoint
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication, QMenu
+    from shiboken6 import isValid
+
+    from scripts.user_journeys.dialog_driver import queue_dialogs
+
+    qt = QApplication.instance() or QApplication([])
+    host = SimpleNamespace()
+    menu = QMenu()
+    submenu = menu.addMenu("Add to project")
+    selected = []
+    submenu.addAction("Other project", lambda: selected.append("other"))
+    submenu.addAction("Journey project", lambda: selected.append("journey"))
+    queue_dialogs(host, [{"kind": "menu", "value": "Add to project"},
+                         {"kind": "menu", "value": "Journey project"}],
+                  click=None, type_text=None, select=None)
+    try:
+        menu.popup(QPoint(10, 10))
+        for _ in range(100):
+            QTest.qWait(20)
+            if host._journey_dialog_errors or (not host._journey_dialog_plans
+                    and all(e["completed"] for e in host._journey_dialog_events)):
+                break
+        assert not host._journey_dialog_errors
+        assert selected == ["journey"]
+        assert not isValid(submenu) or not submenu.isVisible()
+        assert not isValid(menu) or not menu.isVisible(), "A lingering parent menu can consume the next queued choice"
+    finally:
+        host._journey_dialog_timer.stop()
+        if isValid(submenu):
+            submenu.close()
+        if isValid(menu):
+            menu.close()
+        qt.processEvents()
+
+
 @pytest.mark.parametrize("constructor", ["helper", "instance"])
 def test_dialog_title_tracking_keeps_real_qt_choice_when_native_title_is_empty(monkeypatch, constructor):
     from PySide6.QtCore import Qt, QTimer

@@ -169,15 +169,12 @@ def queue_dialogs(host, plans, *, click, type_text, select):
                 assert len(choices) == 1, f"Menu choice absent: {plan['value']!r}; found {[a.text() for a in dialog.actions()]}"
                 action = choices[0]
                 assert action.isEnabled(), "The user's menu choice is disabled"
-                if action.menu() is not None:
-                    # Opening an actual submenu is UI navigation, not a call to
-                    # its business handler. The next timer step selects a row.
-                    def next_click():
-                        action.menu().popup(dialog.mapToGlobal(dialog.actionGeometry(action).topRight()))
-                else:
-                    point = dialog.actionGeometry(action).center()
-                    def next_click():
-                        QTest.mouseClick(dialog, Qt.MouseButton.LeftButton, pos=point)
+                # Let Qt open submenus through the real parent-menu input path.
+                # Calling submenu.popup() directly leaves its parent active on
+                # some platforms, where it can consume the next test's choice.
+                point = dialog.actionGeometry(action).center()
+                def next_click():
+                    QTest.mouseClick(dialog, Qt.MouseButton.LeftButton, pos=point)
             else:
                 if plan["kind"] == "input":
                     assert isinstance(dialog, QInputDialog), "Expected the real name/choice dialog"
