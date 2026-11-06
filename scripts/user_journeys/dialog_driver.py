@@ -110,12 +110,18 @@ def queue_dialogs(host, plans, *, click, type_text, select):
         QPushButton,
         QTextEdit,
     )
+    from shiboken6 import isValid
 
     assert not getattr(host, "_journey_dialog_plans", []), "A previous dialog plan is still pending"
     host._journey_dialog_plans = [dict(plan) for plan in plans]
     host._journey_dialog_deadline = time.monotonic() + 20
     host._journey_dialog_events = []
     host._journey_dialog_errors = []
+    host._journey_expected_menu = None
+    # Keep Python wrappers alive until the queue is replaced after completion.
+    # Releasing a submenu's QAction between timer callbacks can destroy its Qt
+    # submenu while it is opening, even though the parent menu remains visible.
+    host._journey_menu_actions = []
     old_timer = getattr(host, "_journey_dialog_timer", None)
     if old_timer is not None:
         old_timer.stop()
@@ -154,6 +160,18 @@ def queue_dialogs(host, plans, *, click, type_text, select):
             if dialog is not None and dialog.isVisible():
                 QTest.keyClick(dialog, Qt.Key.Key_Escape)
             return
+        expected_menu = host._journey_expected_menu if plan["kind"] == "menu" else None
+        if expected_menu is not None:
+            # A native submenu can open after the click returns. Wait for that
+            # exact menu instead of looking for its leaf in the still-active
+            # parent. The normal deadline above still fails a missing submenu.
+            if not isValid(expected_menu):
+                host._journey_dialog_errors.append(f"Submenu was destroyed before choosing {plan['value']!r}")
+                timer.stop()
+                return
+            if not expected_menu.isVisible():
+                return
+            dialog = expected_menu
         if dialog is None or not dialog.isVisible() or (plan.get("title") and plan["title"] not in dialog_title(host, dialog)):
             if time.monotonic() > host._journey_dialog_deadline:
                 title = dialog.windowTitle() if dialog is not None else "no dialog"
@@ -169,12 +187,26 @@ def queue_dialogs(host, plans, *, click, type_text, select):
                 assert len(choices) == 1, f"Menu choice absent: {plan['value']!r}; found {[a.text() for a in dialog.actions()]}"
                 action = choices[0]
                 assert action.isEnabled(), "The user's menu choice is disabled"
+                host._journey_menu_actions.append(action)
+                host._journey_expected_menu = action.menu()
                 # Let Qt open submenus through the real parent-menu input path.
                 # Calling submenu.popup() directly leaves its parent active on
                 # some platforms, where it can consume the next test's choice.
                 point = dialog.actionGeometry(action).center()
                 def next_click():
-                    QTest.mouseClick(dialog, Qt.MouseButton.LeftButton, pos=point)
+                    if action.menu() is not None:
+                        # Keyboard selection does not depend on the desktop
+                        # pointer already being at this newly shown menu row.
+                        QTest.keyClick(dialog, Qt.Key.Key_Home)
+                        for _ in range(len(dialog.actions()) + 1):
+                            if dialog.activeAction() is action:
+                                break
+                            QTest.keyClick(dialog, Qt.Key.Key_Down)
+                        assert dialog.activeAction() is action, "Could not focus the requested submenu"
+                        if not action.menu().isVisible():
+                            QTest.keyClick(dialog, Qt.Key.Key_Right)
+                    else:
+                        QTest.mouseClick(dialog, Qt.MouseButton.LeftButton, pos=point)
             else:
                 if plan["kind"] == "input":
                     assert isinstance(dialog, QInputDialog), "Expected the real name/choice dialog"

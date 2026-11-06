@@ -829,7 +829,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 21
+      "node_count": 22
     },
     {
       "path": "tests/support/test_version_metadata.py",

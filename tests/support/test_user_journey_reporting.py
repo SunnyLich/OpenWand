@@ -56,21 +56,39 @@ def test_completed_dialog_input_waits_for_the_real_qt_surface_to_close(tmp_path,
         qt.processEvents()
 
 
-def test_real_submenu_selection_closes_the_parent_without_replaying_a_choice():
-    from PySide6.QtCore import QPoint
+@pytest.mark.parametrize("open_delay", [0, 180])
+def test_real_submenu_selection_closes_the_parent_without_replaying_a_choice(monkeypatch, open_delay):
+    from PySide6.QtCore import QPoint, Qt, QTimer
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QMenu
+    from PySide6.QtWidgets import QApplication, QMenu, QWidget
     from shiboken6 import isValid
 
     from scripts.user_journeys.dialog_driver import queue_dialogs
 
     qt = QApplication.instance() or QApplication([])
     host = SimpleNamespace()
-    menu = QMenu()
+    parent = QWidget()
+    parent.resize(400, 300)
+    parent.show()
+    parent.activateWindow()
+    qt.processEvents()
+    menu = QMenu(parent)
     submenu = menu.addMenu("Add to project")
     selected = []
     submenu.addAction("Other project", lambda: selected.append("other"))
     submenu.addAction("Journey project", lambda: selected.append("journey"))
+    if open_delay:
+        # Model slow native submenu activation by delaying the actual input;
+        # the real menu and its action signals still determine the result.
+        real_key = QTest.keyClick
+
+        def deliver_key(widget, key, *args, **kwargs):
+            if widget is menu and key == Qt.Key.Key_Right:
+                QTimer.singleShot(open_delay, lambda: real_key(widget, key, *args, **kwargs))
+            else:
+                real_key(widget, key, *args, **kwargs)
+
+        monkeypatch.setattr(QTest, "keyClick", deliver_key)
     queue_dialogs(host, [{"kind": "menu", "value": "Add to project"},
                          {"kind": "menu", "value": "Journey project"}],
                   click=None, type_text=None, select=None)
@@ -82,7 +100,15 @@ def test_real_submenu_selection_closes_the_parent_without_replaying_a_choice():
                     and all(e["completed"] for e in host._journey_dialog_events)):
                 break
         assert not host._journey_dialog_errors
-        assert selected == ["journey"]
+        assert selected == ["journey"], str({
+            "pending": host._journey_dialog_plans,
+            "events": host._journey_dialog_events,
+            "submenu_visible": isValid(submenu) and submenu.isVisible(),
+            "active_parent": qt.activePopupWidget() is menu,
+            "active_submenu": qt.activePopupWidget() is submenu,
+            "parent_visible": isValid(menu) and menu.isVisible(),
+            "parent_action": menu.activeAction().text() if isValid(menu) and menu.activeAction() else None,
+        })
         assert not isValid(submenu) or not submenu.isVisible()
         assert not isValid(menu) or not menu.isVisible(), "A lingering parent menu can consume the next queued choice"
     finally:
@@ -91,6 +117,7 @@ def test_real_submenu_selection_closes_the_parent_without_replaying_a_choice():
             submenu.close()
         if isValid(menu):
             menu.close()
+        parent.close()
         qt.processEvents()
 
 
