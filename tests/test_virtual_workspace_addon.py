@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import socket
 import time
 from pathlib import Path
 from urllib.error import HTTPError
@@ -37,6 +38,22 @@ def _activity_summaries(window) -> list[str]:  # noqa: ANN001
         for activity_id in window._activity.ids
         if (item := window._activity.item(activity_id)) is not None
     ]
+
+
+def test_workspace_loopback_start_does_not_require_hostname_resolution(tmp_path: Path, monkeypatch) -> None:
+    def unavailable_hostname_lookup(*_args, **_kwargs):
+        raise AssertionError("Loopback-only workspace must not depend on DNS")
+
+    monkeypatch.setattr(socket, "getfqdn", unavailable_hostname_lookup)
+    controller = WorkspaceController()
+    controller.configure(tmp_path / "addon-data")
+    try:
+        controller.start()
+        base, headers = _authorization(controller.viewer_url)
+        state = _json_request(f"{base}/api/state", headers)
+        assert state["status"] == "running"
+    finally:
+        controller.stop()
 
 
 @pytest.fixture

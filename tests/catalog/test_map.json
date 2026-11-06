@@ -3203,7 +3203,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 25
+      "node_count": 26
     },
     {
       "path": "tests/test_virtual_workspace_background_runner.py",
