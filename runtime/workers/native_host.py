@@ -4381,8 +4381,13 @@ HANDLERS = {
 
 def main() -> int:
     """Handle main for runtime workers native host."""
-    calc_automation_prewarm()
-    return run_host(role="native", handlers=HANDLERS, event_sink_setter=set_event_sink)
+    handlers = HANDLERS
+    if os.environ.get("OPENWAND_USER_JOURNEYS") == "1":
+        from scripts.user_journeys.desktop_boundary import handlers as desktop_handlers
+        handlers = {**HANDLERS, **desktop_handlers(HANDLERS)}
+    else:
+        calc_automation_prewarm()
+    return run_host(role="native", handlers=handlers, event_sink_setter=set_event_sink)
 
 
 if __name__ == "__main__":

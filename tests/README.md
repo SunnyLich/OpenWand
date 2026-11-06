@@ -1,5 +1,10 @@
 # Test structure
 
+For whole-application journeys and numbered reports linking each scenario to its
+exact code section, see [User journey testing](../docs/USER_JOURNEY_TESTING.md).
+The new running-app suite and existing component/UI results are reported
+separately; an existing acceptance marker does not certify a complete journey.
+
 Provider adapter recovery, offline execution, known failures, and the recreated
 OpenAI supplement are documented in [PROVIDER_ADAPTER_TESTS.md](../docs/PROVIDER_ADAPTER_TESTS.md).
 

@@ -5,11 +5,12 @@ from __future__ import annotations
 import html
 import json
 import math
-
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QPlainTextEdit, QToolButton, QVBoxLayout, QWidget
+from typing import TYPE_CHECKING
 
 from ui.i18n import t
+
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QWidget
 
 _NAMES = {
     "google": "Google",
@@ -72,6 +73,9 @@ def literal_html(text: str) -> str:
 
 
 def details_widget(info: dict, parent: QWidget) -> QWidget:
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QPlainTextEdit, QToolButton, QVBoxLayout, QWidget
+
     box = QWidget(parent)
     box.setObjectName("providerErrorDetails")
     layout = QVBoxLayout(box)

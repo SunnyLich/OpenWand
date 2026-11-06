@@ -7,6 +7,7 @@ import os
 import platform
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import time
@@ -16,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Any
+
+import certifi
 
 from core.system.paths import SINGLE_INSTANCE_LOCK, UPDATE_DOWNLOAD_DIR, is_installed_release
 
@@ -172,12 +175,21 @@ def parse_manifest(data: dict[str, Any], platform_key: str | None = None) -> tup
     return version, str(data.get("notes_url") or ""), asset
 
 
+def _update_ssl_context() -> ssl.SSLContext:
+    """Trust bundled public CAs as well as system/custom certificate roots."""
+    context = ssl.create_default_context()
+    # Frozen/standalone Python builds may lack a complete default CA store.
+    # Add certifi without replacing system trust (including corporate proxies).
+    context.load_verify_locations(cafile=certifi.where())
+    return context
+
+
 def fetch_manifest(url: str | None = None, timeout: float = 15.0) -> dict[str, Any]:
     """Fetch and decode the release manifest."""
     target = url or manifest_url()
     if not target:
         raise UpdateError("Update manifest URL is not configured.")
-    with urllib.request.urlopen(target, timeout=timeout) as response:
+    with urllib.request.urlopen(target, timeout=timeout, context=_update_ssl_context()) as response:
         payload = response.read()
     try:
         data = json.loads(payload.decode("utf-8"))
@@ -231,7 +243,7 @@ def download_update(asset: UpdateAsset, target_dir: Path | None = None, timeout:
     destination = destination_dir / asset.name
     if asset.name.lower().endswith(".exe") and not asset.sha256:
         raise UpdateError("Installer update is missing its SHA256 hash.")
-    with urllib.request.urlopen(asset.url, timeout=timeout) as response:
+    with urllib.request.urlopen(asset.url, timeout=timeout, context=_update_ssl_context()) as response:
         with NamedTemporaryFile("wb", delete=False, dir=destination_dir, prefix=".openwand-update-", suffix=".tmp") as tmp:
             shutil.copyfileobj(response, tmp)
             tmp_path = Path(tmp.name)

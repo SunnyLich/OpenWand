@@ -6778,5 +6778,34 @@ Esta acción no se puede deshacer. No se eliminarán los archivos de origen de C
       <source>OpenWand error ({provider})</source>
       <translation>Error de OpenWand ({provider})</translation>
     </message>
+    <message><source>Uninstall OpenWand, with the option to also remove saved settings, data, and downloaded speech models.</source><translation>Desinstala OpenWand, con la opción de eliminar también los ajustes, datos y modelos de voz descargados.</translation></message>
+    <message><source>Also remove all OpenWand data and sign-ins</source><translation>Eliminar también todos los datos e inicios de sesión de OpenWand</translation></message>
+    <message><source>Keep saved settings and data for a future reinstall: {data_root}</source><translation>Conservar ajustes y datos para una futura reinstalación: {data_root}</translation></message>
+    <message><source>This will permanently remove:
+• OpenWand's current {kind}: {app_root}
+• OpenWand login and desktop entries</source><translation>Se eliminará permanentemente:
+• {kind} actual de OpenWand: {app_root}
+• Las entradas de inicio de sesión y escritorio de OpenWand</translation></message>
+    <message><source>Also permanently remove settings, chats, memory, add-ons, tools, logs, updates, optional packages, saved API keys, OAuth sign-in tokens, and OpenWand-owned models.
+User data: {data_root}
+External providers, their models, other apps' sign-ins, browser sessions, and shared uv/pip and Hugging Face caches will be kept.</source><translation>Eliminar también ajustes, chats, memoria, complementos, herramientas, registros, actualizaciones, paquetes opcionales, claves API, tokens OAuth y modelos propios de OpenWand.
+Datos de usuario: {data_root}
+Se conservarán los proveedores externos, sus modelos, las sesiones de otras aplicaciones y del navegador, y las cachés compartidas de uv/pip y Hugging Face.</translation></message>
+    <message><source>Factory reset OpenWand?</source><translation>¿Restablecer OpenWand de fábrica?</translation></message>
+    <message><source>Remove all OpenWand data and sign-ins? This cannot be undone.</source><translation>¿Eliminar todos los datos e inicios de sesión de OpenWand? Esta acción no se puede deshacer.</translation></message>
+    <message><source>This permanently removes OpenWand settings, profiles, chats, memory, custom callers, installed add-ons and tools, logs, caches, downloaded packages and OpenWand-owned models, saved API keys, and OAuth sign-ins.
+
+External providers (such as Ollama), their models, browser sessions, and other apps' sign-ins are kept. Shared model caches are kept because they may be used by other apps.
+
+OpenWand will close to finish the reset. Open it again afterwards to start fresh.</source><translation>Se eliminarán los ajustes, perfiles, chats, memoria, atajos personalizados, complementos y herramientas instalados, registros, cachés, paquetes descargados, modelos propios de OpenWand, claves API e inicios OAuth.
+
+Se conservarán los proveedores externos (como Ollama), sus modelos, las sesiones del navegador y de otras aplicaciones. Las cachés compartidas de modelos se conservan porque otras aplicaciones pueden usarlas.
+
+OpenWand se cerrará para completar el restablecimiento. Ábrelo de nuevo para empezar desde cero.</translation></message>
+    <message><source>Exact paths scheduled for cleanup:</source><translation>Rutas exactas que se limpiarán:</translation></message>
+    <message><source>Factory reset scheduled</source><translation>Restablecimiento de fábrica programado</translation></message>
+    <message><source>OpenWand will now close and remove its saved data and sign-ins. If cleanup cannot finish, an error will be shown and saved here:
+{path}</source><translation>OpenWand se cerrará y eliminará sus datos e inicios de sesión. Si la limpieza no puede completarse, se mostrará un error y se guardará aquí:
+{path}</translation></message>
   </context>
 </TS>

@@ -1333,6 +1333,7 @@ class FlowController:
         _req_id: Any = None,
         *,
         thought_parser: Any = _USE_SHARED_REPLY_PARSER,
+        render_to_bubble: bool = True,
     ) -> list[tuple[str, bool, bool]]:
         """Handle reply chunk events."""
         text = str((data or {}).get("text") or "")
@@ -1341,25 +1342,38 @@ class FlowController:
         is_progress = bool((data or {}).get("is_progress"))
         payload_is_thought = bool((data or {}).get("is_thought"))
         annotations = list((data or {}).get("annotations") or []) if isinstance(data, dict) else []
+
+        def emit_chunk(payload):
+            if render_to_bubble:
+                self._safe_call(self.ui, "ui.reply.chunk", payload, timeout=30.0)
+
+        if (data or {}).get("is_snapshot"):
+            emit_chunk({
+                "text": text, "is_progress": is_progress, "is_snapshot": True,
+                **({"annotations": annotations} if annotations else {}),
+            })
+            from core.assistant_text import ThoughtStreamParser
+
+            snapshot_parser = ThoughtStreamParser()
+            return [
+                (segment, bool(is_thought), is_progress)
+                for segment, is_thought in list(snapshot_parser.feed(text)) + list(snapshot_parser.finish())
+                if segment
+            ]
+
         if payload_is_thought:
-            self._safe_call(
-                self.ui,
-                "ui.reply.chunk",
+            emit_chunk(
                 {
                     "text": text,
                     "is_thought": True,
                     "is_progress": is_progress,
                 },
-                timeout=30.0,
             )
             return [(text, True, is_progress)]
         parser = self._reply_thought_parser if thought_parser is _USE_SHARED_REPLY_PARSER else thought_parser
         if parser is None:
-            self._safe_call(
-                self.ui,
-                "ui.reply.chunk",
+            emit_chunk(
                 {"text": text, "is_progress": is_progress, "annotations": annotations},
-                timeout=30.0,
             )
             return [(text, False, is_progress)]
         segments = list(parser.feed(text))
@@ -1373,12 +1387,7 @@ class FlowController:
                 }
                 if passthrough_annotations and not is_thought:
                     chunk_payload["annotations"] = passthrough_annotations
-                self._safe_call(
-                    self.ui,
-                    "ui.reply.chunk",
-                    chunk_payload,
-                    timeout=30.0,
-                )
+                emit_chunk(chunk_payload)
         return [(segment, bool(is_thought), is_progress) for segment, is_thought in segments if segment]
 
     def _replace_reply_text(self, text: str) -> None:
@@ -1408,13 +1417,14 @@ class FlowController:
         _req_id: Any = None,
         *,
         thought_parser: Any = _USE_SHARED_REPLY_PARSER,
+        render_to_bubble: bool = True,
     ) -> None:
         """Handle reply done events."""
         use_shared_parser = thought_parser is _USE_SHARED_REPLY_PARSER
         parser = self._reply_thought_parser if use_shared_parser else thought_parser
         if parser is not None:
             for segment, is_thought in parser.finish():
-                if segment:
+                if segment and render_to_bubble:
                     self._safe_call(
                         self.ui,
                         "ui.reply.chunk",
@@ -1429,7 +1439,8 @@ class FlowController:
         # flush=False: the LLM finished streaming but no audio will pace the
         # bubble (this path only runs with TTS off) - let the WPM reveal drain
         # at BUBBLE_REVEAL_WPM instead of slamming the full reply in at once.
-        self._safe_call(self.ui, "ui.reply.done", {"flush": False}, timeout=30.0)
+        if render_to_bubble:
+            self._safe_call(self.ui, "ui.reply.done", {"flush": False}, timeout=30.0)
         self._safe_call(self.ui, "ui.overlay.state", {"state": "idle"}, timeout=30.0)
 
     def _forward_agent_event(self, event_name: str):
@@ -5557,16 +5568,25 @@ class FlowController:
         done_payload: dict[str, Any] = {}
         user_text = self._latest_message_text(messages, role="user")
         user_annotations = self._chat_text_annotations(user_text, role="user")
+        preview_seen = False
 
         def on_event(event: str, payload: Any, _req_id: Any = None) -> None:
             """Handle event events."""
-            nonlocal done_seen, done_payload
-            if event == "reply.chunk":
+            nonlocal done_seen, done_payload, preview_seen
+            if event in {"reply.chunk", "reply.preview"}:
+                payload = dict(payload or {})
+                if event == "reply.preview":
+                    preview_seen = True
+                    payload["is_progress"] = True
+                snapshot = preview_seen and not payload.get("is_thought") and (
+                    event == "reply.preview" or not payload.get("is_progress")
+                )
                 self._safe_call(
                     self.ui,
                     "ui.chat.chunk",
                     {
                         "request_id": request_id,
+                        **({"is_snapshot": True} if snapshot else {}),
                         "text": str((payload or {}).get("text") or ""),
                         "is_progress": bool((payload or {}).get("is_progress")),
                         "is_thought": bool((payload or {}).get("is_thought")),
@@ -6200,12 +6220,11 @@ class FlowController:
         path = str(data.get("path") or "")
         if not path:
             return
-        result = self._safe_call(
-            self.brain,
-            "brain.addons.install_archive",
-            {"path": path},
-            timeout=120.0,
-        )
+        try:
+            result = self.brain.call("brain.addons.install_archive", {"path": path}, timeout=120.0)
+        except Exception as exc:
+            self._notice(f"Could not install addon: {exc}", severity="error")
+            return
         message = "Addon archive installed."
         if isinstance(result, dict) and result.get("id"):
             message = f"Installed addon: {result['id']}"
@@ -6218,12 +6237,11 @@ class FlowController:
         path = str(data.get("path") or "")
         if not path:
             return
-        result = self._safe_call(
-            self.brain,
-            "brain.addons.install_folder",
-            {"path": path},
-            timeout=120.0,
-        )
+        try:
+            result = self.brain.call("brain.addons.install_folder", {"path": path}, timeout=120.0)
+        except Exception as exc:
+            self._notice(f"Could not install addon: {exc}", severity="error")
+            return
         message = "Addon folder installed."
         if isinstance(result, dict) and result.get("id"):
             message = f"Installed addon: {result['id']}"
@@ -6667,6 +6685,15 @@ class FlowController:
         streamed_reply_parts: list[str] = []
         tts_segmenter = _TtsSegmentBuffer() if self._tts_replies_enabled() else None
         early_chat_index: int | None = None
+        early_response_id = ""
+        preview_seen = False
+
+        def chat_target() -> dict:
+            target = {"conversation_index": early_chat_index}
+            if early_response_id:
+                target["response_id"] = early_response_id
+            return target
+
         try:
             from core.assistant_text import ThoughtStreamParser
 
@@ -6676,8 +6703,16 @@ class FlowController:
 
         def on_event(event: str, payload: Any, _req_id: Any = None) -> None:
             """Handle event events."""
-            nonlocal done_seen, first_chunk_seen, reply_parser_finished
-            if event == "reply.chunk":
+            nonlocal done_seen, first_chunk_seen, reply_parser_finished, preview_seen
+            if event in {"reply.chunk", "reply.preview"}:
+                payload = dict(payload or {})
+                if event == "reply.preview":
+                    preview_seen = True
+                    payload["is_progress"] = True
+                if preview_seen and not payload.get("is_thought") and (
+                    event == "reply.preview" or not payload.get("is_progress")
+                ):
+                    payload["is_snapshot"] = True
                 response_activity.set()
                 slow_notice_timer.cancel()
                 if not self._is_current(gen):
@@ -6692,7 +6727,8 @@ class FlowController:
                         self.ui,
                         "ui.chat.chunk",
                         {
-                            "conversation_index": early_chat_index,
+                            **chat_target(),
+                            **({"is_snapshot": True} if payload.get("is_snapshot") else {}),
                             "text": str((payload or {}).get("text") or ""),
                             "is_progress": bool((payload or {}).get("is_progress")),
                             "is_thought": bool((payload or {}).get("is_thought")),
@@ -6704,10 +6740,11 @@ class FlowController:
                 for segment, is_thought, is_progress in self._on_reply_chunk(
                     payload,
                     thought_parser=reply_thought_parser,
+                    render_to_bubble=early_chat_index is None,
                 ):
-                    if tts_segmenter is not None and is_progress and not is_thought:
+                    if tts_segmenter is not None and is_progress and not is_thought and not payload.get("is_snapshot"):
                         self._queue_tts_segment(gen, segment)
-                    elif tts_segmenter is not None and not is_thought:
+                    elif tts_segmenter is not None and not is_thought and not is_progress:
                         for tts_segment in tts_segmenter.feed(segment):
                             self._queue_tts_segment(gen, tts_segment)
             elif event == "reply.done":
@@ -6719,6 +6756,8 @@ class FlowController:
                 self._emit_file_context_progress(
                     list((payload or {}).get("file_context") or []),
                     conversation_index=early_chat_index,
+                    response_id=early_response_id,
+                    include_bubble=early_chat_index is None,
                 )
                 generated_attachments = list((payload or {}).get("attachments") or [])
                 if generated_attachments and not self._reply_bubble_cancelled(gen):
@@ -6732,7 +6771,10 @@ class FlowController:
                 if text_done:
                     self._last_reply = text_done
                 if not (self._tts_replies_enabled() and text_done):
-                    self._on_reply_done(payload, thought_parser=reply_thought_parser)
+                    self._on_reply_done(
+                        payload, thought_parser=reply_thought_parser,
+                        render_to_bubble=early_chat_index is None,
+                    )
                     reply_parser_finished = True
             elif event == "live_file.activity":
                 if early_chat_index is not None:
@@ -6740,7 +6782,7 @@ class FlowController:
                         self.ui,
                         "ui.chat.chunk",
                         {
-                            "conversation_index": early_chat_index,
+                            **chat_target(),
                             "local_work": dict(payload or {}),
                         },
                         timeout=30.0,
@@ -6751,7 +6793,7 @@ class FlowController:
                         self.ui,
                         "ui.chat.chunk",
                         {
-                            "conversation_index": early_chat_index,
+                            **chat_target(),
                             "harness_activity": dict(payload or {}),
                         },
                         timeout=30.0,
@@ -6817,6 +6859,7 @@ class FlowController:
                 raw_idx = begin_result.get("conversation_index")
                 if isinstance(raw_idx, int):
                     early_chat_index = raw_idx
+                    early_response_id = str(begin_result.get("response_id") or "")
         except Exception:
             log.exception("failed to begin chat conversation before query")
         try:
@@ -6837,18 +6880,28 @@ class FlowController:
                     self._safe_call(
                         self.ui,
                         "ui.chat.done",
-                        {"conversation_index": early_chat_index, "text": ""},
+                        {**chat_target(), "text": "", "cancelled": True},
                         timeout=30.0,
                     )
                 return
+            from core.llm_clients.error_details import from_exception
+            from ui.provider_errors import error_text
+
+            info = from_exception(exc)
             if early_chat_index is not None:
                 self._safe_call(
                     self.ui,
-                    "ui.chat.done",
-                    {"conversation_index": early_chat_index, "text": ""},
+                    "ui.chat.error",
+                    {**chat_target(), "error": info["message"], "provider_error": info},
                     timeout=30.0,
                 )
-            self._notice(f"LLM request failed: {self._friendly_error(exc)}", severity="error")
+            else:
+                self._safe_call(
+                    self.ui,
+                    "ui.reply.notice",
+                    {"text": error_text(info), "severity": "error"},
+                    timeout=30.0,
+                )
             self._safe_call(self.ui, "ui.reply.done", timeout=30.0)
             self._set_idle()
             return
@@ -6860,13 +6913,13 @@ class FlowController:
                 self._safe_call(
                     self.ui,
                     "ui.chat.done",
-                    {"conversation_index": early_chat_index, "text": ""},
+                    {**chat_target(), "text": "", "cancelled": True},
                     timeout=30.0,
                 )
             return
         if reply_thought_parser is not None and not reply_parser_finished:
             for segment, is_thought in reply_thought_parser.finish():
-                if segment:
+                if segment and early_chat_index is None:
                     self._safe_call(
                         self.ui,
                         "ui.reply.chunk",
@@ -6882,7 +6935,10 @@ class FlowController:
         display_segments = list((result or {}).get("display_segments") or [])
         harness = dict((result or {}).get("harness") or {})
         if not done_seen:
-            self._emit_file_context_progress(file_context, conversation_index=early_chat_index)
+            self._emit_file_context_progress(
+                file_context, conversation_index=early_chat_index, response_id=early_response_id,
+                include_bubble=early_chat_index is None,
+            )
         privacy_report = (result or {}).get("privacy_report") if isinstance(result, dict) else None
         self._last_privacy_report = privacy_report if isinstance(privacy_report, dict) else {}
         self._last_reply = text
@@ -6900,7 +6956,7 @@ class FlowController:
                 self.ui,
                 "ui.chat.done",
                 {
-                    "conversation_index": early_chat_index,
+                    **chat_target(),
                     "text": text,
                     "file_context": file_context,
                     "tool_context": _normalized_tool_context(
@@ -6919,6 +6975,7 @@ class FlowController:
             )
         if (
             text
+            and early_chat_index is None
             and not bubble_cancelled
             and not suppress_reply_bubble
             and "".join(streamed_reply_parts) != text
@@ -6928,7 +6985,7 @@ class FlowController:
             for tts_segment in tts_segmenter.finish():
                 self._queue_tts_segment(gen, tts_segment)
             self._finish_tts_sequence(gen)
-        if text or assistant_attachments:
+        if (text or assistant_attachments) and early_chat_index is None:
             tool_context = _normalized_tool_context(
                 {
                     "allowed_tools": params.get("allowed_tools") or [],
@@ -6953,7 +7010,7 @@ class FlowController:
                     "display_segments": display_segments,
                     "harness": harness,
                     "append_user": early_chat_index is None,
-                    "conversation_index": early_chat_index,
+                    **chat_target(),
                 },
                 timeout=30.0,
             )
@@ -9239,6 +9296,7 @@ class FlowController:
         chat_request_id: str = "",
         conversation_index: int | None = None,
         include_bubble: bool = True,
+        response_id: str = "",
     ) -> None:
         """Display local-file tool summaries without adding them to reply text."""
         for text in self._file_context_progress_texts(file_context):
@@ -9256,7 +9314,7 @@ class FlowController:
                 self._safe_call(
                     self.ui,
                     "ui.chat.chunk",
-                    {"conversation_index": conversation_index, **payload},
+                    {"conversation_index": conversation_index, **({"response_id": response_id} if response_id else {}), **payload},
                     timeout=30.0,
                 )
 

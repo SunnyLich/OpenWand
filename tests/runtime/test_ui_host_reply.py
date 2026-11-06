@@ -85,6 +85,7 @@ def test_begin_overlay_conversation_targets_the_persisted_chat() -> None:
     host._all_conversations = []
     host._chat = None
     host._persist_conversations = lambda: None  # type: ignore[method-assign]
+    host._render_reply_response = lambda _response: None
 
     result = host._chat_begin_conversation(user="show me the answer")
 
@@ -1008,6 +1009,7 @@ def test_chat_add_conversation_stamps_metadata() -> None:
     host._chat = None
     persisted = []
     host._persist_conversations = lambda: persisted.append(True)  # type: ignore[attr-defined]
+    host._render_reply_response = lambda _response: None
 
     result = host._chat_add_conversation(user="hi", assistant="hello")
 
@@ -1257,8 +1259,9 @@ def test_chat_begin_conversation_persists_user_then_final_appends_assistant() ->
     host._chat = None
     persisted = []
     host._persist_conversations = lambda: persisted.append(True)  # type: ignore[attr-defined]
+    host._render_reply_response = lambda _response: None
 
-    begin = host._chat_begin_conversation(user="edit notes", context="ctx", context_policy={"context_memory_mode": "on"})
+    begin = host._chat_begin_conversation(user="edit notes", context="ctx", context_policy={"context_memory_mode": "on", "file_access": "auto"})
     idx = begin["conversation_index"]
 
     assert begin["started"] is True
@@ -1278,6 +1281,9 @@ def test_chat_begin_conversation_persists_user_then_final_appends_assistant() ->
     messages = host._all_conversations[0]["messages"]
     assert [message["role"] for message in messages] == ["user", "assistant"]
     assert messages[1]["content"] == "done"
+    # Finishing an answer must retain the user's permissions for the next turn.
+    assert host._all_conversations[0]["context_policy"]["file_access"] == "auto"
+    assert host._all_conversations[0]["context_policy"]["context_memory_mode"] == "on"
     assert host._external_reply_stream is None
     assert len(persisted) == 2
 
@@ -1290,11 +1296,9 @@ def test_overlay_reply_chunks_restore_when_chat_opens_mid_reply() -> None:
         def __init__(self) -> None:
             self.calls = []
 
-        def begin_external_reply_stream(self, idx: int) -> None:
+        def begin_external_reply_stream(self, idx: int, response=None) -> None:
             self.calls.append(("begin", idx))
-
-        def external_reply_chunk(self, idx: int, chunk: dict) -> None:
-            self.calls.append(("chunk", idx, dict(chunk)))
+            self.response = response
 
     host = QtProtocolHost.__new__(QtProtocolHost)
     host._active_conversation_idx = 0
@@ -1317,26 +1321,14 @@ def test_overlay_reply_chunks_restore_when_chat_opens_mid_reply() -> None:
     chat = Chat()
     host._chat = chat
     assert host._restore_external_reply_stream() is True
-    assert chat.calls == [
-        ("begin", 0),
-        (
-            "chunk",
-            0,
-            {"text": "Working", "is_progress": True, "is_thought": False, "local_work": {}},
-        ),
-        (
-            "chunk",
-            0,
-            {"text": "Summary text", "is_progress": False, "is_thought": False, "local_work": {}},
-        ),
-    ]
+    assert chat.calls == [("begin", 0)]
+    assert chat.response is host._external_reply_stream["response"]
+    assert chat.response.reply_text == "Summary text"
+    assert chat.response.status == ""
 
     assert host._chat_chunk(conversation_index=0, text=" continues")["queued"] is True
-    assert chat.calls[-1] == (
-        "chunk",
-        0,
-        {"text": " continues", "is_progress": False, "is_thought": False, "local_work": {}},
-    )
+    assert chat.calls == [("begin", 0)]
+    assert chat.response.reply_text == "Summary text continues"
 
 
 def test_chat_chunk_preserves_structured_harness_activity() -> None:
@@ -1938,6 +1930,24 @@ def test_agent_approval_bubble_notice_does_not_timeout() -> None:
     assert [label for label, _callback in bubble.notice["actions"]] == ["Approve", "Alternate option", "Decline"]
     assert timer.starts == 0
     assert timer.stops >= 1
+
+
+def test_response_snapshots_replace_preview_without_duplicating_final_text():
+    """Both views observe one turn as partial text is replaced by its final transform."""
+    from ui.response_state import ResponseState
+
+    response = ResponseState()
+    chat, bubble = [], []
+    response.subscribe(lambda state: chat.append(state.reply_text))
+    response.subscribe(lambda state: bubble.append(state.reply_text))
+    for text in ("hel", "hello", "Hello, world!"):
+        response.feed({"text": text, "is_snapshot": True, "is_progress": True})
+        assert response.reply_text == text
+        assert response.status == ""
+    response.finish()
+    response.feed({"text": "late event", "is_snapshot": True})
+    assert response.reply_text == "Hello, world!"
+    assert chat == bubble
 
 
 def test_active_history_includes_context_and_attachment_refs() -> None:

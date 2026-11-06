@@ -63,13 +63,44 @@ jobs:
             requirements/requirements-windows.lock
             requirements/requirements-build.lock
 
+      - name: Build Windows test artifact
+        env:
+          OPENWAND_BUILD_JOURNEYS: "1"
+        shell: pwsh
+        run: .\tools\build_exe.ps1 -Clean -Yes
+
+      - name: Smoke-test packaged Windows test runtime
+        shell: pwsh
+        run: .\.venv-build\Scripts\python.exe scripts/run_launcher_smoke.py --kind packaged --timeout 240
+
+      - name: Exercise user journeys in the packaged Windows app
+        run: .\.venv-build\Scripts\python.exe -m scripts.user_journeys --packaged --output reports/packaged-user-journeys --timeout 480
+
       - name: Build Windows artifact
         shell: pwsh
         run: .\tools\build_exe.ps1 -Clean -Yes
 
       - name: Smoke-test packaged Windows runtime
-        shell: pwsh
-        run: python scripts/run_launcher_smoke.py --kind packaged --timeout 240
+        run: .\.venv-build\Scripts\python.exe scripts/run_launcher_smoke.py --kind packaged --timeout 240
+
+      - name: Upload packaged Windows user journey evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-user-journeys-windows
+          path: |
+            reports/packaged-user-journeys/report.md
+            reports/packaged-user-journeys/coverage-checklist.md
+            reports/packaged-user-journeys/*-results.json
+            reports/packaged-user-journeys/*-ready.json
+            reports/packaged-user-journeys/*-process.log
+            reports/packaged-user-journeys/provider-requests.json
+            reports/packaged-user-journeys/browser-events.json
+            reports/packaged-user-journeys/runtime.json
+            reports/packaged-user-journeys/runner-error.txt
+            reports/packaged-user-journeys/incomplete-execution.txt
+            reports/packaged-user-journeys/screenshots/
+          if-no-files-found: warn
 
       - name: Ensure PowerShell Gallery is available
         shell: pwsh
@@ -233,11 +264,41 @@ jobs:
       - name: Make build script executable
         run: chmod +x ./tools/build_exe.sh
 
+      - name: Build Linux test artifact
+        env:
+          OPENWAND_BUILD_JOURNEYS: "1"
+        run: ./tools/build_exe.sh --clean --yes
+
+      - name: Smoke-test packaged Linux test runtime
+        run: ./.venv-build/bin/python scripts/run_launcher_smoke.py --kind packaged --timeout 240
+
+      - name: Exercise user journeys in the packaged Linux app
+        run: ./.venv-build/bin/python -m scripts.user_journeys --packaged --output reports/packaged-user-journeys --timeout 480
+
       - name: Build Linux artifact
         run: ./tools/build_exe.sh --clean --yes
 
       - name: Smoke-test packaged Linux runtime
-        run: python scripts/run_launcher_smoke.py --kind packaged --timeout 240
+        run: ./.venv-build/bin/python scripts/run_launcher_smoke.py --kind packaged --timeout 240
+
+      - name: Upload packaged Linux user journey evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-user-journeys-linux
+          path: |
+            reports/packaged-user-journeys/report.md
+            reports/packaged-user-journeys/coverage-checklist.md
+            reports/packaged-user-journeys/*-results.json
+            reports/packaged-user-journeys/*-ready.json
+            reports/packaged-user-journeys/*-process.log
+            reports/packaged-user-journeys/provider-requests.json
+            reports/packaged-user-journeys/browser-events.json
+            reports/packaged-user-journeys/runtime.json
+            reports/packaged-user-journeys/runner-error.txt
+            reports/packaged-user-journeys/incomplete-execution.txt
+            reports/packaged-user-journeys/screenshots/
+          if-no-files-found: warn
 
       - name: Package Linux artifact
         run: |
@@ -281,11 +342,41 @@ jobs:
       - name: Make build script executable
         run: chmod +x ./tools/build_macos_app.sh
 
+      - name: Build macOS test artifact
+        env:
+          OPENWAND_BUILD_JOURNEYS: "1"
+        run: ./tools/build_macos_app.sh --clean --yes
+
+      - name: Smoke-test packaged macOS test runtime
+        run: ./.venv-build/bin/python scripts/run_launcher_smoke.py --kind packaged --timeout 240
+
+      - name: Exercise user journeys in the packaged macOS app
+        run: ./.venv-build/bin/python -m scripts.user_journeys --packaged --output reports/packaged-user-journeys --timeout 480
+
       - name: Build macOS artifact
         run: ./tools/build_macos_app.sh --clean --yes
 
       - name: Smoke-test packaged macOS runtime
-        run: python scripts/run_launcher_smoke.py --kind packaged --timeout 240
+        run: ./.venv-build/bin/python scripts/run_launcher_smoke.py --kind packaged --timeout 240
+
+      - name: Upload packaged macOS user journey evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-user-journeys-macos
+          path: |
+            reports/packaged-user-journeys/report.md
+            reports/packaged-user-journeys/coverage-checklist.md
+            reports/packaged-user-journeys/*-results.json
+            reports/packaged-user-journeys/*-ready.json
+            reports/packaged-user-journeys/*-process.log
+            reports/packaged-user-journeys/provider-requests.json
+            reports/packaged-user-journeys/browser-events.json
+            reports/packaged-user-journeys/runtime.json
+            reports/packaged-user-journeys/runner-error.txt
+            reports/packaged-user-journeys/incomplete-execution.txt
+            reports/packaged-user-journeys/screenshots/
+          if-no-files-found: warn
 
       - name: Package macOS artifact
         run: |

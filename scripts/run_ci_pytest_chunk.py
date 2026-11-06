@@ -48,7 +48,7 @@ def _chunk_files(files: list[Path], chunk_index: int, chunk_total: int) -> list[
 
 
 def _pytest_command(root: Path, files: list[Path], basetemp: Path) -> list[str]:
-    return [
+    command = [
         sys.executable,
         "-X",
         "faulthandler",
@@ -64,6 +64,15 @@ def _pytest_command(root: Path, files: list[Path], basetemp: Path) -> list[str]:
         str(basetemp),
         *(str(path.relative_to(root)) for path in files),
     ]
+    report_dir = os.environ.get("OPENWAND_CI_REPORT_DIR")
+    if report_dir:
+        # Each isolated pytest process writes its own results. Reusing one XML
+        # filename would silently replace the preceding files' test evidence.
+        output = Path(report_dir).resolve()
+        output.mkdir(parents=True, exist_ok=True)
+        name = "--".join(path.relative_to(root).with_suffix("").as_posix().replace("/", "-") for path in files)
+        command.append(f"--junitxml={output / (name[:180] + '.xml')}")
+    return command
 
 
 def _cleanup_basetemp(root: Path, basetemp: Path) -> None:
@@ -241,6 +250,7 @@ def _run_per_file(
     *,
     inactivity_timeout_seconds: float = _DEFAULT_FILE_INACTIVITY_TIMEOUT_SECONDS,
 ) -> int:
+    failed_status = 0
     for index, path in enumerate(files, start=1):
         rel_path = path.relative_to(root)
         basetemp = root / (
@@ -264,8 +274,10 @@ def _run_per_file(
             print(f"=== file skipped by selection: {rel_path} ===", flush=True)
             continue
         if status != 0:
-            return status
-    return 0
+            # Keep testing independent files so one early failure does not hide
+            # the rest of this shard's results. The job still fails at the end.
+            failed_status = failed_status or status
+    return failed_status
 
 
 def _run_chunk(root: Path, files: list[Path], basetemp: Path) -> int:
@@ -286,6 +298,7 @@ def main() -> int:
     parser.add_argument("--chunk-total", type=int, default=4)
     parser.add_argument("--list-only", action="store_true")
     parser.add_argument("--per-file", action="store_true")
+    parser.add_argument("--report-dir", type=Path, help="Retain per-file JUnit execution evidence for the source-linked report")
     parser.add_argument(
         "--per-file-inactivity-timeout-seconds",
         "--per-file-timeout-seconds",
@@ -303,6 +316,8 @@ def main() -> int:
         parser.error("--per-file-inactivity-timeout-seconds must be greater than zero")
 
     root = Path(__file__).resolve().parents[1]
+    if args.report_dir:
+        os.environ["OPENWAND_CI_REPORT_DIR"] = str(args.report_dir.resolve())
     files = _chunk_files(_test_files(root), args.chunk_index, args.chunk_total)
     if not files:
         print(f"No test files selected for chunk {args.chunk_index}/{args.chunk_total}.")

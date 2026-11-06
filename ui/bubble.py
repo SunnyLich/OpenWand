@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import html
 import logging
+import re
 from collections.abc import Callable
 
 from PySide6.QtCore import QElapsedTimer, QRect, Qt, QTimer
@@ -888,10 +889,57 @@ class SpeechBubble(QWidget):
         else:
             self._emit_highlight(finished=False)
 
+    def sync_response(self, response):
+        """Project Chat's turn without parsing or maintaining another transcript."""
+        previous = getattr(self, "_response_state", None)
+        first = previous is not response
+        previous_phase = getattr(self, "_response_phase", None)
+        if first:
+            self.clear()
+        self._response_state = response
+        self._response_phase = response.phase
+        if response.response_error:
+            self.show_notice(response.reply_text, timeout_ms=0, severity="error", literal=True)
+            return
+        self._literal_notice = False
+        self._hide_timer.stop()
+        self._dot_timer.stop()
+        self._thinking = False
+        self._listening = False
+        self._transcript_preview = False
+        self._close_cancels = not response.terminal
+        self._clear_notice_actions()
+        self._restore_base_size()
+        self._display_segments = list(response.segments)
+        if response.status:
+            self._display_segments.append((response.status, True))
+        self._thought_text = "".join(text for text, thought in self._display_segments if thought)
+        self._full_text = response.reply_text
+        self._pending_words = self._reveal_units(response.reply_text)
+        self._revealed_count = min(self._revealed_count, len(self._pending_words))
+        self._reply_chunk_count = int(bool(response.reply_text))
+        self._set_reply_annotations(response.annotations, base_offset=0, text=response.reply_text)
+        if self._pending_words and not self._reveal_mode and not self._timestamp_mode:
+            self._reveal_mode = True
+            self._apply_reveal_speed()
+            self._reveal_timer.start()
+        self._rewrap()
+        if not self._image_pixmap.isNull():
+            self._layout_image()
+        if self._display_segments:
+            self.show()
+            self.raise_()
+        elif response.terminal and self._image_pixmap.isNull():
+            self.hide()
+        self.update()
+        if response.terminal and (first or previous_phase != response.phase):
+            self.finish(flush_remaining=False)
+
     def append_chunk(self, chunk: str, is_thought: bool = False, annotations: object = None):
         """Buffer incoming LLM chunk. Starts WPM reveal on first token if not already active."""
         if not isinstance(chunk, str) or not chunk:
             return
+        self._literal_notice = False
         self._listening = False
         if is_thought and not self._thought_text:
             # Harness progress entries use leading newlines to separate them
@@ -1067,6 +1115,7 @@ class SpeechBubble(QWidget):
 
     def clear(self):
         """Hard reset — hide immediately."""
+        self._literal_notice = False
         self._user_engaged = False
         self._hide_timer.stop()
         self._auto_hide_holds = 0
@@ -1170,6 +1219,7 @@ class SpeechBubble(QWidget):
         timeout_ms: int = 12000,
         actions: list[tuple[str, Callable[[], None]]] | None = None,
         severity: str = "",
+        literal: bool = False,
     ):
         """Show a compact non-streaming notice next to the icon."""
         self._show_static_text(
@@ -1178,6 +1228,7 @@ class SpeechBubble(QWidget):
             actions=actions,
             cancel_on_close=False,
             severity=severity,
+            literal=literal,
         )
 
     def show_transcript(self, text: str):
@@ -1234,11 +1285,13 @@ class SpeechBubble(QWidget):
         cancel_on_close: bool = False,
         label_prefix: str = "",
         severity: str = "",
+        literal: bool = False,
     ):
         """Show static text."""
         text = self._compact_static_text(text)
         if not text:
             return
+        self._literal_notice = literal
         self._reset_user_engagement()
         self._clear_image()
         self._hide_timer.stop()
@@ -2078,7 +2131,13 @@ class SpeechBubble(QWidget):
                 display_segments.append((self._full_text, False))
         previous_kind: bool | None = None
         for text, is_thought in display_segments:
-            segment_words = self._markdown_words(text)
+            if getattr(self, "_literal_notice", False):
+                segment_words = [
+                    (match.group(2), False, bool(match.group(1)))
+                    for match in re.finditer(r"([^\S\n]*)(\n|[^\s]+)", text)
+                ]
+            else:
+                segment_words = self._markdown_words(text)
             if previous_kind is None:
                 while segment_words and segment_words[0][0] == "\n":
                     segment_words.pop(0)

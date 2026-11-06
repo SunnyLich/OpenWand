@@ -176,6 +176,8 @@ def start_fs_watcher(paths: list[str] | None = None) -> None:
     Call once from app startup.
     """
     global _fs_observer
+    if os.environ.get("OPENWAND_USER_JOURNEYS") == "1":
+        return  # Hosted acceptance uses synthetic desktop input, never personal folders.
     if _fs_observer is not None:
         return
     if not macos_safety.fs_watcher_enabled():
@@ -1642,6 +1644,8 @@ def _fetch_ui_focused() -> UIElementInfo:
 
 def _fetch_recent_files(max_files: int = 10) -> list[str]:
     """Handle fetch recent files for context fetcher."""
+    if os.environ.get("OPENWAND_USER_JOURNEYS") == "1":
+        return []
     return _fetch_recent_files_win(max_files) if _IS_WIN else _fetch_recent_files_linux(max_files)
 
 

@@ -2771,5 +2771,27 @@ class ParallelWorkRoundTests(unittest.TestCase):
             self.assertFalse(called)
 
 
+def test_cancellation_during_model_call_cannot_publish_a_success_report(tmp_path):
+    """Cancel while the provider is returning its final answer, before it is consumed."""
+    scope = tmp_path / "scope"
+    scope.mkdir()
+    control = AgentRunControl()
+    spec = DummySpec(scope_folder=str(scope))
+    spec.parallel_read_only_briefing = False
+    spec.parallel_execution = False
+
+    def finish_after_cancel(_prompt):
+        control.cancel()
+        return json.dumps({"tool_calls": [], "final": "SUCCESS_AFTER_CANCEL"})
+
+    folder = AgentTaskRunner(
+        log_root=tmp_path / "runs", model_callback=finish_after_cancel, control=control,
+    ).run(spec)
+    report = (folder / "final.md").read_text(encoding="utf-8")
+    assert "cancelled" in report.lower()
+    assert "SUCCESS_AFTER_CANCEL" not in report
+    assert "agent run finished" not in (folder / "run.log").read_text(encoding="utf-8")
+
+
 if __name__ == "__main__":
     unittest.main()

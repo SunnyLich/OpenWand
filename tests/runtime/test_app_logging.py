@@ -21,7 +21,7 @@ from core.system import single_instance
 
 single_instance.SINGLE_INSTANCE_LOCK = Path(os.environ["OPENWAND_TEST_INSTANCE_LOCK"])
 single_instance._WINDOWS_MUTEX_NAME = os.environ["OPENWAND_TEST_MUTEX_NAME"]
-print(int(single_instance.acquire()), flush=True)
+print(int(single_instance.acquire(lock_file=os.environ.get("OPENWAND_TEST_LOCK_FILE") != "0")), flush=True)
 if sys.argv[1] == "hold":
     sys.stdin.readline()
 """
@@ -241,11 +241,16 @@ def test_main_exits_when_single_instance_lock_is_held(tmp_path, monkeypatch):
     assert side_effects == []
 
 
-def test_only_one_process_can_hold_the_openwand_instance_guard(tmp_path: Path) -> None:
+@pytest.mark.parametrize("lock_file", [True, False])
+def test_only_one_process_can_hold_the_openwand_instance_guard(tmp_path: Path, lock_file: bool) -> None:
     """A second real Python process must be rejected while the owner lives."""
+    if not lock_file and sys.platform != "win32":
+        pytest.skip("Mutex-only cleanup applies to Windows")
     env = os.environ.copy()
     env["OPENWAND_TEST_INSTANCE_LOCK"] = str(tmp_path / "openwand.lock")
     env["OPENWAND_TEST_MUTEX_NAME"] = f"Local\\OpenWand.SingleInstance.Test.{uuid.uuid4().hex}"
+    env["OPENWAND_TEST_LOCK_FILE"] = "1" if lock_file else "0"
+    env["OPENWAND_USER_DATA_DIR"] = str(tmp_path / "OpenWand")
     holder = subprocess.Popen(
         [sys.executable, "-c", _SINGLE_INSTANCE_CHILD_SCRIPT, "hold"],
         cwd=Path(__file__).resolve().parents[2],
@@ -258,6 +263,8 @@ def test_only_one_process_can_hold_the_openwand_instance_guard(tmp_path: Path) -
     try:
         assert holder.stdout is not None
         assert holder.stdout.readline().strip() == "1"
+        if not lock_file:
+            assert not (tmp_path / "openwand.lock").exists()
         contender = subprocess.run(
             [sys.executable, "-c", _SINGLE_INSTANCE_CHILD_SCRIPT, "probe"],
             cwd=Path(__file__).resolve().parents[2],
@@ -281,7 +288,7 @@ def test_guard_backend_failure_fails_closed(tmp_path: Path, monkeypatch) -> None
     monkeypatch.setattr(single_instance, "SINGLE_INSTANCE_LOCK", tmp_path / "openwand.lock")
     backend_name = "_acquire_windows" if sys.platform == "win32" else "_acquire_posix"
 
-    def fail() -> bool:
+    def fail(**_kwargs) -> bool:
         raise OSError("lock service unavailable")
 
     monkeypatch.setattr(single_instance, backend_name, fail)

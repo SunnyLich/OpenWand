@@ -17,6 +17,7 @@ import time
 import traceback
 from collections.abc import MutableMapping
 from datetime import UTC
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,7 @@ from ui.agent.activity_i18n import (
     translate_agent_status,
 )
 from ui.i18n import localize_widget_tree, t
+from ui.response_state import ResponseState
 from ui.shared.theme import is_dark_mode, theme_colors
 
 log = logging.getLogger("openwand.ui_host")
@@ -2542,6 +2544,11 @@ class QtProtocolHost:
             }
         if method == "ui.debug.settings.action" and os.environ.get("OPENWAND_UI_DEBUG_METHODS"):
             return self._debug_settings_action(**params)
+        if method == "ui.debug.user_journey" and os.environ.get("OPENWAND_USER_JOURNEYS") == "1":
+            # This driver supplies input events; normal product handlers do the work.
+            from scripts.user_journeys.ui_driver import dispatch
+
+            return dispatch(self, **params)
         if method == "ui.reload_config":
             return self._reload_config()
         if method == "ui.show_overlay":
@@ -2731,6 +2738,11 @@ class QtProtocolHost:
             from ui.overlay import IconOverlay, OverlaySignals
 
             self._overlay_signals = OverlaySignals()
+            self._overlay_signals.run_addon_tray_action.connect(
+                lambda addon_id, label: self.emit(
+                    "ui.addons.run_action", {"addon_id": addon_id, "label": label}
+                )
+            )
             self._overlay = IconOverlay(
                 self._overlay_signals,
                 addon_tray_actions=addon_tray_actions,
@@ -3650,6 +3662,10 @@ class QtProtocolHost:
 
     def _reply_reset(self) -> dict[str, Any]:
         """Handle reply reset for qt protocol host."""
+        unsubscribe = getattr(self, "_reply_response_unsubscribe", None)
+        if unsubscribe is not None:
+            unsubscribe()
+        self._reply_response = None
         suppress = bool(getattr(self, "_next_prompt_suppress_bubble", False))
         self._next_prompt_suppress_bubble = False
         self._suppress_prompt_bubble = suppress
@@ -3827,8 +3843,19 @@ class QtProtocolHost:
         is_thought: bool = False,
         is_progress: bool = False,
         annotations: list | None = None,
+        is_snapshot: bool = False,
     ) -> dict[str, Any]:
         """Handle reply chunk for qt protocol host."""
+        response = getattr(self, "_reply_response", None)
+        if response is not None:
+            # Old speech-control events may still arrive from the supervisor.
+            # Content comes exclusively from the shared Chat turn now. Startup
+            # timers can contribute a status through that same turn.
+            if is_snapshot and not response.terminal:
+                response.feed({"text": text, "is_snapshot": True})
+            elif is_progress and not is_thought and not response.terminal:
+                response.feed({"text": _translate_notice_text(text), "is_progress": True})
+            return {"appended": len(text or ""), "is_progress": bool(is_progress), "shared": True}
         if bool(getattr(self, "_suppress_prompt_bubble", False)):
             return {
                 "appended": len(text or ""),
@@ -3836,7 +3863,10 @@ class QtProtocolHost:
                 "suppressed": True,
             }
         bubble = self._ensure_bubble()
-        if is_progress and not is_thought:
+        if is_snapshot:
+            bubble.clear()
+            bubble.append_chunk(text, annotations=annotations)
+        elif is_progress and not is_thought:
             # Transient status (e.g. "Using tools...") — show it as a preview that
             # the first real reply token replaces, not appended reply content.
             bubble.show_progress(_translate_notice_text(text))
@@ -3880,6 +3910,8 @@ class QtProtocolHost:
             data_url = str(raw.get("data_url") or "").strip()
             if data_url:
                 encoded = data_url
+            elif raw.get("id") and raw.get("path"):
+                encoded = conversation_store.attachment_image_base64(raw)
             else:
                 path = str(raw.get("path") or "").strip()
                 if not path:
@@ -3918,6 +3950,9 @@ class QtProtocolHost:
         used when TTS is off, so BUBBLE_REVEAL_WPM is honored instead of the
         whole reply slamming in the moment the LLM finishes streaming.
         """
+        response = getattr(self, "_reply_response", None)
+        if response is not None and response.response_error:
+            return {"done": True, "shared": True}
         if bool(getattr(self, "_suppress_prompt_bubble", False)):
             self._suppress_prompt_bubble = False
             return {"done": True, "suppressed": True}
@@ -4332,18 +4367,22 @@ class QtProtocolHost:
 
     def _make_chat_send_fn(self):
         """Create chat send fn."""
-        def send_with_memory(messages: list, context_policy: dict | None = None):
+        def send_with_memory(messages: list, context_policy: dict | None = None, *, _turn=None):
             """Send with memory."""
             request_id = f"chat-{next(self._chat_request_ids)}"
             stream: queue.Queue[tuple[str, Any]] = queue.Queue()
             streamed_text = ""
             with self._chat_streams_lock:
                 self._chat_streams[request_id] = stream
+                if _turn is not None:
+                    self._managed_chat_turns[request_id] = _turn
             payload = {"request_id": request_id, "messages": messages}
             normalized_policy = self._normalized_context_policy(context_policy or {})
             if normalized_policy:
                 payload["context_policy"] = normalized_policy
             idx = self._active_conversation_idx
+            if _turn is not None:
+                idx = next((i for i, conv in enumerate(self._all_conversations) if conv is _turn["conversation"]), None)
             if idx is not None and 0 <= idx < len(self._all_conversations):
                 active_conversation = self._all_conversations[idx]
                 payload["conversation_id"] = str(active_conversation.get("id") or "")
@@ -4360,10 +4399,14 @@ class QtProtocolHost:
                 )
                 if tool_context:
                     payload["tool_context"] = tool_context
-            self.emit("ui.chat.request", payload)
             try:
+                self.emit("ui.chat.request", payload)
                 while True:
                     kind, payload = stream.get()
+                    if _turn is not None and kind in {"done", "error"}:
+                        # The host already reduced this event on the UI thread.
+                        # Chat's finished signal only persists/cleans up its view.
+                        return
                     if kind == "chunk":
                         is_thought = False
                         is_progress = False
@@ -4452,7 +4495,18 @@ class QtProtocolHost:
             finally:
                 with self._chat_streams_lock:
                     self._chat_streams.pop(request_id, None)
+                    if _turn is not None:
+                        self._managed_chat_turns.pop(request_id, None)
 
+        def bind_response(response, conversation, user_message):
+            if not hasattr(self, "_managed_chat_turns"):
+                self._managed_chat_turns = {}
+            return partial(send_with_memory, _turn={
+                "response": response, "conversation": conversation,
+                "user_message_id": str(user_message.get("id") or ""),
+            })
+
+        send_with_memory.bind_response = bind_response
         return send_with_memory
 
     def _chat_stream(self, request_id: str):
@@ -4460,15 +4514,94 @@ class QtProtocolHost:
         with self._chat_streams_lock:
             return self._chat_streams.get(str(request_id))
 
+    def _finish_managed_chat_turn(self, turn: dict) -> None:
+        """Keep completion durable when Chat was closed or another turn took over."""
+        response = turn["response"]
+        chat = self._chat
+        attached = chat is not None and getattr(chat, "_response_state", None) is response
+        idx = next((i for i, conv in enumerate(self._all_conversations) if conv is turn["conversation"]), None)
+        if idx is None:
+            return
+        metadata = response.metadata
+        for message in turn["conversation"].get("messages") or []:
+            if message.get("id") == turn["user_message_id"]:
+                for key in ("context_snippets", "user_annotations"):
+                    if metadata.get(key):
+                        message["annotations" if key == "user_annotations" else key] = metadata[key]
+                break
+        self._chat_add_conversation(
+            assistant=response.reply_text, append_user=False, conversation_index=idx,
+            response_id=response.id, reply_to_message_id=turn["user_message_id"],
+            assistant_attachments=response.attachments, assistant_annotations=response.annotations,
+            file_context=metadata.get("file_context"), tool_context=metadata.get("tool_context"),
+            harness=metadata.get("harness"),
+            sync_view=not attached,
+        )
+        if attached:
+            messages = turn["conversation"]["messages"]
+            stored_index = next((i + 1 for i, message in enumerate(messages[:-1]) if message.get("id") == turn["user_message_id"]), None)
+            try:
+                chat._on_finished(stored_message_index=stored_index)
+            except Exception:
+                log.exception("Chat could not finish the already saved response %s", response.id)
+
+    def _response_for_id(self, response_id: str) -> ResponseState | None:
+        live = getattr(self, "_external_reply_stream", None)
+        if isinstance(live, dict):
+            response = self._external_response(live)
+            if response.id == response_id:
+                return response
+        for turn in list(getattr(self, "_managed_chat_turns", {}).values()):
+            if turn["response"].id == response_id:
+                return turn["response"]
+        return None
+
+    def _bind_chat_response(self, response: ResponseState) -> None:
+        """Called by Chat for its own turns and when attaching an overlay turn."""
+        if getattr(self, "_reply_response", None) is response:
+            return
+        self._suppress_prompt_bubble = False
+        self._bind_reply_response(response)
+
+    def _bind_reply_response(self, response: ResponseState) -> None:
+        unsubscribe = getattr(self, "_reply_response_unsubscribe", None)
+        if unsubscribe is not None:
+            unsubscribe()
+        self._reply_response = response
+        self._reply_attachment_signature = None
+        self._reply_response_unsubscribe = response.subscribe(self._render_reply_response)
+        self._render_reply_response(response)
+
+    def _render_reply_response(self, response: ResponseState) -> None:
+        if response is not getattr(self, "_reply_response", None):
+            return
+        if bool(getattr(self, "_suppress_prompt_bubble", False)):
+            return
+        self._ensure_bubble().sync_response(response)
+        signature = repr(response.attachments)
+        if response.attachments and signature != self._reply_attachment_signature:
+            self._reply_attachment_signature = signature
+            self._reply_image(response.attachments)
+
+    @staticmethod
+    def _external_response(state: dict) -> ResponseState:
+        response = state.get("response")
+        if response is None:
+            response = ResponseState()
+            state["response"] = response
+        return response
+
     def _chat_chunk(
         self,
         request_id: str = "",
+        response_id: str = "",
         conversation_index: int | None = None,
         text: str = "",
         is_progress: bool = False,
         is_thought: bool = False,
         local_work: dict | None = None,
         harness_activity: dict | None = None,
+        is_snapshot: bool = False,
     ) -> dict[str, Any]:
         """Handle chat chunk for qt protocol host."""
         stream = self._chat_stream(request_id)
@@ -4478,28 +4611,37 @@ class QtProtocolHost:
             "is_thought": bool(is_thought),
             "local_work": dict(local_work or {}),
         }
+        if is_snapshot:
+            chunk_payload["is_snapshot"] = True
         if harness_activity:
             chunk_payload["harness_activity"] = dict(harness_activity)
         if stream is not None:
-            stream.put(("chunk", chunk_payload))
+            turn = getattr(self, "_managed_chat_turns", {}).get(request_id)
+            if turn is not None:
+                if turn["response"].terminal:
+                    return {"queued": False}
+                turn["response"].feed(chunk_payload)
+            else:
+                stream.put(("chunk", chunk_payload))
         elif conversation_index is not None:
             idx = int(conversation_index)
             chunk = dict(chunk_payload)
             state = getattr(self, "_external_reply_stream", None)
             if not isinstance(state, dict) or state.get("conversation_index") != idx:
-                state = {"conversation_index": idx, "chunks": [], "attached_chat_id": None, "done": False}
-                self._external_reply_stream = state
-            state.setdefault("chunks", []).append(chunk)
+                return {"queued": False}
+            response = self._external_response(state)
+            if response.terminal or (response_id and response_id != response.id):
+                return {"queued": False}
+            response.feed(chunk)
             if self._chat is not None:
-                attached_now = self._restore_external_reply_stream()
-                if not attached_now:
-                    self._chat.external_reply_chunk(idx, chunk)
+                self._restore_external_reply_stream()
             return {"queued": True}
         return {"queued": stream is not None}
 
     def _chat_done(
         self,
         request_id: str = "",
+        response_id: str = "",
         conversation_index: int | None = None,
         text: str = "",
         file_context: list | None = None,
@@ -4510,12 +4652,18 @@ class QtProtocolHost:
         display_segments: list | None = None,
         assistant_attachments: list | None = None,
         harness: dict | None = None,
+        cancelled: bool = False,
     ) -> dict[str, Any]:
         """Handle chat done for qt protocol host."""
         import uuid as _uuid
 
         conversation_id = "conversation"
-        idx = self._active_conversation_idx
+        idx = conversation_index if conversation_index is not None else self._active_conversation_idx
+        turn = getattr(self, "_managed_chat_turns", {}).get(request_id)
+        if turn is not None:
+            if turn["response"].terminal:
+                return {"queued": False}
+            idx = next((i for i, conv in enumerate(self._all_conversations) if conv is turn["conversation"]), None)
         if idx is not None and 0 <= idx < len(self._all_conversations):
             conversation_id = str(self._all_conversations[idx].get("id") or conversation_id)
         durable_attachments = self._persist_assistant_attachments(
@@ -4525,6 +4673,22 @@ class QtProtocolHost:
         )
         stream = self._chat_stream(request_id)
         if stream is not None:
+            if turn is not None:
+                response = turn["response"]
+                response.metadata = {
+                    "file_context": list(file_context or []), "tool_context": dict(tool_context or {}),
+                    "context_snippets": list(context_snippets or []), "annotations": list(annotations or []),
+                    "user_annotations": list(user_annotations or []), "display_segments": list(display_segments or []),
+                    "assistant_attachments": durable_attachments, "harness": dict(harness or {}),
+                }
+                response.annotations = list(annotations or [])
+                response.attachments = durable_attachments
+                segments = self._normalized_display_segments(display_segments or [])
+                if segments:
+                    response.segments = [(part["text"], part["is_thought"]) for part in segments]
+                response.set_final(text)
+                response.finish(cancelled=cancelled)
+                self._finish_managed_chat_turn(turn)
             stream.put(
                 (
                     "done",
@@ -4545,22 +4709,73 @@ class QtProtocolHost:
             idx = int(conversation_index)
             state = getattr(self, "_external_reply_stream", None)
             if not isinstance(state, dict) or state.get("conversation_index") != idx:
-                state = {"conversation_index": idx, "chunks": [], "attached_chat_id": None}
-                self._external_reply_stream = state
-            state["done"] = True
-            state["final_text"] = text
-            if self._chat is not None:
-                self._restore_external_reply_stream()
-                self._chat.finish_external_reply_stream(idx, text)
+                return {"queued": False}
+            response = self._external_response(state)
+            if response.terminal or (response_id and response_id != response.id):
+                return {"queued": False}
+            response.annotations = list(annotations or [])
+            response.attachments = durable_attachments
+            segments = self._normalized_display_segments(display_segments or [])
+            if segments:
+                response.segments = [(part["text"], part["is_thought"]) for part in segments]
+            response.set_final(text)
+            response.finish(cancelled=cancelled)
+            # Persist and retire the temporary view in this same UI operation.
+            # A second add_conversation event used to leave a race where Chat
+            # could reopen (or send again) between completion and persistence.
+            self._chat_add_conversation(
+                assistant=response.reply_text,
+                append_user=False,
+                conversation_index=idx,
+                response_id=response.id,
+                file_context=file_context,
+                tool_context=tool_context,
+                assistant_annotations=response.annotations,
+                assistant_attachments=response.attachments,
+                harness=harness,
+            )
             return {"queued": True}
         return {"queued": stream is not None}
 
-    def _chat_error(self, request_id: str = "", error: str = "", provider_error: dict | None = None) -> dict[str, Any]:
+    def _chat_error(
+        self,
+        request_id: str = "",
+        error: str = "",
+        provider_error: dict | None = None,
+        conversation_index: int | None = None,
+        response_id: str = "",
+    ) -> dict[str, Any]:
         """Handle chat error for qt protocol host."""
         log.warning("chat error (request %s): %s", request_id or "?", error)
         stream = self._chat_stream(request_id)
         if stream is not None:
+            turn = getattr(self, "_managed_chat_turns", {}).get(request_id)
+            if turn is not None:
+                if turn["response"].terminal:
+                    return {"queued": False}
+                turn["response"].fail(provider_error if isinstance(provider_error, dict) else error)
+                self._finish_managed_chat_turn(turn)
             stream.put(("error", {"message": error, "provider_error": provider_error}))
+        elif not request_id and conversation_index is not None:
+            idx = int(conversation_index)
+            if not (0 <= idx < len(self._all_conversations)):
+                return {"queued": False}
+            state = getattr(self, "_external_reply_stream", None)
+            if not isinstance(state, dict) or state.get("conversation_index") != idx:
+                return {"queued": False}
+            response = self._external_response(state)
+            if response.terminal or (response_id and response_id != response.id):
+                return {"queued": False}
+            response.fail(provider_error if isinstance(provider_error, dict) else error)
+            self._chat_add_conversation(
+                assistant=response.reply_text,
+                append_user=False,
+                conversation_index=idx,
+                response_error=True,
+                provider_error=response.provider_error,
+                response_id=response.id,
+            )
+            return {"queued": True}
         return {"queued": stream is not None}
 
     def _chat_background_result(
@@ -4653,7 +4868,11 @@ class QtProtocolHost:
 
         def show_chat_panel() -> bool:
             try:
-                self._show_chat(force_new=False)
+                # Reopening an already visible chat rebuilds its message
+                # widgets during this in-flight response. Keep those widgets
+                # attached while the user decides whether to allow the write.
+                if not self._chat_is_visible():
+                    self._show_chat(force_new=False)
             except Exception:
                 traceback.print_exc()
             if chat_panel["shown"]:
@@ -5100,6 +5319,11 @@ class QtProtocolHost:
         harness: dict | None = None,
         append_user: bool = True,
         conversation_index: int | None = None,
+        response_error: bool = False,
+        provider_error: dict | None = None,
+        response_id: str = "",
+        reply_to_message_id: str = "",
+        sync_view: bool = True,
     ) -> dict[str, Any]:
         """Handle chat add conversation for qt protocol host."""
         import uuid as _uuid
@@ -5110,11 +5334,25 @@ class QtProtocolHost:
         now = datetime.now(UTC).isoformat()
         idx = conversation_index if conversation_index is not None else self._active_conversation_idx
         conversation_scope = self._intent_conversation_scope()
+        live = getattr(self, "_external_reply_stream", None)
+        known_response = self._response_for_id(response_id) if response_id else None
+        if response_id and known_response is None:
+            return {"count": len(self._all_conversations), "continued": False, "stale": True}
+        if not append_user and (known_response is not None or (isinstance(live, dict) and live.get("conversation_index") == idx)):
+            response = known_response or self._external_response(live)
+            if response.terminal:
+                assistant = response.reply_text
+                response_error = response.response_error
+                provider_error = response.provider_error
+                if not response_error:
+                    display_segments = [{"text": text, "is_thought": thought} for text, thought in response.segments]
         if (
             idx is not None
             and 0 <= idx < len(self._all_conversations)
             and not self._conversation_matches_intent_scope(self._all_conversations[idx])
             and not bool((harness or {}).get("clear_session"))
+            and not response_error
+            and not response_id
         ):
             # A route switch (native OpenWand -> Codex/Claude or back) must never
             # append into the other route's conversation.
@@ -5158,6 +5396,10 @@ class QtProtocolHost:
             "content": assistant,
             "created_at": now,
         }
+        if response_error:
+            assistant_msg["response_error"] = True
+            assistant_msg["provider_error"] = dict(provider_error or {})
+            assistant_msg["display_content"] = assistant
         normalized_assistant_attachments = self._persist_assistant_attachments(
             assistant_attachments or [],
             conversation_id=conv_id,
@@ -5190,11 +5432,15 @@ class QtProtocolHost:
             assistant_msg["file_context"] = normalized_file_context
         if normalized_tool_context:
             assistant_msg["tool_context"] = normalized_tool_context
+        workspace_changes = harness_info.get("workspace_changes")
+        if isinstance(workspace_changes, dict) and workspace_changes.get("files"):
+            assistant_msg["workspace_changes"] = workspace_changes
 
         if idx is not None and 0 <= idx < len(self._all_conversations):
             # Continue the active conversation (the one selected in the chat window).
             conv = self._all_conversations[idx]
-            conv["conversation_scope"] = conversation_scope
+            if not response_error and not response_id:
+                conv["conversation_scope"] = conversation_scope
             conv.setdefault("created_at", now)
             conv["updated_at"] = now
             if context_text:
@@ -5204,12 +5450,16 @@ class QtProtocolHost:
             if append_user:
                 messages.append(user_msg)
             if assistant or normalized_assistant_attachments:
-                messages.append(assistant_msg)
+                insert_at = next((i + 1 for i, message in enumerate(messages) if reply_to_message_id and message.get("id") == reply_to_message_id), len(messages))
+                messages.insert(insert_at, assistant_msg)
             self._merge_file_context(conv, normalized_file_context)
             self._merge_tool_context(conv, normalized_tool_context)
-            normalized_policy = self._normalized_context_policy(context_policy or {})
-            if normalized_policy:
-                conv["context_policy"] = normalized_policy
+            # An assistant completion carries no new user permission choice.
+            # Preserve the conversation's policy unless one was supplied.
+            if context_policy is not None:
+                normalized_policy = self._normalized_context_policy(context_policy)
+                if normalized_policy:
+                    conv["context_policy"] = normalized_policy
             if clear_harness_session:
                 sessions = conv.get("harness_sessions")
                 if isinstance(sessions, dict):
@@ -5219,9 +5469,13 @@ class QtProtocolHost:
             elif normalized_harness:
                 conv.setdefault("harness_sessions", {})[harness_provider] = normalized_harness
             self._persist_conversations()
-            self._finish_external_reply_stream(idx)
-            if self._chat_is_visible():
-                self._chat.sync_conversation(idx)
+            if sync_view:
+                self._finish_external_reply_stream(idx, response_id=response_id)
+            if sync_view and self._chat_is_visible():
+                if known_response is not None and self._chat._streaming and self._chat._response_state is not known_response:
+                    self._chat._built_pages.discard(idx)
+                else:
+                    self._chat.sync_conversation(idx)
             return {"count": len(self._all_conversations), "continued": True}
 
         # No active conversation (fresh start) -> open a new one and make it active.
@@ -5278,10 +5532,11 @@ class QtProtocolHost:
         if idx is not None:
             self._external_reply_stream = {
                 "conversation_index": idx,
-                "chunks": [],
                 "attached_chat_id": None,
-                "done": False,
             }
+            response = self._external_response(self._external_reply_stream)
+            self._bind_reply_response(response)
+            response.feed({"text": t("Preparing response..."), "is_progress": True})
             if self._chat is not None:
                 if not self._chat_is_visible():
                     sync = getattr(self._chat, "sync_conversation", None)
@@ -5291,6 +5546,7 @@ class QtProtocolHost:
         return {
             "started": True,
             "conversation_index": idx,
+            "response_id": response.id if idx is not None else "",
             "conversation_id": (
                 str(self._all_conversations[idx].get("id") or "")
                 if idx is not None and 0 <= idx < len(self._all_conversations)
@@ -5312,22 +5568,20 @@ class QtProtocolHost:
         chat_id = id(chat)
         if state.get("attached_chat_id") == chat_id:
             return False
-        chat.begin_external_reply_stream(idx)
-        for chunk in list(state.get("chunks") or []):
-            chat.external_reply_chunk(idx, chunk)
+        chat.begin_external_reply_stream(idx, response=self._external_response(state))
         state["attached_chat_id"] = chat_id
-        # If completion raced with opening Chat, keep the reconstructed final
-        # bubble visible until the immediately following durable sync replaces
-        # it.  Calling finish here would briefly make the answer disappear.
-        if state.get("done") and state.get("final_text"):
-            chat._on_final_text(str(state.get("final_text") or ""))
         return True
 
-    def _finish_external_reply_stream(self, conversation_index: int | None) -> None:
+    def _finish_external_reply_stream(self, conversation_index: int | None, *, response_id: str = "") -> None:
         """Remove a temporary stream once its durable assistant turn is stored."""
         state = getattr(self, "_external_reply_stream", None)
         if not isinstance(state, dict) or state.get("conversation_index") != conversation_index:
             return
+        response = self._external_response(state)
+        if response_id and response.id != response_id:
+            return
+        if not response.terminal:
+            response.finish(cancelled=True)
         if self._chat is not None and state.get("attached_chat_id") == id(self._chat):
             self._chat.finish_external_reply_stream(int(conversation_index), "")
         self._external_reply_stream = None
@@ -5385,10 +5639,8 @@ class QtProtocolHost:
                         name=name,
                     )
                 elif path:
-                    ref = conversation_store.external_file_attachment(
-                        path,
-                        kind="image",
-                        source=source,
+                    ref = dict(raw) if raw.get("id") else conversation_store.external_file_attachment(
+                        path, kind="image", source=source,
                     )
                     ref["name"] = name
                 else:
@@ -5545,6 +5797,8 @@ class QtProtocolHost:
         ):
             return ""
         latest = messages[-1]
+        if latest.get("response_error"):
+            return ""
         answer = str(latest.get("content") or "").strip()
         if str(latest.get("role") or "").lower() != "assistant":
             return ""
@@ -5625,6 +5879,7 @@ class QtProtocolHost:
             self._chat = ChatWindow(
                 conversations=self._all_conversations,
                 send_fn=self._make_chat_send_fn(),
+                on_response_state=self._bind_chat_response,
                 start_new=start_new,
                 projects=conversation_store.load_projects(),
                 active_project_id=self._active_project_id,
@@ -6678,7 +6933,13 @@ class QtProtocolHost:
 
         dialog.resize(620, 500)
         self._addons_dialog = dialog
-        self._addons_dialog.destroyed.connect(lambda: setattr(self, "_addons_dialog", None))
+        # A file chooser can keep the previous manager alive until after its
+        # replacement is shown. Destroying that old window must not forget the
+        # new one that the user is currently operating.
+        dialog.destroyed.connect(
+            lambda _obj=None, w=dialog: setattr(self, "_addons_dialog", None)
+            if self._addons_dialog is w else None
+        )
         localize_widget_tree(dialog)
         dialog.show()
         dialog.raise_()
@@ -7022,7 +7283,10 @@ class QtProtocolHost:
         root.addLayout(footer)
 
         dialog.resize(500, 420)
-        dialog.destroyed.connect(lambda _obj=None, key=addon_id: self._addon_settings_dialogs.pop(key, None))
+        dialog.destroyed.connect(
+            lambda _obj=None, key=addon_id, w=dialog: self._addon_settings_dialogs.pop(key, None)
+            if self._addon_settings_dialogs.get(key) is w else None
+        )
         self._addon_settings_dialogs[addon_id] = dialog
         localize_widget_tree(dialog)
         dialog.show()
@@ -7072,7 +7336,10 @@ class QtProtocolHost:
         root.addLayout(footer)
 
         dialog.resize(680, 460)
-        dialog.destroyed.connect(lambda _obj=None, key=addon_id: self._addon_log_dialogs.pop(key, None))
+        dialog.destroyed.connect(
+            lambda _obj=None, key=addon_id, w=dialog: self._addon_log_dialogs.pop(key, None)
+            if self._addon_log_dialogs.get(key) is w else None
+        )
         self._addon_log_dialogs[addon_id] = dialog
         localize_widget_tree(dialog)
         dialog.show()
@@ -7098,9 +7365,14 @@ class QtProtocolHost:
         form.setContentsMargins(0, 4, 0, 0)
         form.setSpacing(6)
         truthy = {"1", "true", "yes", "on"}
+        descriptors = {str(item.get("key")): item for item in settings if isinstance(item, dict)}
 
         def save(key, value):
             """Emit a setting-change event for this addon."""
+            # The manager card owns these descriptors and reuses them when the
+            # child window is reopened. Keep that snapshot in sync with edits.
+            if key in descriptors:
+                descriptors[key]["value"] = value
             self.emit(
                 "ui.addons.set_setting",
                 {"addon_id": addon_id, "key": key, "value": value},
@@ -7320,6 +7592,11 @@ def main() -> int:
 
     set_windows_app_user_model_id()
     ensure_linux_desktop_entry()
+    if os.environ.get("OPENWAND_USER_JOURNEYS") == "1":
+        from PySide6.QtCore import Qt
+        # Hosted journeys drive the actual Qt chooser. Native OS choosers have
+        # separate event loops and remain an explicit desktop acceptance gap.
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_DontUseNativeDialogs, True)
     app = QApplication(sys.argv)
     if selected_platform:
         log.info("Qt UI platform selected: %s", selected_platform)

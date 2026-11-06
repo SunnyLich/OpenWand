@@ -603,6 +603,7 @@ def _make_uninstall_plan_roots(tmp_path: Path, *, source: bool):
     home.mkdir(parents=True)
 
     common = {
+        "remove_user_data": True,
         "platform": sys.platform,
         "user_data_root": data,
         "optional_packages_root": optional,
@@ -654,23 +655,30 @@ def test_settings_uninstall_exact_plan_and_isolated_self_removing_helper_matrix(
     helper_parent.mkdir()
     monkeypatch.setattr(uninstaller.tempfile, "gettempdir", lambda: str(helper_parent))
     monkeypatch.setattr(uninstaller, "remove_openwand_keychain_entries", lambda: [])
+    monkeypatch.setattr(uninstaller, "_credential_cleanup_command", lambda: [sys.executable, "-c", "pass"])
     monkeypatch.setattr(updater, "openwand_wait_pid", lambda _pid=None: 2_147_483_647)
 
     helper_scripts: list[str] = []
 
-    def run_isolated_helper(command, *, cwd):
+    def run_isolated_helper(command, *, cwd, env=None):
         script_path = Path(command[-1] if sys.platform == "win32" else command[0])
         helper_scripts.append(script_path.read_text(encoding="utf-8"))
+        if sys.platform == "win32":
+            # This test exercises file cleanup, never the host's actual startup entries.
+            script_path.write_text("\n".join(
+                line for line in script_path.read_text(encoding="utf-8").splitlines()
+                if "Remove-ItemProperty" not in line
+            ), encoding="utf-8")
         # The Windows helper can legitimately retry a locked target for 15 seconds.
         # Allow multiple slow targets on busy CI runners without timing out early.
-        completed = subprocess.run(command, cwd=cwd, capture_output=True, text=True, timeout=60, check=False)
+        completed = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, timeout=60, check=False)
         assert completed.returncode == 0, completed.stderr or completed.stdout
         return True
 
     monkeypatch.setattr(updater, "launch_detached_helper", run_isolated_helper)
 
     selected = {"plan": release_plan}
-    monkeypatch.setattr(uninstaller, "build_uninstall_plan", lambda: selected["plan"])
+    monkeypatch.setattr(uninstaller, "build_uninstall_plan", lambda **_kwargs: selected["plan"])
     dialog = _prepare_settings(monkeypatch, repo_checkout=False)
     driver = QtUserDriver(qapp, timeout=8.0)
     answers = iter(
@@ -686,6 +694,7 @@ def test_settings_uninstall_exact_plan_and_isolated_self_removing_helper_matrix(
     quit_schedules: list[int] = []
 
     def confirm(message_box):
+        message_box.checkBox().setChecked(True)
         confirmations.append(message_box.informativeText())
         return next(answers)
 
@@ -711,7 +720,7 @@ def test_settings_uninstall_exact_plan_and_isolated_self_removing_helper_matrix(
         assert len(helper_scripts) == 1
         assert not release_app.exists()
         assert not release_data.exists()
-        assert not release_model.exists()
+        assert release_model.exists()  # Shared cache is not exclusively OpenWand-owned.
 
         # Source checkout is a distinct confirmed branch and includes its warning/path.
         selected["plan"] = source_plan
@@ -719,7 +728,7 @@ def test_settings_uninstall_exact_plan_and_isolated_self_removing_helper_matrix(
         assert len(helper_scripts) == 2
         assert not source_app.exists()
         assert not source_data.exists()
-        assert not source_model.exists()
+        assert source_model.exists()
 
         for index, plan in enumerate((release_plan, release_plan, source_plan)):
             text = confirmations[index]

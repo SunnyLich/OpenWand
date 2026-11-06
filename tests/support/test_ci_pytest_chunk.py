@@ -19,6 +19,31 @@ def test_file_discovery_uses_the_single_canonical_tests_root(tmp_path: Path) -> 
     assert run_ci_pytest_chunk._test_files(tmp_path) == [canonical]
 
 
+def test_one_failed_file_does_not_hide_later_files(tmp_path, monkeypatch):
+    """Every independent file gets execution evidence even after an early failure."""
+    files = [tmp_path / "tests" / f"test_{name}.py" for name in ("first", "second", "third")]
+    visited = []
+
+    def run_file(_root, path, _basetemp, _timeout):
+        visited.append(path)
+        return 1 if path == files[0] else 0
+
+    monkeypatch.setattr(run_ci_pytest_chunk, "_run_file", run_file)
+    monkeypatch.setattr(run_ci_pytest_chunk, "_cleanup_basetemp", lambda *_args: None)
+    assert run_ci_pytest_chunk._run_per_file(tmp_path, files, 1) == 1
+    assert visited == files
+
+
+def test_report_files_have_distinct_names_for_isolated_processes(tmp_path, monkeypatch):
+    """Per-file subprocesses must not overwrite earlier tests' JUnit reports."""
+    monkeypatch.setenv("OPENWAND_CI_REPORT_DIR", str(tmp_path / "results"))
+    first = run_ci_pytest_chunk._pytest_command(tmp_path, [tmp_path / "tests/test_first.py"], tmp_path / "temp")
+    second = run_ci_pytest_chunk._pytest_command(tmp_path, [tmp_path / "tests/test_second.py"], tmp_path / "temp")
+    first_xml = next(value for value in first if value.startswith("--junitxml="))
+    second_xml = next(value for value in second if value.startswith("--junitxml="))
+    assert first_xml != second_xml
+
+
 def test_github_runner_selects_only_github_safe_tests(tmp_path: Path) -> None:
     test_file = tmp_path / "tests" / "test_example.py"
     command = run_ci_pytest_chunk._pytest_command(

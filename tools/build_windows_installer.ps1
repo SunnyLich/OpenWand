@@ -1,29 +1,31 @@
 # Build the offline Inno installer around Azure's separate Authenticode signing steps.
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][ValidateSet('Prepare', 'Complete')][string]$Phase,
+    [Parameter(Mandatory = $true)][ValidateSet('Prepare', 'Complete', 'Development')][string]$Phase,
     [string]$CompilerPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $Repo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $Bundle = Join-Path $Repo 'dist\OpenWand'
-$Output = Join-Path $Repo 'dist\installer'
+$Output = Join-Path $Repo $(if ($Phase -eq 'Development') { 'dist\installer-development' } else { 'dist\installer' })
 $Signing = Join-Path $Repo 'dist\installer-signing'
 $UninstallerForAzure = Join-Path $Signing 'openwand-uninstaller.exe'
 $Script = Join-Path $Repo 'packaging\windows\OpenWand.iss'
 $Version = (& python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])').Trim()
 if ($LASTEXITCODE -ne 0 -or -not $Version) { throw 'Could not read the OpenWand version.' }
 if (-not (Test-Path -LiteralPath (Join-Path $Bundle 'OpenWand.exe') -PathType Leaf)) {
-    throw 'The signed PyInstaller bundle is missing.'
+    throw 'The PyInstaller bundle is missing.'
 }
 New-Item -ItemType Directory -Path $Output, $Signing -Force | Out-Null
 
 if (-not $CompilerPath) {
-    $InnoDir = Join-Path $env:RUNNER_TEMP 'OpenWand-Inno-6.7.3'
+    $CompilerCacheRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { Join-Path $Repo '.tmp\installer-tools' }
+    New-Item -ItemType Directory -Path $CompilerCacheRoot -Force | Out-Null
+    $InnoDir = Join-Path $CompilerCacheRoot 'OpenWand-Inno-6.7.3'
     $CompilerPath = Join-Path $InnoDir 'ISCC.exe'
-    if ($Phase -eq 'Prepare' -and -not (Test-Path -LiteralPath $CompilerPath -PathType Leaf)) {
-        $Download = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+    if ($Phase -in @('Prepare', 'Development') -and -not (Test-Path -LiteralPath $CompilerPath -PathType Leaf)) {
+        $Download = Join-Path $CompilerCacheRoot 'innosetup-6.7.3.exe'
         Invoke-WebRequest -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $Download
         $Expected = '9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732'
         if ((Get-FileHash -LiteralPath $Download -Algorithm SHA256).Hash -ne $Expected) {
@@ -40,6 +42,17 @@ $UninstallerCache = Join-Path $Output 'signed-uninstaller'
 $CompilerArgs = @(
     '/Q', "/DOpenWandBundle=$Bundle", "/DOpenWandVersion=$Version", "/DOpenWandOutput=$Output", $Script
 )
+
+if ($Phase -eq 'Development') {
+    # A separate name and directory prevent an unsigned test artifact from
+    # replacing either the immutable Store installer or signed release output.
+    & $Compiler '/DOpenWandDevelopmentBuild=1' @CompilerArgs
+    if ($LASTEXITCODE -ne 0) { throw "Development installer compilation failed: $LASTEXITCODE" }
+    $Setup = Join-Path $Output "OpenWand-dev-v$Version-windows-x64-setup.exe"
+    if (-not (Test-Path -LiteralPath $Setup -PathType Leaf)) { throw 'Inno Setup produced no development installer.' }
+    Write-Host "Unsigned development installer (not for publication): $Setup"
+    exit 0
+}
 
 if ($Phase -eq 'Prepare') {
     & $Compiler @CompilerArgs

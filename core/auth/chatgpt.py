@@ -40,6 +40,7 @@ from pathlib import Path
 from socketserver import TCPServer
 from urllib.parse import parse_qs, urlencode, urlparse
 
+from core.auth.acceptance_state import isolated_auth_file
 from core.system.native_locks import keychain_lock
 
 log = logging.getLogger("openwand.chatgpt_auth")
@@ -89,12 +90,15 @@ def _generate_state() -> str:
 # Token storage — OS keychain only
 # ---------------------------------------------------------------------------
 
-_TOKEN_FILE = Path(__file__).parent.parent / "private" / ".chatgpt_tokens.json"
+_TOKEN_FILE = isolated_auth_file("legacy-chatgpt-tokens.json") or Path(__file__).parent.parent / "private" / ".chatgpt_tokens.json"
 _APP_ICON_FILE = Path(__file__).resolve().parents[2] / "assets" / "app.ico"
 
 
 def _codex_auth_path() -> Path:
     """Return the native Codex CLI credential cache path."""
+    isolated = isolated_auth_file("codex-auth.json")
+    if isolated is not None:
+        return isolated
     configured_home = str(os.environ.get("CODEX_HOME") or "").strip()
     codex_home = Path(configured_home).expanduser() if configured_home else Path.home() / ".codex"
     return codex_home / "auth.json"
@@ -102,7 +106,9 @@ def _codex_auth_path() -> Path:
 
 def _codex_login_sharing_enabled() -> bool:
     """Whether OpenWand should reuse a valid native Codex ChatGPT login."""
-    value = str(os.environ.get("OPENWAND_SHARE_CODEX_LOGIN", "true") or "").strip().lower()
+    # Reusing another application's session is opt-in. A fresh install or full
+    # reset must not silently sign back in through an unrelated Codex account.
+    value = str(os.environ.get("OPENWAND_SHARE_CODEX_LOGIN", "false") or "").strip().lower()
     return value not in {"0", "false", "no", "off"}
 
 

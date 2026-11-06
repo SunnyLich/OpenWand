@@ -400,6 +400,16 @@ class AddonManager:
                 _call_host(addon, "after_response", {"text": response_text})
         self.dispatch_event("response.after", {"text": response_text})
 
+    def has_response_transforms(self) -> bool:
+        """Whether a whole-response addon must run before text becomes visible."""
+        return any(
+            addon.host is not None
+            and "transform_response_text" in addon.hooks
+            and str(addon.manifest.permissions.get("response") or "none").lower() == "modify"
+            and _action_surface_enabled(addon, "response_transform")
+            for addon in self._enabled_addons()
+        )
+
     def transform_response_text(self, payload: dict[str, Any] | None = None) -> str:
         """Let explicitly permitted addons replace assistant response text."""
         request = _safe_response_transform_payload(payload or {})

@@ -122,8 +122,15 @@ def test_release_builds_gate_every_platform_artifact_on_packaged_smoke() -> None
     """No release job may package an artifact before its real runtime smoke passes."""
     workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
     for platform in ("Windows", "Linux", "macOS"):
+        test_build = workflow.index(f"- name: Build {platform} test artifact")
         build = workflow.index(f"- name: Build {platform} artifact")
         smoke = workflow.index(f"- name: Smoke-test packaged {platform} runtime")
+        journeys = workflow.index(f"- name: Exercise user journeys in the packaged {platform} app")
         package = workflow.index(f"- name: Package {platform} artifact")
-        assert build < smoke < package
-    assert workflow.count("python scripts/run_launcher_smoke.py --kind packaged --timeout 240") == 3
+        # A startup ping alone cannot certify a release. User journeys must
+        # succeed in the compiled app before its archive can be produced.
+        assert test_build < journeys < build < smoke < package
+        assert 'OPENWAND_BUILD_JOURNEYS: "1"' in workflow[test_build:journeys]
+        assert 'OPENWAND_BUILD_JOURNEYS' not in workflow[build:smoke]
+    assert workflow.count("scripts/run_launcher_smoke.py --kind packaged --timeout 240") == 6
+    assert workflow.count("-m scripts.user_journeys --packaged") == 3

@@ -197,6 +197,369 @@ def test_overlay_reply_shows_and_replaces_waiting_state(qapp, isolated_app_state
         qapp.processEvents()
 
 
+@pytest.mark.parametrize("chat_state", ["open", "hidden", "unopened"])
+@pytest.mark.parametrize("partial_reply", [False, True])
+def test_overlay_provider_error_replaces_waiting_and_survives_reopen(
+    qapp, isolated_app_state, monkeypatch, chat_state, partial_reply,
+):
+    from PySide6.QtWidgets import QPlainTextEdit, QToolButton
+
+    import config
+    from runtime.workers.ui_host import QtProtocolHost
+    from ui.bubble import SpeechBubble
+    from ui.chat_window import ChatWindow, _chat_model_messages, _MessageTextView
+    from ui.provider_errors import error_text
+
+    conversation = {"id": "overlay-quota", "messages": []}
+    conversations = [conversation]
+    persisted = []
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host._all_conversations = conversations
+    host._active_conversation_idx = 0
+    host._active_project_id = "general"
+    host._chat_streams = {}
+    host._chat_streams_lock = threading.Lock()
+    host._chat = None
+    host._persist_conversations = lambda: persisted.append(True)
+    window = None
+    reopened = None
+    bubble = SpeechBubble()
+    host._ensure_bubble = lambda: bubble
+    info = {
+        "provider": "google", "source": "provider", "http_status": 429,
+        "code": "RESOURCE_EXHAUSTED", "message": "Quota exceeded. <think>literal</think>",
+        "retry_after_seconds": 57.2, "retry_source": "provider",
+    }
+    try:
+        monkeypatch.setattr(config, "CHAT_AUTO_ELABORATE", True)
+        monkeypatch.setattr(config, "CHAT_ELABORATE_PROMPT", "Explain more")
+        if chat_state != "unopened":
+            window = ChatWindow(send_fn=lambda _messages: iter(()), conversations=conversations)
+            host._chat = window
+            if chat_state == "open":
+                window.show()
+        host._chat_begin_conversation(user="Update my file")
+        host._chat_chunk(conversation_index=0, text="Still loading", is_progress=True)
+        if window is not None:
+            assert "Still loading" in window._current_ai_label.toPlainText()
+        if partial_reply:
+            host._chat_chunk(conversation_index=0, text="<think>Inspecting</think>Saved the file.")
+            host._chat_chunk(conversation_index=0, local_work={"tool": "edit_file", "status": "completed"})
+
+        assert host._chat_error(conversation_index=0, error=info["message"], provider_error=info) == {"queued": True}
+        qapp.processEvents()
+        message = conversation["messages"][-1]
+        assert message["response_error"] is True
+        assert message["provider_error"] == info
+        assert error_text(info) in message["content"]
+        assert "Still loading" not in message["content"]
+        assert "Inspecting" not in message["content"]
+        if partial_reply:
+            assert message["content"].startswith("Saved the file.\n\n")
+            assert "Completed file operations were kept" in message["content"]
+        assert message["display_content"] == message["content"]
+        assert host._external_reply_stream is None and len(persisted) == 2
+        assert host._chat_auto_elaborate_prompt() == ""
+        assert info["message"] in bubble._full_text
+        assert "".join(info["message"].split()) in "".join(bubble._text_view.toPlainText().split())
+        assert [turn["role"] for turn in _chat_model_messages(conversation["messages"])] == ["user"]
+        if window is not None:
+            assert not window._streaming and window._send_btn.isEnabled()
+            assert window._current_ai_label is None
+        if chat_state == "open":
+            assert info["message"] in window.findChildren(_MessageTextView)[-1].toPlainText()
+            assert "Still loading" not in window.findChildren(_MessageTextView)[-1].toPlainText()
+
+        reopened = ChatWindow(send_fn=lambda _messages: iter(()), conversations=conversations)
+        reopened.show()
+        qapp.processEvents()
+        assert info["message"] in reopened.findChildren(_MessageTextView)[-1].toPlainText()
+        assert reopened._send_btn.isEnabled()
+        button = reopened.findChild(QToolButton, "providerErrorDetailsToggle")
+        assert button is not None and not button.isChecked()
+        assert "RESOURCE_EXHAUSTED" in reopened.findChild(QPlainTextEdit, "providerErrorDetailsText").toPlainText()
+    finally:
+        bubble.close()
+        bubble.deleteLater()
+        for surface in (window, reopened):
+            if surface is not None:
+                surface.close()
+                surface.deleteLater()
+        qapp.processEvents()
+
+
+@pytest.fixture
+def shared_chat_surfaces(qapp, isolated_app_state):
+    import itertools
+    from types import SimpleNamespace
+
+    from runtime.workers.ui_host import QtProtocolHost
+    from ui.bubble import SpeechBubble
+    from ui.chat_window import ChatWindow
+
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host._all_conversations = [{"id": "shared-turn", "messages": []}]
+    host._active_conversation_idx = 0
+    host._active_project_id = "general"
+    host._chat_streams = {}
+    host._chat_streams_lock = threading.Lock()
+    host._chat_request_ids = itertools.count(1)
+    persisted = []
+    requests = []
+    host._persist_conversations = lambda: persisted.append(True)
+    host.emit = lambda event, payload: requests.append(payload) if event == "ui.chat.request" else None
+    bubble = SpeechBubble()
+    host._ensure_bubble = lambda: bubble
+    window = ChatWindow(
+        conversations=host._all_conversations,
+        send_fn=host._make_chat_send_fn(),
+        persist_fn=host._persist_conversations,
+        on_response_state=host._bind_chat_response,
+    )
+    host._chat = window
+    window.destroyed.connect(lambda: setattr(host, "_chat", None))
+    window.show()
+    yield SimpleNamespace(host=host, window=window, bubble=bubble, requests=requests, persisted=persisted)
+    for stream in list(host._chat_streams.values()):
+        stream.put(("error", {"message": "Test cleanup"}))
+    _pump_until(qapp, lambda: not host._chat_streams)
+    from shiboken6 import isValid
+
+    if isValid(window):
+        window.close()
+        window.deleteLater()
+    bubble.close()
+    bubble.deleteLater()
+    qapp.processEvents()
+
+
+@pytest.mark.parametrize("outcome", ["success", "quota"])
+def test_chat_originated_turn_shares_progress_final_and_errors(qapp, shared_chat_surfaces, outcome):
+    from ui.chat_window import _MessageTextView
+
+    host, window, bubble = shared_chat_surfaces.host, shared_chat_surfaces.window, shared_chat_surfaces.bubble
+    window._send("Explain this")
+    _pump_until(qapp, lambda: bool(shared_chat_surfaces.requests))
+    request_id = shared_chat_surfaces.requests[-1]["request_id"]
+    response = window._response_state
+    assert bubble._response_state is response is host._reply_response
+    host._chat_chunk(request_id=request_id, text="Still loading", is_progress=True)
+    _pump_until(qapp, lambda: response.status == "Still loading")
+    assert "Still loading" in window._current_ai_label.toPlainText()
+    assert "Still loading" in bubble._thought_text
+    host._chat_chunk(request_id=request_id, text="<thi")
+    host._chat_chunk(request_id=request_id, text="nk>Inspecting</think>Draft answer")
+    _pump_until(qapp, lambda: response.reply_text == "Draft answer")
+    assert bubble._full_text == window._current_ai_reply_text == "Draft answer"
+    if outcome == "quota":
+        info = {"provider": "google", "source": "provider", "http_status": 429,
+                "code": "RESOURCE_EXHAUSTED", "message": "Quota exceeded. <think>literal</think> **original** `code` $x$"}
+        host._chat_error(request_id=request_id, error=info["message"], provider_error=info)
+    else:
+        host._chat_done(request_id=request_id, text="Corrected final answer")
+    assert host._chat_done(request_id=request_id, text="Duplicate final") == {"queued": False}
+    assert host._chat_error(request_id=request_id, error="Duplicate error") == {"queued": False}
+    _pump_until(qapp, lambda: not window._streaming and len(host._all_conversations[0]["messages"]) == 2)
+    message = host._all_conversations[0]["messages"][-1]
+    assert bubble._response_state is response and response.terminal
+    assert response.status == ""
+    assert message["content"] == response.reply_text
+    assert "Still loading" not in window.findChildren(_MessageTextView)[-1].toPlainText()
+    if outcome == "quota":
+        assert message["provider_error"] == info
+        assert message["response_error"] is True
+        assert "".join(bubble._full_text.split()) == "".join(message["content"].split())
+        assert "**original**`code`$x$" in "".join(bubble._text_view.toPlainText().split())
+        assert info["message"] in window.findChildren(_MessageTextView)[-1].toPlainText()
+    else:
+        assert bubble._full_text == message["content"] == "Corrected final answer"
+    response.feed({"text": "LATE waiting", "is_progress": True})
+    response.fail({"message": "LATE error"})
+    assert "LATE" not in bubble._full_text and response.status == ""
+
+
+@pytest.mark.parametrize("opening", ["open", "hidden", "during_reply"])
+def test_overlay_turn_binds_same_state_and_saves_completion_atomically(qapp, shared_chat_surfaces, opening):
+    from ui.chat_window import _MessageTextView
+
+    host, window, bubble = shared_chat_surfaces.host, shared_chat_surfaces.window, shared_chat_surfaces.bubble
+    if opening == "hidden":
+        window.hide()
+    elif opening == "during_reply":
+        host._chat = None
+    begin = host._chat_begin_conversation(user="Explain this")
+    target = {"conversation_index": 0, "response_id": begin["response_id"]}
+    response = host._reply_response
+    host._chat_chunk(**target, text="Still loading", is_progress=True)
+    host._chat_chunk(**target, text="<think>Inspecting</think>Draft answer")
+    if opening == "during_reply":
+        host._chat = window
+        window.sync_conversation(0)
+        assert host._restore_external_reply_stream() is True
+    assert bubble._response_state is window._response_state is response
+    assert bubble._full_text == window._current_ai_reply_text == "Draft answer"
+    # Legacy presentation events cannot append a second copy or a different reply.
+    host._reply_chunk(text="Duplicate or stale text")
+    assert response.reply_text == "Draft answer"
+    host._reply_chunk(text="Working on the final answer", is_progress=True)
+    assert response.status == "Working on the final answer"
+    assert response.status in window._current_ai_label.toPlainText()
+    assert response.status in bubble._thought_text
+    assert host._chat_done(**target, text="Corrected final answer") == {"queued": True}
+    assert response.terminal and response.status == ""
+    assert host._external_reply_stream is None
+    assert len(shared_chat_surfaces.persisted) == 2
+    assert host._all_conversations[0]["messages"][-1]["content"] == bubble._full_text == "Corrected final answer"
+    assert window._send_btn.isEnabled() and not window._streaming
+    window.sync_conversation(0)
+    window.show()
+    qapp.processEvents()
+    rendered = window.findChildren(_MessageTextView)[-1].toPlainText()
+    assert "Corrected final answer" in rendered and "loading" not in rendered
+    assert host._chat_chunk(**target, text="LATE") == {"queued": False}
+    assert host._chat_error(**target, error="LATE error") == {"queued": False}
+    assert bubble._full_text == "Corrected final answer"
+
+
+@pytest.mark.parametrize("outcome", ["success", "quota"])
+def test_chat_turn_survives_window_destruction(qapp, shared_chat_surfaces, outcome):
+    from PySide6.QtCore import QEvent
+
+    host, window, bubble = shared_chat_surfaces.host, shared_chat_surfaces.window, shared_chat_surfaces.bubble
+    window._send("Explain this")
+    _pump_until(qapp, lambda: bool(shared_chat_surfaces.requests))
+    request_id = shared_chat_surfaces.requests[-1]["request_id"]
+    response = window._response_state
+    window.close()
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    _pump_until(qapp, lambda: host._chat is None)
+    host._chat_chunk(request_id=request_id, text="Reply after closing Chat")
+    assert bubble._full_text == response.reply_text == "Reply after closing Chat"
+    if outcome == "quota":
+        info = {"provider": "google", "source": "provider", "message": "Quota exceeded"}
+        host._chat_error(request_id=request_id, error=info["message"], provider_error=info)
+    else:
+        host._chat_done(request_id=request_id, text="Final answer after closing Chat")
+    _pump_until(qapp, lambda: not host._chat_streams)
+    saved = host._all_conversations[0]["messages"][-1]
+    assert response.terminal and response.status == ""
+    assert saved["content"] == response.reply_text
+    assert "".join(bubble._full_text.split()) == "".join(saved["content"].split())
+    if outcome == "quota":
+        assert saved["response_error"] is True and saved["provider_error"] == info
+    assert len(host._all_conversations[0]["messages"]) == 2
+
+
+@pytest.mark.parametrize("outcome", ["success", "quota"])
+def test_old_chat_completion_is_saved_without_overwriting_new_overlay(qapp, shared_chat_surfaces, outcome):
+    host, window, bubble = shared_chat_surfaces.host, shared_chat_surfaces.window, shared_chat_surfaces.bubble
+    window._send("First request from Chat")
+    _pump_until(qapp, lambda: bool(shared_chat_surfaces.requests))
+    old_request = shared_chat_surfaces.requests[-1]["request_id"]
+    old_response = window._response_state
+    begin = host._chat_begin_conversation(user="New request from the bubble")
+    target = {"conversation_index": 0, "response_id": begin["response_id"]}
+    host._chat_chunk(**target, text="New draft")
+    new_response = host._reply_response
+    host._chat_chunk(request_id=old_request, text="Old draft")
+    if outcome == "quota":
+        host._chat_error(request_id=old_request, error="Old quota exceeded")
+    else:
+        host._chat_done(request_id=old_request, text="Old final answer")
+    _pump_until(qapp, lambda: not host._chat_streams)
+    assert window._response_state is bubble._response_state is new_response
+    assert window._current_ai_reply_text == bubble._full_text == "New draft"
+    assert not new_response.terminal
+    messages = host._all_conversations[0]["messages"]
+    assert [message["role"] for message in messages] == ["user", "assistant", "user"]
+    assert messages[1]["content"] == old_response.reply_text
+    host._chat_done(**target, text="New final answer")
+    assert [message["role"] for message in messages] == ["user", "assistant", "user", "assistant"]
+    assert messages[-1]["content"] == bubble._full_text == "New final answer"
+
+
+def test_old_overlay_events_cannot_finish_or_corrupt_a_new_turn(shared_chat_surfaces):
+    host, window, bubble = shared_chat_surfaces.host, shared_chat_surfaces.window, shared_chat_surfaces.bubble
+    old = host._chat_begin_conversation(user="First request")["response_id"]
+    new = host._chat_begin_conversation(user="New request")["response_id"]
+    assert new != old
+    target = {"conversation_index": 0, "response_id": old}
+    assert host._chat_chunk(**target, text="OLD reply") == {"queued": False}
+    assert host._chat_done(**target, text="OLD final") == {"queued": False}
+    assert host._chat_error(**target, error="OLD error") == {"queued": False}
+    assert host._chat_add_conversation(**target, assistant="OLD saved reply", append_user=False)["stale"] is True
+    assert window._response_state is bubble._response_state is host._reply_response
+    assert host._reply_response.id == new and not host._reply_response.terminal
+    assert len(host._all_conversations[0]["messages"]) == 2
+    host._chat_done(conversation_index=0, response_id=new, text="New final answer")
+    assert bubble._full_text == host._all_conversations[0]["messages"][-1]["content"] == "New final answer"
+
+
+@pytest.mark.parametrize("partial", ["", "Partial answer"])
+@pytest.mark.parametrize("cancelled", [True, False])
+def test_finishing_overlay_turn_clears_waiting_and_preserves_partial(shared_chat_surfaces, partial, cancelled):
+    from ui.chat_window import _MessageTextView
+
+    host, window, bubble = shared_chat_surfaces.host, shared_chat_surfaces.window, shared_chat_surfaces.bubble
+    begin = host._chat_begin_conversation(user="Explain this")
+    target = {"conversation_index": 0, "response_id": begin["response_id"]}
+    response = host._reply_response
+    host._chat_chunk(**target, text="Still loading", is_progress=True)
+    if partial:
+        host._chat_chunk(**target, text=partial)
+    host._chat_done(**target, cancelled=cancelled)
+    assert response.phase == ("cancelled" if cancelled else "completed") and response.status == ""
+    assert window._send_btn.isEnabled() and not window._streaming
+    assert host._external_reply_stream is None
+    assert bubble._full_text == partial
+    if partial:
+        assert host._all_conversations[0]["messages"][-1]["content"] == partial
+    else:
+        assert len(host._all_conversations[0]["messages"]) == 1
+    window.sync_conversation(0)
+    assert "Still loading" not in " ".join(view.toPlainText() for view in window.findChildren(_MessageTextView))
+
+
+def test_shared_image_completion_keeps_both_previews_and_attachment_identity(shared_chat_surfaces, isolated_app_state):
+    import base64
+
+    from PySide6.QtGui import QImage
+
+    from core.conversation_store import store
+
+    host, bubble = shared_chat_surfaces.host, shared_chat_surfaces.bubble
+    image_path = isolated_app_state.root / "preview.png"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    image = QImage(2, 2, QImage.Format.Format_ARGB32)
+    image.fill(0xFFFF00FF)
+    assert image.save(str(image_path), "PNG")
+    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    begin = host._chat_begin_conversation(user="Create an image")
+    response = host._reply_response
+    host._chat_done(
+        conversation_index=0, response_id=begin["response_id"],
+        assistant_attachments=[{"kind": "image", "data_url": "data:image/png;base64," + encoded}],
+    )
+    saved = host._all_conversations[0]["messages"][-1]
+    assert saved["attachments"] == response.attachments
+    assert saved["attachments"][0]["sha256"]
+    assert store.attachment_image_base64(saved["attachments"][0]) == encoded
+    assert not bubble._image_label.isHidden()
+    assert not bubble._image_label.pixmap().isNull()
+    assert bubble.height() > bubble._base_bubble_h()
+    assert response.status == "" and response.terminal
+
+
+def test_shared_completion_keeps_the_original_conversation_scope(shared_chat_surfaces):
+    host = shared_chat_surfaces.host
+    begin = host._chat_begin_conversation(user="Explain this")
+    host._conversation_scope_key = "codex"
+    host._chat_done(conversation_index=0, response_id=begin["response_id"], text="Original turn answer")
+    assert len(host._all_conversations) == 1
+    assert host._all_conversations[0]["conversation_scope"] == "openwand"
+    assert host._all_conversations[0]["messages"][-1]["content"] == "Original turn answer"
+
+
 def test_external_file_activity_finishes_without_losing_details_link(qapp, isolated_app_state):
     from PySide6.QtWidgets import QLabel
 
@@ -1551,6 +1914,7 @@ def test_chat_auto_elaborate_opening_matrix(qapp, monkeypatch, enabled, opening_
         yield "A substantially expanded answer."
 
     host = QtProtocolHost.__new__(QtProtocolHost)
+    host._render_reply_response = lambda _response: None
     host._chat = None
     host._all_conversations = [conversation]
     host._active_conversation_idx = 0
@@ -1621,6 +1985,7 @@ def test_chat_auto_elaborate_prompt_reaches_real_send(qapp, monkeypatch, prompt)
         yield "Expanded."
 
     host = QtProtocolHost.__new__(QtProtocolHost)
+    host._render_reply_response = lambda _response: None
     host._chat = None
     host._all_conversations = [conversation]
     host._active_conversation_idx = 0

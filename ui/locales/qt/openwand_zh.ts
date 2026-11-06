@@ -6778,5 +6778,34 @@ This cannot be undone. Imported Codex and Claude Code source files will not be d
       <source>OpenWand error ({provider})</source>
       <translation>OpenWand 错误（{provider}）</translation>
     </message>
+    <message><source>Uninstall OpenWand, with the option to also remove saved settings, data, and downloaded speech models.</source><translation>卸载 OpenWand，并可选择一并删除保存的设置、数据和已下载的语音模型。</translation></message>
+    <message><source>Also remove all OpenWand data and sign-ins</source><translation>一并删除所有 OpenWand 数据和登录信息</translation></message>
+    <message><source>Keep saved settings and data for a future reinstall: {data_root}</source><translation>保留设置和数据，以便以后重新安装：{data_root}</translation></message>
+    <message><source>This will permanently remove:
+• OpenWand's current {kind}: {app_root}
+• OpenWand login and desktop entries</source><translation>这将永久删除：
+• OpenWand 当前的{kind}：{app_root}
+• OpenWand 登录启动项和桌面项目</translation></message>
+    <message><source>Also permanently remove settings, chats, memory, add-ons, tools, logs, updates, optional packages, saved API keys, OAuth sign-in tokens, and OpenWand-owned models.
+User data: {data_root}
+External providers, their models, other apps' sign-ins, browser sessions, and shared uv/pip and Hugging Face caches will be kept.</source><translation>一并永久删除设置、聊天、记忆、附加组件、工具、日志、更新、可选包、API 密钥、OAuth 登录令牌和 OpenWand 自有模型。
+用户数据：{data_root}
+外部提供商及其模型、其他应用的登录信息、浏览器会话以及共享的 uv/pip 和 Hugging Face 缓存将保留。</translation></message>
+    <message><source>Factory reset OpenWand?</source><translation>将 OpenWand 恢复出厂设置？</translation></message>
+    <message><source>Remove all OpenWand data and sign-ins? This cannot be undone.</source><translation>删除所有 OpenWand 数据和登录信息？此操作无法撤销。</translation></message>
+    <message><source>This permanently removes OpenWand settings, profiles, chats, memory, custom callers, installed add-ons and tools, logs, caches, downloaded packages and OpenWand-owned models, saved API keys, and OAuth sign-ins.
+
+External providers (such as Ollama), their models, browser sessions, and other apps' sign-ins are kept. Shared model caches are kept because they may be used by other apps.
+
+OpenWand will close to finish the reset. Open it again afterwards to start fresh.</source><translation>这将永久删除 OpenWand 的设置、配置文件、聊天、记忆、自定义调用器、已安装的附加组件和工具、日志、缓存、已下载的包和 OpenWand 自有模型、API 密钥及 OAuth 登录信息。
+
+外部提供商（例如 Ollama）、其模型、浏览器会话和其他应用的登录信息将保留。共享模型缓存也会保留，因为其他应用可能正在使用。
+
+OpenWand 将关闭以完成重置。之后重新打开即可从全新状态开始。</translation></message>
+    <message><source>Exact paths scheduled for cleanup:</source><translation>计划清理的确切路径：</translation></message>
+    <message><source>Factory reset scheduled</source><translation>已安排恢复出厂设置</translation></message>
+    <message><source>OpenWand will now close and remove its saved data and sign-ins. If cleanup cannot finish, an error will be shown and saved here:
+{path}</source><translation>OpenWand 现在将关闭并删除保存的数据和登录信息。如无法完成清理，将显示错误并保存在此处：
+{path}</translation></message>
   </context>
 </TS>

@@ -410,7 +410,9 @@ class VirtualDesktop(QWidget):
             )
             for item in self._entries
         ]
-        if signature == old_signature:
+        # The first empty snapshot still has to create the Workspace root row.
+        # Otherwise a brand-new session has nowhere to open New folder/document.
+        if signature == old_signature and self._icons.topLevelItemCount() > 0:
             return
         self._entries = enriched
         self._change_by_path = change_map

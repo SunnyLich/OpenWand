@@ -8799,7 +8799,7 @@ class SettingsDialog(QDialog):
         uninstall_card, uninstall_cv = self._card("Uninstall")
         uninstall_cv.addWidget(_desc_label(
             "",
-            t("Permanently remove OpenWand, its data, and OpenWand-owned local AI models from this computer."),
+            t("Uninstall OpenWand, with the option to also remove saved settings, data, and downloaded speech models."),
         ))
         self._uninstall_btn = QPushButton(t("Uninstall OpenWand"))
         self._uninstall_btn.setObjectName("settingsUninstallButton")
@@ -12413,137 +12413,50 @@ class SettingsDialog(QDialog):
         )
 
     def _reset_all(self) -> None:
-        """Factory reset: erase every setting and delete all API keys.
+        """Erase OpenWand-owned state after the app and its workers exit."""
+        from core import factory_reset
 
-        Pops up a detailed warning the user must confirm, then deletes all known
-        secrets from the OS keychain, wipes the .env file (and the matching values
-        from this process), reloads config + live app, and refreshes the dialog.
-        """
-        self._build_deferred_pages()
+        try:
+            plan = factory_reset.build_reset_plan(settings_path=ENV_PATH)
+        except Exception as exc:  # noqa: BLE001 - never confirm an unsafe reset
+            QMessageBox.warning(self, t("Reset error"), str(exc))
+            return
         confirm = QMessageBox(self)
         confirm.setIcon(QMessageBox.Icon.Warning)
-        confirm.setWindowTitle(t("Reset all settings?"))
-        confirm.setText(t("Reset OpenWand to its defaults? This cannot be undone."))
+        confirm.setWindowTitle(t("Factory reset OpenWand?"))
+        confirm.setText(t("Remove all OpenWand data and sign-ins? This cannot be undone."))
         confirm.setInformativeText(
             t(
-                "This will permanently:\n"
-                "• DELETE every API key from your OS keychain "
-                "(Groq, OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Mistral, "
-                "xAI, Together, Cerebras, Z.AI, NVIDIA, SambaNova, GitHub Models, "
-                "Hugging Face, Chutes, Vercel, Fireworks, Cohere, AI21, Nebius, "
-                "Cartesia, ElevenLabs, Copilot, custom)\n"
-                "• ERASE all saved settings (models, hotkeys, prompts, theme, "
-                "callers, and everything else in your .env)\n"
-                "• SIGN YOU OUT of all OAuth logins (ChatGPT, GitHub)\n\n"
-                "You will need to re-enter your API keys, sign in again, and "
-                "reconfigure the app afterwards.\n\n"
-                "Continue?"
+                "This permanently removes OpenWand settings, profiles, chats, memory, "
+                "custom callers, installed add-ons and tools, logs, caches, downloaded "
+                "packages and OpenWand-owned models, saved API keys, and OAuth sign-ins.\n\n"
+                "External providers (such as Ollama), their models, browser sessions, "
+                "and other apps' sign-ins are kept. Shared model caches are kept because "
+                "they may be used by other apps.\n\n"
+                "OpenWand will close to finish the reset. Open it again afterwards "
+                "to start fresh."
             )
+            + "\n\n" + t("Exact paths scheduled for cleanup:") + "\n"
+            + "\n".join(f"• {path}" for path in plan.targets)
         )
-        confirm.setStandardButtons(
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
+        confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         confirm.setDefaultButton(QMessageBox.StandardButton.No)
         if confirm.exec() != QMessageBox.StandardButton.Yes:
             return
-
-        _settings_log.warning("User requested full settings reset")
-
-        # 1. Delete every known secret from the OS keychain, verifying removal.
-        key_failures: list[str] = []
-        dynamic_custom_secret_names = {
-            _custom_secret_name(connection["id"])
-            for connection in _load_custom_connections(self._env)
-        } - set(secret_store.API_KEY_NAMES)
-        for name in (*secret_store.API_KEY_NAMES, *sorted(dynamic_custom_secret_names)):
-            try:
-                secret_store.delete_secret(name)
-                if secret_store.get_keychain_secret(name):
-                    key_failures.append(name)
-                    _settings_log.error("Key %s still present in keychain after delete", name)
-                else:
-                    _settings_log.info("Deleted %s from OS keychain", name)
-            except Exception as exc:  # noqa: BLE001 — collected and surfaced
-                key_failures.append(f"{name}: {exc}")
-                _settings_log.error("Failed deleting %s from keychain: %s", name, exc)
-
-        # 1b. Sign out of every OAuth provider.
-        for label, module_path, func_name in (
-            ("ChatGPT",        "core.auth.chatgpt",      "clear_tokens"),
-            ("GitHub",         "core.auth.github",       "clear_tokens"),
-            ("GitHub Copilot", "core.auth.copilot_auth", "clear_token"),
-        ):
-            try:
-                import importlib
-                getattr(importlib.import_module(module_path), func_name)()
-                _settings_log.info("Signed out of %s", label)
-            except Exception as exc:  # noqa: BLE001 — collected and surfaced
-                key_failures.append(f"{label} sign-out: {exc}")
-                _settings_log.error("Failed signing out of %s: %s", label, exc)
-
-        # 2. Wipe the .env file and clear matching values from this process so the
-        #    reset takes effect live (load_dotenv won't unset removed keys itself).
         try:
-            for key in _read_env():
-                os.environ.pop(key, None)
-            if ENV_PATH.exists():
-                ENV_PATH.unlink()
-            _settings_log.info("Erased settings file %s", ENV_PATH)
-        except OSError as exc:
-            _settings_log.error("Could not erase %s: %s", ENV_PATH, exc)
-            QMessageBox.warning(
-                self, t("Reset error"),
-                t("Could not erase the settings file:\n{error}").format(error=exc),
-            )
-
-        # 3. Reload config + live app and refresh the dialog to show defaults.
-        try:
-            import config
-            from core import tts as _tts
-            from core.llm_clients import client as _llm
-            from ui.shared.theme import apply_app_theme
-            config.reload()
-            _llm.reset_clients()
-            _tts.reset_connections()
-            self._reset_stt_model_in_background()
-            apply_app_theme()
-            self._apply_dialog_theme()
-        except Exception as exc:  # noqa: BLE001 — reset already happened on disk
-            _settings_log.error("Live reload after reset failed: %s", exc)
-        self._env = _read_env()
-        self._active_preset_slug = ""
-        self._load_values()
-        localize_widget_tree(self)
-        self._refresh_tab_labels()
-        self._refresh_search_index()
-        for refresh in (
-            getattr(self, "_refresh_chatgpt_status", None),
-            getattr(self, "_refresh_github_status", None),
-        ):
-            if callable(refresh):
-                try:
-                    refresh()
-                except Exception:  # noqa: BLE001 — status labels are cosmetic
-                    pass
-        if self._on_apply:
-            self._on_apply()
-
-        if key_failures:
-            QMessageBox.warning(
-                self, t("Reset partly complete"),
-                t("Settings were reset, but these items could not be fully cleared:")
-                + "\n\n"
-                + "\n".join(f"• {item}" for item in key_failures)
-                + "\n\n"
-                + t("You may need to remove them manually (e.g. from your system "
-                    "credential store). See the log for details."),
-            )
-        else:
-            QMessageBox.information(
-                self, t("Reset complete"),
-                t("All API keys were removed from the OS keychain, you were signed "
-                  "out of all OAuth logins, and every setting was reset to defaults."),
-            )
+            log_path = factory_reset.launch_reset(settings_path=ENV_PATH)
+        except Exception as exc:  # noqa: BLE001 - keep app open when scheduling fails
+            QMessageBox.warning(self, t("Reset error"), str(exc))
+            return
+        _settings_log.warning("User scheduled full factory reset; failure log: %s", log_path)
+        QMessageBox.information(
+            self, t("Factory reset scheduled"),
+            t("OpenWand will now close and remove its saved data and sign-ins. "
+              "If cleanup cannot finish, an error will be shown and saved here:\n{path}").format(path=log_path),
+        )
+        app = QApplication.instance()
+        if app is not None:
+            QTimer.singleShot(0, app.quit)
 
     def _save_action_file_callers(self) -> None:
         """Persist the caller editor into the live comment-preserving TOML tree."""

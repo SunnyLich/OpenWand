@@ -2457,64 +2457,42 @@ def test_reset_page_action_is_scoped_across_every_settings_page(
 
 
 def test_reset_all_action_clears_isolated_settings_credentials_and_sessions(
-    qapp,
-    live_runtime_settings,
-    monkeypatch,
+    qapp, live_runtime_settings, monkeypatch,
 ):
-    """Confirm the real Reset All action and verify every destructive boundary."""
-
+    """The visible action schedules full cleanup and exits without a live reload."""
+    from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QMessageBox, QPushButton
 
-    import config
-    from core import secret_store
-    from core.auth import chatgpt, copilot_auth, github
+    from core import factory_reset
     from ui.i18n import t
     from ui.settings_panel.dialog import SettingsDialog
 
     env_path, settings_env = live_runtime_settings
     settings_env.write_settings_env({"MEMORY_TOP_K": "88", "BUBBLE_WIDTH": "777"})
-    config.reload()
-    calls: list[str] = []
-    monkeypatch.setattr(secret_store, "API_KEY_NAMES", ("OPENAI_API_KEY", "CUSTOM_API_KEY"))
-    monkeypatch.setattr(secret_store, "delete_secret", lambda name: calls.append(f"key:{name}"))
-    monkeypatch.setattr(secret_store, "get_keychain_secret", lambda _name: None)
-    monkeypatch.setattr(chatgpt, "clear_tokens", lambda: calls.append("oauth:chatgpt"))
-    monkeypatch.setattr(github, "clear_tokens", lambda: calls.append("oauth:github"))
-    monkeypatch.setattr(copilot_auth, "clear_token", lambda: calls.append("oauth:copilot"))
-    monkeypatch.setattr(QMessageBox, "exec", lambda _self: QMessageBox.StandardButton.Yes)
-    infos: list[str] = []
-    monkeypatch.setattr(
-        QMessageBox,
-        "information",
-        lambda _parent, _title, message: infos.append(message),
-    )
+    before = env_path.read_bytes()
+    calls = []
+    monkeypatch.setattr(factory_reset, "build_reset_plan", lambda **_kw: factory_reset.ResetPlan((env_path,)))
+    def schedule(*, settings_path):
+        calls.append(settings_path)
+        return env_path.parent / "reset-failures.log"
+    monkeypatch.setattr(factory_reset, "launch_reset", schedule)
+    infos = []
+    def confirm(box):
+        assert "chats, memory" in box.informativeText()
+        assert "External providers" in box.informativeText()
+        return QMessageBox.StandardButton.Yes
+    monkeypatch.setattr(QMessageBox, "exec", confirm)
+    monkeypatch.setattr(QMessageBox, "information", lambda _p, _t, message: infos.append(message))
     driver = QtUserDriver(qapp, timeout=2.0)
     dialog = SettingsDialog()
-    dialog._reset_stt_model_in_background = lambda: calls.append("stt:reset")
-    dialog._refresh_chatgpt_status = lambda: None
-    dialog._refresh_github_status = lambda: None
-    dialog._refresh_copilot_status = lambda: None
+    monkeypatch.setattr(QTimer, "singleShot", lambda _delay, callback: calls.append(callback))
     try:
-        reset = next(
-            button
-            for button in dialog.findChildren(QPushButton)
-            if button.text() == t("Reset All…")
-        )
+        reset = next(button for button in dialog.findChildren(QPushButton) if button.text() == t("Reset All…"))
         driver.click(reset)
-        assert not env_path.exists()
-        assert settings_env.read_settings_env() == {}
-        assert config.BUBBLE_WIDTH == 340
-        assert config.MEMORY_TOP_K != 88
-        assert set(calls) >= {
-            "key:OPENAI_API_KEY",
-            "key:CUSTOM_API_KEY",
-            "oauth:chatgpt",
-            "oauth:github",
-            "oauth:copilot",
-            "stt:reset",
-        }
-        assert infos and "reset" in infos[-1].lower()
-        assert dialog.isEnabled()
+        assert calls[0] == env_path
+        assert len(calls) == 2 and callable(calls[1])
+        assert env_path.read_bytes() == before  # Cleanup must wait for shutdown.
+        assert infos and "close" in infos[-1].lower()
     finally:
         dialog.close()
         dialog.deleteLater()

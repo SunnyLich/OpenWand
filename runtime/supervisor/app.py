@@ -307,6 +307,11 @@ def _write_launch_smoke_ready(
     }
     if settings_smoke is not None:
         payload["settings_profile_smoke"] = settings_smoke
+    if os.environ.get("OPENWAND_USER_JOURNEYS") == "1":
+        # Acceptance drives the running app only after all real workers exist.
+        from scripts.user_journeys.scenarios import run_journeys
+
+        payload["user_journeys"] = run_journeys(supervisor)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     temporary.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
     temporary.replace(path)

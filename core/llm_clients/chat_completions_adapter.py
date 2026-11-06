@@ -152,7 +152,7 @@ class ChatCompletionsLoopModel:
                     text = text_content(value(delta, "content"))
                     if text:
                         texts.append(text)
-                        llm._emit_live_progress("".join(texts))
+                        llm._emit_live_progress(llm.StreamTextChunk("".join(texts), kind="preview"))
                     reasoning.append(str(value(delta, "reasoning_content") or value(delta, "reasoning", "") or ""))
                     details.extend(snapshot(value(delta, "reasoning_details", []) or []))
                     refusal += str(value(delta, "refusal", "") or "")

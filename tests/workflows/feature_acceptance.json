@@ -7198,7 +7198,7 @@
       "production_entry_point": "Visible Browse button -> QFileDialog selection -> resolve_scope_folder -> AgentTaskSpec.scope_folder",
       "test_node_ids": [
         "tests/test_agent_task_workflows.py::test_agent_tray_setup_copy_preview_and_submit_real_workflow",
-        "tests/test_agent_runner.py::AgentRunnerTests::test_toolbox_create_patch_and_read_are_scoped_and_logged"
+        "tests/test_agent_runner.py::AgentToolboxTests::test_toolbox_create_patch_and_read_are_scoped_and_logged"
       ],
       "success_assertions": [
         "The selected temporary folder is resolved into the submitted spec and all real workspace operations remain inside it."

@@ -150,6 +150,7 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                 verbose,
                 progress,
             )
+            self._control.raise_if_cancelled()
             (run_dir / "turns.json").write_text(
                 json.dumps(turns, indent=2, ensure_ascii=False),
                 encoding="utf-8",
@@ -2168,6 +2169,7 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
         if self._model_callback is not None:
             started = time.perf_counter()
             response = self._model_callback(prompt)
+            self._control.raise_if_cancelled()
             if on_stream_text is not None:
                 on_stream_text(response)
             log(f"model callback response received in {time.perf_counter() - started:.1f}s ({len(response)} chars)")
@@ -2236,6 +2238,7 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                     reasoning_effort=reasoning_effort,
                     json_mode=json_mode,
                 ):
+                    self._control.raise_if_cancelled()
                     if first_chunk:
                         first_chunk = False
                         progress_state["phase"] = "streaming"
@@ -2264,6 +2267,7 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                 heartbeat_done.set()
                 heartbeat_thread.join(timeout=0.2)
                 llm.set_live_privacy_context(None)
+            self._control.raise_if_cancelled()
             response = "".join(chunks).strip()
             if privacy_session is not None:
                 response = privacy_session.restore(response)
@@ -2272,6 +2276,8 @@ class AgentTaskRunner(AgentResponseMixin, AgentRunArtifactsMixin):
                 f"({len(response)} chars){activity_suffix}"
             )
             return response
+        except AgentCancelled:
+            raise
         except Exception as exc:
             log(f"LLM call failed: {exc}")
             if self._is_permanent_model_error(exc):

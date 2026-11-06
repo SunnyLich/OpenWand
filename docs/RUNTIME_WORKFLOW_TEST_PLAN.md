@@ -2,6 +2,10 @@
 
 Snapshot: 2026-07-21
 
+Whole-app execution and reporting update: 2026-11-01. See
+[User journey testing and reports](USER_JOURNEY_TESTING.md) for the running-app
+suite, exact-source reports, explicit external substitutions and remaining gaps.
+
 ## Source documents
 
 This plan must be implemented against the existing documents below rather than creating a separate function list:
@@ -28,11 +32,11 @@ The workflow manifest must preserve traceability back to the earlier inventory:
 
 Current honest status:
 
-- **472 / 472** functions are accepted through a production entry point with a successful observable result.
+- **470 / 472** functions have legacy production-entry acceptance records. These records are not evidence that complete user journeys ran through the entire app.
 - **0 / 472** have a name-matched candidate test that still needs code-path audit.
-- **0 / 472** are untested at the real-entry acceptance level.
-- **472 / 472** have completed dependency audits; no function remains marked pending.
-- **197 / 197** declared A -> B interaction matrices are accepted. Every one of the 472 functions is now an endpoint in at least one audited matrix. These include launcher, Settings, appearance, platform, local-file, onboarding, provider/model routing, conversation and context behavior, speech, memory, privacy, add-on/MCP, multi-agent, worker lifecycle, desktop integration, shortcut search/runtime registration, composer-key behavior, chat zoom, profile mutation, optional-installer outcomes, setup-check recovery, and Reset All persistence/credential cleanup.
+- **1 / 472** is untested and **1 / 472** has component-only evidence: F192/F193 describe transcript-write UI that was removed. They must not be reported as accepted user paths.
+- **470 / 472** have completed legacy dependency audits; two remain pending.
+- **196 / 197** declared A -> B interaction matrices are accepted by the legacy catalogue; one remains pending. These are separate from whole-app execution evidence.
 
 The acceptance validator refuses to infer success coverage from section similarity, failure injection, or a shared internal helper. `tests/workflows/feature_interactions.json` separately records the behaviorally distinct state combinations for features that affect other features.
 

@@ -1915,6 +1915,11 @@ def read_active_document_for_context_with_debug(
     ``active_only=True`` restricts provider actions to the captured hotkey window.
     Returns ("", debug) if no readable documents are found.
     """
+    if os.environ.get("OPENWAND_USER_JOURNEYS") == "1":
+        # Open-document discovery is an external OS boundary. Hosted acceptance
+        # must never inspect the developer's foreground or background documents.
+        from scripts.user_journeys.desktop_boundary import document_context
+        return document_context()
     from core.context_fetcher import (
         WindowInfo,
         get_all_open_document_paths,
