@@ -76,6 +76,9 @@ jobs:
       - name: Exercise user journeys in the packaged Windows app
         run: .\.venv-build\Scripts\python.exe -m scripts.user_journeys --packaged --output reports/packaged-user-journeys --timeout 480
 
+      - name: Check released 0.12.x updater compatibility
+        run: .\.venv-build\Scripts\python.exe -m scripts.check_legacy_updater_compatibility --fetch --report reports/legacy-updater-compatibility.json
+
       - name: Build Windows artifact
         shell: pwsh
         run: .\tools\build_exe.ps1 -Clean -Yes
@@ -100,6 +103,7 @@ jobs:
             reports/packaged-user-journeys/runner-error.txt
             reports/packaged-user-journeys/incomplete-execution.txt
             reports/packaged-user-journeys/screenshots/
+            reports/legacy-updater-compatibility.json
           if-no-files-found: warn
 
       - name: Ensure PowerShell Gallery is available
@@ -185,6 +189,16 @@ jobs:
       - name: Smoke-test portable migration into signed installer
         shell: pwsh
         run: ./tools/test_portable_to_installer.ps1 -InstallerPath $env:OPENWAND_INSTALLER_PATH
+
+      - name: Verify upgrade from released 0.12.2 preserves data
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $PreviousDir = Join-Path $env:RUNNER_TEMP 'OpenWandPreviousRelease'
+          gh release download v0.12.2 --repo $env:GITHUB_REPOSITORY --pattern 'OpenWand-v0.12.2-windows-x64-setup.exe' --dir $PreviousDir
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the released 0.12.2 installer.' }
+          ./tools/test_openwand_installer.ps1 -InstallerPath $env:OPENWAND_INSTALLER_PATH -PreviousInstallerPath (Join-Path $PreviousDir 'OpenWand-v0.12.2-windows-x64-setup.exe')
 
       - name: Smoke-test Windows ZIP bridge and failure log
         shell: pwsh

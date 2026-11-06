@@ -1,6 +1,9 @@
 # Exercise the signed release installer against a clean per-user install on CI.
 [CmdletBinding()]
-param([Parameter(Mandatory = $true)][string]$InstallerPath)
+param(
+    [Parameter(Mandatory = $true)][string]$InstallerPath,
+    [string]$PreviousInstallerPath = ''
+)
 
 $ErrorActionPreference = 'Stop'
 $Installer = (Resolve-Path -LiteralPath $InstallerPath).Path
@@ -15,16 +18,52 @@ $RunId = [guid]::NewGuid().ToString('N')
 $Root = Join-Path $env:RUNNER_TEMP "OpenWandInstallerSmoke-$RunId"
 $Install = Join-Path $Root 'OpenWand'
 New-Item -ItemType Directory -Path $Root -Force | Out-Null
-$Uninstaller = $null
+$Uninstaller = Join-Path $Install 'unins000.exe'
+$Python = Join-Path $PSScriptRoot '..\.venv-build\Scripts\python.exe'
+if (-not (Test-Path -LiteralPath $Python)) { $Python = 'python' }
+$PreservedFiles = @{}
 try {
     $InstallLog = Join-Path $Root 'install.log'
     $InstallArgs = @('/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$Install`"", "/LOG=`"$InstallLog`"")
+    if ($PreviousInstallerPath) {
+        $PreviousInstaller = (Resolve-Path -LiteralPath $PreviousInstallerPath).Path
+        if ((Get-AuthenticodeSignature -LiteralPath $PreviousInstaller).Status -ne 'Valid') {
+            throw 'The previous installer lacks a valid Authenticode signature.'
+        }
+        $Previous = Start-Process -FilePath $PreviousInstaller -ArgumentList $InstallArgs -PassThru -Wait -WindowStyle Hidden
+        if ($Previous.ExitCode -ne 0) { throw "Previous installer failed: $($Previous.ExitCode)" }
+        $OldEntry = Get-ItemProperty -LiteralPath $UninstallKey -ErrorAction Stop
+        if ([IO.Path]::GetFullPath($OldEntry.InstallLocation).TrimEnd('\') -ine $Install.TrimEnd('\')) {
+            throw 'Previous installation registered an unexpected directory.'
+        }
+        $Data = Join-Path $Root 'profile\OpenWand'
+        $env:OPENWAND_DATA_ROOT = $Data
+        $env:OPENWAND_USER_DATA_DIR = $Data
+        $env:OPENWAND_SETTINGS_ENV_PATH = Join-Path $Data '.env'
+        foreach ($Relative in @('.env', 'chats\upgrade-marker.txt', 'memory\upgrade-marker.txt', 'addons\upgrade-marker.txt')) {
+            $Fixture = Join-Path $Data $Relative
+            New-Item -ItemType Directory -Path (Split-Path -Parent $Fixture) -Force | Out-Null
+            Set-Content -LiteralPath $Fixture -Value 'BUBBLE_WIDTH=340'
+            $PreservedFiles[$Fixture] = (Get-FileHash -LiteralPath $Fixture -Algorithm SHA256).Hash
+        }
+        Write-Host "Testing in-place upgrade from $($OldEntry.DisplayVersion)."
+    }
     $Process = Start-Process -FilePath $Installer -ArgumentList $InstallArgs -PassThru -Wait -WindowStyle Hidden
     if ($Process.ExitCode -ne 0) { throw "Installer failed: $($Process.ExitCode). See $InstallLog" }
 
     $Entry = Get-ItemProperty -LiteralPath $UninstallKey -ErrorAction Stop
+    $ExpectedVersion = (& $Python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])').Trim()
+    if ($LASTEXITCODE -ne 0 -or $Entry.DisplayVersion -ne $ExpectedVersion) {
+        throw "Installed version $($Entry.DisplayVersion) does not match $ExpectedVersion."
+    }
     if ([System.IO.Path]::GetFullPath($Entry.InstallLocation).TrimEnd('\') -ine [System.IO.Path]::GetFullPath($Install).TrimEnd('\')) {
         throw 'Windows uninstall registration points to the wrong location.'
+    }
+    foreach ($Fixture in $PreservedFiles.Keys) {
+        if (-not (Test-Path -LiteralPath $Fixture) -or
+            (Get-FileHash -LiteralPath $Fixture -Algorithm SHA256).Hash -ne $PreservedFiles[$Fixture]) {
+            throw "In-place upgrade changed retained user data: $Fixture"
+        }
     }
     $InstalledExe = Join-Path $Install 'OpenWand.exe'
     $Marker = Join-Path $Install '.openwand-installed'
@@ -36,9 +75,9 @@ try {
         throw 'The installed uninstaller lacks a valid Authenticode signature.'
     }
     $env:OPENWAND_INSTALLER_SMOKE_EXE = $InstalledExe
-    python -c 'import os; from pathlib import Path; from core import uninstaller; plan = uninstaller.build_uninstall_plan(platform="win32", frozen=True, executable=os.environ["OPENWAND_INSTALLER_SMOKE_EXE"]); assert plan.registered_uninstaller == Path(os.environ["OPENWAND_INSTALLER_SMOKE_EXE"]).parent / "unins000.exe"'
+    & $Python -c 'import os; from pathlib import Path; from core import uninstaller; plan = uninstaller.build_uninstall_plan(platform="win32", frozen=True, executable=os.environ["OPENWAND_INSTALLER_SMOKE_EXE"]); assert plan.registered_uninstaller == Path(os.environ["OPENWAND_INSTALLER_SMOKE_EXE"]).parent / "unins000.exe"'
     if ($LASTEXITCODE -ne 0) { throw 'The in-app uninstall plan could not resolve Inno registration.' }
-    python scripts/run_launcher_smoke.py --kind packaged --executable $InstalledExe --timeout 240
+    & $Python scripts/run_launcher_smoke.py --kind packaged --executable $InstalledExe --timeout 240
     if ($LASTEXITCODE -ne 0) { throw 'Installed OpenWand did not reach launcher readiness.' }
 } finally {
     if ($Uninstaller -and (Test-Path -LiteralPath $Uninstaller -PathType Leaf)) {

@@ -6807,5 +6807,8 @@ OpenWand se fermera pour terminer la réinitialisation. Rouvrez-le ensuite pour 
     <message><source>OpenWand will now close and remove its saved data and sign-ins. If cleanup cannot finish, an error will be shown and saved here:
 {path}</source><translation>OpenWand va se fermer et supprimer ses données et connexions enregistrées. Si le nettoyage échoue, une erreur sera affichée et enregistrée ici :
 {path}</translation></message>
+    <message><source>OpenWand will now close. The uninstaller will remove only the listed OpenWand-owned files after all OpenWand processes exit. If cleanup cannot finish, details will be saved here:
+{path}</source><translation>OpenWand va se fermer. Le programme de désinstallation supprimera uniquement les fichiers OpenWand indiqués après la fermeture de tous ses processus. Si le nettoyage échoue, les détails seront enregistrés ici :
+{path}</translation></message>
   </context>
 </TS>

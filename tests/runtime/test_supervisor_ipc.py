@@ -1292,11 +1292,12 @@ def test_real_intent_ui_routes_keep_in_openwand_and_rewrite_paste_back(tmp_path,
 
 
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 not installed")
-def test_real_intent_failure_shows_recovery_recommendation_in_reply_bubble(tmp_path, monkeypatch):
-    """A request failure entered through the picker becomes actionable visible UI."""
+def test_real_intent_failure_preserves_message_without_invented_recommendations(tmp_path, monkeypatch):
+    """An unstructured local failure stays visible without invented provider advice."""
     import config
     from runtime.supervisor.flows import FlowController
 
+    monkeypatch.setattr(config, "APP_LANGUAGE", "en")
     monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "openwand")
     monkeypatch.setattr(config, "CHAT_CONVERSATION_OWNER", "openwand")
     monkeypatch.setattr(
@@ -1359,6 +1360,7 @@ def test_real_intent_failure_shows_recovery_recommendation_in_reply_bubble(tmp_p
             "PYTHONPATH": os.pathsep.join([str(repo), str(repo / "runtime" / "brain")]),
             "QT_QPA_PLATFORM": "offscreen",
             "OPENWAND_UI_DEBUG_METHODS": "1",
+            "APP_LANGUAGE": "en",
         },
     )
     native = BoundaryWorker()
@@ -1385,12 +1387,13 @@ def test_real_intent_failure_shows_recovery_recommendation_in_reply_bubble(tmp_p
         bubble = {}
         while time.time() < deadline:
             bubble = ui.call("ui.debug.bubble.snapshot", timeout=10)
-            if "Recommendation:" in bubble.get("text", ""):
+            if "429 rate limit from provider" in bubble.get("text", ""):
                 break
             time.sleep(0.02)
         assert "429 rate limit from provider" in bubble["text"]
-        assert "Recommendation: wait a minute and retry" in bubble["text"]
-        assert "usage limits and billing" in bubble["text"]
+        assert "OpenWand reported an error" in bubble["text"]
+        assert "Recommendation:" not in bubble["text"]
+        assert "billing" not in bubble["text"]
         assert bubble["visible"] is True
     finally:
         ui.shutdown()

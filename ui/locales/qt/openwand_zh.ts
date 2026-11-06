@@ -6807,5 +6807,8 @@ OpenWand 将关闭以完成重置。之后重新打开即可从全新状态开�
     <message><source>OpenWand will now close and remove its saved data and sign-ins. If cleanup cannot finish, an error will be shown and saved here:
 {path}</source><translation>OpenWand 现在将关闭并删除保存的数据和登录信息。如无法完成清理，将显示错误并保存在此处：
 {path}</translation></message>
+    <message><source>OpenWand will now close. The uninstaller will remove only the listed OpenWand-owned files after all OpenWand processes exit. If cleanup cannot finish, details will be saved here:
+{path}</source><translation>OpenWand 现在将关闭。所有 OpenWand 进程退出后，卸载程序只会删除列出的 OpenWand 专用文件。如无法完成清理，详细信息将保存在此处：
+{path}</translation></message>
   </context>
 </TS>

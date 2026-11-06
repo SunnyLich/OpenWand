@@ -10,6 +10,10 @@ Full journey drivers and fake services are excluded from production bundles.
 Set `OPENWAND_BUILD_JOURNEYS=1` only while building a test executable for the
 `--packaged` runner. The source runner needs no special build flag.
 
+On macOS the isolated child opts into OpenAI-compatible SDK tools and streaming
+against the local HTTP fixture. Native audio and background safe-mode safeguards
+remain enabled; this does not validate the default macOS tool-disable policy.
+
 The provider is an explicit HTTP fixture, credentials use a disposable keyring
 backend, and external desktop input is synthetic. OAuth cache paths are isolated
 too. An external browser fixture tests declined, mismatched-state and incomplete

@@ -96,6 +96,10 @@ def run(output: Path, *, timeout=300, executable=None, break_response=False, deb
                     "OPENWAND_SETTINGS_ENV_PATH": str(settings),
                     "OPENWAND_DATA_ROOT": str(state / "data"), "OPENWAND_USER_DATA_DIR": str(state / "user-data"),
                     "OPENWAND_ADDONS_DIR": str(state / "addons"), "OPENWAND_MACOS_SAFE_MODE": "1",
+                    # Exercise SDK tools/streaming against the local HTTP fixture;
+                    # keep native audio and background-process safeguards enabled.
+                    "OPENWAND_MACOS_ENABLE_OPENAI_TOOLS": "1",
+                    "OPENWAND_MACOS_OPENAI_COMPAT_STREAMING": "1",
                     "OPENWAND_USER_JOURNEYS": "1", "OPENWAND_E2E_PHASE": phase,
                     "OPENWAND_E2E_STATE": str(state), "OPENWAND_E2E_OUTPUT": str(output),
                     "OPENWAND_E2E_PROVIDER_URL": provider.url,
