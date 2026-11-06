@@ -25,8 +25,11 @@ Partner Center requires a direct HTTPS URL without redirects. GitHub Release URL
 redirect, so the Pages deployment stages the exact signed release installer using
 `downloads.json`, checking its pinned SHA256 and size before deploying.
 
-Current Store package URL:
-`https://sunnylich.github.io/OpenWand/downloads/v0.12.2/OpenWand-v0.12.2-windows-x64-setup.exe`
+Latest prepared Store package URL:
+`https://sunnylich.github.io/OpenWand/downloads/v0.12.3/OpenWand-v0.12.3-windows-x64-setup.exe`
+
+This records the prepared installer URL; certification and Store publication
+status must be checked in Partner Center.
 
 Keep submitted version entries and their bytes unchanged while Store submissions
 use them. A new installer requires a new versioned path. Pages has a 1 GB site
