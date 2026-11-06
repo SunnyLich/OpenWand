@@ -79,6 +79,21 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'The in-app uninstall plan could not resolve Inno registration.' }
     & $Python scripts/run_launcher_smoke.py --kind packaged --executable $InstalledExe --timeout 240
     if ($LASTEXITCODE -ne 0) { throw 'Installed OpenWand did not reach launcher readiness.' }
+
+    # Exercise the actual frozen entry point, which does not accept CPython -c.
+    $CheckSource = Join-Path $Root 'must-not-execute.py'
+    Set-Content -LiteralPath $CheckSource -Value "raise RuntimeError('Syntax validation must never execute this file')"
+    $CheckProcess = Start-Process -FilePath $InstalledExe -ArgumentList @(
+        '-m', 'runtime.workers.workspace_check', 'python_syntax', "`"$CheckSource`""
+    ) -PassThru -Wait -WindowStyle Hidden
+    if ($CheckProcess.ExitCode -ne 0 -or (Test-Path -LiteralPath (Join-Path $Root '__pycache__'))) {
+        throw 'The installed syntax-check worker failed or wrote bytecode into the workspace.'
+    }
+    Set-Content -LiteralPath $CheckSource -Value 'def broken(:'
+    $InvalidCheck = Start-Process -FilePath $InstalledExe -ArgumentList @(
+        '-m', 'runtime.workers.workspace_check', 'python_syntax', "`"$CheckSource`""
+    ) -PassThru -Wait -WindowStyle Hidden
+    if ($InvalidCheck.ExitCode -ne 1) { throw 'Invalid syntax did not produce a controlled worker failure.' }
 } finally {
     if ($Uninstaller -and (Test-Path -LiteralPath $Uninstaller -PathType Leaf)) {
         $Process = Start-Process -FilePath $Uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -PassThru -Wait -WindowStyle Hidden

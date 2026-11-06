@@ -277,6 +277,10 @@ class LimitedWorkspaceRunner:
         return False
 
     def _build_command(self, check: LimitedCheck, paths: tuple[Path, ...]) -> list[str] | None:
+        if getattr(sys, "frozen", False) and check in {LimitedCheck.PYTHON_SYNTAX, LimitedCheck.JSON}:
+            # The packaged executable implements -m workers, not CPython's
+            # -I/-S/-B/-c options. Keep checks in a fixed, read-only worker.
+            return [sys.executable, "-m", "runtime.workers.workspace_check", check.value, *(str(path) for path in paths)]
         if check is LimitedCheck.PYTHON_SYNTAX:
             # -B does not prevent py_compile from explicitly writing .pyc files.
             # Those files became workspace changes and stole the preview focus.
