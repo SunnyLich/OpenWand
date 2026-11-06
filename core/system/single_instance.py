@@ -9,7 +9,9 @@ run (`python -m runtime.supervisor.app`) and an installed build contend for the 
 """
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
 import sys
 
 from core.system.paths import SINGLE_INSTANCE_LOCK
@@ -21,15 +23,24 @@ log = logging.getLogger("openwand")
 _lock_handle = None
 _mutex_handle = None
 _WINDOWS_MUTEX_NAME = "Local\\OpenWand.SingleInstance.v2"
+if os.environ.get("OPENWAND_USER_JOURNEYS") == "1":
+    # A disposable acceptance profile has its own real OS mutex. It must not
+    # acquire or release the mutex belonging to the user's installed app.
+    _journey_root = os.environ.get("OPENWAND_E2E_STATE", "")
+    if _journey_root:
+        _WINDOWS_MUTEX_NAME += ".e2e." + hashlib.sha256(_journey_root.encode()).hexdigest()[:20]
 
 
-def acquire() -> bool:
+def acquire(*, lock_file: bool = True) -> bool:
     """Try to become the single running instance.
 
     Returns True if this process now holds the lock (it is the only instance),
     or False if another OpenWand instance already holds it or exclusivity cannot be
     proven. The guard fails closed: starting no OpenWand is safer than starting two
     supervisors with competing global hotkeys and UI workers.
+
+    On Windows, ``lock_file=False`` keeps only the authoritative kernel mutex
+    so uninstall cleanup can delete the data directory without locking a file in it.
     """
     try:
         SINGLE_INSTANCE_LOCK.parent.mkdir(parents=True, exist_ok=True)
@@ -39,14 +50,14 @@ def acquire() -> bool:
 
     try:
         if sys.platform == "win32":
-            return _acquire_windows()
+            return _acquire_windows(lock_file=lock_file)
         return _acquire_posix()
     except Exception:  # noqa: BLE001 - an uncertain guard must never permit a second instance
         log.exception("Could not establish the OpenWand single-instance guard; refusing startup.")
         return False
 
 
-def _acquire_windows() -> bool:
+def _acquire_windows(*, lock_file: bool = True) -> bool:
     """Handle acquire windows for system single instance."""
     global _lock_handle, _mutex_handle
     import ctypes
@@ -68,6 +79,12 @@ def _acquire_windows() -> bool:
     elif ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
         kernel32.CloseHandle(mutex)
         return False
+
+    # The native uninstaller must remove the data directory while retaining
+    # the authoritative mutex, without holding its compatibility file open.
+    if not lock_file:
+        _mutex_handle = mutex
+        return True
 
     try:
         fh = open(SINGLE_INSTANCE_LOCK, "a+")

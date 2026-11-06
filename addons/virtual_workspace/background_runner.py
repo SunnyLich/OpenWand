@@ -4,7 +4,7 @@ This module is *not* a security sandbox.  It avoids executing generated source
 code and does not accept arbitrary commands.  The supported operations only
 parse or compile workspace-owned files:
 
-* Python syntax compilation (``py_compile`` in isolated interpreter mode)
+* Python syntax compilation in memory (isolated interpreter mode, no bytecode files)
 * JavaScript syntax checking (``node --check`` when Node.js is installed)
 * JSON parsing (a fixed isolated-Python helper)
 
@@ -277,14 +277,25 @@ class LimitedWorkspaceRunner:
         return False
 
     def _build_command(self, check: LimitedCheck, paths: tuple[Path, ...]) -> list[str] | None:
+        if getattr(sys, "frozen", False) and check in {LimitedCheck.PYTHON_SYNTAX, LimitedCheck.JSON}:
+            # The packaged executable implements -m workers, not CPython's
+            # -I/-S/-B/-c options. Keep checks in a fixed, read-only worker.
+            return [sys.executable, "-m", "runtime.workers.workspace_check", check.value, *(str(path) for path in paths)]
         if check is LimitedCheck.PYTHON_SYNTAX:
+            # -B does not prevent py_compile from explicitly writing .pyc files.
+            # Those files became workspace changes and stole the preview focus.
+            # Compile in memory without executing code or changing the workspace.
+            helper = (
+                "import sys; from pathlib import Path; "
+                "[compile(Path(p).read_bytes(), p, 'exec', dont_inherit=True) for p in sys.argv[1:]]"
+            )
             return [
                 sys.executable,
                 "-I",
                 "-S",
                 "-B",
-                "-m",
-                "py_compile",
+                "-c",
+                helper,
                 *(str(path) for path in paths),
             ]
         if check is LimitedCheck.JSON:

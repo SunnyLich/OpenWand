@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import os
 import shutil
+import ssl
 import subprocess
 import sys
 import time
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.error import URLError
 
 import pytest
 
@@ -115,6 +117,61 @@ def test_download_update_verifies_sha256(tmp_path: Path) -> None:
 
     assert downloaded.name == "OpenWand-test-linux-x64.tar.gz"
     assert downloaded.read_bytes() == b"openwand update"
+
+
+def test_update_ssl_context_adds_bundled_roots_to_system_trust(monkeypatch) -> None:
+    system_context = ssl.create_default_context()
+    system_roots = set(system_context.get_ca_certs(binary_form=True))
+    bundled_context = ssl.create_default_context(cafile=updater.certifi.where())
+    bundled_roots = set(bundled_context.get_ca_certs(binary_form=True))
+    monkeypatch.setattr(updater.ssl, "create_default_context", lambda: system_context)
+
+    context = updater._update_ssl_context()
+
+    assert system_roots | bundled_roots <= set(context.get_ca_certs(binary_form=True))
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname
+
+
+def test_update_ssl_context_works_without_system_roots(monkeypatch) -> None:
+    empty_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    assert not empty_context.get_ca_certs()
+    monkeypatch.setattr(updater.ssl, "create_default_context", lambda: empty_context)
+
+    context = updater._update_ssl_context()
+
+    assert context.cert_store_stats()["x509_ca"] > 0
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname
+
+
+@pytest.mark.parametrize("operation", ["manifest", "download"])
+def test_update_requests_use_verified_context_and_reject_untrusted_certificates(
+    operation, monkeypatch, tmp_path: Path,
+) -> None:
+    calls = []
+    certificate_error = ssl.SSLCertVerificationError("untrusted test certificate")
+
+    def reject_untrusted(url, *, timeout, context):
+        calls.append((url, timeout))
+        assert isinstance(context, ssl.SSLContext)
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert context.check_hostname
+        assert context.cert_store_stats()["x509_ca"] > 0
+        raise URLError(certificate_error)
+
+    monkeypatch.setattr(updater.urllib.request, "urlopen", reject_untrusted)
+    url = "https://example.invalid/update"
+    with pytest.raises(URLError) as error:
+        if operation == "manifest":
+            updater.fetch_manifest(url, timeout=3.0)
+        else:
+            asset = updater.UpdateAsset("windows-x64", "update.zip", url)
+            updater.download_update(asset, target_dir=tmp_path, timeout=3.0)
+
+    assert error.value.reason is certificate_error
+    assert calls == [(url, 3.0)]
+    assert not list(tmp_path.iterdir())
 
 
 def test_apply_update_rejects_source_checkout(tmp_path: Path) -> None:

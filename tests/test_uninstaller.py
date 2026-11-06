@@ -35,6 +35,7 @@ def test_linux_source_plan_removes_only_exact_openwand_owned_paths(tmp_path):
         path.mkdir(parents=True)
 
     plan = uninstaller.build_uninstall_plan(
+        remove_user_data=True,
         platform="linux",
         frozen=False,
         source_root=source,
@@ -49,8 +50,8 @@ def test_linux_source_plan_removes_only_exact_openwand_owned_paths(tmp_path):
     assert source in targets
     assert data_root in targets
     assert home / ".config" / "wisp" in targets
-    assert owned_model in targets
-    assert owned_lock in targets
+    assert owned_model not in targets  # Shared cache ownership cannot be inferred from a repo name.
+    assert owned_lock not in targets
     assert home / ".config" / "autostart" / "openwand.desktop" in targets
     assert home / ".config" / "autostart" / "wisp.desktop" in targets
     assert home / ".local" / "share" / "applications" / "openwand.desktop" in targets
@@ -70,6 +71,7 @@ def test_packaged_macos_plan_targets_app_bundle_and_launch_agent(tmp_path):
     optional_root = data_root / "python_packages"
 
     plan = uninstaller.build_uninstall_plan(
+        remove_user_data=True,
         platform="darwin",
         frozen=True,
         executable=executable,
@@ -102,6 +104,7 @@ def test_packaged_onedir_plan_targets_only_current_release_root(tmp_path, platfo
     data_root = (home / "AppData" / "Roaming" / "OpenWand") if platform == "win32" else (home / ".config" / "openwand")
 
     plan = uninstaller.build_uninstall_plan(
+        remove_user_data=True,
         platform=platform,
         frozen=True,
         executable=executable,
@@ -246,7 +249,7 @@ def test_keychain_cleanup_removes_consolidated_oauth_and_legacy_accounts(monkeyp
 
     fake_keyring = SimpleNamespace(
         errors=SimpleNamespace(PasswordDeleteError=PasswordDeleteError),
-        get_password=lambda _service, _account: "stored",
+        get_password=lambda service, account: None if (service, account) in deleted else "stored",
         delete_password=lambda service, account: deleted.append((service, account)),
     )
     monkeypatch.setitem(sys.modules, "keyring", fake_keyring)
@@ -317,8 +320,11 @@ def test_uninstall_confirmation_is_yes_no_without_typed_phrase(monkeypatch, tmp_
     )
     answers = iter([QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes])
     launches: list[uninstaller.UninstallPlan] = []
-    monkeypatch.setattr(uninstall_dialog.uninstaller, "build_uninstall_plan", lambda: plan)
-    monkeypatch.setattr(uninstall_dialog.uninstaller, "launch_uninstaller", launches.append)
+    monkeypatch.setattr(uninstall_dialog.uninstaller, "build_uninstall_plan", lambda **_kwargs: plan)
+    monkeypatch.setattr(
+        uninstall_dialog.uninstaller, "launch_uninstaller",
+        lambda plan: launches.append(plan) or uninstaller.UninstallLaunch(tmp_path / "helper", tmp_path / "failures.log"),
+    )
     monkeypatch.setattr(QMessageBox, "exec", lambda _self: next(answers))
     monkeypatch.setattr(QMessageBox, "information", lambda *args: None)
     monkeypatch.setattr(QTimer, "singleShot", lambda *args: None)
@@ -375,7 +381,7 @@ def test_uninstall_runtime_failure_matrix_is_controlled_and_leak_free(monkeypatc
     monkeypatch.setattr(QTimer, "singleShot", lambda *_args: None)
 
     for plan in plans:
-        monkeypatch.setattr(uninstall_dialog.uninstaller, "build_uninstall_plan", lambda p=plan: p)
+        monkeypatch.setattr(uninstall_dialog.uninstaller, "build_uninstall_plan", lambda p=plan, **_kwargs: p)
         for failure in failures:
             monkeypatch.setattr(
                 updater,
@@ -421,3 +427,353 @@ def test_uninstall_renderers_retry_missing_locked_and_partial_targets(tmp_path):
             assert "rm -f -- \"$0\"" in script
         for target in targets:
             assert str(target) in script
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux", "darwin"])
+def test_default_uninstall_preserves_saved_data_models_and_credentials(monkeypatch, tmp_path, platform):
+    from core import updater
+
+    home = tmp_path / "home"
+    source = _source_checkout(tmp_path / "checkout" / "OpenWand")
+    data = home / "data" / "OpenWand"
+    optional = data / "python_packages"
+    model = home / ".cache" / "huggingface" / "hub" / "models--hexgrad--Kokoro-82M"
+    model.mkdir(parents=True)
+    plan = uninstaller.build_uninstall_plan(
+        platform=platform, frozen=False, source_root=source, user_data_root=data,
+        optional_packages_root=optional, home=home, environ={},
+    )
+    assert plan.remove_user_data is False
+    assert source in plan.targets
+    for kept in (data, optional, model, data.with_name("Wisp" if platform != "linux" else "wisp")):
+        assert not any(kept == target or kept.is_relative_to(target) for target in plan.targets)
+    monkeypatch.setattr(
+        uninstaller, "remove_openwand_keychain_entries",
+        lambda: pytest.fail("Keeping settings must not delete saved credentials"),
+    )
+    monkeypatch.setattr(uninstaller.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(updater, "launch_detached_helper", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(updater, "openwand_wait_pid", lambda _pid=None: 123)
+    launch = uninstaller.launch_uninstaller(plan)
+    script = launch.script_path.read_text(encoding="utf-8")
+    assert str(data) not in script
+    assert str(model) not in script
+
+
+@pytest.mark.parametrize("remove_data", [False, True])
+def test_uninstall_checkbox_controls_preview_plan_and_keychain_cleanup(monkeypatch, tmp_path, remove_data):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication, QMessageBox
+
+    from core import updater
+    from ui import uninstall_dialog
+
+    app = QApplication.instance() or QApplication([])
+    source = _source_checkout(tmp_path / "checkout" / "OpenWand")
+    data = tmp_path / "home" / "data" / "OpenWand"
+    build_plan = uninstaller.build_uninstall_plan
+    monkeypatch.setattr(
+        uninstaller, "build_uninstall_plan",
+        lambda **kwargs: build_plan(
+            platform="win32", frozen=False, source_root=source, user_data_root=data,
+            optional_packages_root=data / "python_packages", home=tmp_path / "home", environ={}, **kwargs,
+        ),
+    )
+    credential_calls = []
+    monkeypatch.setattr(uninstaller, "remove_openwand_keychain_entries", lambda: credential_calls.append(True) or [])
+    monkeypatch.setattr(uninstaller.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(updater, "launch_detached_helper", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(updater, "openwand_wait_pid", lambda _pid=None: 123)
+    monkeypatch.setattr(QMessageBox, "information", lambda *_args: None)
+    monkeypatch.setattr(QTimer, "singleShot", lambda *_args: None)
+
+    def confirm(box):
+        assert not box.checkBox().isChecked()
+        assert "Keep saved settings" in box.informativeText()
+        box.checkBox().setChecked(remove_data)
+        assert (str(data) in box.informativeText().split("Exact paths scheduled for deletion:")[1]) == remove_data
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, "exec", confirm)
+    assert uninstall_dialog.run_uninstall_dialog() is True
+    assert credential_calls == []  # Cleanup is deferred until every worker exits.
+    app.processEvents()
+
+
+def test_native_data_cleanup_removes_only_data_and_keeps_app(monkeypatch, tmp_path):
+    source = _source_checkout(tmp_path / "checkout" / "OpenWand")
+    data = tmp_path / "home" / "data" / "OpenWand"
+    data.mkdir(parents=True)
+    (data / "settings.json").write_text("{}", encoding="utf-8")
+    plan = uninstaller.build_uninstall_plan(
+        remove_user_data=True, platform="win32", frozen=False, source_root=source,
+        user_data_root=data, optional_packages_root=data / "python_packages", home=tmp_path / "home", environ={},
+    )
+    calls = []
+    monkeypatch.setattr(uninstaller, "remove_openwand_keychain_entries", lambda: calls.append(True) or [])
+    uninstaller.remove_user_data_files(plan)
+    assert calls == [True]
+    assert not data.exists()
+    assert (source / "pyproject.toml").exists()
+
+
+def test_native_cleanup_worker_requires_installed_copy_and_exclusive_access(monkeypatch):
+    from core.system import paths, single_instance
+    from runtime.workers import uninstall_openwand
+
+    monkeypatch.setattr(paths, "is_installed_release", lambda: False)
+    monkeypatch.setattr(single_instance, "acquire", lambda **_kwargs: pytest.fail("Not an installed copy"))
+    assert uninstall_openwand._remove_installed_user_data() == 1
+    monkeypatch.setattr(paths, "is_installed_release", lambda: True)
+    monkeypatch.setattr(single_instance, "acquire", lambda **kwargs: False if kwargs == {"lock_file": False} else True)
+    assert uninstall_openwand._remove_installed_user_data() == 2
+
+
+def test_native_cleanup_worker_runs_without_gui_or_recursive_uninstall(monkeypatch, tmp_path):
+    from core.system import paths, single_instance
+    from runtime.workers import uninstall_openwand
+
+    source = _source_checkout(tmp_path / "checkout" / "OpenWand")
+    data = tmp_path / "home" / "data" / "OpenWand"
+    data.mkdir(parents=True)
+    plan = uninstaller.build_uninstall_plan(
+        remove_user_data=True, platform="win32", frozen=False, source_root=source,
+        user_data_root=data, optional_packages_root=data / "python_packages", home=tmp_path / "home", environ={},
+    )
+    monkeypatch.setattr(paths, "is_installed_release", lambda: True)
+    monkeypatch.setattr(single_instance, "acquire", lambda **kwargs: kwargs == {"lock_file": False})
+    monkeypatch.setattr(uninstaller, "build_uninstall_plan", lambda **kwargs: plan if kwargs["remove_user_data"] else None)
+    monkeypatch.setattr(uninstaller, "remove_openwand_keychain_entries", lambda: [])
+    monkeypatch.setattr(uninstaller, "launch_uninstaller", lambda *_args: pytest.fail("Must not recurse into Inno"))
+    monkeypatch.setattr(sys, "argv", ["uninstall_openwand", "--remove-user-data"])
+    assert uninstall_openwand.main() == 0
+    assert not data.exists()
+    assert source.is_dir()
+
+
+def test_native_cleanup_keeps_files_when_credential_cleanup_fails(monkeypatch, tmp_path):
+    source = _source_checkout(tmp_path / "checkout" / "OpenWand")
+    data = tmp_path / "home" / "data" / "OpenWand"
+    data.mkdir(parents=True)
+    plan = uninstaller.build_uninstall_plan(
+        remove_user_data=True, platform="win32", frozen=False, source_root=source,
+        user_data_root=data, optional_packages_root=data / "python_packages", home=tmp_path / "home", environ={},
+    )
+    monkeypatch.setattr(uninstaller, "remove_openwand_keychain_entries", lambda: ["keychain locked"])
+    with pytest.raises(uninstaller.UninstallError, match="keychain locked"):
+        uninstaller.remove_user_data_files(plan)
+    assert data.is_dir()
+    assert source.is_dir()
+
+
+def test_keep_data_refuses_app_folder_containing_settings(tmp_path):
+    source = _source_checkout(tmp_path / "checkout" / "OpenWand")
+    data = source / "saved" / "OpenWand"
+    with pytest.raises(uninstaller.UninstallError, match="Cannot keep settings"):
+        uninstaller.build_uninstall_plan(
+            platform="win32", frozen=False, source_root=source, user_data_root=data,
+            optional_packages_root=data / "python_packages", home=tmp_path / "home", environ={},
+        )
+
+
+def test_factory_reset_removes_owned_state_and_preserves_external_providers(monkeypatch, tmp_path):
+    from core import factory_reset, optional_deps, secret_store
+    from core.system import autostart, paths
+
+    source = tmp_path / 'checkout'
+    data = tmp_path / 'data' / 'OpenWand'
+    legacy = data.with_name('Wisp' if sys.platform != 'linux' else 'wisp')
+    monkeypatch.setattr(paths, 'REPO_ROOT', source)
+    monkeypatch.setattr(paths, 'USER_DATA_DIR', data)
+    monkeypatch.setattr(paths, 'ADDONS_DIR', source / 'addons')
+    monkeypatch.setattr(paths, 'SINGLE_INSTANCE_LOCK', data / 'openwand.lock')
+    monkeypatch.setattr(optional_deps, 'OPTIONAL_PACKAGES_DIR', data / 'python_packages')
+    monkeypatch.setattr(secret_store, '_META_FILE', source / 'private' / '.secret_status.json')
+    # Legacy tokens must also be isolated from the real checkout in this test.
+    monkeypatch.setattr(factory_reset, '__file__', str(source / 'core' / 'factory_reset.py'))
+    tracked = source / 'addons' / 'bundled' / '__init__.py'
+    monkeypatch.setattr(factory_reset, '_tracked_source_files', lambda: frozenset({tracked}))
+    owned = [
+        source / '.env', source / 'settings_profiles' / 'personal.env',
+        source / 'chats' / 'chat.json', source / 'memory' / 'memory.db',
+        source / 'addons' / 'downloaded' / 'addon.toml', source / 'callers' / 'custom.toml',
+        source / 'addon_data' / 'tokens.json', source / 'tools' / 'installed' / 'tool.exe',
+        source / 'core' / 'private' / '.chatgpt_tokens.json',
+        data / 'models' / 'privacy' / 'model.bin', data / 'python_packages' / 'package.py',
+        data / 'logs' / 'app.log', legacy / '.env',
+    ]
+    external = [
+        tmp_path / 'ollama' / 'models' / 'model.bin',
+        tmp_path / '.codex' / 'auth.json', tmp_path / 'browser' / 'cookies',
+        tmp_path / '.cache' / 'huggingface' / 'hub' / 'models--Systran--faster-whisper-base' / 'model.bin',
+        source / 'core' / 'app.py', tracked,
+    ]
+    for file in owned + external:
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text('keep-or-remove', encoding='utf-8')
+    removed = []
+    monkeypatch.setattr(autostart, 'sync_start_on_login', lambda enabled: removed.append(('autostart', enabled)))
+    monkeypatch.setattr(uninstaller, 'remove_openwand_keychain_entries', lambda: removed.append(True) or [])
+    plan = factory_reset.build_reset_plan(settings_path=source / '.env')
+    factory_reset.execute_reset(plan)
+    assert removed == [True, ('autostart', False)]
+    assert all(not file.exists() for file in owned)
+    assert all(file.read_text(encoding='utf-8') == 'keep-or-remove' for file in external)
+    # Installed releases put state and stable user data in the same directory.
+    with monkeypatch.context() as scoped:
+        executable = tmp_path / 'installed' / 'OpenWand' / 'OpenWand.exe'
+        scoped.setattr(sys, 'frozen', True, raising=False)
+        scoped.setattr(sys, 'executable', str(executable))
+        scoped.setattr(paths, 'REPO_ROOT', data)
+        packaged = factory_reset.build_reset_plan(settings_path=data / '.env')
+        assert data in packaged.targets
+        assert executable.parent not in packaged.targets
+        assert executable.parent.with_name('OpenWand.previous-update') in packaged.targets
+
+
+def test_factory_reset_keeps_data_when_keychain_cannot_be_verified(monkeypatch, tmp_path):
+    from core import factory_reset
+
+    target = tmp_path / 'chats.json'
+    target.write_text('personal-data', encoding='utf-8')
+    monkeypatch.setattr(uninstaller, 'remove_openwand_keychain_entries', lambda: ['OAuth keychain locked'])
+    with pytest.raises(uninstaller.UninstallError, match='OAuth keychain locked'):
+        factory_reset.execute_reset(factory_reset.ResetPlan((target,)))
+    assert target.read_text(encoding='utf-8') == 'personal-data'
+
+
+@pytest.mark.parametrize('delete_error', [False, True])
+def test_credential_cleanup_detects_silent_delete_failure(monkeypatch, delete_error):
+    class PasswordDeleteError(Exception):
+        pass
+
+    def delete(*_args):
+        if delete_error:
+            raise PasswordDeleteError('not removed')
+    fake = SimpleNamespace(
+        errors=SimpleNamespace(PasswordDeleteError=PasswordDeleteError),
+        get_password=lambda _service, account: 'token' if account == 'chatgpt-oauth' else None,
+        delete_password=delete,
+    )
+    monkeypatch.setitem(sys.modules, 'keyring', fake)
+    failures = uninstaller.remove_openwand_keychain_entries()
+    assert failures == ['chatgpt-oauth: credential still exists after deletion']
+
+
+def test_factory_reset_worker_waits_for_shutdown_and_requires_exclusive_access(monkeypatch, tmp_path):
+    from core import factory_reset, updater
+    from core.system import single_instance
+    from runtime.workers import factory_reset as worker
+
+    events = []
+    states = iter([True, True, False])
+    monkeypatch.setattr(updater, '_process_exists', lambda _pid: next(states))
+    monkeypatch.setattr(worker.time, 'sleep', lambda _delay: events.append('waiting'))
+    monkeypatch.setattr(single_instance, 'acquire', lambda **kwargs: events.append(('lock', kwargs)) or True)
+    plan = factory_reset.ResetPlan((tmp_path / '.env',))
+    monkeypatch.setattr(factory_reset, 'build_reset_plan', lambda **_kw: plan)
+    monkeypatch.setattr(factory_reset, 'execute_reset', lambda p: events.append(('reset', p)))
+    log = tmp_path / 'helper' / 'failures.log'
+    log.parent.mkdir()
+    assert worker.run(wait_pid=123, settings_path=tmp_path / '.env', log_path=log) == 0
+    assert events == ['waiting', 'waiting', ('lock', {'lock_file': False}), ('reset', plan)]
+    assert not log.parent.exists()
+
+    monkeypatch.setattr(updater, '_process_exists', lambda _pid: False)
+    monkeypatch.setattr(single_instance, 'acquire', lambda **_kw: False)
+    monkeypatch.setattr(factory_reset, 'execute_reset', lambda _p: pytest.fail('Lock was not acquired'))
+    shown = []
+    monkeypatch.setattr(worker, '_show_failure', lambda *args: shown.append(args))
+    log.parent.mkdir()
+    assert worker.run(wait_pid=123, settings_path=tmp_path / '.env', log_path=log) == 1
+    assert 'Another OpenWand process' in log.read_text(encoding='utf-8')
+    assert shown
+
+
+def test_factory_reset_launch_failure_keeps_data_and_removes_helper(monkeypatch, tmp_path):
+    from core import factory_reset, updater
+
+    target = tmp_path / '.env'
+    target.write_text('saved', encoding='utf-8')
+    monkeypatch.setattr(factory_reset, 'build_reset_plan', lambda **_kw: factory_reset.ResetPlan((target,)))
+    monkeypatch.setattr(factory_reset.tempfile, 'gettempdir', lambda: str(tmp_path))
+    monkeypatch.setenv('OPENWAND_SUPERVISOR_PID', '123')
+    launches = []
+    def start(command, **kwargs):
+        launches.append((command, kwargs))
+        Path(command[command.index('--ready-path') + 1]).write_text('ready', encoding='utf-8')
+    monkeypatch.setattr(updater, 'launch_detached_helper', start)
+    log = factory_reset.launch_reset(settings_path=target)
+    assert (log.parent / 'proceed').exists()
+    assert 'OPENWAND_SUPERVISOR_PID' not in launches[0][1]['env']
+    assert target.read_text(encoding='utf-8') == 'saved'
+    (log.parent / 'ready').unlink()
+    (log.parent / 'proceed').unlink()
+    log.parent.rmdir()
+    monkeypatch.setattr(updater, 'launch_detached_helper', lambda *_a, **_kw: (_ for _ in ()).throw(OSError('launch failed')))
+    with pytest.raises(OSError, match='launch failed'):
+        factory_reset.launch_reset(settings_path=target)
+    assert target.read_text(encoding='utf-8') == 'saved'
+    assert not list(tmp_path.glob('openwand-reset-*'))
+    monkeypatch.setattr(updater, 'launch_detached_helper', lambda *_a, **_kw: None)
+    clock = iter([0, 11])
+    monkeypatch.setattr(factory_reset.time, 'monotonic', lambda: next(clock))
+    with pytest.raises(RuntimeError, match='worker did not start'):
+        factory_reset.launch_reset(settings_path=target)
+    assert target.read_text(encoding='utf-8') == 'saved'
+
+
+def test_factory_reset_does_not_follow_directory_links(monkeypatch, tmp_path):
+    import subprocess
+
+    from core import factory_reset
+    from core.system import autostart
+
+    external = tmp_path / 'external-provider'
+    external.mkdir()
+    model = external / 'model.bin'
+    model.write_text('external', encoding='utf-8')
+    link = tmp_path / 'OpenWand-addon-data'
+    if sys.platform == 'win32':
+        subprocess.run(['cmd', '/c', 'mklink', '/J', str(link), str(external)], check=True, capture_output=True)
+    else:
+        link.symlink_to(external, target_is_directory=True)
+    monkeypatch.setattr(uninstaller, 'remove_openwand_keychain_entries', lambda: [])
+    monkeypatch.setattr(autostart, 'sync_start_on_login', lambda _enabled: None)
+    factory_reset.execute_reset(factory_reset.ResetPlan((link,)))
+    assert not link.exists()
+    assert model.read_text(encoding='utf-8') == 'external'
+
+
+def test_factory_reset_reports_partial_cleanup_without_hiding_failures(monkeypatch, tmp_path):
+    from core import factory_reset, updater
+    from core.system import autostart, single_instance
+    from runtime.workers import factory_reset as worker
+
+    locked = tmp_path / 'locked-chats.json'
+    other = tmp_path / 'settings.env'
+    for path in (locked, other):
+        path.write_text('saved', encoding='utf-8')
+    monkeypatch.setattr(uninstaller, 'remove_openwand_keychain_entries', lambda: [])
+    monkeypatch.setattr(autostart, 'sync_start_on_login', lambda _enabled: None)
+    monkeypatch.setattr(updater, '_process_exists', lambda _pid: False)
+    monkeypatch.setattr(single_instance, 'acquire', lambda **_kw: True)
+    monkeypatch.setattr(factory_reset, 'build_reset_plan', lambda **_kw: factory_reset.ResetPlan((locked, other)))
+    remove = factory_reset._remove_target
+    attempts = []
+    def fail_locked(path, protected):
+        if path == locked:
+            attempts.append(path)
+            raise PermissionError('file is locked')
+        return remove(path, protected)
+    monkeypatch.setattr(factory_reset, '_remove_target', fail_locked)
+    monkeypatch.setattr(factory_reset.time, 'sleep', lambda _delay: None)
+    shown = []
+    monkeypatch.setattr(worker, '_show_failure', lambda *args: shown.append(args))
+    log = tmp_path / 'failures.log'
+    assert worker.run(wait_pid=123, settings_path=other, log_path=log) == 1
+    assert len(attempts) == 3
+    assert locked.exists() and not other.exists()
+    assert 'partly complete' in log.read_text(encoding='utf-8')
+    assert 'file is locked' in shown[0][0]

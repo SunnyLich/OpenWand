@@ -32,6 +32,7 @@ def test_python_syntax_check_passes_without_executing_source(tmp_path: Path) -> 
     assert result.summary == "python_syntax check passed"
     assert result.security_notice == SECURITY_NOTICE
     assert not marker.exists()
+    assert not (tmp_path / "__pycache__").exists()
 
 
 def test_python_syntax_check_reports_invalid_file(tmp_path: Path) -> None:
@@ -44,6 +45,37 @@ def test_python_syntax_check_reports_invalid_file(tmp_path: Path) -> None:
     assert result.ok is False
     assert result.returncode
     assert "SyntaxError" in result.stderr
+
+
+@pytest.mark.parametrize("check", [LimitedCheck.PYTHON_SYNTAX, LimitedCheck.JSON])
+def test_frozen_checks_use_the_supported_module_entrypoint(tmp_path: Path, monkeypatch, check: LimitedCheck) -> None:
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    path = tmp_path / ("source.py" if check is LimitedCheck.PYTHON_SYNTAX else "data.json")
+    command = LimitedWorkspaceRunner(tmp_path)._build_command(check, (path,))
+    assert command == [sys.executable, "-m", "runtime.workers.workspace_check", check.value, str(path)]
+
+
+def test_packaged_check_worker_validates_without_executing_or_writing(tmp_path: Path, capsys) -> None:
+    from runtime.workers.workspace_check import main
+
+    source = tmp_path / "source.py"
+    source.write_text("raise RuntimeError('must not execute')\n", encoding="utf-8")
+    assert main(["python_syntax", str(source)]) == 0
+    assert not (tmp_path / "__pycache__").exists()
+    source.write_text("def broken(:\n", encoding="utf-8")
+    assert main(["python_syntax", str(source)]) == 1
+    assert "SyntaxError" in capsys.readouterr().err
+
+
+def test_packaged_json_check_returns_a_controlled_error(tmp_path: Path, capsys) -> None:
+    from runtime.workers.workspace_check import main
+
+    source = tmp_path / "data.json"
+    source.write_text('{"ok": true}', encoding="utf-8")
+    assert main(["json", str(source)]) == 0
+    source.write_text('{"broken": }', encoding="utf-8")
+    assert main(["json", str(source)]) == 1
+    assert "JSONDecodeError" in capsys.readouterr().err
 
 
 def test_json_check_accepts_valid_and_rejects_invalid_data(tmp_path: Path) -> None:

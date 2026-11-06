@@ -1,10 +1,48 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
 
-from scripts import make_release_manifest
+from scripts import make_release_manifest, prepare_store_submission
+
+
+def test_store_submission_uses_actual_bytes_and_preserves_previous_downloads(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    previous = json.loads((root / "packaging/microsoft-store/downloads.json").read_text(encoding="utf-8"))
+    notes = json.loads((root / "docs/releases/0.12.3-store.json").read_text(encoding="utf-8"))
+    before = json.dumps(previous)
+    installer = tmp_path / "OpenWand-v0.12.3-windows-x64-setup.exe"
+    installer.write_bytes(b"signed installer metadata fixture")
+    result = prepare_store_submission.prepare(installer, "0.12.3", previous, notes)
+    assert result["source"]["sha256"] == hashlib.sha256(installer.read_bytes()).hexdigest()
+    assert result["source"]["size"] == installer.stat().st_size
+    assert result["installer_url"].endswith("/downloads/v0.12.3/" + installer.name)
+    assert result["downloads_manifest"]["installers"][:-1] == previous["installers"]
+    assert json.dumps(previous) == before
+    assert set(result["release_notes"]) == {"en", "zhHant", "zh", "es", "fr"}
+
+
+def test_store_submission_refuses_to_change_already_submitted_bytes(tmp_path: Path) -> None:
+    installer = tmp_path / "OpenWand-v0.12.3-windows-x64-setup.exe"
+    installer.write_bytes(b"first installer")
+    notes = {code: "Release notes" for code in prepare_store_submission.LANGUAGES}
+    original = prepare_store_submission.prepare(installer, "0.12.3", {"installers": []}, notes)
+    installer.write_bytes(b"replacement installer")
+    with pytest.raises(ValueError, match="immutable Store download"):
+        prepare_store_submission.prepare(installer, "0.12.3", original["downloads_manifest"], notes)
+
+
+def test_store_submission_refuses_a_misnamed_installer(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="filename"):
+        prepare_store_submission.prepare(tmp_path / "OpenWand-v0.12.2-windows-x64-setup.exe", "0.12.3", {}, {})
+
+
+def test_store_submission_refuses_missing_translations(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="five installer languages"):
+        prepare_store_submission.prepare(tmp_path / "OpenWand-v0.12.3-windows-x64-setup.exe", "0.12.3", {}, {"en": "Notes"})
 
 
 def test_release_manifest_accepts_minor_only_v_tag(tmp_path: Path) -> None:

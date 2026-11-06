@@ -897,17 +897,17 @@
       "interaction_id": "I053",
       "source_function_id": "F050",
       "target_function_id": "F051",
-      "description": "The final model-route outcome determines whether the user sees an answer or a recovery recommendation.",
+      "description": "The final model-route outcome determines whether the user sees an answer or a visible failure message.",
       "source_states": ["primary_success", "fallback_success", "route_failure"],
       "target_states": ["answer_or_recovery_ui"],
       "cases": [
         {"source_state": "primary_success", "target_state": "answer_or_recovery_ui", "expected_result": "The primary answer completes without a recovery notice."},
         {"source_state": "fallback_success", "target_state": "answer_or_recovery_ui", "expected_result": "The first successful configured fallback answer completes without a recovery notice."},
-        {"source_state": "route_failure", "target_state": "answer_or_recovery_ui", "expected_result": "The routed failure is rendered with a concrete retry and provider-limits recommendation."}
+        {"source_state": "route_failure", "target_state": "answer_or_recovery_ui", "expected_result": "The real reply bubble preserves the original failure without invented provider, retry, or billing advice."}
       ],
       "test_node_ids": [
         "tests/test_app_user_workflows.py::test_selected_primary_and_all_configured_fallback_states_run_through_real_brain_query",
-        "tests/runtime/test_supervisor_ipc.py::test_real_intent_failure_shows_recovery_recommendation_in_reply_bubble"
+        "tests/runtime/test_supervisor_ipc.py::test_real_intent_failure_preserves_message_without_invented_recommendations"
       ],
       "status": "accepted"
     },

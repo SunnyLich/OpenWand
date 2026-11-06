@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from core.system.paths import REPO_ROOT
 _STORE_PATH = REPO_ROOT / "addons.json"
 _DATA_DIR_NAME = "addon_data"
 _SETTINGS_FILENAME = "settings.json"
+_WRITE_LOCK = threading.RLock()
 
 
 def store_path() -> Path:
@@ -97,9 +99,10 @@ def is_enabled(addon_id: str, default: bool = True) -> bool:
 
 def set_enabled(addon_id: str, enabled: bool) -> None:
     """Set enabled."""
-    data = _read()
-    _addon(data, addon_id)["enabled"] = bool(enabled)
-    _write(data)
+    with _WRITE_LOCK:
+        data = _read()
+        _addon(data, addon_id)["enabled"] = bool(enabled)
+        _write(data)
 
 
 def get_setting(addon_id: str, key: str, default: Any = None) -> Any:
@@ -116,19 +119,20 @@ def get_setting(addon_id: str, key: str, default: Any = None) -> Any:
 
 def set_setting(addon_id: str, key: str, value: Any) -> None:
     """Set setting."""
-    settings = _read_settings_file(addon_id)
-    settings[str(key)] = value
-    _write_settings_file(addon_id, settings)
+    with _WRITE_LOCK:
+        settings = _read_settings_file(addon_id)
+        settings[str(key)] = value
+        _write_settings_file(addon_id, settings)
 
-    data = _read()
-    item = _addon(data, addon_id)
-    settings = item.setdefault("settings", {})
-    if not isinstance(settings, dict):
-        item["settings"] = settings = {}
-    settings.pop(str(key), None)
-    if not settings:
-        item.pop("settings", None)
-    _write(data)
+        data = _read()
+        item = _addon(data, addon_id)
+        settings = item.setdefault("settings", {})
+        if not isinstance(settings, dict):
+            item["settings"] = settings = {}
+        settings.pop(str(key), None)
+        if not settings:
+            item.pop("settings", None)
+        _write(data)
 
 
 def delete_setting(addon_id: str, key: str) -> None:

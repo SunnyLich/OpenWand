@@ -401,7 +401,26 @@ try {
 }
 
 Stage-PortableUv -Python $Python
-Invoke-CheckedPython -Python $Python -CommandArgs @("-m", "PyInstaller", "--noconfirm", $Spec) -StepName "PyInstaller build"
+# Dependency analysis searches PATH for DLLs. Global tools can supply an
+# incompatible ICU/UCRT ahead of the Windows libraries used by Qt. Restrict
+# discovery to the selected Python installation and Windows for this child.
+$PythonLayout = (& $Python -c "import json, sys; print(json.dumps(dict(executable=sys.executable, prefix=sys.prefix, base_prefix=sys.base_prefix)))") | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) { throw 'Could not determine the build Python installation.' }
+$Python = $PythonLayout.executable
+$OriginalBuildPath = $env:PATH
+try {
+    $env:PATH = (@(
+        (Split-Path -Parent $PythonLayout.executable),
+        (Join-Path $PythonLayout.prefix 'Scripts'),
+        $PythonLayout.base_prefix,
+        (Join-Path $PythonLayout.base_prefix 'DLLs'),
+        (Join-Path $env:SystemRoot 'System32'),
+        $env:SystemRoot
+    ) | Select-Object -Unique) -join [IO.Path]::PathSeparator
+    Invoke-CheckedPython -Python $Python -CommandArgs @("-m", "PyInstaller", "--noconfirm", "--clean", $Spec) -StepName "PyInstaller build"
+} finally {
+    $env:PATH = $OriginalBuildPath
+}
 
 # Seed %APPDATA%\OpenWand\.env with the repo's .env if the user has no settings yet.
 # Settings are stored there so they survive rebuilds and updates.

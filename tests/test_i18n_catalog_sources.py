@@ -8,6 +8,47 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 QT_DIR = ROOT / "ui" / "locales" / "qt"
 LANGUAGES = ("es", "fr", "zh", "zh-Hant")
+
+
+def test_windows_installer_messages_cover_all_five_languages() -> None:
+    directory = ROOT / "packaging" / "windows"
+    source = (directory / "OpenWand.iss").read_text(encoding="utf-8")
+    messages = (directory / "InstallerMessages.iss").read_text(encoding="utf-8")
+    custom_section = messages.split("[CustomMessages]", 1)[1].split("[Messages]", 1)[0]
+    catalogs: dict[str, dict[str, str]] = {}
+    for language, key, text in re.findall(r"^(\w+)\.(\w+)=(.*)$", custom_section, re.MULTILINE):
+        assert key not in catalogs.setdefault(language, {}), (language, key)
+        catalogs[language][key] = text
+    assert set(catalogs) == {"en", "zhHant", "zh", "es", "fr"}
+    used = set(re.findall(r"CustomMessage\('([^']+)'\)", source))
+    assert used == set(catalogs["en"])
+    for language, catalog in catalogs.items():
+        assert set(catalog) == used, language
+        for key, text in catalog.items():
+            assert text.strip(), (language, key)
+            assert sorted(re.findall(r"%[1-9]", text)) == sorted(
+                re.findall(r"%[1-9]", catalogs["en"][key])
+            ), (language, key)
+            if language != "en":
+                assert text != catalogs["en"][key], (language, key)
+
+
+def test_windows_installer_chinese_catalogues_cover_the_same_builtin_messages() -> None:
+    directory = ROOT / "packaging" / "windows" / "languages"
+    catalogs = []
+    for name in ("ChineseSimplified.isl", "ChineseTraditional.isl"):
+        source = (directory / name).read_text(encoding="utf-8-sig")
+        section = source.split("[Messages]", 1)[1].split("[CustomMessages]", 1)[0]
+        catalog = dict(re.findall(r"^(\w+)=(.*)$", section, re.MULTILINE))
+        assert len(catalog) > 250, name
+        catalogs.append(catalog)
+    assert catalogs[0].keys() == catalogs[1].keys()
+    for key in catalogs[0]:
+        assert sorted(re.findall(r"%[1-9]", catalogs[0][key])) == sorted(
+            re.findall(r"%[1-9]", catalogs[1][key])
+        ), key
+
+
 STT_INSTALL_NOTICE_SOURCE = (
     "STT package is not installed. Click Install STT to install and verify it."
 )

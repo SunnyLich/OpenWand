@@ -1,12 +1,38 @@
+import ast
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class BuildScriptTests(unittest.TestCase):
+    def test_journey_tooling_is_opt_in_for_every_platform_bundle(self) -> None:
+        for spec_name in ("OpenWand.spec", "OpenWandLinux.spec", "OpenWandMac.spec"):
+            tree = ast.parse((ROOT / "packaging" / spec_name).read_text(encoding="utf-8"))
+            assignments: list[ast.stmt] = [
+                node for node in tree.body
+                if isinstance(node, ast.Assign)
+                and any(isinstance(target, ast.Name) and target.id in {
+                    "JOURNEY_BUILD", "JOURNEY_HIDDENIMPORTS", "JOURNEY_EXCLUDES"
+                } for target in node.targets)
+            ]
+            for enabled in (False, True):
+                with self.subTest(spec=spec_name, enabled=enabled), patch.dict(
+                    os.environ, {"OPENWAND_BUILD_JOURNEYS": "1" if enabled else "0"}
+                ):
+                    scope: dict[str, Any] = {"os": os}
+                    exec(compile(ast.Module(body=assignments, type_ignores=[]), spec_name, "exec"), scope)
+                    self.assertEqual(scope["JOURNEY_BUILD"], enabled)
+                    self.assertEqual(
+                        "scripts.user_journeys.keyring_backend" in scope["JOURNEY_HIDDENIMPORTS"], enabled
+                    )
+                    self.assertEqual("scripts.user_journeys" in scope["JOURNEY_EXCLUDES"], not enabled)
+
     def test_posix_entrypoints_are_executable_in_git(self) -> None:
         scripts = [
             "Start OpenWand.sh",

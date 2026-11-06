@@ -20,6 +20,35 @@ def _chunks(events):
     return [data["text"] for event, data in events if event == "reply.chunk"]
 
 
+@pytest.mark.parametrize("method", ["brain.chat", "brain.query"])
+def test_live_model_text_reaches_ui_before_provider_completion(method, record_ctx, monkeypatch):
+    """The synchronous tool adapter must publish an early preview, then one final answer."""
+    import config
+    from core.llm_clients import client as llm
+
+    monkeypatch.delenv("OPENWAND_BRAIN_FAKE_LLM", raising=False)
+    monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", False)
+    monkeypatch.setattr(handlers, "_can_stream_addon_response", lambda: True)
+    monkeypatch.setattr(handlers, "_apply_addon_before_query", lambda built: built)
+    events, ctx = record_ctx()
+
+    def stream(*_args, **_kwargs):
+        llm._emit_live_progress(llm.StreamTextChunk("hel", kind="preview"))
+        assert ("reply.preview", {"text": "hel"}) in events
+        llm._emit_live_progress(llm.StreamTextChunk("hello", kind="preview"))
+        yield "hello"
+
+    monkeypatch.setattr(llm, "stream_response", stream)
+    monkeypatch.setattr(llm, "stream_response_with_history", stream)
+    params = {"messages": [{"role": "user", "content": "hello"}]} if method == "brain.chat" else {"intent_prompt": "hello"}
+    result = handlers.HANDLERS[method](ctx, memory_enabled=False, **params)
+    assert result["text"] == "hello"
+    assert _chunks(events) == ["hello"]
+    count = len(events)
+    llm._emit_live_progress("late activity")
+    assert len(events) == count
+
+
 def test_chat_is_registered_as_streaming():
     """Verify chat is registered as streaming behavior."""
     assert "brain.chat" in handlers.HANDLERS

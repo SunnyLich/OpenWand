@@ -907,18 +907,18 @@
       "function_id": "F051",
       "function": "Show a useful error/recovery recommendation when a request fails.",
       "acceptance_status": "real_entry_accepted",
-      "production_entry_point": "real IntentOverlay request -> FlowController query error -> error recommendation -> real reply bubble",
+      "production_entry_point": "real IntentOverlay request -> FlowController local-error formatting -> real reply bubble",
       "test_node_ids": [
-        "tests/runtime/test_supervisor_ipc.py::test_real_intent_failure_shows_recovery_recommendation_in_reply_bubble"
+        "tests/runtime/test_supervisor_ipc.py::test_real_intent_failure_preserves_message_without_invented_recommendations"
       ],
       "success_assertions": [
-        "A rate-limit failure is visibly rendered with the retry, usage-limit, and billing recommendation."
+        "The original unstructured failure is visible and labelled as a local error, without invented provider, retry, or billing advice."
       ],
       "dependency_status": "audited",
       "interaction_ids": [
         "I053"
       ],
-      "audit_note": "The deterministic failure is injected at the provider/brain boundary; user entry, controller formatting, UI IPC, and bubble rendering are real."
+      "audit_note": "An unstructured local exception is injected at the brain boundary; user entry, literal error formatting, UI IPC, and bubble rendering are real."
     },
     {
       "function_id": "F052",
@@ -7198,7 +7198,7 @@
       "production_entry_point": "Visible Browse button -> QFileDialog selection -> resolve_scope_folder -> AgentTaskSpec.scope_folder",
       "test_node_ids": [
         "tests/test_agent_task_workflows.py::test_agent_tray_setup_copy_preview_and_submit_real_workflow",
-        "tests/test_agent_runner.py::AgentRunnerTests::test_toolbox_create_patch_and_read_are_scoped_and_logged"
+        "tests/test_agent_runner.py::AgentToolboxTests::test_toolbox_create_patch_and_read_are_scoped_and_logged"
       ],
       "success_assertions": [
         "The selected temporary folder is resolved into the submitted spec and all real workspace operations remain inside it."

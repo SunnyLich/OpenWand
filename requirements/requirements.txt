@@ -40,6 +40,7 @@ pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"   # macOS frontmost-app d
 psutil>=6.0.0             # process name / exe path lookup (context fetcher)
 watchdog>=4.0.0           # file system event watcher (context fetcher)
 requests>=2.32.0          # browser page fetching (context fetcher)
+certifi>=2026.6.17        # bundled public CA roots for verified update checks/downloads
 beautifulsoup4>=4.12.0    # HTML-to-text extraction (context fetcher)
 ddgs==9.16.1             # key-free search across public engines (same library as Open WebUI)
 firecrawl-anydoc>=0.1.6,<0.2  # fast local Office/OpenDocument/RTF/EPUB/CSV/PDF-to-Markdown parser

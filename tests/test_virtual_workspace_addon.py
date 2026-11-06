@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import socket
 import time
 from pathlib import Path
 from urllib.error import HTTPError
@@ -37,6 +38,22 @@ def _activity_summaries(window) -> list[str]:  # noqa: ANN001
         for activity_id in window._activity.ids
         if (item := window._activity.item(activity_id)) is not None
     ]
+
+
+def test_workspace_loopback_start_does_not_require_hostname_resolution(tmp_path: Path, monkeypatch) -> None:
+    def unavailable_hostname_lookup(*_args, **_kwargs):
+        raise AssertionError("Loopback-only workspace must not depend on DNS")
+
+    monkeypatch.setattr(socket, "getfqdn", unavailable_hostname_lookup)
+    controller = WorkspaceController()
+    controller.configure(tmp_path / "addon-data")
+    try:
+        controller.start()
+        base, headers = _authorization(controller.viewer_url)
+        state = _json_request(f"{base}/api/state", headers)
+        assert state["status"] == "running"
+    finally:
+        controller.stop()
 
 
 @pytest.fixture
@@ -382,6 +399,7 @@ def test_authenticated_background_check_validates_without_running_code(
     assert result["check"] == "python_syntax"
     assert "passed" in result["summary"]
     assert not marker.exists()
+    assert not (scope / "__pycache__").exists()
 
 
 def test_activity_is_journaled_to_disk_instead_of_disappearing(
@@ -454,6 +472,18 @@ def test_workspace_renders_in_a_native_openwand_window(workspace: WorkspaceContr
         app.processEvents()
         assert window._desktop.pointer.isVisible()
         assert window._desktop.pointer.mode == "text"
+
+        window._start.click()
+        assert "Describe what OpenWand should do first" in window._notice.text()
+        before_refresh = window._last_state
+        window.refresh()
+        deadline = time.monotonic() + 3.0
+        while window._last_state is before_refresh and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.01)
+        assert window._last_state is not before_refresh
+        assert "Describe what OpenWand should do first" in window._notice.text()
+        assert not started
 
         window._task.setPlainText("Create a visual notes folder")
         window._start.click()
@@ -883,7 +913,10 @@ def test_native_window_renders_rich_files_and_reports_background_checks(
     try:
         window.show()
         deadline = time.monotonic() + 4.0
-        while not window._last_state and time.monotonic() < deadline:
+        while (
+            (not window._last_state or window._pending_file is not None or window._queued_file_request is not None)
+            and time.monotonic() < deadline
+        ):
             app.processEvents()
             time.sleep(0.01)
 
@@ -901,6 +934,8 @@ def test_native_window_renders_rich_files_and_reports_background_checks(
                 (
                     window._desktop._preview.active_path != path
                     or window._desktop._preview.active_kind != ("text" if text_rich_kind else expected)
+                    or window._pending_file is not None
+                    or window._queued_file_request is not None
                 )
                 and time.monotonic() < deadline
             ):
@@ -909,7 +944,16 @@ def test_native_window_renders_rich_files_and_reports_background_checks(
             if text_rich_kind:
                 window._desktop._show_preview_mode()
                 app.processEvents()
-            assert window._desktop._preview.active_kind == expected
+            preview = window._desktop._preview
+            assert preview.active_kind == expected and preview.active_path == path, {
+                "requested": path,
+                "shown_path": preview.active_path,
+                "shown_kind": preview.active_kind,
+                "pending_path": window._pending_file_path,
+                "queued": window._queued_file_request,
+                "notice": window._notice.text(),
+                "fallback": preview.fallback_view.toPlainText(),
+            }
 
         window._request_file("valid.py")
         deadline = time.monotonic() + 5.0

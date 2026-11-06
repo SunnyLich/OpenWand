@@ -19,14 +19,6 @@ class UninstallError(RuntimeError):
     """Raised when a safe uninstall plan cannot be created or launched."""
 
 
-_OPENWAND_MODEL_CACHE_NAMES = {
-    "models--hexgrad--Kokoro-82M",
-    "models--Systran--faster-whisper-tiny",
-    "models--Systran--faster-whisper-base",
-    "models--Systran--faster-whisper-small",
-    "models--Systran--faster-whisper-medium",
-    "models--Systran--faster-whisper-large-v3",
-}
 _KEYRING_SERVICE = "python-ai-overlay"
 _CHATGPT_KEYRING_CHUNKS = tuple(f"chatgpt-oauth-chunk-{index}" for index in range(32))
 _KEYRING_ACCOUNTS = (
@@ -48,6 +40,7 @@ class UninstallPlan:
     user_data_root: Path
     targets: tuple[Path, ...]
     registered_uninstaller: Path | None = None
+    remove_user_data: bool = False
 
 
 @dataclass(frozen=True)
@@ -90,29 +83,6 @@ def _validate_source_root(root: Path) -> None:
     missing = [str(path) for path in required if not path.is_file()]
     if missing:
         raise UninstallError("Refusing to remove an unrecognized source directory: " + ", ".join(missing))
-
-
-def _huggingface_hub_root(environ: Mapping[str, str], home: Path) -> Path:
-    if value := str(environ.get("HF_HUB_CACHE") or "").strip():
-        return _absolute(value)
-    if value := str(environ.get("HF_HOME") or "").strip():
-        return _absolute(Path(value) / "hub")
-    if value := str(environ.get("XDG_CACHE_HOME") or "").strip():
-        return _absolute(Path(value) / "huggingface" / "hub")
-    return _absolute(home / ".cache" / "huggingface" / "hub")
-
-
-def _model_cache_targets(hub_root: Path) -> list[Path]:
-    """Return exact OpenWand speech repositories without touching shared cache data."""
-    targets: list[Path] = []
-    for name in sorted(_OPENWAND_MODEL_CACHE_NAMES):
-        repo = hub_root / name
-        if repo.exists() or repo.is_symlink():
-            targets.append(repo)
-        lock_repo = hub_root / ".locks" / name
-        if lock_repo.exists() or lock_repo.is_symlink():
-            targets.append(lock_repo)
-    return targets
 
 
 def _integration_targets(platform: str, home: Path, environ: Mapping[str, str]) -> list[Path]:
@@ -171,6 +141,7 @@ def _registered_windows_uninstaller(app_root: Path) -> Path:
 
 def build_uninstall_plan(
     *,
+    remove_user_data: bool = False,
     platform: str | None = None,
     frozen: bool | None = None,
     executable: Path | str | None = None,
@@ -208,14 +179,20 @@ def build_uninstall_plan(
         )
 
     env = dict(os.environ if environ is None else environ)
-    hub_root = _huggingface_hub_root(env, home_path)
     optional_root = _absolute(optional_packages_root or optional_deps.OPTIONAL_PACKAGES_DIR)
     _assert_safe_root(optional_root, label="OpenWand optional-package root", home=home_path)
     if not optional_root.is_relative_to(data_root) and optional_root.name != "python_packages":
         raise UninstallError(f"Refusing to remove an unexpected optional-package directory: {optional_root}")
-    targets = [app_root, data_root, optional_root]
-    targets.append(data_root.with_name("Wisp" if platform in {"win32", "darwin"} else "wisp"))
-    targets.extend(_model_cache_targets(hub_root))
+    if not remove_user_data and data_root.is_relative_to(app_root):
+        raise UninstallError("Cannot keep settings stored inside the application folder being removed.")
+    if not remove_user_data and any((app_root / name).exists() for name in (".env", "chats", "settings_profiles")):
+        raise UninstallError("Cannot keep settings stored inside the application folder being removed.")
+    targets = [app_root]
+    if remove_user_data:
+        targets.extend([data_root, optional_root])
+        targets.append(data_root.with_name("Wisp" if platform in {"win32", "darwin"} else "wisp"))
+        # A repository name in the shared HF cache is not proof of ownership.
+        # Models below data_root are owned by OpenWand and already included.
     targets.extend(_integration_targets(platform, home_path, env))
     if frozen:
         targets.append(app_root.with_name(f"{app_root.name}.previous-update"))
@@ -231,6 +208,7 @@ def build_uninstall_plan(
         user_data_root=data_root,
         targets=_collapse_targets(targets, platform=platform),
         registered_uninstaller=registered_uninstaller,
+        remove_user_data=remove_user_data,
     )
 
 
@@ -243,20 +221,52 @@ def remove_openwand_keychain_entries() -> list[str]:
     failures: list[str] = []
     try:
         import keyring  # type: ignore
-    except Exception as exc:  # No keyring means OpenWand could only have used local fallback files.
-        return [f"keyring unavailable: {exc}"] if any(secret_store.configured_marker(name) for name in secret_store.API_KEY_NAMES) else []
+    except Exception as exc:
+        # OAuth entries may exist without any API-key configured marker.
+        return [f"keyring unavailable: {exc}"]
 
     with keychain_lock():
         for account in accounts:
             try:
                 if keyring.get_password(_KEYRING_SERVICE, account) is not None:
-                    keyring.delete_password(_KEYRING_SERVICE, account)
-            except keyring.errors.PasswordDeleteError:
-                continue
+                    try:
+                        keyring.delete_password(_KEYRING_SERVICE, account)
+                    except keyring.errors.PasswordDeleteError:
+                        pass  # A concurrent delete is fine only if read-back is empty.
+                    if keyring.get_password(_KEYRING_SERVICE, account) is not None:
+                        failures.append(f"{account}: credential still exists after deletion")
             except Exception as exc:  # noqa: BLE001 - all failures are shown before uninstall proceeds
                 failures.append(f"{account}: {type(exc).__name__}: {exc}")
     secret_store.refresh_cache()
     return failures
+
+
+def remove_user_data_files(plan: UninstallPlan) -> None:
+    """Clean saved data before Inno removes the executable needed for cleanup."""
+    if not plan.remove_user_data:
+        raise UninstallError("User-data removal was not selected.")
+    app_targets = {plan.app_root, plan.app_root.with_name(f"{plan.app_root.name}.previous-update")}
+    targets = [target for target in plan.targets if target not in app_targets]
+    if plan.user_data_root not in targets or any(
+        target.is_relative_to(plan.app_root) or plan.app_root.is_relative_to(target)
+        for target in targets
+    ):
+        raise UninstallError("Cannot remove user data that overlaps the application folder.")
+    failures = remove_openwand_keychain_entries()
+    if failures:
+        raise UninstallError("Could not remove OpenWand credentials: " + "; ".join(failures))
+    for target in targets:
+        try:
+            if target.is_symlink():
+                target.unlink()
+            elif target.is_dir():
+                shutil.rmtree(target)
+            elif target.exists():
+                target.unlink()
+        except OSError as exc:
+            failures.append(f"{target}: {exc}")
+    if failures:
+        raise UninstallError("Could not remove OpenWand user data: " + "; ".join(failures))
 
 
 def _quoted_ps(value: str) -> str:
@@ -271,6 +281,20 @@ def render_windows_uninstall_script(plan: UninstallPlan, *, wait_pid: int, log_p
     """Render the detached Windows remover using literal, prevalidated targets."""
     target_lines = "\n".join(f"    {_quoted_ps(str(path))}" for path in plan.targets)
     registered = _quoted_ps(str(plan.registered_uninstaller)) if plan.registered_uninstaller else "$null"
+    cleanup = ""
+    if plan.remove_user_data:
+        command = ", ".join(_quoted_ps(arg) for arg in _credential_cleanup_command())
+        cleanup = f'''
+Push-Location -LiteralPath {_quoted_ps(str(plan.app_root))}
+try {{
+    $cleanupCommand = @({command})
+    & $cleanupCommand[0] $cleanupCommand[1..($cleanupCommand.Length - 1)] 2>> $logPath
+    if ($LASTEXITCODE -ne 0) {{ throw 'Could not remove OpenWand credentials; files were kept.' }}
+}} catch {{
+    Write-UninstallLog $_.Exception.Message
+    exit 1
+}} finally {{ Pop-Location }}
+'''
     return f'''$ErrorActionPreference = "Continue"
 $waitPid = {int(wait_pid)}
 $logPath = {_quoted_ps(str(log_path))}
@@ -286,13 +310,14 @@ function Write-UninstallLog([string]$Message) {{
 }}
 while (Get-Process -Id $waitPid -ErrorAction SilentlyContinue) {{ Start-Sleep -Milliseconds 500 }}
 Start-Sleep -Seconds 1
+{cleanup}
 if ($registeredUninstaller) {{
     if (-not (Test-Path -LiteralPath $registeredUninstaller -PathType Leaf)) {{
         Write-UninstallLog 'The registered OpenWand uninstaller is missing.'
         exit 1
     }}
     try {{
-        $process = Start-Process -FilePath $registeredUninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -PassThru -Wait -WindowStyle Hidden -ErrorAction Stop
+        $process = Start-Process -FilePath $registeredUninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/KEEPUSERDATA') -PassThru -Wait -WindowStyle Hidden -ErrorAction Stop
         if ($process.ExitCode -ne 0) {{ throw "Windows uninstaller exited with code $($process.ExitCode)." }}
         for ($attempt = 0; $attempt -lt 30 -and (Test-Path -LiteralPath $uninstallKey); $attempt++) {{
             Start-Sleep -Milliseconds 500
@@ -332,12 +357,22 @@ if ($failures.Count -eq 0) {{ Remove-Item -LiteralPath $helperRoot -Force -Error
 def render_posix_uninstall_script(plan: UninstallPlan, *, wait_pid: int, log_path: Path) -> str:
     """Render the detached macOS/Linux remover using literal targets."""
     targets = " ".join(_quoted_sh(str(path)) for path in plan.targets)
+    cleanup = ""
+    if plan.remove_user_data:
+        command = " ".join(_quoted_sh(arg) for arg in _credential_cleanup_command())
+        cleanup = f'''
+if ! (cd {_quoted_sh(str(plan.app_root))} && {command}) 2>>"$log_path"; then
+    printf '%s\\n' 'Could not remove OpenWand credentials; files were kept.' >>"$log_path"
+    exit 1
+fi
+'''
     return f'''#!/bin/sh
 wait_pid={int(wait_pid)}
 log_path={_quoted_sh(str(log_path))}
 helper_dir=$(dirname -- "$0")
 while kill -0 "$wait_pid" 2>/dev/null; do sleep 1; done
 sleep 1
+{cleanup}
 failed=0
 for target in {targets}; do
     if [ -e "$target" ] || [ -L "$target" ]; then
@@ -353,13 +388,13 @@ if [ "$failed" -eq 0 ]; then rmdir -- "$helper_dir" 2>/dev/null || true; fi
 '''
 
 
+def _credential_cleanup_command() -> list[str]:
+    return [sys.executable, "-m", "runtime.workers.uninstall_openwand", "--clear-credentials"]
+
+
 def launch_uninstaller(plan: UninstallPlan, *, wait_pid: int | None = None) -> UninstallLaunch:
     """Remove OpenWand credentials and launch a native helper that survives self-removal."""
     from core import updater
-
-    credential_failures = remove_openwand_keychain_entries()
-    if credential_failures:
-        raise UninstallError("Could not remove OpenWand credentials: " + "; ".join(credential_failures))
 
     helper_root = Path(tempfile.gettempdir()) / f"openwand-uninstall-{uuid.uuid4().hex}"
     helper_created = False
@@ -390,7 +425,10 @@ def launch_uninstaller(plan: UninstallPlan, *, wait_pid: int | None = None) -> U
             )
             script_path.chmod(script_path.stat().st_mode | stat.S_IXUSR)
             command = [str(script_path)]
-        updater.launch_detached_helper(command, cwd=helper_root)
+        env = dict(os.environ)
+        for key in ("OPENWAND_SUPERVISOR_PID", "OPENWAND_SUPERVISOR_CREATE_TIME"):
+            env.pop(key, None)
+        updater.launch_detached_helper(command, cwd=helper_root, env=env)
         return UninstallLaunch(script_path=script_path, failure_log_path=log_path)
     except Exception:
         # A helper that never launched cannot remove itself.  Do not leave its

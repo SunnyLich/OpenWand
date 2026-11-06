@@ -2305,6 +2305,7 @@ def brain_query(
         f"tools={bool(use_tools)} file_access={file_access_mode or 'off'}"
     )
     first_chunk_seen = False
+    stream_answer = _can_stream_addon_response()
     for chunk in _stream_query_reply(
         built,
         memory_context,
@@ -2332,9 +2333,9 @@ def brain_query(
         is_progress = kind == "progress"
         is_thought = kind == "thought"
         if not (is_progress or is_thought):
-            # Buffer answer text so OpenWand/default transforms and addons can
-            # finalize it before the UI sees any assistant content.
             parts.append(text)
+            if stream_answer:
+                ctx.emit("reply.preview", {"text": "".join(parts)})
             continue
         ctx.emit("reply.chunk", {"text": text, "is_progress": is_progress, "is_thought": is_thought})
 
@@ -2418,6 +2419,35 @@ def _notify_addon_after_response(text: str) -> None:
         _loaded_addon_manager(Path(ADDONS_DIR)).after_response(text)
     except Exception as exc:  # noqa: BLE001 - addon hooks should not block answering
         _log(f"addon after_response skipped: {type(exc).__name__}: {exc}")
+
+
+def _can_stream_addon_response() -> bool:
+    """Keep whole-response filters authoritative while allowing ordinary streaming."""
+    try:
+        from core.system.paths import ADDONS_DIR
+
+        manager = _loaded_addon_manager(Path(ADDONS_DIR))
+        check = getattr(manager, "has_response_transforms", None)
+        # Legacy managers exposing transforms may require complete input too.
+        return not check() if callable(check) else not hasattr(manager, "transform_response_text")
+    except Exception:
+        return False
+
+
+def _model_progress_callback(ctx: StreamContext | None, privacy_session: Any = None):
+    def report(text):
+        if ctx is None or ctx.cancelled:
+            return
+        preview = getattr(text, "kind", "") == "preview"
+        if preview and not _can_stream_addon_response():
+            return
+        visible = privacy_session.restore(str(text)) if privacy_session is not None else str(text)
+        if preview:
+            ctx.emit("reply.preview", {"text": visible})
+        else:
+            ctx.emit("reply.chunk", {"text": visible, "is_progress": True, "is_thought": False})
+
+    return report
 
 
 def _transform_addon_response_text(text: str, *, surface: str) -> str:
@@ -2526,6 +2556,7 @@ def _stream_query_reply(
 
     def normal_stream() -> Iterator[str]:
         """Run the existing single-response query stream."""
+        llm_client.set_live_progress_callback(_model_progress_callback(ctx, privacy_session))
         llm_client.set_live_file_access_mode(file_access_mode or None)
         llm_client.set_live_file_approval_callback(_live_file_approval_callback(ctx) if ctx is not None else None)
         llm_client.set_live_file_event_callback(
@@ -2572,6 +2603,7 @@ def _stream_query_reply(
                 history=history,
             )
         finally:
+            llm_client.set_live_progress_callback(None)
             llm_client.set_live_file_access_mode(None)
             llm_client.set_live_file_approval_callback(None)
             llm_client.set_live_file_event_callback(None)
@@ -2933,6 +2965,21 @@ def brain_chat(
         except Exception as exc:  # memory should not block chat
             _log(f"chat memory retrieval skipped: {type(exc).__name__}: {exc}")
 
+    # Match floating prompts: hooks run after memory commands, before privacy.
+    for index in range(len(turns) - 1, -1, -1):
+        if turns[index].get("role") == "user":
+            from core.query_pipeline import BuiltContext
+
+            hooked = _apply_addon_before_query(BuiltContext(
+                user_message=str(turns[index].get("content") or ""),
+                ambient_ctx="", screenshot_b64=None,
+            ))
+            turns[index] = dict(turns[index])
+            turns[index]["content"] = hooked.user_message
+            if hooked.ambient_ctx:
+                turns[index]["content"] += "\n\n" + hooked.ambient_ctx
+            break
+
     privacy_session = None
     privacy_report: dict[str, Any] = {}
     import config
@@ -3009,6 +3056,7 @@ def brain_chat(
 
     parts: list[str] = []
     file_context: list[dict[str, Any]] = []
+    stream_answer = _can_stream_addon_response()
     for chunk in _stream_chat_reply(
         turns,
         memory_context,
@@ -3030,9 +3078,9 @@ def brain_chat(
         is_progress = kind == "progress"
         is_thought = kind == "thought"
         if not (is_progress or is_thought):
-            # Buffer answer text so OpenWand/default transforms and addons can
-            # finalize it before the UI sees any assistant content.
             parts.append(text)
+            if stream_answer:
+                ctx.emit("reply.preview", {"text": "".join(parts)})
             continue
         ctx.emit("reply.chunk", {"text": text, "is_progress": is_progress, "is_thought": is_thought})
 
@@ -3156,12 +3204,7 @@ def _stream_chat_reply(
 
     from core.llm_clients import client as llm_client
 
-    def report_progress(text: str) -> None:
-        if ctx is None or ctx.cancelled:
-            return
-        if privacy_session is not None:
-            text = privacy_session.restore(text)
-        ctx.emit("reply.chunk", {"text": text, "is_progress": True, "is_thought": False})
+    report_progress = _model_progress_callback(ctx, privacy_session)
 
     llm_client.set_live_file_access_mode(file_access_mode or None)
     llm_client.set_live_file_approval_callback(_live_file_approval_callback(ctx) if ctx is not None else None)

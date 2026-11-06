@@ -3005,8 +3005,8 @@ def test_query_flow_streams_reply_into_open_chat_conversation():
     ]
     assert ui.calls_for("ui.chat.done")[-1]["params"]["conversation_index"] == 2
     assert ui.calls_for("ui.chat.done")[-1]["params"]["text"] == "hello"
-    assert ui.last_call("ui.chat.add_conversation")["params"]["conversation_index"] == 2
-    assert ui.last_call("ui.chat.add_conversation")["params"]["assistant"] == "hello"
+    assert not ui.calls_for("ui.chat.add_conversation")
+    assert not ui.calls_for("ui.reply.chunk")
 
 
 def test_query_bubble_splits_exposed_thought_segments():
@@ -3030,11 +3030,14 @@ def test_query_bubble_splits_exposed_thought_segments():
     assert "".join(chunk["text"] for chunk in chunks if not chunk.get("is_thought") and not chunk.get("is_progress")) == "Created it."
 
 
-def test_query_bubble_forwards_reply_text_annotations():
+@pytest.mark.parametrize("previews", [False, True])
+def test_query_bubble_forwards_reply_text_annotations(previews):
     """Verify final reply-surface annotations reach the floating bubble chunk."""
     annotation = {"start": 0, "end": 6, "tag": "mark", "style": "background-color:#4da3ff", "id": "reply-mark"}
 
     def stream(_params: dict[str, Any], on_event) -> dict[str, Any]:
+        if previews:
+            on_event("reply.preview", {"text": "bubble"}, 1)
         on_event("reply.chunk", {"text": "bubble text", "annotations": [annotation]}, 1)
         on_event("reply.done", {"text": "bubble text"}, 1)
         return {"text": "bubble text"}
@@ -3049,6 +3052,16 @@ def test_query_bubble_forwards_reply_text_annotations():
     chunks = [call["params"] for call in ui.calls_for("ui.reply.chunk")]
     assert chunks[-1]["text"] == "bubble text"
     assert chunks[-1]["annotations"] == [annotation]
+
+
+def test_final_reply_snapshot_separates_thoughts_for_speech():
+    flow, _native, ui, _brain, _audio = make_flow()
+    text = "<thought>checking files</thought>Created it."
+
+    segments = flow._on_reply_chunk({"text": text, "is_snapshot": True})
+
+    assert segments == [("checking files", True, False), ("Created it.", False, False)]
+    assert ui.last_call("ui.reply.chunk")["params"]["text"] == text
 
 
 def test_add_context_shows_panel_badge_not_bubble():
@@ -3614,10 +3627,10 @@ def test_query_begins_chat_conversation_before_tool_enabled_brain_call():
         ui.emit("ui.intent.chosen", {"custom": "edit file"})
 
     assert events == ["begin", "brain"]
-    final_chat = ui.last_call("ui.chat.add_conversation")["params"]
-    assert final_chat["assistant"] == "done"
-    assert final_chat["append_user"] is False
+    final_chat = ui.last_call("ui.chat.done")["params"]
+    assert final_chat["text"] == "done"
     assert final_chat["conversation_index"] == 2
+    assert not ui.calls_for("ui.chat.add_conversation")
 
 
 def test_browser_url_captured_at_hotkey_time_fetches_content_by_handle(monkeypatch):
@@ -4688,7 +4701,8 @@ def test_configured_tts_provider_does_not_auto_speak_replies_without_opt_in():
     assert not audio.calls_for("audio.play_file")
 
 
-def test_tts_speaks_completed_segments_before_full_reply_done():
+@pytest.mark.parametrize("previews", [False, True])
+def test_tts_speaks_completed_segments_before_full_reply_done(previews):
     """Verify TTS starts after the first stable segment, before final reply.done."""
     first = "This is the first completed spoken part with enough detail to start audio now."
     second = "This is the second completed spoken part."
@@ -4696,9 +4710,15 @@ def test_tts_speaks_completed_segments_before_full_reply_done():
 
     def stream(_params: dict[str, Any], on_event) -> dict[str, Any]:
         """Emit one completed segment, wait for TTS, then finish."""
-        on_event("reply.chunk", {"text": first + " "}, 1)
-        assert first_synth_started.wait(2.0), "first segment should synthesize before reply.done"
-        on_event("reply.chunk", {"text": second}, 1)
+        if previews:
+            on_event("reply.preview", {"text": first + " "}, 1)
+            on_event("reply.preview", {"text": f"{first} {second}"}, 1)
+            assert not first_synth_started.wait(0.2), "cumulative previews must not be spoken"
+            on_event("reply.chunk", {"text": f"{first} {second}"}, 1)
+        else:
+            on_event("reply.chunk", {"text": first + " "}, 1)
+            assert first_synth_started.wait(2.0), "first segment should synthesize before reply.done"
+            on_event("reply.chunk", {"text": second}, 1)
         on_event("reply.done", {"text": f"{first} {second}"}, 1)
         return {"text": f"{first} {second}"}
 
@@ -5659,6 +5679,36 @@ def test_intent_cancel_stops_prefetch_before_browser_fetch():
     assert not ui.calls_for("ui.chat.add_conversation")
 
 
+@pytest.mark.parametrize("status", [429, 401, 500])
+def test_query_provider_failure_reaches_bubble_and_original_chat(status):
+    from core.llm_clients.error_details import from_exception
+    from runtime.supervisor.ipc import WorkerError
+
+    failure = RuntimeError("SDK wrapper")
+    failure.status_code = status
+    failure.body = {"error": {"message": "Quota exceeded. <think>literal</think>", "code": "test_error"}}
+    info = from_exception(failure, provider="google", model="test-model")
+
+    def fail_query(_params, on_event):
+        on_event("reply.chunk", {"text": "Still loading", "is_progress": True}, 1)
+        raise WorkerError("Remote exception wrapper", provider_error=info)
+
+    ui = FakeWorker({"ui.chat.begin_conversation": lambda _params: {"started": True, "conversation_index": 2}})
+    brain = FakeWorker(stream_handlers={"brain.query": fail_query})
+    with caller_config([{"paste_back": False, "context_ambient": False}]):
+        _flow, _native, ui, _brain, _audio = make_flow(ui=ui, brain=brain)
+        ui.emit("ui.intent.chosen", {"custom": "Explain this"})
+
+    assert ui.last_call("ui.chat.error")["params"] == {
+        "conversation_index": 2, "error": info["message"], "provider_error": info,
+    }
+    assert not ui.calls_for("ui.reply.notice")
+    assert not ui.calls_for("ui.reply.chunk")
+    assert not ui.calls_for("ui.chat.done")
+    assert ui.calls_for("ui.reply.done")
+    assert ui.last_call("ui.overlay.state")["params"]["state"] == "idle"
+
+
 def test_query_failure_reports_notice_and_returns_idle():
     rows = [
         {
@@ -5681,8 +5731,8 @@ def test_query_failure_reports_notice_and_returns_idle():
         ui.emit("ui.intent.chosen", {"custom": "Explain this"})
 
     assert ui.last_call("ui.reply.notice")["params"]["text"] == (
-        "LLM request failed: LLM route uses 'google', but its API key is not configured.\n\n"
-        "Recommendation: add or refresh the provider API key in Settings, then run Setup Check."
+        "OpenWand reported an error\n\n"
+        "ValueError: LLM route uses 'google', but its API key is not configured."
     )
     assert ui.calls_for("ui.reply.done")
     assert ui.last_call("ui.overlay.state")["params"]["state"] == "idle"

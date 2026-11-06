@@ -9,7 +9,7 @@ name: macOS compatibility
 
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
     paths:
       - "core/**"
       - "ui/**"
@@ -142,4 +142,18 @@ jobs:
       # One test file per process keeps a native Qt crash from destroying the
       # rest of the run. The single macOS job also keeps execution serial.
       - name: Run GitHub-safe test suite serially
-        run: python scripts/run_ci_pytest_chunk.py --chunk-index 1 --chunk-total 1 --per-file
+        run: python scripts/run_ci_pytest_chunk.py --chunk-index 1 --chunk-total 1 --per-file --report-dir reports/pytest-results
+
+      - name: Explain each executed test with links to its source lines
+        if: always()
+        run: python -m scripts.user_journeys.pytest_report --results reports/pytest-results --output reports/test-code-report.md
+
+      - name: Upload test results and source-linked report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-code-report-macos
+          path: |
+            reports/pytest-results/
+            reports/test-code-report.md
+          if-no-files-found: error

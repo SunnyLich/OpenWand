@@ -7,6 +7,7 @@ import threading
 from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from socketserver import TCPServer
 from typing import Any
 from urllib.parse import parse_qs, quote, urlsplit
 
@@ -14,6 +15,14 @@ from urllib.parse import parse_qs, quote, urlsplit
 class _LoopbackServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = False
+
+    def server_bind(self) -> None:
+        # HTTPServer normally resolves its host with socket.getfqdn(). This
+        # authenticated bridge only binds IPv4 loopback; reverse DNS adds no
+        # useful identity and can stall startup past the addon RPC deadline.
+        TCPServer.server_bind(self)
+        self.server_name = str(self.server_address[0])
+        self.server_port = int(self.server_address[1])
 
 
 class ViewerServer:

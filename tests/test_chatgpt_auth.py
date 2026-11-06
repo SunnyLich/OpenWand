@@ -538,3 +538,8 @@ def test_real_os_keyring_roundtrip_uses_disposable_account(tmp_path, monkeypatch
     finally:
         chatgpt_auth.clear_tokens()
     assert chatgpt_auth.get_tokens() is None
+
+
+def test_native_codex_login_is_not_implicitly_reused_after_factory_reset(monkeypatch):
+    monkeypatch.delenv('OPENWAND_SHARE_CODEX_LOGIN', raising=False)
+    assert chatgpt_auth._codex_login_sharing_enabled() is False

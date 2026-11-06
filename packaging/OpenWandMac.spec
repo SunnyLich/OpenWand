@@ -2,6 +2,7 @@
 # PyInstaller specification for the macOS OpenWand app bundle.
 
 from pathlib import Path
+import os
 import sys
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
@@ -16,6 +17,10 @@ def _repo_root() -> Path:
 
 
 ROOT = _repo_root()
+# Full journey drivers and fake services are opt-in test-build dependencies.
+JOURNEY_BUILD = os.environ.get("OPENWAND_BUILD_JOURNEYS") == "1"
+JOURNEY_HIDDENIMPORTS = ["scripts.user_journeys.keyring_backend"] if JOURNEY_BUILD else []
+JOURNEY_EXCLUDES = [] if JOURNEY_BUILD else ["scripts.user_journeys"]
 sys.path.insert(0, str(ROOT / "runtime" / "brain"))
 APP_ICON_ICNS = ROOT / "assets" / "app.icns"
 
@@ -90,11 +95,12 @@ a = Analysis(
         "pynput.mouse._darwin",
         "AppKit",
         "Quartz",
-    ] + MODULE_MODE_HIDDENIMPORTS + OPTIONAL_RUNTIME_HIDDENIMPORTS + RUNTIME_WORKER_HIDDENIMPORTS + BRAIN_HIDDENIMPORTS + LITEPARSE_HIDDENIMPORTS + ANYDOC_HIDDENIMPORTS + LANGUAGE_TAGS_HIDDENIMPORTS + CLAUDE_SDK_HIDDENIMPORTS + ZIAMATH_HIDDENIMPORTS + LATEX2MATHML_HIDDENIMPORTS,
+    ] + JOURNEY_HIDDENIMPORTS + MODULE_MODE_HIDDENIMPORTS + OPTIONAL_RUNTIME_HIDDENIMPORTS + RUNTIME_WORKER_HIDDENIMPORTS + BRAIN_HIDDENIMPORTS + LITEPARSE_HIDDENIMPORTS + ANYDOC_HIDDENIMPORTS + LANGUAGE_TAGS_HIDDENIMPORTS + CLAUDE_SDK_HIDDENIMPORTS + ZIAMATH_HIDDENIMPORTS + LATEX2MATHML_HIDDENIMPORTS,
     hookspath=[str(ROOT / "packaging" / "hooks")],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
+        *JOURNEY_EXCLUDES,
         *INSTALLER_OWNED_SPEECH_EXCLUDES,
         "pip",
         "pytest",
@@ -104,6 +110,9 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=False,
 )
+
+if not JOURNEY_BUILD and any(name.startswith("scripts.user_journeys") for name, *_ in a.pure):
+    raise RuntimeError("Release bundle unexpectedly contains user-journey tooling")
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 

@@ -10,6 +10,27 @@ from core.llm_clients.routing import _route_failure_summary
 from runtime.supervisor.ipc import WorkerError
 
 
+def test_response_view_failure_does_not_block_other_view_or_terminal_state(caplog):
+    from ui.response_state import ResponseState
+
+    response = ResponseState()
+    seen = []
+
+    def closed_view(_state):
+        raise RuntimeError("The old view was closed")
+
+    response.subscribe(closed_view)
+    response.subscribe(lambda state: seen.append((state.phase, state.reply_text)))
+    response.feed("Partial answer")
+    response.fail({"message": "Quota exceeded", "source": "provider", "provider": "google"})
+    assert seen[-1][0] == "failed"
+    assert "Partial answer" in seen[-1][1] and "Quota exceeded" in seen[-1][1]
+    assert response.terminal
+    assert "Response view could not render turn" in caplog.text
+    response.feed({"text": "LATE progress", "is_progress": True})
+    assert response.status == "" and len(seen) == 2
+
+
 @pytest.mark.parametrize(
     "provider,body,code",
     [

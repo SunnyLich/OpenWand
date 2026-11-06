@@ -1,0 +1,91 @@
+# Full application journeys run independently from the component-test shards.
+# The report names the external provider, vault, browser and desktop fixtures.
+name: User journeys
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: user-journeys-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  application:
+    name: App user journeys with external fixtures (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: windows-latest, platform: windows}
+          - {os: ubuntu-latest, platform: linux}
+          - {os: macos-latest, platform: macos}
+    env:
+      PYTHONUTF8: "1"
+      PYTHONFAULTHANDLER: "1"
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements/requirements-${{ matrix.platform }}.lock
+      - name: Install Linux desktop libraries
+        if: runner.os == 'Linux'
+        run: |
+          # Match CI's treatment of unused preinstalled package sources; their
+          # availability must not prevent installing the desktop libraries.
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/azure-cli.sources /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/microsoft-prod.sources /etc/apt/sources.list.d/packages-microsoft-prod.list /etc/apt/sources.list.d/packages-microsoft-prod.sources
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libportaudio2 libsndfile1
+      - name: Install locked application dependencies
+        run: python -m pip install -r requirements/requirements-${{ matrix.platform }}.lock
+      - name: Run user actions through the complete app and restart it
+        run: python -m scripts.user_journeys --output reports/user-journeys --timeout 480
+      - name: Prove the prompt test rejects an unrelated provider response
+        if: ${{ !cancelled() }}
+        run: python -m scripts.user_journeys --output reports/user-journeys-negative-control --prove-failure-detection --timeout 180
+      # Preserve the failing state as well as successful screenshots. A failed
+      # journey remains a failing job; generating a report never masks it.
+      - name: Upload numbered report, screenshots and execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: user-journeys-${{ matrix.platform }}
+          path: |
+            reports/user-journeys/report.md
+            reports/user-journeys/coverage-checklist.md
+            reports/user-journeys/*-results.json
+            reports/user-journeys/*-ready.json
+            reports/user-journeys/*-process.log
+            reports/user-journeys/provider-requests.json
+            reports/user-journeys/browser-events.json
+            reports/user-journeys/runtime.json
+            reports/user-journeys/runner-error.txt
+            reports/user-journeys/incomplete-execution.txt
+            reports/user-journeys/screenshots/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload failure-detection evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: user-journeys-negative-control-${{ matrix.platform }}
+          path: |
+            reports/user-journeys-negative-control/report.md
+            reports/user-journeys-negative-control/*-results.json
+            reports/user-journeys-negative-control/*-process.log
+            reports/user-journeys-negative-control/provider-requests.json
+            reports/user-journeys-negative-control/runtime.json
+            reports/user-journeys-negative-control/screenshots/
+          if-no-files-found: warn

@@ -757,6 +757,10 @@ def test_settings_persist_and_reload_across_real_workers(tmp_path, monkeypatch):
                 "LLM_PROVIDER=groq",
                 "LLM_MODEL=initial-model",
                 "TTS_PROVIDER=none",
+                # This persistence test exercises real workers, not model
+                # downloads. Keep STT disabled so config reload cannot start
+                # an unrelated network-backed Whisper warmup.
+                "STT_PROVIDER=none",
                 "STT_MODEL=tiny",
                 "STT_DEVICE=cpu",
                 "STT_COMPUTE_TYPE=int8",
@@ -1292,11 +1296,12 @@ def test_real_intent_ui_routes_keep_in_openwand_and_rewrite_paste_back(tmp_path,
 
 
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 not installed")
-def test_real_intent_failure_shows_recovery_recommendation_in_reply_bubble(tmp_path, monkeypatch):
-    """A request failure entered through the picker becomes actionable visible UI."""
+def test_real_intent_failure_preserves_message_without_invented_recommendations(tmp_path, monkeypatch):
+    """An unstructured local failure stays visible without invented provider advice."""
     import config
     from runtime.supervisor.flows import FlowController
 
+    monkeypatch.setattr(config, "APP_LANGUAGE", "en")
     monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "openwand")
     monkeypatch.setattr(config, "CHAT_CONVERSATION_OWNER", "openwand")
     monkeypatch.setattr(
@@ -1359,17 +1364,22 @@ def test_real_intent_failure_shows_recovery_recommendation_in_reply_bubble(tmp_p
             "PYTHONPATH": os.pathsep.join([str(repo), str(repo / "runtime" / "brain")]),
             "QT_QPA_PLATFORM": "offscreen",
             "OPENWAND_UI_DEBUG_METHODS": "1",
+            "APP_LANGUAGE": "en",
         },
     )
     native = BoundaryWorker()
     brain = BoundaryWorker(fail_query=True)
     flow = FlowController(native=native, ui=ui, brain=brain, audio=native, run_async=True)
-    flow.start()
-
     try:
+        assert ui.call("ui.ping", timeout=30)["pong"] is True
+        flow.start()
         flow.begin_caller(0)
-        deadline = time.time() + 10
-        while time.time() < deadline:
+        pending = flow._pending
+        assert pending is not None
+        assert pending.context_ready.wait(30), "caller context never became ready"
+        deadline = time.monotonic() + 30
+        submitted = {}
+        while time.monotonic() < deadline:
             submitted = ui.call(
                 "ui.debug.intent.submit",
                 {"text": "Trigger route failure"},
@@ -1379,18 +1389,22 @@ def test_real_intent_failure_shows_recovery_recommendation_in_reply_bubble(tmp_p
                 break
             time.sleep(0.02)
         else:
-            pytest.fail("intent picker never accepted the failure request")
+            pytest.fail(
+                f"intent picker never accepted the failure request: {submitted!r}; "
+                f"pending={flow._pending is not None}; worker stderr:\n{ui.stderr_tail()}"
+            )
 
         deadline = time.time() + 10
         bubble = {}
         while time.time() < deadline:
             bubble = ui.call("ui.debug.bubble.snapshot", timeout=10)
-            if "Recommendation:" in bubble.get("text", ""):
+            if "429 rate limit from provider" in bubble.get("text", ""):
                 break
             time.sleep(0.02)
         assert "429 rate limit from provider" in bubble["text"]
-        assert "Recommendation: wait a minute and retry" in bubble["text"]
-        assert "usage limits and billing" in bubble["text"]
+        assert "OpenWand reported an error" in bubble["text"]
+        assert "Recommendation:" not in bubble["text"]
+        assert "billing" not in bubble["text"]
         assert bubble["visible"] is True
     finally:
         ui.shutdown()

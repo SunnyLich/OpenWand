@@ -132,8 +132,8 @@ Create a `v`-prefixed release tag that matches the current
 `pyproject.toml` version:
 
 ```powershell
-git tag v0.12.2
-git push origin v0.12.2
+git tag v0.12.3
+git push origin v0.12.3
 ```
 
 Tags without the `v` prefix do not trigger release builds.
@@ -158,12 +158,69 @@ It signs the PyInstaller bundle, then Inno's uninstaller, then the final setup
 with the existing Azure Artifact Signing account. A Windows runner silently
 installs the setup, launches the installed app in isolated smoke mode, verifies
 its Windows uninstall registration and signature, and silently uninstalls it.
+Uninstall keeps saved settings and data by default. Interactive uninstall has an
+unchecked **Also remove all OpenWand data and sign-ins** checkbox to erase settings,
+chats, memory, credentials, add-ons, tools, packages, and OpenWand-owned models.
+External providers, browser sessions, other apps' sign-ins, and shared model caches
+are preserved. In-app uninstall clears credentials after the workers exit, before
+removing files. **Reset All** uses the same ownership rule, closes OpenWand, and
+clears its state while preserving the application for a fresh start. Source resets
+also preserve tracked repository files and their local edits.
+For silent removal, pass `/REMOVEUSERDATA` to explicitly delete that data;
+`/KEEPUSERDATA` preserves it and takes precedence if both switches are supplied.
 Run the workflow manually on `dev` with `windows_only=true` to test this path
 without creating a release. In later releases, the legacy `windows-x64`
 manifest entry must keep pointing to the immutable transition ZIP; see
 [WINDOWS_INSTALLER_MIGRATION_PLAN.md](WINDOWS_INSTALLER_MIGRATION_PLAN.md).
 For the Microsoft Store EXE submission, use the versioned setup URL and enter
 `/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART` as the installer parameters.
+
+Interactive installers begin with a native welcome confirmation and language-selection step. The second step
+offers English, Traditional Chinese, Simplified Chinese, Spanish, and French;
+version notices appear only after this selection. Standard pages, custom actions,
+notice buttons, and uninstall messages use the selected language. Silent installs
+skip these interactive steps and honor `/LANG=en|zhHant|zh|es|fr`, otherwise reusing
+the previous installation language or the Windows UI language.
+They read the existing per-user Windows uninstall registration and show installed
+and bundled versions. They offer update for older installations,
+repair/reinstall for the same version, and the registered uninstaller. Update and
+repair retain the installation directory. Numeric version comparison identifies
+downgrades and displays a heads-up with a choice to continue or cancel. Silent
+installs log the downgrade and proceed without prompting. An unrecognized installed
+version blocks replacement. Previously released installers do not gain the notice
+retroactively.
+
+Run `tools/test_installer_maintenance.ps1 -CompilerPath <path-to-ISCC.exe>` to
+compile the actual script with a unique test product ID and tiny payload. It checks
+automatic discovery of a non-default installation directory, repair, numeric
+version ordering, allowed downgrades with logged notices, unknown versions, and relocation refusal.
+This test does not exercise the full application or native dialog clicks.
+
+For local installer validation, build the app and then create an explicitly
+unsigned development installer with the same Inno script:
+
+```powershell
+$env:OPENWAND_BUILD_JOURNEYS = "1"
+.\tools\build_exe.ps1
+Remove-Item Env:\OPENWAND_BUILD_JOURNEYS
+.\tools\build_windows_installer.ps1 -Phase Development -CompilerPath C:\path\to\ISCC.exe
+.\tools\test_development_installer.ps1 -InstallerPath dist\installer-development\OpenWand-dev-v0.12.3-windows-x64-setup.exe
+```
+
+Development installers use a separate filename and output directory. The regular
+`Prepare`/`Complete` release path still requires Azure-signed code and uninstaller.
+The flag above includes journey drivers only in the test executable. Normal
+builds exclude those tools. Release CI tests a flagged executable first, then
+rebuilds without the flag and smoke-tests the actual production distributable.
+Windows dependency analysis uses only the selected Python installation and Windows
+directories on PATH, with a fresh PyInstaller cache. This prevents unrelated tools
+from contributing incompatible native DLLs such as ICU to the bundle.
+The development test refuses an existing OpenWand installation or shortcut, runs
+all registered user journeys through the installed executable, verifies default
+data retention and reinstall, checks `/KEEPUSERDATA` precedence, and tests explicit
+data and OAuth-credential removal with a disposable profile and credential store.
+It preserves an external-provider sentinel. This local test does not certify a
+release signature or replace the signed Windows CI checks.
 
 Manual platform build entry points:
 

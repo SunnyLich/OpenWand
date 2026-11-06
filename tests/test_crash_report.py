@@ -216,7 +216,7 @@ def test_metadata_diagnostic_surfaces_failure_matrix_is_controlled(monkeypatch):
                 scoped.setattr(
                     uninstall_dialog.uninstaller,
                     "build_uninstall_plan",
-                    lambda error=failure: (_ for _ in ()).throw(error),
+                    lambda error=failure, **_kwargs: (_ for _ in ()).throw(error),
                 )
                 assert uninstall_dialog.run_uninstall_dialog() is False
             assert str(failure) in warnings[-1]

@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable
 
 import config
+from core.auth.acceptance_state import isolated_auth_file
 from core.system.native_locks import keychain_lock
 
 _DEVICE_CODE_URL = "https://github.com/login/device/code"
@@ -20,7 +21,7 @@ _USER_URL = "https://api.github.com/user"
 
 _KEYRING_SERVICE = "python-ai-overlay"
 _KEYRING_ACCOUNT = "github-oauth"
-_TOKEN_FILE = pathlib.Path(__file__).parent.parent / "private" / ".github_tokens.json"
+_TOKEN_FILE = isolated_auth_file("legacy-github-tokens.json") or pathlib.Path(__file__).parent.parent / "private" / ".github_tokens.json"
 
 # Public OAuth app client ID for this desktop app. GitHub device flow does not
 # require a client secret, so this is safe to bundle once the OAuth app exists.

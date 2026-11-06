@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
+from PySide6.QtWidgets import QApplication, QCheckBox, QMessageBox, QWidget
 
 from core import uninstaller
 from ui.i18n import t
@@ -11,7 +11,7 @@ from ui.i18n import t
 def run_uninstall_dialog(parent: QWidget | None = None) -> bool:
     """Confirm and launch the detached, self-removing OpenWand uninstaller."""
     try:
-        plan = uninstaller.build_uninstall_plan()
+        plan = uninstaller.build_uninstall_plan(remove_user_data=True)
     except Exception as exc:  # noqa: BLE001 - safety validation must be visible
         QMessageBox.warning(
             parent,
@@ -24,14 +24,8 @@ def run_uninstall_dialog(parent: QWidget | None = None) -> bool:
     details = t(
         "This will permanently remove:\n"
         "• OpenWand's current {kind}: {app_root}\n"
-        "• All OpenWand settings, chats, memory, add-ons, tools, logs, updates, and optional packages: {data_root}\n"
-        "• OpenWand API keys and sign-in tokens from the OS keychain\n"
-        "• OpenWand's STT/TTS model repositories from the Hugging Face cache\n"
-        "• OpenWand login and desktop entries\n\n"
-        "Shared uv/pip caches and unrelated Hugging Face models will not be removed."
-    ).format(kind=kind, app_root=plan.app_root, data_root=plan.user_data_root)
-    exact_targets = "\n".join(f"• {path}" for path in plan.targets)
-    details += "\n\n" + t("Exact paths scheduled for deletion:") + "\n" + exact_targets
+        "• OpenWand login and desktop entries"
+    ).format(kind=kind, app_root=plan.app_root)
     if plan.source_checkout:
         details += "\n\n" + t(
             "The source checkout will be deleted, including its Git history, uncommitted changes, "
@@ -42,16 +36,50 @@ def run_uninstall_dialog(parent: QWidget | None = None) -> bool:
     confirm.setIcon(QMessageBox.Icon.Critical)
     confirm.setWindowTitle(t("Uninstall OpenWand?"))
     confirm.setText(t("This action cannot be undone."))
-    confirm.setInformativeText(details)
+    remove_data = QCheckBox(t("Also remove all OpenWand data and sign-ins"), confirm)
+    remove_data.setObjectName("uninstallRemoveUserData")
+    confirm.setCheckBox(remove_data)
+    plan_valid = True
+
+    def update_preview() -> None:
+        nonlocal plan, plan_valid
+        try:
+            plan = uninstaller.build_uninstall_plan(remove_user_data=remove_data.isChecked())
+        except Exception as exc:  # noqa: BLE001 - never confirm an invalid plan
+            plan_valid = False
+            confirm.setInformativeText(str(exc))
+            confirm.button(QMessageBox.StandardButton.Yes).setEnabled(False)
+            return
+        plan_valid = True
+        confirm.button(QMessageBox.StandardButton.Yes).setEnabled(True)
+        if remove_data.isChecked():
+            data_details = t(
+                "Also permanently remove settings, chats, memory, add-ons, tools, logs, updates, "
+                "optional packages, saved API keys, OAuth sign-in tokens, and OpenWand-owned models.\n"
+                "User data: {data_root}\n"
+                "External providers, their models, other apps' sign-ins, browser sessions, "
+                "and shared uv/pip and Hugging Face caches will be kept."
+            ).format(data_root=plan.user_data_root)
+        else:
+            data_details = t("Keep saved settings and data for a future reinstall: {data_root}").format(
+                data_root=plan.user_data_root,
+            )
+        exact_targets = "\n".join(f"• {path}" for path in plan.targets)
+        confirm.setInformativeText(
+            details + "\n\n" + data_details + "\n\n"
+            + t("Exact paths scheduled for deletion:") + "\n" + exact_targets
+        )
     confirm.setStandardButtons(
         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
     )
     confirm.setDefaultButton(QMessageBox.StandardButton.No)
-    if confirm.exec() != QMessageBox.StandardButton.Yes:
+    remove_data.toggled.connect(update_preview)
+    update_preview()
+    if confirm.exec() != QMessageBox.StandardButton.Yes or not plan_valid:
         return False
 
     try:
-        uninstaller.launch_uninstaller(plan)
+        launch = uninstaller.launch_uninstaller(plan)
     except Exception as exc:  # noqa: BLE001 - keep OpenWand open after a failed launch
         QMessageBox.warning(
             parent,
@@ -65,8 +93,8 @@ def run_uninstall_dialog(parent: QWidget | None = None) -> bool:
         t("Uninstaller started"),
         t(
             "OpenWand will now close. The uninstaller will remove only the listed OpenWand-owned files "
-            "after all OpenWand processes exit."
-        ),
+            "after all OpenWand processes exit. If cleanup cannot finish, details will be saved here:\n{path}"
+        ).format(path=launch.failure_log_path),
     )
     app = QApplication.instance()
     if app is not None:

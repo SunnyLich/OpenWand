@@ -67,7 +67,7 @@ from PySide6.QtWidgets import (
 
 import config
 from core import addon_store
-from core.assistant_text import ThoughtStreamParser, merge_segment_iterables
+from core.assistant_text import ThoughtStreamParser
 from core.conversation_store import store as _conversation_store
 from core.conversation_store.external_sync import (
     apply_external_conversations,
@@ -89,6 +89,7 @@ from ui.chat_rendering import (
     _user_text_to_html,
 )
 from ui.i18n import t
+from ui.response_state import ResponseState, response_field
 from ui.shared.activity_spinner import ActivitySpinner
 from ui.shared.theme import show_tooltip_text
 from ui.shared.window_utils import enable_standard_window_controls, fit_window_to_screen
@@ -811,6 +812,8 @@ def _truncate_segments_for_display(
 
 
 class _StreamSignals(QObject):
+    response_finished = Signal(object)
+    response_error = Signal(object, object)
     """Model stream signals."""
     chunk     = Signal(object)
     final     = Signal(str)
@@ -1592,7 +1595,7 @@ class _MessageTextView(QTextBrowser):
         """Show event."""
         super().showEvent(event)
         # Document layout hasn't run before first show — recompute height now.
-        QTimer.singleShot(0, self._sync_height)
+        QTimer.singleShot(0, self, self._sync_height)
 
     def resizeEvent(self, event):
         """Resize event."""
@@ -1958,6 +1961,16 @@ class _ComposerTextEdit(QTextEdit):
 
 class ChatWindow(QWidget):
     """Qt window for chat window."""
+    _current_ai_text = response_field("text")
+    _current_ai_reply_text = response_field("reply_text")
+    _current_ai_segments = response_field("segments")
+    _current_ai_status_text = response_field("status")
+    _current_ai_parser = response_field("parser")
+    _current_ai_response_error = response_field("response_error")
+    _current_ai_provider_error = response_field("provider_error")
+    _current_ai_annotations = response_field("annotations")
+    _current_ai_attachments = response_field("attachments")
+
     def __init__(
         self,
         conversations: list[list[dict]],
@@ -1979,6 +1992,7 @@ class ChatWindow(QWidget):
         on_model_settings=None,
         addon_message_actions: list[dict] | None = None,
         window_state_path: Path | None = None,
+        on_response_state=None,
     ):
         """
         Args:
@@ -2032,6 +2046,10 @@ class ChatWindow(QWidget):
             if isinstance(conv, dict):
                 _ensure_conversation_metadata(conv)
         self._send_fn = send_fn
+        self._response_state = ResponseState()
+        self._response_unsubscribe = None
+        self._on_response_state = on_response_state
+        self.destroyed.connect(lambda *_: self._detach_response_state())
         self._on_select = on_select
         self._on_context_preview = on_context_preview
         self._on_context_capture = on_context_capture
@@ -2144,6 +2162,8 @@ class ChatWindow(QWidget):
         self._signals.metadata.connect(self._on_metadata)
         self._signals.error.connect(self._on_stream_error)
         self._signals.finished.connect(self._on_finished)
+        self._signals.response_finished.connect(self._on_bound_response_finished)
+        self._signals.response_error.connect(self._on_bound_response_error)
         self._signals.external_sync.connect(self._on_external_sync_finished)
 
         self.setWindowTitle(t("OpenWand Chat"))
@@ -3735,7 +3755,7 @@ class ChatWindow(QWidget):
         self._rebuild_sidebar()
         self._switch(idx)
 
-    def begin_external_reply_stream(self, idx: int) -> None:
+    def begin_external_reply_stream(self, idx: int, response: ResponseState | None = None) -> None:
         """Show a temporary assistant bubble for a hotkey/overlay reply."""
         if not (0 <= idx < len(self._conversations)):
             return
@@ -3750,6 +3770,10 @@ class ChatWindow(QWidget):
         self._begin_stream_follow(idx)
         self._send_btn.setEnabled(False)
         self._new_chat_btn.setEnabled(False)
+        if self._response_unsubscribe is not None:
+            self._response_unsubscribe()
+            self._response_unsubscribe = None
+        self._response_state = ResponseState()
         self._current_ai_text = ""
         self._current_ai_reply_text = ""
         self._current_ai_segments = []
@@ -3767,7 +3791,58 @@ class ChatWindow(QWidget):
         self._current_ai_label = self._bubble(layout, "...", "assistant", created_at=_now_iso())
         self._current_ai_response_error = False
         self._current_ai_provider_error = {}
-        self._on_chunk({"text": t("Preparing response..."), "is_progress": True})
+        self._bind_response_state(response or ResponseState())
+        if response is None:
+            self._on_chunk({"text": t("Preparing response..."), "is_progress": True})
+        self._scroll_bottom()
+
+    def _bind_response_state(self, response: ResponseState) -> None:
+        if self._response_unsubscribe is not None:
+            self._response_unsubscribe()
+        self._response_state = response
+        self._response_activity_count = 0
+        self._response_metadata = None
+        self._response_details_id = None
+        self._response_unsubscribe = response.subscribe(self._response_changed)
+        self._response_changed(response)
+        if self._on_response_state is not None:
+            self._on_response_state(response)
+
+    def _detach_response_state(self) -> None:
+        if self._response_unsubscribe is not None:
+            self._response_unsubscribe()
+            self._response_unsubscribe = None
+
+    def _response_changed(self, response: ResponseState) -> None:
+        if response is not self._response_state:
+            return
+        for event in response.activities[self._response_activity_count:]:
+            if event.get("local_work"):
+                self._on_local_work_activity(event["local_work"])
+            if event.get("harness_activity"):
+                self._on_harness_activity(event["harness_activity"])
+        self._response_activity_count = len(response.activities)
+        if response.metadata and self._response_metadata is not response.metadata:
+            self._response_metadata = response.metadata
+            self._on_metadata(response.metadata, notify=False)
+        if self._current_ai_label is None:
+            return
+        self._render_current_ai_stream()
+        if response.response_error and self._response_details_id != response.id:
+            from ui.provider_errors import details_widget
+
+            wrapper = self._current_ai_label.parentWidget()
+            if wrapper is not None and wrapper.layout() is not None:
+                wrapper.layout().insertWidget(
+                    wrapper.layout().indexOf(self._current_ai_label) + 1,
+                    details_widget(response.provider_error, wrapper),
+                )
+            self._response_details_id = response.id
+        if response.terminal:
+            self._finish_local_work()
+            self._streaming = False
+            self._send_btn.setEnabled(True)
+            self._new_chat_btn.setEnabled(True)
         self._scroll_bottom()
 
     def external_reply_chunk(self, idx: int, chunk: object) -> None:
@@ -3796,6 +3871,10 @@ class ChatWindow(QWidget):
         label = self._current_ai_label
         wrapper = label.parentWidget() if label is not None else None
         self._current_ai_label = None
+        if self._response_unsubscribe is not None:
+            self._response_unsubscribe()
+            self._response_unsubscribe = None
+        self._response_state = ResponseState()
         self._current_ai_text = ""
         self._current_ai_reply_text = ""
         self._current_ai_segments = []
@@ -6523,6 +6602,10 @@ class ChatWindow(QWidget):
         conv["messages"].append(user_message)
         self._persist()
 
+        if self._response_unsubscribe is not None:
+            self._response_unsubscribe()
+            self._response_unsubscribe = None
+        self._response_state = ResponseState()
         self._current_ai_text = ""
         self._current_ai_reply_text = ""
         self._current_ai_segments = []
@@ -6540,6 +6623,7 @@ class ChatWindow(QWidget):
         self._current_ai_response_error = False
         self._current_ai_provider_error = {}
         self._current_ai_label = self._bubble(layout, "...", "assistant", created_at=_now_iso()) if layout else None
+        self._bind_response_state(self._response_state)
         self._on_chunk({"text": t("Preparing response..."), "is_progress": True})
         self._scroll_bottom()
 
@@ -6570,19 +6654,26 @@ class ChatWindow(QWidget):
                     )
                     break
 
+        response = self._response_state
+        send_fn = self._send_fn
+        bind_response = getattr(send_fn, "bind_response", None)
+        managed = callable(bind_response)
+        if managed:
+            send_fn = bind_response(response, conv, user_message)
+
         def _stream():
             """Stream the chat window workflow."""
             try:
                 kwargs = {"context_policy": dict(context_policy)}
                 try:
-                    signature = inspect.signature(self._send_fn)
+                    signature = inspect.signature(send_fn)
                     accepts_policy = (
                         "context_policy" in signature.parameters
                         or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in signature.parameters.values())
                     )
                 except (TypeError, ValueError):
                     accepts_policy = False
-                source = self._send_fn(messages, **kwargs) if accepts_policy else self._send_fn(messages)
+                source = send_fn(messages, **kwargs) if accepts_policy else send_fn(messages)
                 for item in source:
                     if isinstance(item, dict) and item.get("type") == "final":
                         self._signals.final.emit(str(item.get("text") or ""))
@@ -6594,98 +6685,27 @@ class ChatWindow(QWidget):
                         self._signals.chunk.emit(str(item or ""))
             except Exception as exc:
                 from core.llm_clients.error_details import from_exception
-                self._signals.error.emit(from_exception(exc))
+                if managed:
+                    self._signals.response_error.emit(response, from_exception(exc))
+                else:
+                    self._signals.error.emit(from_exception(exc))
             finally:
-                self._signals.finished.emit()
+                if managed:
+                    self._signals.response_finished.emit(response)
+                else:
+                    self._signals.finished.emit()
 
         threading.Thread(target=_stream, daemon=True).start()
 
     def _on_chunk(self, chunk: object):
-        """Handle chunk events."""
-        if isinstance(chunk, dict):
-            harness_activity = chunk.get("harness_activity")
-            if isinstance(harness_activity, dict) and harness_activity:
-                self._on_harness_activity(harness_activity)
-                if not str(chunk.get("text") or ""):
-                    return
-            local_work = chunk.get("local_work")
-            if isinstance(local_work, dict) and local_work:
-                self._on_local_work_activity(local_work)
-                if not str(chunk.get("text") or ""):
-                    return
-            text = str(chunk.get("text") or "")
-            is_thought = bool(chunk.get("is_thought"))
-            is_progress = bool(chunk.get("is_progress"))
-            if is_progress and not is_thought:
-                # Match the overlay bubble: startup/status notices replace each
-                # other until durable thought, tool, or reply content arrives.
-                self._current_ai_status_text = text.strip()
-                self._render_current_ai_stream()
-                self._scroll_bottom()
-                return
-            self._current_ai_status_text = ""
-            if is_thought or is_progress:
-                if not self._current_ai_segments:
-                    text = text.lstrip("\r\n")
-                _merge_display_segments(self._current_ai_segments, text, True)
-                self._render_current_ai_stream()
-                self._scroll_bottom()
-                return
-            chunk = text
-        self._current_ai_status_text = ""
-        chunk = str(chunk or "")
-        if (
-            self._current_ai_segments
-            and self._current_ai_segments[-1][1]
-            and self._current_ai_reply_text
-            and not self._current_ai_reply_text.endswith(("\r", "\n"))
-            and not chunk.startswith(("\r", "\n"))
-        ):
-            # A reply resuming after thought/tool activity is a new block. Token
-            # deltas inside an uninterrupted reply still concatenate normally.
-            chunk = f"\n{chunk}"
-        self._current_ai_text += chunk
-        if self._current_ai_parser is None:
-            self._current_ai_parser = ThoughtStreamParser()
-        for text, is_thought in self._current_ai_parser.feed(chunk):
-            _merge_display_segments(self._current_ai_segments, text, is_thought)
-            if not is_thought:
-                self._current_ai_reply_text += text
-        self._render_current_ai_stream()
-        self._scroll_bottom()
+        """Reduce each event once; both views subscribe to the resulting turn."""
+        if self._response_unsubscribe is None:
+            self._bind_response_state(self._response_state)
+        self._response_state.feed(chunk)
 
     def _on_stream_error(self, payload: object) -> None:
-        """Keep failures visible and persisted, without exposing raw SDK secrets."""
-        if self._current_ai_label is None:
-            return
-        from core.llm_clients.error_details import normalize
-        from ui.provider_errors import details_widget, error_text
-
-        info = normalize(payload)
-        self._current_ai_provider_error = info
-        message = error_text(info)
-        self._current_ai_response_error = True
-        self._current_ai_annotations = []
-        if self._current_ai_parser is not None:
-            for text, is_thought in self._current_ai_parser.finish():
-                _merge_display_segments(self._current_ai_segments, text, is_thought)
-                if not is_thought:
-                    self._current_ai_reply_text += text
-            self._current_ai_parser = None
-        if self._current_local_work_dialog is not None:
-            message += "\n\n" + t("Completed file operations were kept. Check the file before repeating this request.")
-        text = ("\n\n" if self._current_ai_reply_text else "") + message
-        self._current_ai_status_text = ""
-        self._current_ai_text += text
-        self._current_ai_reply_text += text
-        _merge_display_segments(self._current_ai_segments, text, False)
-        self._render_current_ai_stream()
-        wrapper = self._current_ai_label.parentWidget()
-        if wrapper is not None and wrapper.layout() is not None:
-            wrapper.layout().insertWidget(
-                wrapper.layout().indexOf(self._current_ai_label) + 1, details_widget(info, wrapper)
-            )
-        self._scroll_bottom()
+        """Use the same persisted provider error for every response surface."""
+        self._response_state.fail(payload)
 
     def _finish_local_work(self) -> None:
         """End the live notice while retaining access to the activity details."""
@@ -6766,31 +6786,10 @@ class ChatWindow(QWidget):
         )
 
     def _on_final_text(self, text: str):
-        """Replace the streamed draft with the final assistant text."""
-        if not text or text == self._current_ai_text:
-            return
-        self._current_ai_status_text = ""
-        self._current_ai_text = text
-        self._current_ai_reply_text = ""
-        self._current_ai_segments = []
-        self._current_ai_parser = ThoughtStreamParser()
-        for segment, is_thought in self._current_ai_parser.feed(text):
-            _merge_display_segments(self._current_ai_segments, segment, is_thought)
-            if not is_thought:
-                self._current_ai_reply_text += segment
-        flushed = self._current_ai_parser.finish()
-        self._current_ai_segments = merge_segment_iterables(self._current_ai_segments, flushed)
-        for segment, is_thought in flushed:
-            if not is_thought:
-                self._current_ai_reply_text += segment
-        self._current_ai_parser = None
-        if self._current_ai_label:
-            self._current_ai_label.setHtml(
-                _assistant_segments_to_html(_truncate_segments_for_display(self._current_ai_segments))
-            )
-        self._scroll_bottom()
+        """Replace the streamed draft in the shared turn."""
+        self._response_state.set_final(text)
 
-    def _on_metadata(self, item: object):
+    def _on_metadata(self, item: object, *, notify: bool = True):
         """Capture display-hidden metadata returned with the reply."""
         if isinstance(item, dict):
             self._current_file_context = _normalized_file_context(item.get("file_context") or [])
@@ -6814,7 +6813,8 @@ class ChatWindow(QWidget):
             final_segments = _normalized_display_segments(item.get("display_segments") or [])
             if final_segments:
                 self._current_ai_segments = final_segments
-                self._render_current_ai_stream()
+            if notify:
+                self._response_state.notify()
             if self._current_user_message is not None:
                 user_annotations = list(item.get("user_annotations") or [])
                 if user_annotations:
@@ -6968,7 +6968,14 @@ class ChatWindow(QWidget):
             "shown": True,
         }
 
-    def _on_finished(self):
+    def _on_bound_response_finished(self, response: ResponseState):
+        if response is self._response_state:
+            self._on_finished()
+
+    def _on_bound_response_error(self, response: ResponseState, payload: object):
+        response.fail(payload)
+
+    def _on_finished(self, *, stored_message_index: int | None = None):
         """Handle finished events."""
         auto_action: tuple[int, int, str, str] | None = None
         completed_action_message: tuple[int, int] | None = None
@@ -6978,18 +6985,8 @@ class ChatWindow(QWidget):
             isinstance(pending_workspace_changes, dict)
             and bool(pending_workspace_changes.get("files"))
         )
-        self._current_ai_status_text = ""
+        self._response_state.finish()
         self._finish_local_work()
-        if self._current_ai_parser is not None:
-            flushed = self._current_ai_parser.finish()
-            self._current_ai_segments = merge_segment_iterables(self._current_ai_segments, flushed)
-            for text, is_thought in flushed:
-                if not is_thought:
-                    self._current_ai_reply_text += text
-            if self._current_ai_label:
-                self._current_ai_label.setHtml(
-                    _assistant_segments_to_html(_truncate_segments_for_display(self._current_ai_segments))
-                )
         if (
             self._current_ai_label is not None
             and self._current_ai_attachments
@@ -7036,8 +7033,11 @@ class ChatWindow(QWidget):
             if has_workspace_changes:
                 message["workspace_changes"] = deepcopy(pending_workspace_changes)
                 completed_workspace_changes = True
-            conv["messages"].append(message)
-            message_index = len(conv["messages"]) - 1
+            if stored_message_index is not None:
+                conv["messages"][stored_message_index] = message
+            else:
+                conv["messages"].append(message)
+            message_index = stored_message_index if stored_message_index is not None else len(conv["messages"]) - 1
             completed_action_message = (self._active_idx, message_index)
             for action in self._addon_message_actions:
                 if (
@@ -7089,6 +7089,10 @@ class ChatWindow(QWidget):
                     _assistant_text_to_html(display_text, annotations=self._current_ai_annotations)
                 )
         self._current_ai_label = None
+        if self._response_unsubscribe is not None:
+            self._response_unsubscribe()
+            self._response_unsubscribe = None
+        self._response_state = ResponseState()
         self._current_ai_response_error = False
         self._current_ai_provider_error = {}
         self._current_ai_text = ""

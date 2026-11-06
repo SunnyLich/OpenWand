@@ -27,7 +27,10 @@ _KEYRING_SERVICE = "python-ai-overlay"
 _BLOB_ACCOUNT = "__openwand_secrets__"
 _LEGACY_BLOB_ACCOUNT = "__wisp_secrets__"
 
-_META_FILE = Path(__file__).parent.parent / "private" / ".secret_status.json"
+_META_FILE = Path(
+    os.environ.get("OPENWAND_SECRET_STATUS_PATH")
+    or Path(__file__).parent.parent / "private" / ".secret_status.json"
+)
 # Meta flag recording that the one-time legacy migration has run, so we don't
 # re-probe the old per-key items on every startup.
 _MIGRATED_FLAG = "__consolidated_v1__"

@@ -6255,86 +6255,42 @@ def test_settings_can_rename_and_delete_custom_profile(tmp_path, monkeypatch):
 
 @pytest.mark.skipif(pytest.importorskip("PySide6", reason="PySide6 not installed") is None, reason="PySide6 not installed")
 def test_reset_all_settings_failure_matrix_stays_controlled(tmp_path, monkeypatch):
-    """Cancel, missing files, and every cleanup fault keep the reset dialog alive."""
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    """Cancel and scheduling errors never erase data or close the application."""
+    from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication, QMessageBox
 
-    import config
     import ui.settings_panel.dialog as settings_dialog
-    from core import secret_store, tts
-    from core.auth import chatgpt, copilot_auth, github
-    from core.llm_clients import client as llm_client
+    from core import factory_reset
     from ui.settings_panel import env as settings_env
-    from ui.shared import theme
 
     env_path = tmp_path / ".env"
     env_path.write_text("THEME_MODE=dark\n", encoding="utf-8")
     monkeypatch.setattr(settings_dialog, "ENV_PATH", env_path)
     monkeypatch.setattr(settings_env, "ENV_PATH", env_path)
-    monkeypatch.setattr(secret_store, "API_KEY_NAMES", ())
-    monkeypatch.setattr(chatgpt, "clear_tokens", lambda: None)
-    monkeypatch.setattr(github, "clear_tokens", lambda: None)
-    monkeypatch.setattr(copilot_auth, "clear_token", lambda: None)
-    monkeypatch.setattr(config, "reload", lambda: None)
-    monkeypatch.setattr(llm_client, "reset_clients", lambda: None)
-    monkeypatch.setattr(tts, "reset_connections", lambda: None)
-    # _reset_all imports this helper at call time, so patch the defining module
-    # instead of adding an unused attribute to settings_dialog. Reapplying the
-    # global Qt stylesheet for every injected unlink fault makes the matrix test
-    # unrelated whole-app windows and can flood the event queue.
-    monkeypatch.setattr(theme, "apply_app_theme", lambda *_args, **_kwargs: None)
-    warnings: list[str] = []
-    infos: list[str] = []
+    monkeypatch.setattr(factory_reset, "build_reset_plan", lambda **_kw: factory_reset.ResetPlan((env_path,)))
+    monkeypatch.setattr(factory_reset, "launch_reset", lambda **_kw: pytest.fail("Cancelled"))
+    warnings, infos, quits = [], [], []
     monkeypatch.setattr(QMessageBox, "warning", lambda _p, _t, message: warnings.append(message))
     monkeypatch.setattr(QMessageBox, "information", lambda _p, _t, message: infos.append(message))
-
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = settings_dialog.SettingsDialog()
-    # Pages after the first are built on the dialog's first paint; this test
-    # inspects them directly, so materialize them up front.
-    dialog._build_deferred_pages()
+    monkeypatch.setattr(QTimer, "singleShot", lambda *_args: quits.append(True))
     try:
-        dialog._reset_stt_model_in_background = lambda: None
-        dialog._apply_dialog_theme = lambda: None
-        dialog._load_values = lambda: None
-        dialog._refresh_tab_labels = lambda: None
-        dialog._refresh_search_index = lambda: None
-        dialog._on_apply = None
-
-        # Cancel is a strict no-op.
         monkeypatch.setattr(QMessageBox, "exec", lambda _self: QMessageBox.StandardButton.No)
         before = env_path.read_bytes()
         dialog._reset_all()
         assert env_path.read_bytes() == before
-
+        assert quits == []
         monkeypatch.setattr(QMessageBox, "exec", lambda _self: QMessageBox.StandardButton.Yes)
-
-        # An already-missing settings target is a successful idempotent reset.
-        env_path.unlink()
-        dialog._reset_all()
-        assert not env_path.exists()
-
-        failures = (
-            PermissionError("target required by this function is locked"),
-            PermissionError("required elevation is denied"),
-            PermissionError("storage access is denied"),
-            OSError("another process is using the files"),
-            OSError("cleanup only partly completes"),
-        )
-        original_unlink = Path.unlink
-        for failure in failures:
-            env_path.write_text("THEME_MODE=dark\n", encoding="utf-8")
-
-            def fail_target_unlink(path, *args, error=failure, **kwargs):
-                if path == env_path:
-                    raise error
-                return original_unlink(path, *args, **kwargs)
-
-            with monkeypatch.context() as scoped:
-                scoped.setattr(Path, "unlink", fail_target_unlink)
-                dialog._reset_all()
-            assert env_path.exists()
+        for failure in (PermissionError("locked"), OSError("storage denied"), RuntimeError("process failed")):
+            def fail(error=failure, **_kw):
+                raise error
+            monkeypatch.setattr(factory_reset, "launch_reset", fail)
+            dialog._reset_all()
             assert str(failure) in warnings[-1]
+            assert env_path.read_bytes() == before
+            assert quits == []
+            assert infos == []
     finally:
         dialog.deleteLater()
         app.processEvents()
