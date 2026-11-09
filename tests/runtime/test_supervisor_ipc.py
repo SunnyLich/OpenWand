@@ -36,6 +36,16 @@ def _worker(module: str, role: str, name: str | None = None, env: dict[str, str]
     return WorkerClient(WorkerSpec(name or role, module, role, env=merged_env))
 
 
+@pytest.fixture
+def configured_worker_env(tmp_path):
+    """Run configured-user workflows without a developer profile or first-run UI."""
+    # The wizard reads the settings file directly; a process environment flag
+    # alone does not suppress it on a clean CI checkout.
+    settings_path = tmp_path / "worker-settings.env"
+    settings_path.write_text("OPENWAND_ONBOARDING_COMPLETE=True\n", encoding="utf-8")
+    return {"OPENWAND_SETTINGS_ENV_PATH": str(settings_path)}
+
+
 def _is_macos_offscreen_qt() -> bool:
     """Return whether this test is using macOS' headless Qt backend."""
     return sys.platform == "darwin" and os.environ.get("QT_QPA_PLATFORM", "offscreen") == "offscreen"
@@ -1153,8 +1163,36 @@ def test_real_bubble_stop_click_cancels_real_brain_query_over_ipc(tmp_path, monk
         shutil.rmtree(test_data_root, ignore_errors=True)
 
 
+@pytest.mark.parametrize("configured", [False, True])
+def test_intent_workflow_settings_prevent_delayed_onboarding(
+    tmp_path, monkeypatch, configured_worker_env, configured,
+):
+    """Configured picker workflows must not schedule a focus-stealing setup wizard."""
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import QTimer
+
+    from runtime.workers.ui_host import QtProtocolHost
+    from ui.settings_panel import env as settings_env
+
+    settings_path = (
+        Path(configured_worker_env["OPENWAND_SETTINGS_ENV_PATH"])
+        if configured else tmp_path / "missing.env"
+    )
+    monkeypatch.setattr(settings_env, "ENV_PATH", settings_path)
+    host = QtProtocolHost.__new__(QtProtocolHost)
+    host._onboarding = None
+    scheduled = []
+    monkeypatch.setattr(QTimer, "singleShot", lambda delay, callback: scheduled.append((delay, callback)))
+
+    host._show_onboarding_if_needed()
+
+    # Capture the timer instead of depending on offscreen window activation:
+    # the clean-checkout control schedules setup, while our workflows cannot.
+    assert [delay for delay, _callback in scheduled] == ([] if configured else [250])
+
+
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 not installed")
-def test_real_intent_ui_routes_keep_in_openwand_and_rewrite_paste_back(tmp_path, monkeypatch):
+def test_real_intent_ui_routes_keep_in_openwand_and_rewrite_paste_back(tmp_path, monkeypatch, configured_worker_env):
     """Typing in the real picker drives both production branches and only rewrite pastes."""
     import config
     from runtime.supervisor.flows import FlowController
@@ -1224,6 +1262,7 @@ def test_real_intent_ui_routes_keep_in_openwand_and_rewrite_paste_back(tmp_path,
 
     repo = Path(__file__).resolve().parents[2]
     shared_env = {
+        **configured_worker_env,
         "OPENWAND_DATA_ROOT": str(tmp_path / "data"),
         "OPENWAND_RUN_LOG_DIR": str(tmp_path / "logs"),
         "PYTHONPATH": os.pathsep.join([str(repo), str(repo / "runtime" / "brain")]),
@@ -1296,7 +1335,7 @@ def test_real_intent_ui_routes_keep_in_openwand_and_rewrite_paste_back(tmp_path,
 
 
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 not installed")
-def test_real_intent_failure_preserves_message_without_invented_recommendations(tmp_path, monkeypatch):
+def test_real_intent_failure_preserves_message_without_invented_recommendations(tmp_path, monkeypatch, configured_worker_env):
     """An unstructured local failure stays visible without invented provider advice."""
     import config
     from runtime.supervisor.flows import FlowController
@@ -1365,6 +1404,7 @@ def test_real_intent_failure_preserves_message_without_invented_recommendations(
             "QT_QPA_PLATFORM": "offscreen",
             "OPENWAND_UI_DEBUG_METHODS": "1",
             "APP_LANGUAGE": "en",
+            **configured_worker_env,
         },
     )
     native = BoundaryWorker()
