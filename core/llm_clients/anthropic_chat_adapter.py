@@ -19,6 +19,7 @@ from core.llm_clients.chat_tool_loop import (
     OpenWandObservation,
     OpenWandToolCall,
 )
+from core.llm_clients.image_output import extract_images
 
 
 class AnthropicChatLoopModel(ChatLoopModel):
@@ -96,6 +97,7 @@ class AnthropicChatLoopModel(ChatLoopModel):
         text_blocks: list[str] = []
         calls: list[OpenWandToolCall] = []
         content = value(response, "content", []) or []
+        images = extract_images(content, source=self._provider)
         for block in content:
             if value(block, "type", "") == "text":
                 text = value(block, "text", "")
@@ -119,10 +121,10 @@ class AnthropicChatLoopModel(ChatLoopModel):
         validate_call_ids(calls)
         if reason == "tool_use" and not calls:
             raise AdapterProtocolError("Claude reported tool use without complete tool calls")
-        if not calls and not text_blocks:
+        if not calls and not text_blocks and not images:
             raise AdapterProtocolError("Claude returned neither text nor tool calls")
         self._messages.append({"role": "assistant", "content": snapshot(content)})
         self._pending = calls
         if calls:
-            return ChatModelTurn(tool_calls=calls, progress="".join(text_blocks))
-        return ChatModelTurn(final_text="".join(text_blocks), status="final")
+            return ChatModelTurn(tool_calls=calls, progress="".join(text_blocks), metadata={"attachments": images})
+        return ChatModelTurn(final_text="".join(text_blocks), status="final", metadata={"attachments": images})

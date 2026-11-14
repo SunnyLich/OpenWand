@@ -47,6 +47,15 @@ from core.llm_clients.documents import (
     _read_document_paths,
     _tool_document_max_chars,
 )
+from core.llm_clients.image_output import (
+    ImageOutputChunk,
+    ImageReplyText,
+    extract_images,
+    image_data_url,
+    merge_images,
+    message_images,
+    reply_chunks,
+)
 from core.llm_clients.logging_utils import log_context as _log_context
 from core.llm_clients.logging_utils import log_event
 from core.llm_clients.messages import (
@@ -242,19 +251,23 @@ def _execute_get_context(inputs: dict) -> str:
     return "Open document windows were detected, but none of their file types were readable."
 
 
-def _execute_retrieve_website(inputs: dict, *, tool_name: str = "retrieve_website") -> str:
+def _execute_retrieve_website(
+    inputs: dict, *, tool_name: str = "retrieve_website", page_scope: str | None = None,
+) -> str:
     """Fetch the visible text of a URL as an explicit model tool."""
     url = str((inputs or {}).get("url") or "").strip()
     if not url:
         return "retrieve_website requires a URL."
     from core.context_fetcher import fetch_browser_content_for_tool
+    from core.llm_clients.page_reader import read_page
 
-    try:
-        result = fetch_browser_content_for_tool(url)
-    except Exception as exc:  # noqa: BLE001 - browser context is optional
-        return f"Could not fetch content from {url!r}: {type(exc).__name__}: {exc}"
-    if not isinstance(result, str):
-        return f"Could not fetch content from {url!r}: browser source returned an unsupported format."
+    session = getattr(_LIVE_TOOL_CONTEXT, "privacy_session", None)
+    result = read_page(
+        url, fetch=fetch_browser_content_for_tool,
+        scope=page_scope if page_scope is not None else str(getattr(session, "session_id", "") or ""),
+        read_full=(inputs or {}).get("read_full", False), offset=(inputs or {}).get("offset", 0),
+        full_output_budget=max(1, int(_tool_turn_budget().max_result_chars or 1)),
+    )
     _log_context(
         f"tool: {tool_name} (browser) - {url!r}",
         result or "",
@@ -707,51 +720,17 @@ def _github_get_json(url: str) -> str:
 
 
 def _execute_web_search(inputs: dict) -> str:
-    """Execute public metasearch for routes without a native search service."""
-    import json
+    """Search once and read the selected page range in the same tool call."""
+    from core.context_fetcher import search_online_for_tool
+    from core.llm_clients.web_search_tool import search_and_read
 
-    query = str(
-        (inputs or {}).get("query")
-        or (inputs or {}).get("q")
-        or (inputs or {}).get("search_query")
-        or ""
-    ).strip()
-    if not query:
-        return "web_search requires a search query."
-    try:
-        max_results = int((inputs or {}).get("max_results") or 5)
-    except Exception:
-        max_results = 5
-    max_results = max(1, min(max_results, 10))
-
-    from core.context_fetcher import WebSearchError, search_online_for_tool
-
-    try:
-        results = search_online_for_tool(query, max_results=max_results)
-    except WebSearchError as exc:
-        return f"Web search failed: {exc}\nDo not claim to have searched successfully or invent current information."
-    if not results:
-        return "No web search results were returned. No current information was retrieved."
-    lines = [
-        f"Search query: {query}",
-        "Cite the exact URL from a search result. If its URL is a privacy placeholder, "
-        "copy that placeholder verbatim; OpenWand restores it for the user. "
-        "Never reconstruct or guess a different URL from memory.",
-        "Results:",
-    ]
-    for index, item in enumerate(results[:max_results], start=1):
-        title = str(item.get("title") or "Untitled").strip()
-        url = str(item.get("url") or "").strip()
-        snippet = str(item.get("snippet") or "").strip()
-        lines.append(f"{index}. {title}")
-        if url:
-            lines.append(f"   URL: {url}")
-        if snippet:
-            lines.append(f"   Snippet: {snippet}")
-    lines.append("")
-    lines.append("Raw JSON:")
-    lines.append(json.dumps(results[:max_results], ensure_ascii=False))
-    return "\n".join(lines)[:12000]
+    session = getattr(_LIVE_TOOL_CONTEXT, "privacy_session", None)
+    scope = str(getattr(session, "session_id", "") or "")
+    return search_and_read(
+        inputs or {}, search=search_online_for_tool,
+        fetch_page=lambda url: _execute_retrieve_website({"url": url}, page_scope=scope),
+        scope=scope,
+    )
 
 
 def _background_jobs_root() -> Path:
@@ -889,7 +868,11 @@ def _register_builtin_tools() -> None:
     _TOOL_REGISTRY.register_builtin(
         ToolSpec(
             name="web_search",
-            description="Search the web for current information.",
+            description=(
+                "Search the web and read every page in the inclusive start_result/end_result range "
+                "in the same call (default results 1-3; at most 5 pages per call). Use the returned "
+                "search_id and an inclusive start_result/end_result range to continue the same saved search."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -897,9 +880,17 @@ def _register_builtin_tools() -> None:
                         "type": "string",
                         "description": "The web search query to run.",
                     },
-                    "max_results": {
-                        "type": "integer",
-                        "description": "Maximum number of results to return, from 1 to 10.",
+                    "search_id": {
+                        "type": "string",
+                        "description": "Reuse a returned search ID with the same query for stable ranks; omit for a fresh search.",
+                    },
+                    "start_result": {
+                        "type": "integer", "minimum": 1, "maximum": 10,
+                        "description": "First result rank, 1-based and inclusive (default 1).",
+                    },
+                    "end_result": {
+                        "type": "integer", "minimum": 1, "maximum": 10,
+                        "description": "Last rank, inclusive (default start_result + 2, capped at 10). Select at most 5 pages; page text is capped at 100000 characters each.",
                     },
                 },
                 "required": ["query"],
@@ -983,7 +974,9 @@ def _register_builtin_tools() -> None:
         ToolSpec(
             name="retrieve_website",
             description=(
-                "Fetch the full readable text of a specific web page URL on demand. "
+                "Read a specific web page URL (up to 100000 readable characters by default). "
+                "Oversized pages report the remaining count. Set read_full=true to request the complete "
+                "cached text, subject to tool-result budgets, or use offset for the next portion. "
                 "Use this when the user asks about a website/page and the passive "
                 "browser preview is missing, partial, stale, or not enough."
             ),
@@ -993,7 +986,15 @@ def _register_builtin_tools() -> None:
                     "url": {
                         "type": "string",
                         "description": "The http:// or https:// page URL to fetch.",
-                    }
+                    },
+                    "read_full": {
+                        "type": "boolean",
+                        "description": "Return the full cached page, bypassing the 100000-character excerpt limit (default false).",
+                    },
+                    "offset": {
+                        "type": "integer", "minimum": 0,
+                        "description": "Zero-based character offset for the next portion (default 0). Cannot combine a nonzero offset with read_full=true.",
+                    },
                 },
                 "required": ["url"],
             },
@@ -2416,8 +2417,7 @@ def _stream_openai_compat_plain(
                 if adjusted is None:
                     raise
                 kwargs = adjusted
-        if text:
-            yield text
+        yield from reply_chunks(text)
         return
 
     client = _dynamic_openai_client(provider)
@@ -2428,10 +2428,16 @@ def _stream_openai_compat_plain(
                 for chunk in stream:
                     if not chunk.choices:
                         continue
-                    delta = chunk.choices[0].delta.content
-                    if delta:
+                    delta = chunk.choices[0].delta
+                    images = extract_images(delta, source=provider)
+                    if images:
                         produced = True
-                        yield delta
+                        yield ImageOutputChunk(images)
+                    from core.llm_clients.chat_completions_adapter import text_content
+                    text = text_content(getattr(delta, "content", None))
+                    if text:
+                        produced = True
+                        yield text
             return
         except Exception as exc:
             if produced:
@@ -2456,6 +2462,9 @@ def _stream_openai_compat_plain(
                             raise
                         kwargs = adjusted
                 text = _openai_compat_message_text(response)
+                images = extract_images(response, source=provider)
+                if images:
+                    yield ImageOutputChunk(images)
                 if text:
                     yield text
                 return
@@ -2853,6 +2862,8 @@ def _run_unified_compatible_tool_loop(
     if not progress:
         for text in final.metadata.get("progress_chunks", []):
             yield _progress_chunk(text)
+    if final.metadata.get("attachments"):
+        yield ImageOutputChunk(final.metadata["attachments"])
     if final.text:
         yield final.text
 
@@ -2919,6 +2930,8 @@ def _run_unified_responses_tool_loop(
     for progress in final.metadata.get("progress_chunks") or []:
         if progress and not progress_callback:
             yield _progress_chunk(str(progress))
+    if final.metadata.get("attachments"):
+        yield ImageOutputChunk(final.metadata["attachments"])
     if trace_ui:
         names = [call.name for call in final.tool_calls]
         tool_list = ", ".join(names) if names else "none"
@@ -3110,6 +3123,7 @@ def _response_stream_text(
     reasoning_effort: str | None = None,
 ) -> Generator[str, None, None]:
     """Handle response stream text for LLM clients client."""
+    seen_images: list[dict] = []
     kwargs = _with_responses_reasoning(
         kwargs,
         provider=provider,
@@ -3143,6 +3157,9 @@ def _response_stream_text(
                 print("[llm] Responses create rejected unsupported parameter; retrying without it", flush=True)
                 response = client.responses.create(**retry_kwargs)
             text = _response_output_text(response)
+            images = extract_images(response, source=provider)
+            if images:
+                yield ImageOutputChunk(images)
             if text:
                 yield text
             return
@@ -3152,6 +3169,12 @@ def _response_stream_text(
                 cap.supports_stream = True
             for event in stream:
                 event_type = str(getattr(event, "type", "") or "")
+                if event_type in {"response.output_item.done", "response.completed"}:
+                    images = extract_images(event, source=provider)
+                    previous = len(seen_images)
+                    merge_images(seen_images, images)
+                    if len(seen_images) > previous:
+                        yield ImageOutputChunk(seen_images[previous:])
                 if event_type in {
                     "response.reasoning_summary_text.delta",
                     "response.reasoning_text.delta",
@@ -3216,6 +3239,9 @@ def _response_stream_text(
             print("[llm] Responses create rejected unsupported parameter; retrying without it", flush=True)
             response = client.responses.create(**retry_kwargs)
         text = _response_output_text(response)
+        images = extract_images(response, source=provider)
+        if images:
+            yield ImageOutputChunk(images)
         if text:
             yield text
 
@@ -3269,8 +3295,8 @@ def _openai_compat_stdlib_completion_text(provider: str, kwargs: dict) -> str:
                     parts.append(str(item.get("text") or ""))
                 else:
                     parts.append(str(getattr(item, "text", "") or ""))
-            return "".join(parts).strip()
-        return str(content).strip()
+            return ImageReplyText("".join(parts).strip(), extract_images(message, source=provider))
+        return ImageReplyText(str(content).strip(), extract_images(message, source=provider))
 
     with native_init_lock():
         return _request_completion()
@@ -5137,6 +5163,8 @@ def _stream_openai_compat(
         kwargs.pop("parallel_tool_calls", None)
         print("[llm] macOS OpenAI-compatible route using non-streaming safe mode", flush=True)
         text = _openai_compat_stdlib_completion_text(provider, kwargs)
+        if getattr(text, "images", None):
+            yield ImageOutputChunk(text.images)
         if text:
             if image_base64:
                 _update_route_capabilities(provider, model, supports_images=True)
@@ -5218,15 +5246,20 @@ def _stream_openai_compat(
                 choice = chunk.choices[0]
                 finish_reason = choice.finish_reason or finish_reason
                 delta = choice.delta
+                images = extract_images(delta, source=provider)
+                if images:
+                    yield ImageOutputChunk(images)
                 if delta.content:
+                    from core.llm_clients.chat_completions_adapter import text_content
+                    content_text = text_content(delta.content)
                     if tools:
-                        first_round_text.append(delta.content)
+                        first_round_text.append(content_text)
                         now = _time.monotonic()
                         if now - last_progress_at >= 0.1:
                             _emit_live_progress("".join(first_round_text))
                             last_progress_at = now
                     else:
-                        yield delta.content
+                        yield content_text
                 for tc in (delta.tool_calls or []):
                     tool_call_accumulator.add(tc)
     except Exception as exc:
@@ -5287,6 +5320,9 @@ def _stream_openai_compat(
         choice = response.choices[0] if getattr(response, "choices", None) else None
         finish_reason = getattr(choice, "finish_reason", None) or finish_reason
         text = _openai_compat_message_text(response)
+        images = extract_images(response, source=provider)
+        if images:
+            yield ImageOutputChunk(images)
         if text:
             if image_base64:
                 _update_route_capabilities(provider, model, supports_images=True)
@@ -5412,6 +5448,9 @@ def _stream_openai_compat(
             follow_up_kwargs["tools"] = tools
         _emit_live_progress("Preparing response...")
         follow_up = client.chat.completions.create(**follow_up_kwargs)
+        images = extract_images(follow_up, source=provider)
+        if images:
+            yield ImageOutputChunk(images)
         choice = follow_up.choices[0]
         text = choice.message.content or ""
         if choice.finish_reason != "tool_calls":
@@ -5433,6 +5472,9 @@ def _stream_openai_compat(
                 })
                 follow_up_kwargs["messages"] = messages
                 follow_up = client.chat.completions.create(**follow_up_kwargs)
+                images = extract_images(follow_up, source=provider)
+                if images:
+                    yield ImageOutputChunk(images)
                 choice = follow_up.choices[0]
                 text = choice.message.content or ""
                 if choice.finish_reason == "tool_calls":
@@ -5779,6 +5821,8 @@ def _run_unified_anthropic_tool_loop(
     for progress in final.metadata.get("progress_chunks") or []:
         if progress and not progress_callback:
             yield _progress_chunk(str(progress))
+    if final.metadata.get("attachments"):
+        yield ImageOutputChunk(final.metadata["attachments"])
     if trace_ui:
         names = [call.name for call in final.tool_calls]
         tool_list = ", ".join(names) if names else "none"
@@ -5865,6 +5909,10 @@ def _stream_anthropic(
             if image_base64:
                 _update_route_capabilities("anthropic", model, supports_images=True)
             yield from stream.text_stream
+            if callable(getattr(stream, "get_final_message", None)):
+                images = extract_images(stream.get_final_message(), source="anthropic")
+                if images:
+                    yield ImageOutputChunk(images)
         return
 
     # --- Tool-enabled path: stream first round for fast first-token ---
@@ -6845,11 +6893,8 @@ def _responses_rewrite_create_with_retries(client, kwargs: dict, *, model: str):
 # ------------------------------------------------------------------
 
 def _history_user_has_image(messages: list) -> bool:
-    """True if any user turn carries an attached screenshot."""
-    return any(
-        m.get("role") == "user" and m.get("image_base64")
-        for m in messages
-    )
+    """Route history with user or generated images through vision."""
+    return any(message_images(m) for m in messages if m.get("role") in {"user", "assistant"})
 
 
 def _history_text_payload(messages: list) -> tuple[str, str, list[dict]]:
@@ -6881,55 +6926,45 @@ def _history_text_payload(messages: list) -> tuple[str, str, list[dict]]:
 
 
 def _openai_history_payload(messages: list) -> list:
-    """Render history for the OpenAI-compatible chat completions API.
-
-    User turns that carry a screenshot become a multimodal content array so the
-    image is replayed on every turn; everything else stays a plain string."""
-    out: list[dict] = []
-    for m in messages:
-        role = m.get("role")
-        text = str(m.get("content") or "")
-        image = m.get("image_base64") if role == "user" else None
-        if image:
-            content: object = [
-                {"type": "text", "text": text},
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{image}"},
-                },
-            ]
-        else:
-            content = text
+    """Replay every image, anchoring generated images as user-visible context."""
+    out = []
+    for message in messages:
+        role = message.get("role")
+        text = str(message.get("content") or "")
+        images = message_images(message)
+        if images and role == "assistant":
+            if text:
+                out.append({"role": role, "content": text})
+            role, text = "user", "Images generated in the preceding assistant reply:"
+        content = ([{"type": "text", "text": text}] + [
+            {"type": "image_url", "image_url": {"url": image_data_url(image)}}
+            for image in images
+        ]) if images else text
         out.append({"role": role, "content": content})
     return out
 
 
 def _anthropic_history_payload(messages: list) -> tuple[str, list]:
-    """Render history as (system, turns) for the Anthropic messages API.
-
-    User turns with a screenshot become image+text content blocks."""
+    """Replay all supported image formats using Claude's user image blocks."""
     system = next((m["content"] for m in messages if m.get("role") == "system"), "")
-    turns: list[dict] = []
-    for m in messages:
-        role = m.get("role")
+    turns = []
+    for message in messages:
+        role = message.get("role")
         if role == "system":
             continue
-        text = str(m.get("content") or "")
-        image = m.get("image_base64") if role == "user" else None
-        if image:
-            content: object = [
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/png",
-                        "data": image,
-                    },
-                },
-                {"type": "text", "text": text},
-            ]
-        else:
-            content = text
+        text = str(message.get("content") or "")
+        images = message_images(message)
+        if images and role == "assistant":
+            if text:
+                turns.append({"role": role, "content": text})
+            role, text = "user", "Images generated in the preceding assistant reply:"
+        content = []
+        for image in images:
+            header, encoded = image_data_url(image).split(",", 1)
+            content.append({"type": "image", "source": {
+                "type": "base64", "media_type": header[5:].split(";", 1)[0], "data": encoded,
+            }})
+        content = [*content, {"type": "text", "text": text}] if images else text
         turns.append({"role": role, "content": content})
     return system, turns
 
@@ -6983,7 +7018,7 @@ def stream_response_with_history(
     Stream a response given a pre-built messages list including history.
     Uses CHAT_LLM_PROVIDER / CHAT_LLM_MODEL (defaults to LLM_PROVIDER / LLM_MODEL).
 
-    When any user turn carries an ``image_base64`` screenshot, the whole
+    When a turn carries input or generated images, the whole
     conversation is routed through VISION_LLM_PROVIDER / MODEL (like the one-shot
     vision path) and the image is replayed on every turn, so the model keeps
     seeing it on follow-up questions.
@@ -7083,7 +7118,14 @@ def _stream_single_history_route(
         }
         _apply_sampling(kwargs, model, 0.7)
         _apply_max_output(kwargs, model, _CHAT_DEFAULT_MAX_TOKENS)
-        yield from _stream_openai_compat_plain(provider, model, kwargs)
+        from core.llm_clients.provider_adapters import Protocol, adapter_for
+        if adapter_for(provider, model).protocol == Protocol.RESPONSES:
+            from core.llm_clients.provider_requests import responses_kwargs
+            yield from _response_stream_text(
+                _dynamic_openai_client(provider), responses_kwargs(kwargs), provider=provider, model=model,
+            )
+        else:
+            yield from _stream_openai_compat_plain(provider, model, kwargs)
         return
     elif provider == "anthropic":
         client = _dynamic_anthropic_client()
@@ -7146,11 +7188,8 @@ def _stream_single_history_route(
         # Responses model can still see them on follow-up turns.
         content: list[dict] = [{"type": "input_text", "text": full_input}]
         for m in turns:
-            if m.get("role") == "user" and m.get("image_base64"):
-                content.append({
-                    "type": "input_image",
-                    "image_url": f"data:image/png;base64,{m['image_base64']}",
-                })
+            for image in message_images(m):
+                content.append({"type": "input_image", "image_url": image_data_url(image)})
         if use_tools:
             tools = _get_responses_tool_schemas(
                 str(last_user or full_input),

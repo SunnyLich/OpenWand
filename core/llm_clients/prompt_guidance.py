@@ -16,7 +16,18 @@ SCREENSHOT_TOOL_NOTE = (
 TOOLS_NOTE = (
     "You have live tools available for this query -- use real tool calls when "
     "they would improve the answer. Never print or simulate tool calls in the "
-    "reply text."
+    "reply text. Minimize model round trips: request independent read-only tools "
+    "together in the same turn. When web_search offers start_result/end_result, "
+    "choose the inclusive range of pages needed; search and reading happen in one call. Reuse its "
+    "search_id and start_result/end_result for more pages from the same saved "
+    "results. After a search identifies other relevant pages, request "
+    "all needed retrieve_website calls together rather than reading one page per "
+    "turn. Wait for results when a later call depends on them. Reuse evidence "
+    "already retrieved and answer as soon as it is sufficient; fetch additional "
+    "sources only when they address a gap in the evidence."
+    " Page reads return up to 100000 readable characters. If an excerpt omits "
+    "needed evidence, use retrieve_website with read_full=true, or offset to "
+    "read the next portion when the full page exceeds the tool-result budget."
 )
 
 

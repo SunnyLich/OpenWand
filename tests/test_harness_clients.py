@@ -1,7 +1,6 @@
 """Contract tests for OpenWand's live Codex and Claude harness bridge."""
 from __future__ import annotations
 
-import asyncio
 import io
 import os
 import sys
@@ -17,6 +16,14 @@ from core.harness_clients.base import HarnessEvent, HarnessResult, normalized_cw
 from core.harness_clients.claude import _run_async
 from core.harness_clients.codex import CodexAppServerError, _Client, _start_turn
 from core.workspace_changes import WorkspaceChangeRecorder, restore_workspace_changes
+
+
+def _run_mock_coroutine(pending):
+    # Fake SDK iterators never suspend. Avoid Windows' TCP wakeup pair when
+    # testing offline inside the process sandbox.
+    with pytest.raises(StopIteration) as completed:
+        pending.send(None)
+    return completed.value.value
 
 
 def _bare_codex_client(events: list[HarnessEvent], approval=True) -> _Client:
@@ -889,7 +896,7 @@ def test_claude_streams_thinking_and_reply_without_repeating_final_blocks(
     monkeypatch.setattr("config.OPENWAND_CLAUDE_APPROVAL_MODE", "ask", raising=False)
 
     events: list[HarnessEvent] = []
-    result = asyncio.run(_run_async(
+    result = _run_mock_coroutine(_run_async(
         "hello",
         session_id="",
         cwd=tmp_path,
@@ -930,3 +937,23 @@ def test_conversation_persists_independent_harness_sessions(tmp_path: Path) -> N
 
     assert set(cleaned["harness_sessions"]) == {"codex", "claude"}
     assert cleaned["harness_sessions"]["codex"]["provider"] == "codex"
+
+
+def test_claude_harness_preserves_multiple_image_blocks(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    images = [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": data}}
+              for data in ["b25l", "dHdv"]]
+    async def query(**_kwargs):
+        yield type("AssistantMessage", (), {"content": images})()
+        yield type("ResultMessage", (), {"is_error": False, "result": "", "session_id": "test-session"})()
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", SimpleNamespace(
+        ClaudeAgentOptions=lambda **kwargs: SimpleNamespace(**kwargs), query=query,
+    ))
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk.types", SimpleNamespace(
+        PermissionResultAllow=lambda **kwargs: kwargs, PermissionResultDeny=lambda **kwargs: kwargs,
+    ))
+    events = []
+    result = _run_mock_coroutine(_run_async("Draw two", session_id="", cwd=tmp_path, on_event=events.append, approval_callback=None))
+    assert len(result.attachments) == 2
+    assert [event.attachment for event in events if event.kind == "image"] == list(result.attachments)

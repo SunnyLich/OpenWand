@@ -18,6 +18,13 @@ from core.settings_model import ToolTurnBudgets
 class BuiltinModelToolsTests(unittest.TestCase):
     _GIT_TOOLS = {"git_status", "git_diff", "github_repo", "github_issue"}
 
+    def setUp(self):
+        from core.llm_clients.page_reader import PageCache
+
+        pages = patch("core.llm_clients.page_reader.PAGES", PageCache())
+        pages.start()
+        self.addCleanup(pages.stop)
+
     def test_context_size_limits_reach_browser_ambient_and_tool_readers(self):
         """Each configured limit must reach the production reader it governs."""
 
@@ -363,7 +370,8 @@ class BuiltinModelToolsTests(unittest.TestCase):
                 allowed_tools=["retrieve_website"],
             )
         fetch.assert_called_once_with("https://example.test/page")
-        self.assertEqual(result, "Retrieved page body")
+        self.assertIn("Retrieved page body", result)
+        self.assertIn("[Complete]", result)
 
     def test_web_context_failure_matrix_is_controlled(self):
         """Exercise every browser/web inventory cause through shared tool boundaries."""
@@ -569,7 +577,8 @@ class BuiltinModelToolsTests(unittest.TestCase):
                 allowed_tools=["get_context.browser"],
             )
         self.assertEqual(documents, "Open document body")
-        self.assertEqual(browser, "Current browser body")
+        self.assertIn("Current browser body", browser)
+        self.assertIn("[Complete]", browser)
 
     def test_pinned_tools_bypass_keyword_filter(self):
         """Verify allowed tools do not depend on prompt wording."""
@@ -660,17 +669,18 @@ class BuiltinModelToolsTests(unittest.TestCase):
                     "snippet": "Fresh headline summary.",
                 }
             ],
-        ) as search:
+        ) as search, patch("core.context_fetcher.fetch_browser_content_for_tool", return_value="Full page evidence."):
             result = llm._execute_model_tool(
                 "web_search",
                 {"query": "today's news", "max_results": 3},
                 allowed_tools=["web_search"],
             )
 
-        search.assert_called_once_with("today's news", max_results=3)
+        search.assert_called_once_with("today's news", max_results=10)
         self.assertIn("Example News", result)
         self.assertIn("https://example.test/news", result)
         self.assertIn("Fresh headline summary.", result)
+        self.assertIn("Full page evidence.", result)
 
     def test_pinned_opt_in_tools_are_not_added(self):
         # capture_screen is governed by the screenshot setting, never by the

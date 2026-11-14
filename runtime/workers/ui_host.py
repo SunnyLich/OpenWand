@@ -3895,18 +3895,19 @@ class QtProtocolHost:
         }
 
     def _reply_image(self, attachments: list | None = None) -> dict[str, Any]:
-        """Render the first safe generated-image attachment in the speech bubble."""
+        """Render all safe generated-image attachments in the speech bubble."""
         if bool(getattr(self, "_suppress_prompt_bubble", False)):
             return {"shown": False, "suppressed": True}
         from core.conversation_store import store as conversation_store
 
-        encoded = ""
+        images = []
         for raw in attachments or []:
             if not isinstance(raw, dict):
                 continue
             kind = str(raw.get("kind") or "image").strip().lower()
             if kind != "image":
                 continue
+            encoded = ""
             data_url = str(raw.get("data_url") or "").strip()
             if data_url:
                 encoded = data_url
@@ -3923,8 +3924,8 @@ class QtProtocolHost:
                 )
                 encoded = conversation_store.attachment_image_base64(ref)
             if encoded:
-                break
-        shown = bool(encoded and self._ensure_bubble().show_image(encoded))
+                images.append(encoded)
+        shown = bool(images and self._ensure_bubble().show_images(images))
         return {"shown": shown}
 
     def _live_voice_session(self, active: bool = False) -> dict[str, Any]:

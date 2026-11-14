@@ -79,6 +79,8 @@ def stream_response(reply):
 
     if message.get("content"):
         event({"content": message["content"]})
+    if message.get("images"):
+        event({"images": message["images"]})
     if message.get("reasoning_content"):
         event({"reasoning_content": message["reasoning_content"]})
     calls = message.get("tool_calls", [])
@@ -398,3 +400,126 @@ def test_missing_route_configuration_keeps_its_clear_error(with_credentials):
     check = llm._check_route_config_with_credentials if with_credentials else llm._check_route_config
     with pytest.raises(ValueError, match="route is missing provider or model"):
         check("", "", "Fixture")
+
+
+@pytest.mark.parametrize("provider", sorted(COMPATIBLE_PROVIDERS | {"custom@synthetic"}))
+@pytest.mark.parametrize("use_tools", [False, True])
+@pytest.mark.parametrize("with_text", [False, True])
+def test_multiple_image_replies_survive_every_compatible_provider(monkeypatch, provider, use_tools, with_text):
+
+    urls = ["data:image/png;base64,aW1hZ2Ux", "data:image/jpeg;base64,aW1hZ2Uy"]
+    images = [{"type": "image_url", "image_url": {"url": url}} for url in urls]
+    chunks, _, executed = run_compatible(monkeypatch, provider, [
+        completion(text="Two images." if with_text else "", images=images),
+    ], use_tools=use_tools)
+    attachments = [image for chunk in chunks if getattr(chunk, "kind", "") == "attachments"
+                   for image in json.loads(chunk)]
+    assert [image["data_url"] for image in attachments] == urls
+    assert "".join(str(chunk) for chunk in chunks if getattr(chunk, "kind", "answer") == "answer") == ("Two images." if with_text else "")
+    assert not executed
+
+
+@pytest.mark.parametrize("shape", ["inline_data", "inlineData", "anthropic", "responses", "content"])
+def test_image_output_normalizes_native_payloads_without_reading_tool_arguments(shape):
+    from core.llm_clients.image_output import extract_images
+
+    native = {
+        "inline_data": {"inline_data": {"mime_type": "image/jpeg", "data": "YWJj"}},
+        "inlineData": {"inlineData": {"mimeType": "image/jpeg", "data": "YWJj"}},
+        "anthropic": {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": "YWJj"}},
+        "responses": {"type": "image_generation_call", "result": "YWJj", "media_type": "image/jpeg"},
+        "content": {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,YWJj"}},
+    }[shape]
+    assert [item["data_url"] for item in extract_images({"content": [native, native]})] == ["data:image/jpeg;base64,YWJj"]
+    assert extract_images({"type": "tool_use", "input": {"content": [native]}}) == []
+
+
+def test_remote_image_output_is_downloaded_before_ui_persistence(monkeypatch):
+    from core.llm_clients.image_output import ImageOutputChunk
+
+    requests = []
+    def handle(request):
+        requests.append(request)
+        return httpx.Response(200, headers={"content-type": "image/png"}, content=b"image bytes")
+    with httpx.Client(transport=httpx.MockTransport(handle)) as transport:
+        monkeypatch.setattr(httpx, "stream", transport.stream)
+        chunk = ImageOutputChunk([{"kind": "image", "url": "https://images.invalid/result.png"}])
+    assert json.loads(chunk)[0]["data_url"].startswith("data:image/png;base64,")
+    assert "authorization" not in requests[0].headers
+
+
+@pytest.mark.parametrize("family", ["anthropic", "responses"])
+def test_native_image_only_turn_finishes_and_preserves_multiple_images(family):
+    if family == "anthropic":
+        blocks = [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": data}}
+                  for data in ["b25l", "dHdv"]]
+        endpoint = NS(create=lambda **_kw: NS(stop_reason="end_turn", content=blocks))
+        model = AnthropicChatLoopModel(NS(messages=endpoint), model="test", system="test", messages=[], tools=[], max_tokens=256)
+    else:
+        blocks = [{"type": "image_generation_call", "id": f"image-{i}", "status": "completed", "result": data}
+                  for i, data in enumerate(["b25l", "dHdv"])]
+        endpoint = NS(create=lambda **_kw: {"status": "completed", "output": blocks})
+        model = ResponsesChatLoopModel(NS(responses=endpoint), model="test", instructions="test", tools=[])
+    final = ChatToolLoop().run(request(), model, NS(execute=lambda _call: pytest.fail("No tools expected")))
+    assert final.status == "final"
+    assert final.text == ""
+    assert [item["data_url"] for item in final.metadata["attachments"]] == [
+        "data:image/png;base64,b25l", "data:image/png;base64,dHdv",
+    ]
+
+
+def test_generated_images_replay_on_followup_for_both_input_protocols():
+    messages = [{"role": "assistant", "content": "", "images_base64": ["b25l", "dHdv"]},
+                {"role": "user", "content": "Edit the second image"}]
+    assert llm._history_user_has_image(messages)
+    openai = llm._openai_history_payload(messages)
+    assert [part["image_url"]["url"] for part in openai[0]["content"] if part["type"] == "image_url"] == [
+        "data:image/png;base64,b25l", "data:image/png;base64,dHdv",
+    ]
+    _, anthropic = llm._anthropic_history_payload(messages)
+    assert [part["source"]["data"] for part in anthropic[0]["content"] if part["type"] == "image"] == ["b25l", "dHdv"]
+    from core.llm_clients.provider_requests import responses_kwargs
+    converted = responses_kwargs({"model": "test", "messages": openai})
+    assert len([part for part in converted["input"][0]["content"] if part["type"] == "input_image"]) == 2
+
+
+def test_nonstream_image_only_completion_and_copilot_shim_preserve_images(monkeypatch):
+    from core.auth import copilot_client
+    from core.llm_clients.image_output import ImageReplyText
+
+    images = [{"type": "image_url", "image_url": {"url": "data:image/png;base64,b25l"}},
+              {"type": "image_url", "image_url": {"url": "data:image/png;base64,dHdv"}}]
+    endpoint = NS(create=lambda **_kw: completion(images=images))
+    chunks = list(llm._run_unified_compatible_tool_loop(NS(chat=NS(completions=endpoint)), {
+        "messages": [{"role": "user", "content": "Draw two"}], "stream": False,
+    }, provider="openai", model="test"))
+    assert len(json.loads(next(chunk for chunk in chunks if getattr(chunk, "kind", "") == "attachments"))) == 2
+    text = copilot_client._extract_content({"data": {"content": images}})
+    assert isinstance(text, ImageReplyText) and not text and len(text.images) == 2
+    monkeypatch.setattr(copilot_client, "ask", lambda *_a, **_kw: text)
+    assert len(json.loads(list(copilot_client.stream("Draw", "test"))[0])) == 2
+
+
+def test_responses_completed_events_keep_images_without_duplicating_them(monkeypatch):
+    from contextlib import contextmanager
+
+    output = [{"type": "image_generation_call", "result": data} for data in ["b25l", "dHdv"]]
+    @contextmanager
+    def stream(**_kwargs):
+        yield iter([NS(type="response.output_item.done", item=item) for item in output] + [
+            NS(type="response.completed", response={"output": output}),
+        ])
+    chunks = list(llm._response_stream_text(NS(responses=NS(stream=stream)), {}, provider="openai", model="test"))
+    assert len([image for chunk in chunks for image in json.loads(chunk)]) == 2
+
+
+def test_markdown_image_replies_resolve_local_files_but_ignore_code_examples(tmp_path):
+    from core.llm_clients.image_output import extract_images, markdown_images
+
+    path = tmp_path / "image with spaces.png"
+    path.write_bytes(b"image")
+    reply = f"![first](<{path}>)\n![second](relative.png)"
+    (tmp_path / "relative.png").write_bytes(b"image")
+    assert [item["path"] for item in markdown_images(reply, cwd=tmp_path)] == [str(path), str(tmp_path / "relative.png")]
+    assert extract_images({"content": "`![example](https://example.invalid/x.png)`"}) == []
+    assert extract_images({"content": reply})[0]["path"] == str(path)

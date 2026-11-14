@@ -13,11 +13,13 @@ from typing import Any
 from core.harness_clients.base import (
     ApprovalCallback,
     EventCallback,
+    HarnessEvent,
     HarnessResult,
     approval_allowed,
     emit,
     normalized_cwd,
 )
+from core.llm_clients.image_output import extract_images, materialize_images, merge_images
 
 
 class ClaudeHarnessError(RuntimeError):
@@ -152,6 +154,7 @@ async def _run_async(
         }
 
     reply_parts: list[str] = []
+    attachments: list[dict] = []
     final_text = ""
     active_session = session_id
     streamed = False
@@ -174,6 +177,11 @@ async def _run_async(
                     continue
                 if event.get("type") == "content_block_start":
                     block = event.get("content_block") if isinstance(event.get("content_block"), dict) else {}
+                    previous = len(attachments)
+                    merge_images(attachments, materialize_images(extract_images(block, source="claude")))
+                    if on_event:
+                        for attachment in attachments[previous:]:
+                            on_event(HarnessEvent(kind="image", text="Image generated.", attachment=attachment))
                     if block.get("type") == "tool_use":
                         tool_id = str(block.get("id") or "")
                         if tool_id:
@@ -194,6 +202,11 @@ async def _run_async(
                     emit(on_event, "thought", text)
                 continue
             if class_name == "AssistantMessage":
+                previous = len(attachments)
+                merge_images(attachments, materialize_images(extract_images(message, source="claude")))
+                if on_event:
+                    for attachment in attachments[previous:]:
+                        on_event(HarnessEvent(kind="image", text="Image generated.", attachment=attachment))
                 for block in getattr(message, "content", []) or []:
                     block_name = type(block).__name__
                     if block_name == "ToolUseBlock":
@@ -240,6 +253,7 @@ async def _run_async(
         session_id=active_session,
         cwd=str(cwd),
         backend=backend,
+        attachments=tuple(attachments),
     )
 
 

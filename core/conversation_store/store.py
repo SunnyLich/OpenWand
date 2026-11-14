@@ -287,6 +287,22 @@ def first_image_base64_from_message(message: dict) -> str:
     return ""
 
 
+def image_base64s_from_message(message: dict) -> list[str]:
+    """Resolve every image in message order, preserving legacy screenshots."""
+    images = []
+    legacy = message.get("image_base64")
+    if legacy and len(str(legacy)) <= _MAX_ATTACHMENT_IMAGE_BASE64_CHARS:
+        images.append(str(legacy))
+    for ref in normalize_attachments(message.get("attachments")):
+        encoded = attachment_image_base64(ref)
+        if encoded and encoded not in images:
+            images.append(encoded)
+    for encoded in message.get("images_base64") or []:
+        if isinstance(encoded, str) and len(encoded) <= _MAX_ATTACHMENT_IMAGE_BASE64_CHARS and encoded not in images:
+            images.append(encoded)
+    return images
+
+
 def attachment_context_text(ref: dict, *, max_chars: int = 50_000) -> str:
     """Return model-visible context for an attachment reference."""
     if not isinstance(ref, dict):
@@ -551,6 +567,7 @@ def _clean_messages(messages: list, fallback_created_at: str) -> list[dict]:
         item.setdefault("id", str(uuid.uuid4()))
         item.setdefault("created_at", fallback_created_at)
         item.pop("image_base64", None)
+        item.pop("images_base64", None)
         attachments = normalize_attachments(item.get("attachments"))
         if attachments:
             item["attachments"] = attachments

@@ -2024,13 +2024,8 @@ def _run_live_harness(
                 ctx.emit("harness.activity", dict(attachment))
             return
         if kind == "image" and isinstance(attachment, dict):
-            candidate = dict(attachment)
-            key = (str(candidate.get("path") or ""), str(candidate.get("name") or ""))
-            if key[0] and not any(
-                (str(item.get("path") or ""), str(item.get("name") or "")) == key
-                for item in attachments
-            ):
-                attachments.append(candidate)
+            from core.llm_clients.image_output import merge_images
+            merge_images(attachments, [dict(attachment)])
         if (not text and kind != "image") or ctx.cancelled:
             return
         if privacy_session is not None:
@@ -2080,16 +2075,14 @@ def _run_live_harness(
         images=images,
     )
     text = str(result.text or "")
+    from core.llm_clients.image_output import markdown_images, materialize_images, merge_images
+    merge_images(attachments, markdown_images(text, source=result.provider, cwd=Path(result.cwd)))
     for raw_attachment in getattr(result, "attachments", ()) or ():
         if not isinstance(raw_attachment, dict):
             continue
-        candidate = dict(raw_attachment)
-        key = (str(candidate.get("path") or ""), str(candidate.get("name") or ""))
-        if key[0] and not any(
-            (str(item.get("path") or ""), str(item.get("name") or "")) == key
-            for item in attachments
-        ):
-            attachments.append(candidate)
+        from core.llm_clients.image_output import merge_images
+        merge_images(attachments, [dict(raw_attachment)])
+    attachments = materialize_images(attachments)
     if privacy_session is not None:
         text = privacy_session.restore(text)
     _log(
@@ -2298,6 +2291,7 @@ def brain_query(
             _delete_harness_images(harness_images)
 
     parts: list[str] = []
+    attachments: list[dict] = []
     file_context: list[dict[str, Any]] = []
     _log(
         "brain.query stream starting after "
@@ -2327,6 +2321,10 @@ def brain_query(
         if privacy_session is not None:
             text = privacy_session.restore(text)
         kind = _stream_chunk_kind(chunk)
+        if kind == "attachments":
+            from core.llm_clients.image_output import merge_images
+            merge_images(attachments, json.loads(text))
+            continue
         if not first_chunk_seen:
             first_chunk_seen = True
             _log(f"brain.query first stream chunk after {time.monotonic() - query_started:.2f}s kind={kind}")
@@ -2353,6 +2351,11 @@ def brain_query(
             },
         )
     done_payload: dict[str, Any] = {"text": full}
+    from core.llm_clients.image_output import markdown_images, materialize_images, merge_images
+    merge_images(attachments, markdown_images(full))
+    attachments = materialize_images(attachments)
+    if attachments:
+        done_payload["attachments"] = attachments
     if file_context:
         done_payload["file_context"] = file_context
     privacy_report = getattr(built, "privacy_report", None)
@@ -3021,15 +3024,12 @@ def brain_chat(
             prompt = f"[OpenWand memory]\n{memory_context}\n\n---\n\n{prompt}"
         # Older turns' images stay history-only; the newest user turn's image
         # is the one this turn is about, so it rides along as harness input.
-        newest_image = next(
-            (
-                str(message.get("image_base64") or "")
-                for message in reversed(turns)
-                if message.get("role") == "user" and message.get("image_base64")
-            ),
-            "",
+        from core.llm_clients.image_output import message_images
+        newest_images = next(
+            (message_images(message) for message in reversed(turns)
+             if message.get("role") == "user" and message_images(message)), [],
         )
-        harness_images = _write_harness_images([newest_image])
+        harness_images = _write_harness_images(newest_images)
         route_model = str(
             getattr(
                 config,
@@ -3055,6 +3055,7 @@ def brain_chat(
             _delete_harness_images(harness_images)
 
     parts: list[str] = []
+    attachments: list[dict] = []
     file_context: list[dict[str, Any]] = []
     stream_answer = _can_stream_addon_response()
     for chunk in _stream_chat_reply(
@@ -3075,6 +3076,10 @@ def brain_chat(
         if privacy_session is not None:
             text = privacy_session.restore(text)
         kind = _stream_chunk_kind(chunk)
+        if kind == "attachments":
+            from core.llm_clients.image_output import merge_images
+            merge_images(attachments, json.loads(text))
+            continue
         is_progress = kind == "progress"
         is_thought = kind == "thought"
         if not (is_progress or is_thought):
@@ -3090,6 +3095,11 @@ def brain_chat(
     if full and not ctx.cancelled:
         ctx.emit("reply.chunk", {"text": full, "is_progress": False, "is_thought": False})
     done_payload: dict[str, Any] = {"text": full}
+    from core.llm_clients.image_output import markdown_images, materialize_images, merge_images
+    merge_images(attachments, markdown_images(full))
+    attachments = materialize_images(attachments)
+    if attachments:
+        done_payload["attachments"] = attachments
     if file_context:
         done_payload["file_context"] = file_context
     if privacy_report.get("count"):
@@ -3147,10 +3157,10 @@ def _user_turn_with_message_context(raw: dict[str, Any], content: str, conversat
     )
 
 
-def _normalize_chat_messages(messages: list[dict[str, Any]]) -> list[dict[str, str]]:
+def _normalize_chat_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Normalize chat messages, keeping user context anchored to its source turn."""
     allowed_roles = {"system", "user", "assistant"}
-    turns: list[dict[str, str]] = []
+    turns: list[dict[str, Any]] = []
     try:
         from core.conversation_store import store as conversation_store
     except Exception:
@@ -3163,15 +3173,21 @@ def _normalize_chat_messages(messages: list[dict[str, Any]]) -> list[dict[str, s
         text = str(content).strip()
         if role == "user":
             text = _user_turn_with_message_context(raw, text, conversation_store)
-        turn: dict[str, str] = {"role": role, "content": text}
+        turn: dict[str, Any] = {"role": role, "content": text}
         # Carry attached screenshots/images forward by resolving references at
         # model-call time, never by persisting base64 in conversation history.
-        image = raw.get("image_base64")
-        if not image and role == "user" and conversation_store is not None:
-            image = conversation_store.first_image_base64_from_message(raw)
-        if role == "user" and image:
-            turn["image_base64"] = str(image)
-        if text or turn.get("image_base64"):
+        from core.llm_clients.image_output import message_images
+        images = message_images(raw)
+        if conversation_store is not None and raw.get("attachments"):
+            for image in conversation_store.image_base64s_from_message(raw):
+                if image not in images:
+                    images.append(image)
+        if images:
+            if len(images) > 1 or role == "assistant":
+                turn["images_base64"] = images
+            if role == "user":
+                turn["image_base64"] = images[0]
+        if text or images:
             turns.append(turn)
     return turns
 

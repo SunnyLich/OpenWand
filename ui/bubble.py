@@ -25,7 +25,17 @@ from PySide6.QtGui import (
     QPixmap,
     QTextCursor,
 )
-from PySide6.QtWidgets import QApplication, QFrame, QLabel, QMenu, QTextBrowser, QTextEdit, QToolTip, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QLabel,
+    QMenu,
+    QPushButton,
+    QTextBrowser,
+    QTextEdit,
+    QToolTip,
+    QWidget,
+)
 
 import config
 from ui.chat_rendering import _compact_markdown_tables
@@ -347,6 +357,18 @@ class SpeechBubble(QWidget):
         self._image_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._image_label.hide()
+        self._image_pixmaps: list[QPixmap] = []
+        self._image_index = 0
+        self._image_previous = QPushButton("‹", self)
+        self._image_next = QPushButton("›", self)
+        self._image_counter = QLabel(self)
+        self._image_counter.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._image_previous.setAccessibleName(t("Previous image"))
+        self._image_next.setAccessibleName(t("Next image"))
+        self._image_previous.clicked.connect(lambda: self._select_image(self._image_index - 1))
+        self._image_next.clicked.connect(lambda: self._select_image(self._image_index + 1))
+        for control in (self._image_previous, self._image_counter, self._image_next):
+            control.hide()
         self._sync_text_view_geometry()
 
         # Position: left of icon, vertically centered with it
@@ -1067,23 +1089,41 @@ class SpeechBubble(QWidget):
             self._start_hide_timer()
             self._emit_highlight(finished=True)
 
-    def show_image(self, image_base64: str) -> bool:
-        """Show a generated-image thumbnail scaled to the floating bubble."""
-        encoded = str(image_base64 or "").strip()
-        if not encoded or len(encoded) > _IMAGE_BASE64_CHAR_LIMIT:
+    def show_images(self, images: list[str]) -> bool:
+        """Keep every image accessible in a bounded, navigable preview."""
+        pixmaps = []
+        for encoded in images:
+            encoded = str(encoded or "").strip()
+            if not encoded or len(encoded) > _IMAGE_BASE64_CHAR_LIMIT:
+                continue
+            if encoded.startswith("data:"):
+                encoded = encoded.partition(",")[2]
+            try:
+                data = base64.b64decode(encoded, validate=True)
+            except (TypeError, ValueError):
+                continue
+            pixmap = QPixmap()
+            if pixmap.loadFromData(data) and not pixmap.isNull():
+                pixmaps.append(pixmap)
+        if not pixmaps:
             return False
-        if encoded.startswith("data:"):
-            _header, separator, encoded = encoded.partition(",")
-            if not separator:
-                return False
-        try:
-            image_bytes = base64.b64decode(encoded, validate=False)
-        except (TypeError, ValueError):
-            return False
-        pixmap = QPixmap()
-        if not image_bytes or not pixmap.loadFromData(image_bytes) or pixmap.isNull():
-            return False
+        self._image_pixmaps = pixmaps
+        self._image_index = 0
+        return self._show_image_pixmap(pixmaps[0])
 
+    def _select_image(self, index: int) -> None:
+        if not self._image_pixmaps:
+            return
+        self._image_index = index % len(self._image_pixmaps)
+        self._image_pixmap = self._image_pixmaps[self._image_index]
+        self._layout_image()
+        self.update()
+
+    def show_image(self, image_base64: str) -> bool:
+        return self.show_images([image_base64])
+
+    def _show_image_pixmap(self, pixmap: QPixmap) -> bool:
+        """Show a generated-image thumbnail scaled to the floating bubble."""
         if self._transcript_preview:
             # Replace transient statuses such as "Image generated." with the
             # actual result instead of reserving text rows above the thumbnail.
@@ -1696,8 +1736,12 @@ class SpeechBubble(QWidget):
         if not hasattr(self, "_image_label"):
             return
         self._image_pixmap = QPixmap()
+        self._image_pixmaps = []
+        self._image_index = 0
         self._image_label.clear()
         self._image_label.hide()
+        for control in (self._image_previous, self._image_counter, self._image_next):
+            control.hide()
 
     def _layout_image(self) -> None:
         """Scale and place the image without allowing it to overflow the screen."""
@@ -1718,13 +1762,30 @@ class SpeechBubble(QWidget):
         has_text = bool(self._thinking or self._all_line_segments or self._line_segments)
         text_body_h = self._base_bubble_h() if has_text else 0
         image_y = text_body_h if has_text else _PAD
-        self._bubble_h = image_y + thumbnail.height() + _PAD
+        multiple = len(self._image_pixmaps) > 1
+        color = _css_color(self._text_color)
+        self._image_counter.setStyleSheet(f"color: {color}; background: transparent;")
+        for button in (self._image_previous, self._image_next):
+            button.setStyleSheet(
+                f"QPushButton {{ color: {color}; background: transparent; border: none; font-size: 18px; }}"
+                "QPushButton:hover { background: rgb(128, 128, 128); border-radius: 5px; }"
+            )
+        nav_h = 28 if multiple else 0
+        self._bubble_h = image_y + thumbnail.height() + nav_h + _PAD
         self.setFixedSize(self._bubble_w + _TAIL_W, self._bubble_h)
         image_x = _PAD + max(0, (max_w - thumbnail.width()) // 2)
         self._image_label.setGeometry(image_x, image_y, thumbnail.width(), thumbnail.height())
         self._image_label.setPixmap(thumbnail)
         self._image_label.show()
         self._image_label.raise_()
+        nav_y = image_y + thumbnail.height()
+        self._image_previous.setGeometry(_PAD, nav_y, 32, 26)
+        self._image_next.setGeometry(_PAD + max_w - 32, nav_y, 32, 26)
+        self._image_counter.setGeometry(_PAD + 32, nav_y, max(1, max_w - 64), 26)
+        self._image_counter.setText(f"{self._image_index + 1} / {len(self._image_pixmaps)}")
+        for control in (self._image_previous, self._image_counter, self._image_next):
+            control.setVisible(multiple)
+            control.raise_()
         self._sync_text_view_geometry()
 
     def _sync_text_view_geometry(self) -> None:

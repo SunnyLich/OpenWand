@@ -52,7 +52,10 @@ def _extract_content(response) -> str:
     if content is None and isinstance(response, dict):
         data = response.get("data")
         content = data.get("content") if isinstance(data, dict) else response.get("content")
-    return str(content or "")
+    from core.llm_clients.chat_completions_adapter import text_content
+    from core.llm_clients.image_output import ImageReplyText, extract_images
+
+    return ImageReplyText(text_content(content), extract_images(data or response, source="copilot"))
 
 
 def _client_options(token: str) -> dict:
@@ -177,7 +180,7 @@ async def _ask_async(
         if failures:
             raise failures[0]
         text = _extract_content(response)
-        if guard is not None and guard.invoked and not text:
+        if guard is not None and guard.invoked and not text and not getattr(text, "images", None):
             raise ToolContinuationError("Copilot returned no answer after tool execution; automatic replay was stopped.")
         return text
     except Exception as exc:
@@ -233,8 +236,8 @@ def stream(
 ) -> Iterable[str]:
     """Yield the Copilot reply as a single chunk (non-streaming shim)."""
     text = ask(prompt, model, system, session_id, allow_tools, **kwargs)
-    if text:
-        yield text
+    from core.llm_clients.image_output import reply_chunks
+    yield from reply_chunks(text)
 
 
 def test_copilot_token() -> tuple[bool, str]:

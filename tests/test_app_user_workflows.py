@@ -520,7 +520,8 @@ def test_finishing_overlay_turn_clears_waiting_and_preserves_partial(shared_chat
     assert "Still loading" not in " ".join(view.toPlainText() for view in window.findChildren(_MessageTextView))
 
 
-def test_shared_image_completion_keeps_both_previews_and_attachment_identity(shared_chat_surfaces, isolated_app_state):
+@pytest.mark.parametrize("image_count", [1, 3])
+def test_shared_image_completion_keeps_both_previews_and_attachment_identity(shared_chat_surfaces, isolated_app_state, image_count):
     import base64
 
     from PySide6.QtGui import QImage
@@ -533,14 +534,21 @@ def test_shared_image_completion_keeps_both_previews_and_attachment_identity(sha
     image = QImage(2, 2, QImage.Format.Format_ARGB32)
     image.fill(0xFFFF00FF)
     assert image.save(str(image_path), "PNG")
-    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    outputs = []
+    for index in range(image_count):
+        image.fill(0xFFFF00FF + index)
+        assert image.save(str(image_path), "PNG")
+        outputs.append({"kind": "image", "data_url": "data:image/png;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")})
+    encoded = outputs[0]["data_url"].split(",", 1)[1]
     begin = host._chat_begin_conversation(user="Create an image")
     response = host._reply_response
     host._chat_done(
         conversation_index=0, response_id=begin["response_id"],
-        assistant_attachments=[{"kind": "image", "data_url": "data:image/png;base64," + encoded}],
+        assistant_attachments=outputs,
     )
     saved = host._all_conversations[0]["messages"][-1]
+    assert len(saved["attachments"]) == image_count
+    assert len(bubble._image_pixmaps) == image_count
     assert saved["attachments"] == response.attachments
     assert saved["attachments"][0]["sha256"]
     assert store.attachment_image_base64(saved["attachments"][0]) == encoded

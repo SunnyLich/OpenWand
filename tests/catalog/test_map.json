@@ -139,7 +139,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 26
+      "node_count": 29
     },
     {
       "path": "tests/integration/brain/test_handler_config.py",
@@ -1114,7 +1114,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 160
+      "node_count": 260
     },
     {
       "path": "tests/test_app_icon.py",
@@ -1144,7 +1144,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 131
+      "node_count": 132
     },
     {
       "path": "tests/test_assistant_text.py",
@@ -1249,7 +1249,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 51
+      "node_count": 52
     },
     {
       "path": "tests/test_builtin_model_tools.py",
@@ -1354,7 +1354,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 54
+      "node_count": 55
     },
     {
       "path": "tests/test_chatgpt_auth.py",
@@ -1753,7 +1753,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 18
+      "node_count": 19
     },
     {
       "path": "tests/test_ghost_cursor.py",
@@ -1813,7 +1813,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 34
+      "node_count": 35
     },
     {
       "path": "tests/test_harness_controls.py",
@@ -1929,7 +1929,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 67
+      "node_count": 70
     },
     {
       "path": "tests/test_intent_overlay_keyboard_hook.py",
@@ -2339,7 +2339,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 5
+      "node_count": 9
     },
     {
       "path": "tests/test_planned_chunking.py",
@@ -3278,7 +3278,7 @@
         "macos"
       ],
       "schedule": "github-actions",
-      "node_count": 28
+      "node_count": 53
     },
     {
       "path": "tests/test_window_chrome.py",

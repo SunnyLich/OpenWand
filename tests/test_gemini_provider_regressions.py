@@ -253,3 +253,65 @@ def test_openai_stream_rejects_ambiguous_identity_without_mutating_calls(fragmen
     with pytest.raises(ValueError, match=message):
         accumulator.add(SimpleNamespace(**fragment))
     assert accumulator.calls == before
+
+
+def test_search_and_three_page_reads_share_three_provider_requests():
+    """Keep a batch of page reads in one round, including all results in the next request."""
+    import json
+
+    urls = [f"https://example.com/page-{i}" for i in range(3)]
+    schemas = [
+        {"type": "function", "function": {
+            "name": name,
+            "parameters": {"type": "object", "properties": {argument: {"type": "string"}},
+                           "required": [argument]},
+        }}
+        for name, argument in (("web_search", "query"), ("retrieve_website", "url"))
+    ]
+
+    def tool(call_id, name, arguments):
+        return {
+            "id": call_id, "type": "function",
+            "function": {"name": name, "arguments": json.dumps(arguments)},
+            "extra_content": {"google": {"thought_signature": f"signature-{call_id}"}},
+        }
+
+    search = tool("search", "web_search", {"query": "example topic"})
+    pages = [tool(f"page-{i}", "retrieve_website", {"url": url}) for i, url in enumerate(urls)]
+    requests = []
+
+    def create(**kwargs):
+        requests.append(deepcopy(kwargs))
+        calls = [search] if len(requests) == 1 else pages if len(requests) == 2 else []
+        assert len(requests) <= 3, "Page reads must not require separate model turns"
+        return {"choices": [{
+            "finish_reason": "tool_calls" if calls else "stop",
+            "message": {"content": None if calls else "Answer based on the three pages.",
+                        "tool_calls": calls},
+        }]}
+
+    def execute(name, arguments, **_kwargs):
+        if name == "web_search":
+            return "Raw JSON:\n" + json.dumps([{"url": url} for url in urls])
+        return f"Evidence from {arguments['url']}"
+
+    sdk = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    with patch.object(llm, "_execute_model_tool", side_effect=execute) as executor:
+        output = list(llm._run_unified_compatible_tool_loop(
+            sdk,
+            {"model": "synthetic-gemini", "messages": [{"role": "user", "content": "Research a topic."}],
+             "tools": schemas, "stream": False},
+            provider="google", model="synthetic-gemini",
+            allowed_tools=["web_search", "retrieve_website"], user_intent="Research a topic.",
+        ))
+
+    assert output[-1] == "Answer based on the three pages."
+    assert len(requests) == 3
+    assert executor.call_count == 4
+    assert [call.args[:2] for call in executor.call_args_list[1:]] == [
+        ("retrieve_website", {"url": url}) for url in urls
+    ]
+    page_results = [message for message in requests[-1]["messages"]
+                    if message.get("role") == "tool" and message["tool_call_id"].startswith("page-")]
+    assert [message["tool_call_id"] for message in page_results] == [f"page-{i}" for i in range(3)]
+    assert [message["content"] for message in page_results] == [f"Evidence from {url}" for url in urls]

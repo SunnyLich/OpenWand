@@ -24,6 +24,7 @@ from core.llm_clients.chat_tool_loop import (
     OpenWandToolCall,
     OpenWandToolResult,
 )
+from core.llm_clients.image_output import extract_images
 
 
 class ResponsesChatLoopModel(ChatLoopModel):
@@ -93,16 +94,19 @@ class ResponsesChatLoopModel(ChatLoopModel):
         self._pending = normalized_calls
         self._last_provider_calls = calls
         progress = llm._response_output_text(response) if calls else ""
+        images = extract_images(response, source=self._provider)
         if calls:
             return ChatModelTurn(
                 tool_calls=normalized_calls,
                 progress=progress,
+                metadata={"attachments": images},
             )
-        if not llm._response_output_text(response):
+        if not llm._response_output_text(response) and not images:
             raise AdapterProtocolError("Responses API returned neither text nor tool calls")
         return ChatModelTurn(
             final_text=llm._response_output_text(response),
             status="final",
+            metadata={"attachments": images},
         )
 
     def _next_kwargs(self, request: ChatToolRequest, observations: list[OpenWandObservation]) -> dict[str, Any]:
@@ -199,6 +203,15 @@ class LiveModelToolExecutor:
         content = llm._execute_model_tool(call.name, call.arguments, allowed_tools=self.allowed_tools)
         clipped = False
         if self.clip_results:
+            if call.name == "retrieve_website" and call.arguments.get("read_full") is True:
+                budget = llm._tool_turn_budget()
+                remaining = max(0, int(budget.max_total_chars or 0) - self._spent_chars)
+                limit = min(max(0, int(budget.max_result_chars or 0)), remaining)
+                if len(str(content or "")) > limit:
+                    content = (
+                        f"Full page not returned: it exceeds the remaining tool-result budget "
+                        f"of {limit} characters. Use offset with read_full=false to read portions."
+                    )
             clipped_content, self._spent_chars = llm._clip_tool_result_for_turn(content, self._spent_chars)
             clipped = clipped_content != str(content or "")
             content = clipped_content
@@ -281,5 +294,6 @@ def looks_like_tool_failure(content: str) -> bool:
             "not allowed",
             "tool call skipped",
             "requires ",
+            "full page not returned",
         )
     )

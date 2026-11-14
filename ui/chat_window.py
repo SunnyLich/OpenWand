@@ -8,6 +8,7 @@ Send message: Enter (Shift+Enter for newline).
 """
 from __future__ import annotations
 
+import hashlib
 import html
 import inspect
 import json
@@ -403,15 +404,15 @@ def _attachment_summary_context(attachments: object) -> str:
     return "\n".join(lines)
 
 
-def _chat_model_messages(messages: list[dict]) -> list[dict[str, str]]:
-    """Return only model-relevant turn payload, with attachments anchored to users."""
-    turns: list[dict[str, str]] = []
+def _chat_model_messages(messages: list[dict]) -> list[dict]:
+    """Return model-visible turns and every attached input or generated image."""
+    turns: list[dict] = []
     for msg in messages:
         if msg.get("response_error"):
             continue  # App diagnostics are visible history, not model answers.
         role = str(msg.get("role") or "").strip()
         content = msg.get("content")
-        if role in {"system", "user", "assistant"} and isinstance(content, str) and content.strip():
+        if role in {"system", "user", "assistant"} and isinstance(content, str) and (content.strip() or msg.get("attachments")):
             model_content = content
             context_parts: list[str] = []
             context_text = _message_context_text(msg.get("context")) if role == "user" else ""
@@ -432,10 +433,13 @@ def _chat_model_messages(messages: list[dict]) -> list[dict[str, str]]:
                     "of repeating the source in full unless the user explicitly asks for that.\n"
                     f"{joined_context}"
                 )
-            turn: dict[str, str] = {"role": role, "content": model_content}
-            image = _conversation_store.first_image_base64_from_message(msg)
-            if role == "user" and image:
-                turn["image_base64"] = str(image)
+            turn: dict = {"role": role, "content": model_content}
+            images = _conversation_store.image_base64s_from_message(msg)
+            if images:
+                if len(images) > 1 or role == "assistant":
+                    turn["images_base64"] = images
+                if role == "user":
+                    turn["image_base64"] = images[0]
             turns.append(turn)
     return turns
 
@@ -5728,10 +5732,17 @@ class ChatWindow(QWidget):
         if not self._formatted_replies_ui_enabled:
             wl.addWidget(header)
 
-        image_label = self._image_thumbnail_label(image_b64, role)
-        if image_label is not None:
-            wl.addWidget(image_label)
-            lbl.setProperty("openwand_has_image", True)
+        images = _conversation_store.image_base64s_from_message(message)
+        if image_b64 and image_b64 not in images:
+            images.insert(0, image_b64)
+        image_keys = []
+        for encoded in images:
+            image_label = self._image_thumbnail_label(encoded, role)
+            if image_label is not None:
+                wl.addWidget(image_label)
+                image_keys.append(hashlib.sha256(encoded.encode()).hexdigest())
+        lbl.setProperty("openwand_image_keys", image_keys)
+        lbl.setProperty("openwand_has_image", bool(image_keys))
 
         presentation_view = None
         presentation_addon_id = ""
@@ -5783,7 +5794,7 @@ class ChatWindow(QWidget):
         if isinstance(message.get("provider_error"), dict):
             from ui.provider_errors import details_widget
             wl.addWidget(details_widget(message["provider_error"], wrapper))
-        if not display_text and image_label is not None:
+        if not display_text and image_keys:
             lbl.hide()
 
         if conversation_index is not None and message_index is not None:
@@ -6017,7 +6028,9 @@ class ChatWindow(QWidget):
         role: str,
     ) -> None:
         """Attach a late-arriving generated image above a live text view."""
-        if bool(view.property("openwand_has_image")):
+        image_key = hashlib.sha256(str(image_b64 or "").encode()).hexdigest()
+        keys = list(view.property("openwand_image_keys") or [])
+        if image_key in keys:
             return
         image_label = self._image_thumbnail_label(image_b64, role)
         if image_label is None:
@@ -6028,6 +6041,7 @@ class ChatWindow(QWidget):
             return
         index = layout.indexOf(view)
         layout.insertWidget(index if index >= 0 else layout.count(), image_label)
+        view.setProperty("openwand_image_keys", keys + [image_key])
         view.setProperty("openwand_has_image", True)
 
     def _open_message_menu(
@@ -6801,14 +6815,12 @@ class ChatWindow(QWidget):
                     item.get("assistant_attachments") or []
                 )
             if self._current_ai_label is not None and self._current_ai_attachments:
-                image_b64 = _conversation_store.attachment_image_base64(
-                    self._current_ai_attachments[0]
-                )
-                self._insert_bubble_image(
-                    self._current_ai_label,
-                    image_b64,
-                    "assistant",
-                )
+                for ref in self._current_ai_attachments:
+                    self._insert_bubble_image(
+                        self._current_ai_label,
+                        _conversation_store.attachment_image_base64(ref),
+                        "assistant",
+                    )
             self._current_harness = dict(item.get("harness") or {})
             final_segments = _normalized_display_segments(item.get("display_segments") or [])
             if final_segments:

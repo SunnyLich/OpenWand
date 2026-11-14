@@ -564,6 +564,10 @@ class _Bubble:
     def show_progress(self, text: str) -> None:
         self.progress.append(text)
 
+    def show_images(self, images):
+        self.images.extend(images)
+        return bool(images)
+
     def show_image(self, image_base64: str) -> bool:
         self.images.append(image_base64)
         return True

@@ -13,13 +13,25 @@ from core.llm_clients.provider_adapters import Protocol, adapter_for
 
 
 def responses_kwargs(kwargs: dict) -> dict:
-    """Translate an existing text-only completion request to Responses."""
+    """Translate text and image completion messages to Responses input blocks."""
     instructions, inputs = [], []
     for message in kwargs.get("messages", []):
         content = message.get("content")
-        if not isinstance(content, str):
-            raise AdapterCapabilityError("This text/tool adapter does not forward non-text message content")
+        if isinstance(content, list):
+            parts = []
+            for part in content:
+                if part.get("type") == "text":
+                    parts.append({"type": "input_text", "text": part["text"]})
+                elif part.get("type") == "image_url":
+                    parts.append({"type": "input_image", "image_url": part["image_url"]["url"]})
+                else:
+                    raise AdapterCapabilityError("Unsupported Responses input content type")
+            content = parts
+        elif not isinstance(content, str):
+            raise AdapterCapabilityError("Unsupported Responses message content")
         if message["role"] in {"system", "developer"}:
+            if not isinstance(content, str):
+                raise AdapterCapabilityError("Responses instructions must be text")
             instructions.append(content)
         else:
             inputs.append({"role": message["role"], "content": content})

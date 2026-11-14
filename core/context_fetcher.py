@@ -283,7 +283,14 @@ _looks_like_rendered_heading = context_fetcher_page._looks_like_rendered_heading
 _extract_rendered_page_context = context_fetcher_page._extract_rendered_page_context
 extract_useful_page_context = context_fetcher_page.extract_useful_page_context
 
-def _fetch_browser_content(url: str, max_chars: int | None = None) -> str:
+class PageDownloadLimitError(ValueError):
+    """A page exceeded the decompressed download allowance."""
+
+
+PAGE_DOWNLOAD_BYTES = 10 * 1024 * 1024
+
+
+def _fetch_browser_content(url: str, max_chars: int | None = None, *, bounded_download: bool = False) -> str:
     """
     Fetch the plain text of a public web page.
     Skips non-HTTP, localhost, and private-network URLs.
@@ -305,15 +312,33 @@ def _fetch_browser_content(url: str, max_chars: int | None = None) -> str:
     try:
         import requests  # type: ignore
 
-        resp = requests.get(
-            url,
-            timeout=6,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; AI-assistant-overlay/1.0)"},
-            allow_redirects=True,
-        )
-        resp.raise_for_status()
-        return extract_useful_page_context(url=url, html=resp.text, max_chars=max_chars)
+        options = {
+            "timeout": 6,
+            "headers": {"User-Agent": "Mozilla/5.0 (compatible; AI-assistant-overlay/1.0)"},
+            "allow_redirects": True,
+        }
+        if bounded_download:
+            options["stream"] = True
+        resp = requests.get(url, **options)
+        if bounded_download:
+            try:
+                resp.raise_for_status()
+                body = bytearray()
+                # requests iter_content yields decompressed bytes, including gzip responses.
+                for chunk in resp.iter_content(chunk_size=64 * 1024):
+                    if len(body) + len(chunk) > PAGE_DOWNLOAD_BYTES:
+                        raise PageDownloadLimitError("Page exceeds download limit (10 MiB decompressed).")
+                    body.extend(chunk)
+                html = body.decode(resp.encoding or "utf-8", errors="replace")
+            finally:
+                resp.close()
+        else:
+            resp.raise_for_status()
+            html = resp.text
+        return extract_useful_page_context(url=url, html=html, max_chars=max_chars)
 
+    except PageDownloadLimitError:
+        raise
     except Exception:
         return ""
 
@@ -1803,9 +1828,10 @@ def fetch_browser_content_for_tool(url: str) -> str:
     """
     Public wrapper around _fetch_browser_content for use as an LLM tool.
     Fetches the plain-text content of *url* with redaction applied.
-    Returns "" on failure or if the URL is private/non-HTTP.
+    Returns complete readable text, without the ambient-context character cutoff.
+    Returns "" on failure or if the URL is private/non-HTTP; raises on oversized downloads.
     """
-    return _fetch_browser_content(url)
+    return _fetch_browser_content(url, max_chars=0, bounded_download=True)
 
 
 def fetch_browser_content_for_window(url: str = "", hwnd: int = 0) -> str:

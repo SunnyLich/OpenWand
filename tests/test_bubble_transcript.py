@@ -1838,3 +1838,36 @@ def test_live_mode_holds_auto_hide_until_deactivated():
         config.APP_LANGUAGE = old_language
         bubble.deleteLater()
         app.processEvents()
+
+
+def test_multiple_generated_images_are_navigable_and_clear_together(tmp_path):
+    from PySide6.QtGui import QImage
+    from PySide6.QtWidgets import QApplication
+
+    from ui.bubble import SpeechBubble
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    images = []
+    for i, color in enumerate([0xFFFF0000, 0xFF0000FF]):
+        source = QImage(30, 20, QImage.Format.Format_ARGB32)
+        source.fill(color)
+        path = tmp_path / f"image-{i}.png"
+        assert source.save(str(path), "PNG")
+        images.append(base64.b64encode(path.read_bytes()).decode())
+    bubble = SpeechBubble()
+    try:
+        assert bubble.show_images(images)
+        assert len(bubble._image_pixmaps) == 2
+        assert bubble._image_counter.text() == "1 / 2"
+        first = bubble._image_pixmap.toImage().pixelColor(0, 0)
+        bubble._image_next.click()
+        assert bubble._image_counter.text() == "2 / 2"
+        assert bubble._image_pixmap.toImage().pixelColor(0, 0) != first
+        bubble._image_previous.click()
+        assert bubble._image_counter.text() == "1 / 2"
+        bubble.clear()
+        assert not bubble._image_pixmaps
+        assert bubble._image_next.isHidden()
+    finally:
+        bubble.close()
+        app.processEvents()

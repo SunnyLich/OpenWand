@@ -2531,7 +2531,7 @@ class IntentOverlay(QWidget):
 
     def _focus_custom_input(self) -> None:
         """Focus custom input."""
-        if not self._custom_mode or self._input_line.isHidden():
+        if self._handled or not self.isVisible() or not self._custom_mode or self._input_line.isHidden():
             return
         if self._input_line.hasFocus() and (_IS_MAC or self._input_grabbed_keyboard):
             return
@@ -2552,7 +2552,7 @@ class IntentOverlay(QWidget):
 
     def _focus_overlay(self) -> None:
         """Give the picker itself keyboard focus when not typing a custom prompt."""
-        if self._custom_mode:
+        if self._handled or getattr(self, "_closed", False) or not self.isVisible() or self._custom_mode:
             return
         self.raise_()
         self.activateWindow()
@@ -2616,6 +2616,7 @@ class IntentOverlay(QWidget):
             if self.isActiveWindow():
                 self._was_activated = True
             elif self._was_activated and not self._handled:
+                self._unhook()
                 QTimer.singleShot(0, self._cancel_if_focus_left)
         super().changeEvent(event)
 
@@ -2828,6 +2829,10 @@ class IntentOverlay(QWidget):
         if self._interaction_started or self._handled:
             return
         self._interaction_started = True
+        self._closed = False
+        if self._custom_mode:
+            self._focus_custom_input()
+            return
         if _IS_WIN:
             self._win_force_foreground()
         else:
@@ -2843,9 +2848,12 @@ class IntentOverlay(QWidget):
                     or getattr(e, "event_type", None) != "down"
                     or not getattr(e, "name", None)
                     or self._closed
+                    or self._handled
+                    or self._custom_mode
                 ):
-                    return
+                    return True  # A stale global hook must never swallow typing.
                 self._raw_key.emit(e.name)
+                return False
 
             # Capture only overlay command keys. A suppress-all hook can swallow
             # modifier key-up events from the hotkey that opened the picker,
@@ -2853,7 +2861,12 @@ class IntentOverlay(QWidget):
             hooks = []
             for name in self._raw_shortcut_names():
                 try:
-                    hooks.append(keyboard.on_press_key(name, _on_key_event, suppress=True))
+                    # keyboard stores removers by callback identity. Reusing one
+                    # callback for every key makes the second unhook raise and
+                    # leaves all remaining global suppressors installed.
+                    def callback(event):
+                        return _on_key_event(event)
+                    hooks.append(keyboard.on_press_key(name, callback, suppress=True))
                 except Exception:
                     pass
             self._kb_hook = hooks
@@ -2893,18 +2906,21 @@ class IntentOverlay(QWidget):
     def _unhook(self):
         """Handle unhook for intent overlay."""
         self._closed = True
-        if self._kb_hook is not None:
-            try:
-                if _IS_WIN:
-                    import keyboard  # type: ignore
-                    hooks = self._kb_hook if isinstance(self._kb_hook, list) else [self._kb_hook]
-                    for hook in hooks:
+        self._interaction_started = False
+        hooks, self._kb_hook = self._kb_hook, None
+        if hooks is not None:
+            if _IS_WIN:
+                import keyboard  # type: ignore
+                for hook in hooks if isinstance(hooks, list) else [hooks]:
+                    try:
                         keyboard.unhook(hook)
-                else:
-                    self._kb_hook.stop()
-            except Exception:
-                pass
-            self._kb_hook = None
+                    except Exception:
+                        pass  # One failed removal must not strand other keys.
+            else:
+                try:
+                    hooks.stop()
+                except Exception:
+                    pass
         self._release_overlay_keyboard()
         self._release_input_keyboard()
 
@@ -2922,6 +2938,7 @@ class IntentOverlay(QWidget):
 
     def hideEvent(self, event):
         """Treat unexpected hides as cancellation so the icon returns idle."""
+        self._unhook()
         # A non-activating disabled Popup can be hidden by Qt before the native
         # context capture completes (notably under the offscreen Windows
         # backend). It is intentionally inert at this point, so the hide cannot

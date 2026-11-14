@@ -719,3 +719,41 @@ def test_live_file_approval_callback_emits_request_and_accepts_response(record_c
         thread.join(timeout=2.0)
 
     assert decision["value"] == {"approved": False, "feedback": "Use a smaller patch."}
+
+
+@pytest.mark.parametrize("method", ["brain.chat", "brain.query"])
+def test_provider_image_chunks_stay_attachments_in_both_brain_surfaces(method, record_ctx, monkeypatch):
+    import config
+    from core.llm_clients.image_output import ImageOutputChunk
+
+    images = [{"kind": "image", "data_url": f"data:image/png;base64,{data}"} for data in ["b25l", "dHdv"]]
+    monkeypatch.setattr(config, "CHAT_EXECUTION_MODE", "openwand", raising=False)
+    monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", False)
+    monkeypatch.setattr(handlers, "_stream_chat_reply", lambda *_a, **_kw: iter([ImageOutputChunk(images)]))
+    monkeypatch.setattr(handlers, "_stream_query_reply", lambda *_a, **_kw: iter([ImageOutputChunk(images)]))
+    events, ctx = record_ctx()
+    kwargs = {"messages": [{"role": "user", "content": "Create two images"}]} if method == "brain.chat" else {"intent_prompt": "Create two images"}
+    result = handlers.HANDLERS[method](ctx, memory_enabled=False, **kwargs)
+    assert result["text"] == ""
+    assert result["attachments"] == images
+    assert not _chunks(events)
+    assert [payload for event, payload in events if event == "reply.done"][-1]["attachments"] == images
+
+
+def test_harness_inline_images_survive_forwarding_and_are_deduplicated(record_ctx, monkeypatch):
+    import config
+    from core import harness_clients
+    from core.harness_clients.base import HarnessEvent, HarnessResult
+
+    monkeypatch.setattr(config, "TRUST_PRIVACY_MODE", False)
+    images = [{"kind": "image", "name": "generated.png", "data_url": f"data:image/png;base64,{data}"}
+              for data in ["b25l", "dHdv"]]
+    def run(provider, _prompt, **kwargs):
+        for image in images:
+            kwargs["on_event"](HarnessEvent(kind="image", text="Image generated.", attachment=image))
+        return HarnessResult(provider, "", "session", "/repo", attachments=tuple(images))
+    monkeypatch.setattr(harness_clients, "run_harness", run)
+    _, ctx = record_ctx()
+    result = handlers.HANDLERS["brain.chat"](ctx, messages=[{"role": "user", "content": "Draw two"}],
+        harness_provider="codex", memory_enabled=False)
+    assert result["attachments"] == images

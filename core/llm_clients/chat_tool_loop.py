@@ -18,6 +18,7 @@ from core.llm_clients.adapter_protocol import (
     argument_error,
     validate_call_ids,
 )
+from core.llm_clients.image_output import merge_images
 
 
 @dataclass(frozen=True)
@@ -224,6 +225,8 @@ class ChatToolLoop:
                 progress_chunks.append(turn.progress)
                 if self.on_progress:
                     self._progress(turn.progress)
+            if turn.metadata.get("attachments"):
+                merge_images(metadata.setdefault("attachments", []), turn.metadata["attachments"])
             if turn.tool_calls:
                 guard.check_batch(turn.tool_calls)
                 results: list[OpenWandToolResult] = []
@@ -241,7 +244,7 @@ class ChatToolLoop:
                     )
                 )
                 continue
-            if turn.final_text:
+            if turn.final_text or (turn.status == "final" and metadata.get("attachments")):
                 final_text = turn.final_text
                 if _disabled_file_tool_text(request, final_text):
                     final_text = "File access is disabled, so the saved file was not changed."
@@ -274,7 +277,7 @@ class ChatToolLoop:
                         final_text = "I couldn't complete the requested file change. No successful file change was confirmed."
                 metadata["completion_gate_nudges"] = list(gate_nudges)
                 metadata["progress_chunks"] = progress_chunks
-                metadata.update(turn.metadata)
+                metadata.update({key: value for key, value in turn.metadata.items() if key != "attachments"})
                 return ChatLoopFinal(
                     text=final_text,
                     status=turn.status or "final",

@@ -907,6 +907,7 @@ def test_custom_prompt_input_grabs_keyboard_on_windows(monkeypatch):
     monkeypatch.setattr(QWidget, "releaseKeyboard", release_keyboard)
     config.CALLER_ROWS[:] = [{"intents": [], "custom_key": "s"}]
     overlay = intent_overlay.IntentOverlay(caller_idx=0)
+    monkeypatch.setattr(overlay, "isVisible", lambda: True)
     try:
         overlay._enter_custom_mode()
 
@@ -2233,6 +2234,7 @@ def test_intent_overlay_linux_moves_keyboard_grab_to_custom_input(monkeypatch):
     monkeypatch.setattr(QWidget, "releaseKeyboard", release_keyboard)
     config.CALLER_ROWS[:] = [{"intents": [], "custom_key": "s"}]
     overlay = intent_overlay.IntentOverlay(caller_idx=0)
+    monkeypatch.setattr(overlay, "isVisible", lambda: True)
     try:
         overlay._focus_overlay()
         overlay._enter_custom_mode()
@@ -2561,6 +2563,71 @@ def test_selection_context_chip_can_start_capture_when_empty(qapp):
         selection = overlay.context_choices()[0]
         assert selection["state"] == "on"
         assert selection["touched"] is True
+    finally:
+        overlay.close()
+        qapp.processEvents()
+
+
+@pytest.mark.parametrize("failed_removal", [False, True])
+def test_windows_picker_hooks_release_every_letter_and_pass_stale_events(qapp, monkeypatch, failed_removal):
+    """Mirror keyboard's callback-keyed remover registry to catch stranded keys."""
+    from types import SimpleNamespace
+
+    import config
+    import ui.intent_overlay as module
+
+    monkeypatch.setattr(module, "_IS_WIN", False)
+    monkeypatch.setattr(config, "CALLER_ROWS", [{"intents": [], "custom_key": "s"}])
+    overlay = module.IntentOverlay(caller_idx=0)
+    callbacks, registry, removed = [], {}, []
+    def register(name, callback, suppress):
+        assert suppress
+        callbacks.append(callback)
+        def remove():
+            del registry[callback]  # Reusing a callback reproduces the real bug.
+            removed.append(name)
+        registry[callback] = remove
+        return remove
+    def unhook(remove):
+        if failed_removal and not removed:
+            removed.append("failed")
+            raise RuntimeError("one hook was already removed")
+        remove()
+    monkeypatch.setitem(sys.modules, "keyboard", SimpleNamespace(on_press_key=register, unhook=unhook))
+    monkeypatch.setattr(module, "_IS_WIN", True)
+    monkeypatch.setattr(overlay, "_win_force_foreground", lambda: None)
+    monkeypatch.setattr(overlay, "_focus_overlay", lambda: None)
+    try:
+        overlay._closed = False
+        overlay._start_interaction()
+        assert len(callbacks) >= 2
+        assert len(set(callbacks)) == len(callbacks)
+        overlay._unhook()
+        assert len(removed) == len(callbacks)
+        assert overlay._kb_hook is None
+        assert all(callback(SimpleNamespace(event_type="down", name="w")) is True for callback in callbacks)
+    finally:
+        overlay.close()
+        qapp.processEvents()
+
+
+def test_hidden_picker_delayed_focus_cannot_steal_chat_keyboard(qapp, monkeypatch):
+    from PySide6.QtWidgets import QWidget
+
+    import config
+    import ui.intent_overlay as module
+
+    monkeypatch.setattr(config, "CALLER_ROWS", [{"intents": [], "custom_key": "s"}])
+    monkeypatch.setattr(module, "_IS_WIN", False)
+    overlay = module.IntentOverlay(caller_idx=0)
+    grabbed = []
+    monkeypatch.setattr(QWidget, "grabKeyboard", lambda self: grabbed.append(self))
+    try:
+        overlay._focus_overlay()
+        overlay._custom_mode = True
+        overlay._input_line.show()
+        overlay._focus_custom_input()
+        assert not grabbed
     finally:
         overlay.close()
         qapp.processEvents()

@@ -19,6 +19,7 @@ from core.llm_clients.adapter_protocol import (
     value,
 )
 from core.llm_clients.chat_tool_loop import ChatModelTurn
+from core.llm_clients.image_output import extract_images, merge_images
 from core.llm_clients.tool_call_metadata import StreamToolCallAccumulator, copy_tool_call_metadata, tool_call_payload
 
 
@@ -134,7 +135,7 @@ class ChatCompletionsLoopModel:
         from core.llm_clients import client as llm
 
         accumulator = StreamToolCallAccumulator()
-        texts, reasoning, details = [], [], []
+        texts, reasoning, details, images = [], [], [], []
         finish, refusal = None, ""
         context = response if hasattr(response, "__enter__") else nullcontext(response)
         try:
@@ -149,6 +150,7 @@ class ChatCompletionsLoopModel:
                         continue
                     finish = value(choice, "finish_reason") or finish
                     delta = value(choice, "delta", {})
+                    merge_images(images, extract_images(delta, source=self.provider))
                     text = text_content(value(delta, "content"))
                     if text:
                         texts.append(text)
@@ -166,6 +168,7 @@ class ChatCompletionsLoopModel:
         message = {"content": "".join(texts) or None, "tool_calls": [
             tool_call_payload(call) for call in accumulator.calls.values()
         ]}
+        message["images"] = images
         if any(reasoning):
             message["reasoning_content"] = "".join(reasoning)
         if details:
@@ -183,9 +186,12 @@ class ChatCompletionsLoopModel:
         if value(message, "refusal"):
             raise AdapterProtocolError("Provider refused the request")
         text = text_content(value(message, "content"))
-        if not calls and not text:
+        images = extract_images(message, source=self.provider)
+        if not calls and not text and not images:
             raise AdapterProtocolError("Provider returned neither text nor complete tool calls")
-        assistant = {"role": "assistant", "content": text or None}
+        assistant = {"role": "assistant", "content": snapshot(value(message, "content"))}
+        if value(message, "images"):
+            assistant["images"] = snapshot(value(message, "images"))
         if calls:
             assistant["tool_calls"] = [tool_call_payload(call.provider_payload) for call in calls]
         for name in ("reasoning", "reasoning_content", "reasoning_details", "extra_content"):
@@ -194,4 +200,4 @@ class ChatCompletionsLoopModel:
                 assistant[name] = snapshot(extra)
         self.messages.append(assistant)
         self.pending = calls
-        return ChatModelTurn(tool_calls=calls, progress=text if calls else "", final_text="" if calls else text, status="continue" if calls else "final")
+        return ChatModelTurn(tool_calls=calls, progress=text if calls else "", final_text="" if calls else text, status="continue" if calls else "final", metadata={"attachments": images})

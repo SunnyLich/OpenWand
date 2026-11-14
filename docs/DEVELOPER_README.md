@@ -96,6 +96,12 @@ See `docs/OVERVIEW.md` for the compact ownership map.
 - Rewrite and pasteback: caller config enables pasteback -> brain rewrite ->
   native pasteback into the original focused app.
 - Chat: UI chat request -> supervisor -> brain chat stream -> UI chat window.
+- Image replies: provider adapters normalize image blocks and image-only turns
+  through `core/llm_clients/image_output.py`. The brain forwards attachment lists
+  separately from text; the UI stores image references, shows every image in
+  chat, and provides a gallery in the floating bubble. Generated images also
+  participate in vision history on follow-up turns. This receives media returned
+  by a provider; generation still requires a model and endpoint that support it.
 - Memory: UI memory viewer edits are proxied through supervisor to brain memory
   handlers; query-time retrieval happens in brain/core memory code.
 - Addons: brain discovers enabled addons, starts addon host processes, applies

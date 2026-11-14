@@ -2077,3 +2077,35 @@ def test_chat_captured_selected_path_shows_and_feeds_next_message_context(tmp_pa
     finally:
         window.close()
         app.processEvents()
+
+
+def test_multiple_assistant_images_render_live_reopen_and_replay(tmp_path):
+    from PySide6.QtGui import QColor, QPixmap
+    from PySide6.QtWidgets import QApplication, QLabel
+
+    from core.conversation_store import store
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    refs = []
+    for i, color in enumerate(["red", "blue"]):
+        pixmap = QPixmap(24, 16)
+        pixmap.fill(QColor(color))
+        path = tmp_path / f"generated-{i}.png"
+        assert pixmap.save(str(path), "PNG")
+        refs.append(store.external_file_attachment(str(path), kind="image"))
+    message = {"role": "assistant", "content": "", "attachments": refs}
+    window = ChatWindow([{"messages": [message]}], lambda _messages: iter(()))
+    try:
+        view = window._stack.widget(0)._last_assistant_view
+        def thumbnails():
+            return [label for label in view.parentWidget().findChildren(QLabel)
+                    if label.pixmap() is not None and not label.pixmap().isNull()]
+        assert len(thumbnails()) == 2
+        window._current_ai_label = view
+        window._on_metadata({"assistant_attachments": refs})
+        assert len(thumbnails()) == 2  # A repeated final event cannot duplicate previews.
+        turns = _chat_model_messages([message])
+        assert len(turns[0]["images_base64"]) == 2
+    finally:
+        window.close()
+        app.processEvents()

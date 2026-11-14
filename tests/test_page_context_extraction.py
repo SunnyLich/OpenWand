@@ -3,6 +3,78 @@ from types import SimpleNamespace
 from core import context_fetcher, context_hotkey
 
 
+def test_tool_page_fetch_keeps_full_text_before_model_excerpt(monkeypatch):
+    import requests
+
+    content = b"x" * 150_000
+    calls, closed = [], []
+
+    def get(url, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            encoding="utf-8", raise_for_status=lambda: None,
+            iter_content=lambda **kwargs: iter([content[:80_000], content[80_000:]]),
+            close=lambda: closed.append(True),
+        )
+
+    def extract(**kwargs):
+        assert kwargs["max_chars"] == 0
+        return kwargs["html"]
+
+    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(context_fetcher, "extract_useful_page_context", extract)
+    monkeypatch.setattr(context_fetcher.config, "CONTEXT_BROWSER_MAX_CHARS", 12_000)
+    result = context_fetcher.fetch_browser_content_for_tool("https://example.com/large")
+    assert len(result) == 150_000
+    assert calls[0]["stream"] is True and closed == [True]
+
+
+def test_tool_page_download_limit_stops_stream_and_closes_response(monkeypatch):
+    import pytest
+    import requests
+
+    closed, consumed = [], []
+
+    def chunks(**kwargs):
+        consumed.append(1)
+        yield b"x" * context_fetcher.PAGE_DOWNLOAD_BYTES
+        consumed.append(2)
+        yield b"x"
+        pytest.fail("Download must stop as soon as the decompressed limit is exceeded")
+
+    response = SimpleNamespace(
+        encoding="utf-8", raise_for_status=lambda: None, iter_content=chunks,
+        close=lambda: closed.append(True),
+    )
+    monkeypatch.setattr(requests, "get", lambda *a, **kwargs: response)
+    with pytest.raises(context_fetcher.PageDownloadLimitError, match="10 MiB"):
+        context_fetcher.fetch_browser_content_for_tool("https://example.com/huge")
+    assert consumed == [1, 2] and closed == [True]
+
+
+def test_tool_page_download_accepts_exact_limit(monkeypatch):
+    import requests
+
+    closed = []
+    response = SimpleNamespace(
+        encoding="utf-8", raise_for_status=lambda: None,
+        iter_content=lambda **kwargs: iter([b"x" * context_fetcher.PAGE_DOWNLOAD_BYTES]),
+        close=lambda: closed.append(True),
+    )
+    monkeypatch.setattr(requests, "get", lambda *a, **kwargs: response)
+    monkeypatch.setattr(context_fetcher, "extract_useful_page_context", lambda **kwargs: "Parsed full page")
+    assert context_fetcher.fetch_browser_content_for_tool("https://example.com/exact") == "Parsed full page"
+    assert closed == [True]
+
+
+def test_unlimited_page_extraction_preserves_large_readable_body(monkeypatch):
+    monkeypatch.setattr(context_fetcher.config, "CONTEXT_BROWSER_MAX_CHARS", 12_000)
+    body = "Readable article content. " * 5000
+    result = context_fetcher.extract_useful_page_context(html=f"<article><p>{body}</p></article>", max_chars=0)
+    assert body.strip() in result
+    assert len(result) > 100_000 and "[truncated]" not in result
+
+
 def test_extract_useful_page_context_orders_structured_html():
     html = """
     <html>
